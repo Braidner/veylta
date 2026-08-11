@@ -1,0 +1,57 @@
+import { createServer } from "node:http";
+import { type HealthStatus, HTTP_API_VERSION } from "@family-health/contracts";
+import { loadConfig } from "./config.js";
+import { createPool } from "./database/pool.js";
+
+const config = loadConfig();
+const pool = createPool(config.databaseUrl);
+let ready = false;
+let stopping = false;
+
+async function probe(): Promise<void> {
+  try {
+    await pool.query("SELECT 1");
+    ready = true;
+  } catch {
+    ready = false;
+  }
+}
+
+const timer = setInterval(() => void probe(), 5_000);
+timer.unref();
+await probe();
+
+const server = createServer((request, response) => {
+  const readinessRequest = request.url === "/readyz";
+  const status: HealthStatus = {
+    status: readinessRequest && !ready ? "unavailable" : "ok",
+    service: "worker",
+    version: HTTP_API_VERSION,
+  };
+  response.writeHead(status.status === "ok" ? 200 : 503, {
+    "content-type": "application/json; charset=utf-8",
+  });
+  response.end(JSON.stringify(status));
+});
+
+async function shutdown(signal: string): Promise<void> {
+  if (stopping) return;
+  stopping = true;
+  clearInterval(timer);
+  console.log(JSON.stringify({ service: "worker", signal, status: "stopping" }));
+  server.close();
+  await pool.end();
+}
+
+process.once("SIGINT", () => void shutdown("SIGINT"));
+process.once("SIGTERM", () => void shutdown("SIGTERM"));
+
+server.listen(config.workerHealthPort, config.workerHealthHost, () => {
+  console.log(
+    JSON.stringify({
+      service: "worker",
+      status: "listening",
+      port: config.workerHealthPort,
+    }),
+  );
+});

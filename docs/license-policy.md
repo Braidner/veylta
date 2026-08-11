@@ -27,6 +27,14 @@ License expressions, exceptions, dual licensing, custom licenses, missing or
 `UNKNOWN` metadata, and packages outside the allowlist fail closed and require a
 documented review before merge. A transitive package is not exempt.
 
+The runnable scaffold records narrow exact-version reviews in
+`config/license-policy.json` and `THIRD_PARTY_NOTICES.md`. These currently cover
+permissive ISC utilities required transitively by Fastify, PostgreSQL, and
+Next.js, plus the CC-BY-4.0 `caniuse-lite` browser-compatibility dataset required
+by Next.js. They are not global allowlist additions; removal or a version change
+invalidates the exception. Optional `sharp`/libvips and `lightningcss` are
+explicitly excluded because their LGPL/MPL licenses cross the core boundary.
+
 PostgreSQL is explicitly selected external infrastructure and is distributed
 under the permissive PostgreSQL License, not as copied project source. Its
 runtime/container provenance and attribution still belong in the third-party

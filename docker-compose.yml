@@ -1,0 +1,22 @@
+name: family-health
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: family_health
+      POSTGRES_USER: family_health
+      POSTGRES_PASSWORD: family_health
+    ports:
+      - "5432:5432"
+    volumes:
+      - family-health-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U family_health -d family_health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+volumes:
+  family-health-postgres:

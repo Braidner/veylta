@@ -54,8 +54,8 @@ and [slice plan](docs/slices.md).
 
 ## Local development
 
-The runnable scaffold is part of the next task in the first-slice plan. Its
-required developer contract is:
+Node.js 22.13+ and Docker are required. Start the current runnable foundation
+from the repository root:
 
 ```sh
 corepack enable
@@ -65,20 +65,30 @@ pnpm db:migrate
 pnpm dev
 ```
 
-The exact commands above must be verified and kept current when the manifests,
-Compose services, and migrations are added. Until then, this documentation-only
-foundation is not a runnable application.
+The web app is available at <http://localhost:4300>, the API at
+<http://127.0.0.1:4301>, and worker health at <http://127.0.0.1:4302>. `pnpm dev`
+starts all three application processes; PostgreSQL data and `.local/storage`
+remain persistent across process restarts. Defaults match `docker-compose.yml`;
+copy `.env.example` only when a local override is needed.
 
-The completed slice must also expose these checks:
+Install Chromium once before the browser test, then run the complete scaffold
+checks:
 
 ```sh
+pnpm exec playwright install chromium
 pnpm lint
 pnpm typecheck
 pnpm test
 pnpm test:integration
+pnpm build
 pnpm test:e2e
 pnpm license:check
 ```
+
+`pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
+The application currently exposes only readiness/foundation behavior. The
+family/profile path begins in the next task and real medical uploads remain
+disabled.
 
 ## Safety and data policy
 

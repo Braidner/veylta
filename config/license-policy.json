@@ -1,0 +1,30 @@
+{
+  "allowedLicenses": ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "0BSD"],
+  "reviewedExpressions": ["MIT OR Apache-2.0"],
+  "packageExceptions": {
+    "caniuse-lite@1.0.30001809": {
+      "license": "CC-BY-4.0",
+      "reason": "Browser compatibility data required by Next.js; attribution is retained in THIRD_PARTY_NOTICES.md."
+    },
+    "fastq@1.20.1": {
+      "license": "ISC",
+      "reason": "Permissive Fastify queue utility; exact transitive version reviewed."
+    },
+    "pg-int8@1.0.1": {
+      "license": "ISC",
+      "reason": "Permissive PostgreSQL integer parser; exact transitive version reviewed."
+    },
+    "picocolors@1.1.1": {
+      "license": "ISC",
+      "reason": "Permissive PostCSS terminal-color helper used by Next.js; exact transitive version reviewed."
+    },
+    "semver@7.8.5": {
+      "license": "ISC",
+      "reason": "Permissive semantic-version parser required by Fastify; exact transitive version reviewed."
+    },
+    "split2@4.2.0": {
+      "license": "ISC",
+      "reason": "Permissive stream splitter required by pg/pino; exact transitive version reviewed."
+    }
+  }
+}
