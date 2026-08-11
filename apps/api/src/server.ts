@@ -1,10 +1,24 @@
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createPool, databaseReadiness } from "./database/pool.js";
+import { createFamilyService } from "./family/family-service.js";
+import { registerFamilyRoutes } from "./family/routes.js";
 
 const config = loadConfig();
 const pool = createPool(config.databaseUrl);
 const app = buildApp({ readiness: databaseReadiness(pool) });
+registerFamilyRoutes(
+  app,
+  createFamilyService(pool, {
+    cookieName: "fh_session",
+    secureCookie: config.secureSessionCookie,
+    sessionTtlSeconds: config.sessionTtlSeconds,
+  }),
+  {
+    allowedMutationOrigins: [config.webOrigin],
+    demoRegistrationEnabled: config.demoRegistrationEnabled,
+  },
+);
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, "api shutdown requested");

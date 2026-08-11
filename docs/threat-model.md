@@ -77,6 +77,9 @@ the family's trust boundary merely because it exposes an API.
 
 ## First-slice security invariants
 
+- Local demo onboarding binds only to loopback, collects no email/password,
+  persists only a SHA-256 session-token digest, and requires an exact configured
+  browser origin for mutations. It is not production authentication.
 - Synthetic PDF only; no real medical data enters the repository or demo flow.
 - Every family/profile/document/fact/observation query starts from the authorized
   tenant scope, including worker queries.

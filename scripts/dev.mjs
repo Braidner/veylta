@@ -1,15 +1,18 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
+
+if (existsSync(".env")) process.loadEnvFile(".env");
 
 const commands = [
-  ["api", ["--filter", "@family-health/api", "dev:api"]],
-  ["worker", ["--filter", "@family-health/api", "dev:worker"]],
-  ["web", ["--filter", "@family-health/web", "dev"]],
+  ["api", ["--filter", "@family-health/api", "dev:api"], { DEMO_REGISTRATION_ENABLED: "true" }],
+  ["worker", ["--filter", "@family-health/api", "dev:worker"], {}],
+  ["web", ["--filter", "@family-health/web", "dev"], {}],
 ];
 
-const children = commands.map(([name, args]) => {
+const children = commands.map(([name, args, defaults]) => {
   const child = spawn("pnpm", args, {
     stdio: "inherit",
-    env: process.env,
+    env: { ...defaults, ...process.env },
   });
   child.once("exit", (code, signal) => {
     if (signal === null && code !== 0) {

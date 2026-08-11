@@ -12,6 +12,8 @@ does not claim that the endpoints exist before their implementation task lands.
 - `Idempotency-Key` is required for upload and review/confirmation commands.
 - Browser identity is resolved server-side. A caller-supplied user ID is never
   accepted as authentication.
+- Cookie-authenticated mutations require an exact `Origin` match with the
+  configured web origin.
 - All family/profile resources are authorized on every request. An inaccessible
   or cross-family identifier returns `404`.
 - Schemas are strict: unknown fields fail rather than being silently accepted.
@@ -45,15 +47,22 @@ Common status meanings:
 - `202`: processing accepted and asynchronous;
 - `503`: safely retryable dependency failure.
 
-## Family and profile
+## Local demo identity, family, and profile
 
-### `POST /v1/families`
+### `POST /v1/demo/registrations`
 
-Creates a family and owner membership atomically.
+Creates an opaque local demo identity, session, family, owner membership, and
+first linked adult profile in one transaction. The route is available only when
+`DEMO_REGISTRATION_ENABLED=true`; it is disabled by default and rejected unless
+the API binds to a loopback host. The documented dev runner also binds the web
+proxy to loopback. This is synthetic local-development onboarding, not a
+production authentication or account-recovery mechanism.
 
 ```json
 {
-  "displayName": "Synthetic demo family"
+  "displayName": "Synthetic owner",
+  "familyName": "Synthetic demo family",
+  "profileName": "Synthetic owner profile"
 }
 ```
 
@@ -61,14 +70,37 @@ Response `201`:
 
 ```json
 {
+  "contractVersion": "family-profile/v1",
   "family": {
     "id": "family_placeholder",
     "displayName": "Synthetic demo family",
     "role": "owner",
     "createdAt": "2026-08-11T00:00:00Z"
+  },
+  "profile": {
+    "id": "profile_placeholder",
+    "familyId": "family_placeholder",
+    "displayName": "Synthetic owner profile",
+    "kind": "adult",
+    "createdAt": "2026-08-11T00:00:00Z"
   }
 }
 ```
+
+The response sets an opaque `HttpOnly; SameSite=Strict` session cookie. Only its
+SHA-256 digest is persisted. The request accepts no email, password, user ID, or
+session token.
+
+### `GET /v1/session`
+
+Resolves the cookie server-side and returns the current demo user plus active
+families and owner-accessible profiles. It returns `401` for an absent, expired,
+revoked, or disabled session and is always `Cache-Control: no-store`.
+
+### `DELETE /v1/session`
+
+Revokes the current session transactionally, records a payload-free audit event,
+and expires the cookie. It requires the configured web `Origin`.
 
 ### `POST /v1/families/{familyId}/profiles`
 
@@ -81,12 +113,16 @@ Creates an adult or dependent profile within an authorized family.
 }
 ```
 
-Response `201` contains `id`, `familyId`, display name, kind, and `createdAt`.
+Response `201` contains the `family-profile/v1` contract version and a profile
+with `id`, `familyId`, display name, kind, and `createdAt`. Additional adult
+profiles are not implicitly linked to the owner identity.
 
 ### `GET /v1/families/{familyId}/profiles`
 
 Returns only profiles the actor may access. It is not an inventory of all
-profiles merely because the actor is a family member.
+profiles merely because the actor is a family member. Task 3 intentionally
+implements only the active owner capability. Adult/caregiver grants remain
+default-deny until their explicit consent lifecycle is implemented.
 
 ## Document upload and status
 
@@ -250,7 +286,7 @@ kind, storage key, URL, or parser/provider configuration.
 
 ## Audit behavior
 
-Create audit events for authentication-relevant access, family/profile changes,
+Create audit events for authentication-relevant changes, family/profile changes,
 upload, source download, extraction transitions, review, confirmation/rejection,
 and future agent/provider egress. Event metadata includes actor, family, action,
 resource ID, result, correlation ID, and time—not filenames, file content, page
@@ -258,6 +294,8 @@ text, source fragments, medical values, credentials, or signed URLs.
 
 ## Deferred APIs
 
-No first-slice endpoint is defined for S3 configuration, OCR, LLM providers,
-summaries, recommendations, FHIR, exports, backups, or account deletion. Those
-contracts follow their own product, threat-model, and license review.
+No first-slice endpoint is defined for production authentication/account
+recovery, adult/caregiver consent management, S3 configuration, OCR, LLM
+providers, summaries, recommendations, FHIR, exports, backups, or account
+deletion. Those contracts follow their own product, threat-model, and license
+review.

@@ -1,16 +1,16 @@
 # Graph Report - health  (2026-08-11)
 
 ## Corpus Check
-- 46 files · ~13,542 words
+- 54 files · ~20,262 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 401 nodes · 408 edges · 32 communities (29 shown, 3 thin omitted)
+- 482 nodes · 526 edges · 33 communities (29 shown, 4 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `ac5208c4`
+- Built from commit: `320ac772`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -44,35 +44,41 @@
 - [[_COMMUNITY_Community 26|Community 26]]
 - [[_COMMUNITY_Community 27|Community 27]]
 - [[_COMMUNITY_Community 28|Community 28]]
+- [[_COMMUNITY_Community 32|Community 32]]
+- [[_COMMUNITY_Community 33|Community 33]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `scripts` - 22 edges
 2. `compilerOptions` - 16 edges
 3. `Architecture` - 13 edges
-4. `scripts` - 11 edges
-5. `Product` - 10 edges
-6. `HTTP API contract` - 10 edges
-7. `License policy` - 9 edges
-8. `First vertical slice` - 9 edges
-9. `Threat model` - 9 edges
-10. `compilerOptions` - 8 edges
+4. `loadConfig()` - 12 edges
+5. `scripts` - 11 edges
+6. `Product` - 10 edges
+7. `HTTP API contract` - 10 edges
+8. `License policy` - 9 edges
+9. `First vertical slice` - 9 edges
+10. `Threat model` - 9 edges
 
 ## Surprising Connections (you probably didn't know these)
 - `AppDependencies` --references--> `ReadinessProbe`  [EXTRACTED]
   apps/api/src/app.ts → apps/api/src/database/pool.ts
+- `createTestApp()` --calls--> `buildApp()`  [EXTRACTED]
+  apps/api/test/family-profiles.integration.test.ts → apps/api/src/app.ts
 - `run()` --calls--> `loadConfig()`  [EXTRACTED]
   apps/api/src/database/migrations.ts → apps/api/src/config.ts
 - `run()` --calls--> `createPool()`  [EXTRACTED]
   apps/api/src/database/migrations.ts → apps/api/src/database/pool.ts
+- `createTestApp()` --calls--> `createFamilyService()`  [EXTRACTED]
+  apps/api/test/family-profiles.integration.test.ts → apps/api/src/family/family-service.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (32 total, 3 thin omitted)
+## Communities (33 total, 4 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.12
-Nodes (22): AppDependencies, buildApp(), integer(), loadConfig(), projectRoot, RuntimeConfig, defaultDirectory, ensureMigrationTable() (+14 more)
+Cohesion: 0.08
+Nodes (29): AppDependencies, buildApp(), boolean(), envFile, integer(), isLoopback(), loadConfig(), origin() (+21 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.06
@@ -88,7 +94,7 @@ Nodes (25): ADR 0003: Extracted facts and confirmed observations, Consequences, 
 
 ### Community 4 - "Community 4"
 Cohesion: 0.07
-Nodes (26): AgentRun, AuditEvent, Condition, MedicationStatement, AllergyIntolerance, Encounter, Confirmed medical record, ConsentGrant, Database invariants to test, DiagnosticReport, Document (+18 more)
+Nodes (27): AgentRun, AuditEvent, Condition, MedicationStatement, AllergyIntolerance, Encounter, Confirmed medical record, ConsentGrant, Database invariants to test, DiagnosticReport, Document (+19 more)
 
 ### Community 5 - "Community 5"
 Cohesion: 0.10
@@ -99,8 +105,8 @@ Cohesion: 0.10
 Nodes (20): useExhaustiveDependencies, useHookAtTopLevel, files, includes, formatter, enabled, indentStyle, indentWidth (+12 more)
 
 ### Community 7 - "Community 7"
-Cohesion: 0.11
-Nodes (19): Audit behavior, Deferred APIs, Document upload and status, Error envelope, Family and profile, `GET /v1/families/{familyId}/profiles`, `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`, `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content` (+11 more)
+Cohesion: 0.10
+Nodes (21): Audit behavior, Deferred APIs, `DELETE /v1/session`, Document upload and status, Error envelope, `GET /v1/families/{familyId}/profiles`, `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`, `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content` (+13 more)
 
 ### Community 8 - "Community 8"
 Cohesion: 0.12
@@ -163,31 +169,35 @@ Cohesion: 0.29
 Nodes (6): compilerOptions, declaration, outDir, rootDir, extends, include
 
 ### Community 23 - "Community 23"
-Cohesion: 0.40
-Nodes (3): Status, SystemStatus(), foundation
+Cohesion: 0.10
+Nodes (13): ApiError, FamilyHealthApp(), FamilyHealthAppProps, findProfileContext(), firstProfile(), MissingProfileScreen(), OnboardingScreenProps, profilePath() (+5 more)
 
 ### Community 24 - "Community 24"
-Cohesion: 0.53
-Nodes (4): HealthStatus, HTTP_API_VERSION, LAB_EXTRACTION_SCHEMA_VERSION, OBJECT_STORAGE_CONTRACT_VERSION
+Cohesion: 0.15
+Nodes (15): DemoRegistrationRequest, DemoRegistrationResponse, FAMILY_PROFILE_CONTRACT_VERSION, FamilyRole, FamilySummary, HealthStatus, HTTP_API_VERSION, LAB_EXTRACTION_SCHEMA_VERSION (+7 more)
 
 ### Community 25 - "Community 25"
 Cohesion: 0.33
 Nodes (5): Apache-2.0 and dual-licensed tooling, Browser compatibility data, CI and local infrastructure, Exact permissive ISC reviews, Third-party notices
 
+### Community 32 - "Community 32"
+Cohesion: 0.09
+Nodes (19): DemoRegistrationResult, DomainConflictError, DomainValidationError, FamilyService, FamilyServiceOptions, MembershipRow, ProfileRow, Queryable (+11 more)
+
 ## Knowledge Gaps
-- **286 isolated node(s):** `name`, `version`, `private`, `license`, `type` (+281 more)
+- **312 isolated node(s):** `name`, `version`, `private`, `license`, `type` (+307 more)
   These have ≤1 connection - possible missing edges or undocumented components.
-- **3 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+- **4 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `HTTP API contract` connect `Community 7` to `Community 2`?**
-  _High betweenness centrality (0.026) - this node is a cross-community bridge._
+  _High betweenness centrality (0.020) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _286 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _312 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.11553030303030302 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.08156028368794327 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.06060606060606061 - nodes in this community are weakly interconnected._
 - **Should `Community 2` be split into smaller, more focused modules?**
@@ -195,4 +205,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `Community 3` be split into smaller, more focused modules?**
   _Cohesion score 0.07407407407407407 - nodes in this community are weakly interconnected._
 - **Should `Community 4` be split into smaller, more focused modules?**
-  _Cohesion score 0.07407407407407407 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.07142857142857142 - nodes in this community are weakly interconnected._

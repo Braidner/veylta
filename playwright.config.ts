@@ -11,7 +11,7 @@ export default defineConfig({
   retries: process.env.CI === "true" ? 1 : 0,
   reporter: process.env.CI === "true" ? "github" : "list",
   use: {
-    baseURL: "http://localhost:4300",
+    baseURL: "http://127.0.0.1:4300",
     trace: "retain-on-failure",
   },
   projects: [
@@ -24,6 +24,10 @@ export default defineConfig({
     {
       command: "pnpm --filter @family-health/api dev:api",
       url: "http://127.0.0.1:4301/healthz",
+      env: {
+        DEMO_REGISTRATION_ENABLED: "true",
+        WEB_ORIGIN: "http://127.0.0.1:4300",
+      },
       reuseExistingServer,
       timeout: 30_000,
     },

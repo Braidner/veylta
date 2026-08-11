@@ -10,8 +10,10 @@ change treatment, or replace a clinician or an electronic health record.
 
 ## Project status
 
-The repository is at the foundation and first-vertical-slice stage. The first
-slice is deliberately narrow:
+The repository is implementing its first vertical slice. The completed local
+path currently creates an opaque synthetic demo session, one owner-scoped
+family, and multiple adult/dependent profiles. The full first slice remains
+deliberately narrow:
 
 1. create a family and a patient profile;
 2. upload a fully synthetic Russian-language PDF with a text layer;
@@ -65,7 +67,7 @@ pnpm db:migrate
 pnpm dev
 ```
 
-The web app is available at <http://localhost:4300>, the API at
+The web app is available at <http://127.0.0.1:4300>, the API at
 <http://127.0.0.1:4301>, and worker health at <http://127.0.0.1:4302>. `pnpm dev`
 starts all three application processes; PostgreSQL data and `.local/storage`
 remain persistent across process restarts. Defaults match `docker-compose.yml`;
@@ -86,9 +88,19 @@ pnpm license:check
 ```
 
 `pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
-The application currently exposes only readiness/foundation behavior. The
-family/profile path begins in the next task and real medical uploads remain
-disabled.
+The browser flow at <http://127.0.0.1:4300> creates a local demo family and
+keeps the active profile explicit in both the route and heading. It never asks
+for a real email. The opaque session token exists only in an HttpOnly cookie;
+PostgreSQL stores its SHA-256 digest. Demo registration is disabled by default;
+the root `pnpm dev` and E2E runner enable it explicitly while both web and API
+bind only to loopback. `DEMO_REGISTRATION_ENABLED=true` is rejected with a
+non-loopback `API_HOST`, and state-changing requests require the exact configured
+`WEB_ORIGIN`.
+
+This demo session has no login or account recovery and is not production
+authentication. Integration tests reset the local synthetic family tables, so
+run them only against the documented development database. Document upload and
+all real medical data remain disabled until their later tested tasks land.
 
 ## Safety and data policy
 

@@ -51,8 +51,11 @@ Commit intent: `feat: create tenant-scoped family profiles`
 - Begin with integration tests for owner creation and cross-family denial.
 - Minimal authenticated synthetic/demo request context suitable for tests/local
   development; never trust a caller-supplied user ID.
+- Atomic local-only demo onboarding with an opaque hashed session, strict
+  cookie/origin boundary, and no email/password collection.
 - Migrations for user, family, membership, patient profile, and audit event.
-- Family/profile API plus the smallest usable profile UI.
+- Owner-only family/profile API plus the smallest usable URL-authoritative
+  profile UI; adult/caregiver consent remains fail-closed and deferred.
 - Server-side default-deny authorization and non-disclosing missing response.
 
 ### Task 4 — Immutable local document upload

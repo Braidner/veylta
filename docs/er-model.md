@@ -58,10 +58,21 @@ claim that they are migrated in the first slice.
 ### User
 
 - `id`
-- login identity fields owned by the authentication subsystem
+- display name; production login identity remains owned by a future
+  authentication subsystem
 - `created_at`, `disabled_at`
 
-Do not store reusable credentials in domain tables.
+Task 3 creates an opaque local demo identity and stores no email or reusable
+credential in the domain table.
+
+### Session
+
+- `id`, `user_id`
+- SHA-256 token digest (never the plaintext cookie value)
+- `created_at`, `expires_at`, `revoked_at`
+
+The local browser token is an HttpOnly, SameSite cookie. Production identity,
+rotation, recovery, and deployment controls are intentionally deferred.
 
 ### Family
 
@@ -242,7 +253,7 @@ units, secrets, session tokens, or signed URLs.
 
 Migrations should initially create only rows required by executable behavior:
 
-- `User`, `Family`, `FamilyMembership`, `PatientProfile`;
+- `User`, `Session`, `Family`, `FamilyMembership`, `PatientProfile`;
 - `Document`, `DocumentVersion`, `DocumentPage`;
 - `ExtractionRun`, `ExtractedFact`, `ProcessingJob`;
 - `Observation`, `ObservationReferenceRange`, `AuditEvent`.
