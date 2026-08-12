@@ -7,6 +7,9 @@ import {
   type DocumentProcessingRetryResponse,
   type DocumentProcessingStatus,
   type DocumentSummary,
+  type FactReviewCommand,
+  type FactReviewOutcome,
+  type FactReviewResponse,
   LAB_EXTRACTION_SCHEMA_VERSION,
   type LabFactReferenceRange,
   type LabFactValidationIssue,
@@ -15,6 +18,7 @@ import {
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
   DomainConflictError,
+  DomainValidationError,
   ResourceNotFoundError,
   type SessionActor,
 } from "../family/family-service.js";
@@ -74,6 +78,13 @@ export interface DocumentService {
     scope: { familyId: string; profileId: string; documentId: string },
     correlationId: string,
   ): Promise<DocumentFactsResponse>;
+  reviewFact(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; documentId: string; factId: string },
+    command: FactReviewCommand,
+    idempotencyKey: string,
+    correlationId: string,
+  ): Promise<{ response: FactReviewResponse; replayed: boolean }>;
   retryProcessing(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string },
@@ -150,6 +161,50 @@ interface FactRow {
   confidence: number;
   validation_issues: string;
   review_status: string;
+  review_id: string | null;
+  decision_outcome: string | null;
+  review_decided_at: string | null;
+  review_observation_id: string | null;
+  corrected_source_name: string | null;
+  corrected_source_value: string | null;
+  corrected_source_unit: string | null;
+}
+
+interface FactForReviewRow {
+  id: string;
+  document_version_id: string;
+  document_page_id: string;
+  extraction_run_id: string;
+  source_fragment: string;
+  source_name: string;
+  source_value: string;
+  source_unit: string;
+  proposed_canonical_code: string | null;
+  proposed_reference_range: string | null;
+  proposed_specimen: string | null;
+  proposed_sampled_at: string | null;
+  proposed_resulted_at: string | null;
+  proposed_laboratory: string | null;
+  confidence: number;
+}
+
+interface ReviewRequestRow {
+  extracted_fact_id: string;
+  request_hash: string;
+  decision_id: string;
+  source_fact_version: number;
+  outcome: string;
+  decided_at: string;
+  observation_id: string | null;
+}
+
+interface ReviewDecisionRow {
+  id: string;
+  extracted_fact_id: string;
+  source_fact_version: number;
+  outcome: string;
+  decided_at: string;
+  observation_id: string | null;
 }
 
 interface ExtractionRunForFactsRow {
@@ -208,6 +263,18 @@ function canonicalDocumentScope(scope: {
   return {
     ...canonicalProfileScope(scope),
     documentId: scope.documentId.toLowerCase(),
+  };
+}
+
+function canonicalFactScope(scope: {
+  familyId: string;
+  profileId: string;
+  documentId: string;
+  factId: string;
+}) {
+  return {
+    ...canonicalDocumentScope(scope),
+    factId: scope.factId.toLowerCase(),
   };
 }
 
@@ -406,6 +473,7 @@ async function audit(
     familyId: string;
     actorUserId: string;
     action: string;
+    resourceType?: string;
     resourceId: string;
     correlationId: string;
     createdAt: Date;
@@ -415,12 +483,13 @@ async function audit(
     `INSERT INTO audit_events
        (id, family_id, actor_user_id, action, resource_type, resource_id, result,
         correlation_id, metadata, created_at)
-     VALUES ($1, $2, $3, $4, 'Document', $5, 'success', $6, $7, $8)`,
+     VALUES ($1, $2, $3, $4, $5, $6, 'success', $7, $8, $9)`,
     [
       randomUUID(),
       event.familyId,
       event.actorUserId,
       event.action,
+      event.resourceType ?? "Document",
       event.resourceId,
       event.correlationId,
       { contractVersion: DOCUMENT_CONTRACT_VERSION },
@@ -490,12 +559,20 @@ async function processingForDocument(
     `SELECT r.status,
             r.id AS extraction_run_id,
             count(f.id) AS fact_count,
-            sum(CASE WHEN f.review_status = 'needs_review' THEN 1 ELSE 0 END)
+            sum(
+              CASE
+                WHEN f.review_status = 'needs_review' AND d.id IS NULL THEN 1
+                ELSE 0
+              END
+            )
               AS needs_review_count
        FROM extraction_runs r
        LEFT JOIN extracted_facts f
          ON f.family_id = r.family_id
         AND f.extraction_run_id = r.id
+       LEFT JOIN review_decisions d
+         ON d.family_id = f.family_id
+        AND d.extracted_fact_id = f.id
       WHERE r.family_id = $1 AND r.document_version_id = $2
       GROUP BY r.id, r.status
       ORDER BY r.created_at DESC, r.id DESC
@@ -594,6 +671,197 @@ function referenceRange(value: string): LabFactReferenceRange {
   };
 }
 
+interface ValidatedFactReviewCommand {
+  factVersion: 1;
+  decision: "confirm" | "correct" | "reject";
+  correction:
+    | {
+        sourceName: string;
+        sourceValue: string;
+        sourceUnit: string;
+      }
+    | undefined;
+}
+
+function reviewText(value: unknown, maximum: number): string {
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximum ||
+    value !== value.trim() ||
+    /[\r\n]/.test(value)
+  ) {
+    throw new DomainValidationError();
+  }
+  return value;
+}
+
+function validateFactReviewCommand(command: FactReviewCommand): ValidatedFactReviewCommand {
+  if (command.factVersion !== 1) throw new DomainConflictError();
+  if (
+    command.decision !== "confirm" &&
+    command.decision !== "correct" &&
+    command.decision !== "reject"
+  ) {
+    throw new DomainValidationError();
+  }
+  if (command.decision === "correct") {
+    const correction = command.correction;
+    if (correction === undefined) throw new DomainValidationError();
+    return {
+      factVersion: 1,
+      decision: "correct",
+      correction: {
+        sourceName: reviewText(correction.sourceName, 200),
+        sourceValue: reviewText(correction.sourceValue, 100),
+        sourceUnit: reviewText(correction.sourceUnit, 100),
+      },
+    };
+  }
+  if (command.correction !== undefined) throw new DomainValidationError();
+  return { factVersion: 1, decision: command.decision, correction: undefined };
+}
+
+function reviewRequestHash(factId: string, command: ValidatedFactReviewCommand): string {
+  return sha256(
+    JSON.stringify({
+      factId,
+      factVersion: command.factVersion,
+      decision: command.decision,
+      correction: command.correction ?? null,
+    }),
+  );
+}
+
+function factReviewOutcome(value: string): FactReviewOutcome {
+  switch (value) {
+    case "confirm":
+      return "confirmed";
+    case "correct":
+      return "corrected";
+    case "reject":
+      return "rejected";
+    default:
+      throw new ObjectStorageIntegrityError("Stored fact review outcome is invalid");
+  }
+}
+
+function factReviewResponse(row: ReviewDecisionRow): FactReviewResponse {
+  const outcome = factReviewOutcome(row.outcome);
+  const factVersion = Number(row.source_fact_version);
+  if (!Number.isSafeInteger(factVersion) || factVersion !== 1) {
+    throw new ObjectStorageIntegrityError("Stored fact review version is invalid");
+  }
+  const observationId = row.observation_id;
+  if (
+    (outcome === "rejected" && observationId !== null) ||
+    (outcome !== "rejected" && observationId === null)
+  ) {
+    throw new ObjectStorageIntegrityError("Stored fact review observation is invalid");
+  }
+  return {
+    contractVersion: DOCUMENT_CONTRACT_VERSION,
+    review: {
+      id: requiredBoundedString(row.id, 200, "fact review id"),
+      factId: requiredBoundedString(row.extracted_fact_id, 200, "fact review fact"),
+      factVersion,
+      outcome,
+      decidedAt: canonicalTimestamp(row.decided_at),
+      observationId:
+        observationId === null
+          ? null
+          : requiredBoundedString(observationId, 200, "fact review observation"),
+    },
+  };
+}
+
+function derivedReviewStatus(
+  rawStatus: string,
+  decisionOutcome: string | null,
+): Extract<
+  DocumentFactsResponse["items"][number]["reviewStatus"],
+  "extracted" | "needs_review" | "confirmed" | "rejected"
+> {
+  if (decisionOutcome === "confirm" || decisionOutcome === "correct") return "confirmed";
+  if (decisionOutcome === "reject") return "rejected";
+  if (decisionOutcome !== null) {
+    throw new ObjectStorageIntegrityError("Stored fact review outcome is invalid");
+  }
+  if (rawStatus === "extracted" || rawStatus === "needs_review") return rawStatus;
+  throw new ObjectStorageIntegrityError("Stored fact review status is invalid");
+}
+
+function factReviewSummary(row: FactRow): DocumentFactsResponse["items"][number]["review"] {
+  const decisionFields = [
+    row.review_id,
+    row.review_decided_at,
+    row.review_observation_id,
+    row.corrected_source_name,
+    row.corrected_source_value,
+    row.corrected_source_unit,
+  ];
+  if (row.decision_outcome === null) {
+    if (decisionFields.some((value) => value !== null)) {
+      throw new ObjectStorageIntegrityError("Stored fact review is invalid");
+    }
+    return null;
+  }
+
+  const outcome = factReviewOutcome(row.decision_outcome);
+  const observationId = nullableBoundedString(
+    row.review_observation_id,
+    200,
+    "fact review observation",
+  );
+  if (
+    (outcome === "rejected" && observationId !== null) ||
+    (outcome !== "rejected" && observationId === null)
+  ) {
+    throw new ObjectStorageIntegrityError("Stored fact review observation is invalid");
+  }
+
+  const correctionFields = [
+    row.corrected_source_name,
+    row.corrected_source_value,
+    row.corrected_source_unit,
+  ];
+  const correction =
+    outcome === "corrected"
+      ? {
+          sourceName: requiredBoundedString(
+            row.corrected_source_name,
+            200,
+            "fact review correction source name",
+          ),
+          sourceValue: requiredBoundedString(
+            row.corrected_source_value,
+            100,
+            "fact review correction source value",
+          ),
+          sourceUnit: requiredBoundedString(
+            row.corrected_source_unit,
+            100,
+            "fact review correction source unit",
+          ),
+        }
+      : (() => {
+          if (correctionFields.some((value) => value !== null)) {
+            throw new ObjectStorageIntegrityError("Stored fact review correction is invalid");
+          }
+          return null;
+        })();
+
+  return {
+    id: requiredBoundedString(row.review_id, 200, "fact review id"),
+    outcome,
+    decidedAt: canonicalTimestamp(
+      requiredBoundedString(row.review_decided_at, 100, "fact review time"),
+    ),
+    observationId,
+    correction,
+  };
+}
+
 function factResponse(
   run: { id: string; extractor_version: string },
   rows: readonly FactRow[],
@@ -638,12 +906,8 @@ function factResponse(
         return confidence;
       })(),
       validationIssues: stringArray(row.validation_issues, "validation issues"),
-      reviewStatus:
-        row.review_status === "extracted" || row.review_status === "needs_review"
-          ? row.review_status
-          : (() => {
-              throw new ObjectStorageIntegrityError("Stored fact review status is invalid");
-            })(),
+      reviewStatus: derivedReviewStatus(row.review_status, row.decision_outcome),
+      review: factReviewSummary(row),
       source: {
         documentVersionId: requiredBoundedString(
           row.document_version_id,
@@ -966,10 +1230,17 @@ export function createDocumentService(
                   f.proposed_canonical_code, f.proposed_normalized_value,
                   f.proposed_normalized_unit, f.proposed_reference_range,
                   f.proposed_specimen, f.proposed_sampled_at, f.proposed_resulted_at,
-                  f.proposed_laboratory, f.confidence, f.validation_issues, f.review_status
+                  f.proposed_laboratory, f.confidence, f.validation_issues, f.review_status,
+                  d.id AS review_id, d.outcome AS decision_outcome,
+                  d.decided_at AS review_decided_at,
+                  d.observation_id AS review_observation_id,
+                  d.corrected_source_name, d.corrected_source_value,
+                  d.corrected_source_unit
              FROM extracted_facts f
              JOIN document_pages p
                ON p.family_id = f.family_id AND p.id = f.document_page_id
+             LEFT JOIN review_decisions d
+               ON d.family_id = f.family_id AND d.extracted_fact_id = f.id
             WHERE f.family_id = $1 AND f.extraction_run_id = $2
             ORDER BY p.page_number, f.fact_key`,
           [scope.familyId, run.id],
@@ -984,6 +1255,259 @@ export function createDocumentService(
           createdAt: new Date(),
         });
         return response;
+      });
+    },
+
+    async reviewFact(actor, requestedScope, input, idempotencyKey, correlationId) {
+      const scope = canonicalFactScope(requestedScope);
+      const command = validateFactReviewCommand(input);
+      const keyHash = sha256(idempotencyKey);
+      const commandHash = reviewRequestHash(scope.factId, command);
+      return database.transaction(async (client) => {
+        const document = await documentRow(client, actor, scope);
+        const fact = (
+          await client.query<FactForReviewRow>(
+            `SELECT f.id, f.document_version_id, f.document_page_id, f.extraction_run_id,
+                    f.source_fragment, f.source_name, f.source_value, f.source_unit,
+                    f.proposed_canonical_code, f.proposed_reference_range,
+                    f.proposed_specimen, f.proposed_sampled_at, f.proposed_resulted_at,
+                    f.proposed_laboratory, f.confidence
+               FROM extracted_facts f
+               JOIN extraction_runs r
+                 ON r.family_id = f.family_id AND r.id = f.extraction_run_id
+              WHERE f.family_id = $1
+                AND f.id = $2
+                AND f.document_version_id = $3
+                AND r.document_version_id = f.document_version_id
+                AND r.status IN ('awaiting_review', 'completed')`,
+            [scope.familyId, scope.factId, document.document_version_id],
+          )
+        ).rows[0];
+        if (fact === undefined) throw new ResourceNotFoundError();
+
+        const replay = (
+          await client.query<ReviewRequestRow>(
+            `SELECT rr.extracted_fact_id, rr.request_hash, d.id AS decision_id,
+                    d.source_fact_version, d.outcome, d.decided_at, d.observation_id
+               FROM review_requests rr
+               JOIN review_decisions d
+                 ON d.family_id = rr.family_id AND d.id = rr.review_decision_id
+              WHERE rr.family_id = $1
+                AND rr.actor_user_id = $2
+                AND rr.idempotency_key_hash = $3`,
+            [scope.familyId, actor.userId, keyHash],
+          )
+        ).rows[0];
+        if (replay !== undefined) {
+          if (replay.extracted_fact_id !== fact.id || replay.request_hash !== commandHash) {
+            throw new IdempotencyConflictError();
+          }
+          const response = factReviewResponse({
+            id: replay.decision_id,
+            extracted_fact_id: replay.extracted_fact_id,
+            source_fact_version: replay.source_fact_version,
+            outcome: replay.outcome,
+            decided_at: replay.decided_at,
+            observation_id: replay.observation_id,
+          });
+          await audit(client, {
+            familyId: scope.familyId,
+            actorUserId: actor.userId,
+            action: "document.fact.review.replayed",
+            resourceType: "ExtractedFact",
+            resourceId: fact.id,
+            correlationId,
+            createdAt: new Date(),
+          });
+          return { response, replayed: true };
+        }
+
+        const existing = (
+          await client.query<ReviewDecisionRow>(
+            `SELECT id, extracted_fact_id, source_fact_version, outcome, decided_at, observation_id
+               FROM review_decisions
+              WHERE family_id = $1 AND extracted_fact_id = $2`,
+            [scope.familyId, fact.id],
+          )
+        ).rows[0];
+        if (existing !== undefined) throw new DomainConflictError();
+
+        const now = new Date();
+        const timestamp = now.toISOString();
+        const decisionId = randomUUID();
+        const observationId = command.decision === "reject" ? null : randomUUID();
+        const sourceName =
+          command.decision === "correct"
+            ? command.correction?.sourceName
+            : requiredBoundedString(fact.source_name, 200, "fact source name");
+        const sourceValue =
+          command.decision === "correct"
+            ? command.correction?.sourceValue
+            : requiredBoundedString(fact.source_value, 100, "fact source value");
+        const sourceUnit =
+          command.decision === "correct"
+            ? command.correction?.sourceUnit
+            : requiredBoundedString(fact.source_unit, 100, "fact source unit");
+        if (
+          command.decision !== "reject" &&
+          (sourceName === undefined || sourceValue === undefined || sourceUnit === undefined)
+        ) {
+          throw new DomainValidationError();
+        }
+
+        const canonicalCode = nullableBoundedString(
+          fact.proposed_canonical_code,
+          100,
+          "fact canonical code",
+        );
+        const reference =
+          fact.proposed_reference_range === null
+            ? null
+            : referenceRange(fact.proposed_reference_range);
+        const sampledAt = nullableCanonicalTimestamp(fact.proposed_sampled_at, "fact sampled time");
+        const resultedAt = nullableCanonicalTimestamp(
+          fact.proposed_resulted_at,
+          "fact result time",
+        );
+        const specimenType = nullableBoundedString(fact.proposed_specimen, 200, "fact specimen");
+        const laboratory = nullableBoundedString(fact.proposed_laboratory, 200, "fact laboratory");
+        const confidence = Number(fact.confidence);
+        if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+          throw new ObjectStorageIntegrityError("Stored fact confidence is invalid");
+        }
+
+        if (observationId !== null) {
+          await client.query(
+            `INSERT INTO observations
+               (id, family_id, patient_profile_id, document_id, document_version_id,
+                document_page_id, source_extracted_fact_id, source_fact_version,
+                review_decision_id, status, canonical_code, source_name, source_value,
+                source_unit, normalized_value, normalized_unit, conversion_version,
+                sampled_at, resulted_at, uploaded_at, specimen_type, laboratory,
+                source_fragment, extraction_confidence, confirmed_by_user_id,
+                confirmed_at, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+                     $9, $10, $11, $12, NULL, NULL, NULL, $13, $14, $15, $16,
+                     $17, $18, $19, $20, $21, $21)`,
+            [
+              observationId,
+              scope.familyId,
+              document.patient_profile_id,
+              document.id,
+              document.document_version_id,
+              fact.document_page_id,
+              fact.id,
+              decisionId,
+              canonicalCode,
+              sourceName,
+              sourceValue,
+              sourceUnit,
+              sampledAt,
+              resultedAt,
+              canonicalTimestamp(document.uploaded_at),
+              specimenType,
+              laboratory,
+              requiredBoundedString(fact.source_fragment, 4_000, "fact source fragment"),
+              confidence,
+              actor.userId,
+              timestamp,
+            ],
+          );
+        }
+
+        await client.query(
+          `INSERT INTO review_decisions
+             (id, family_id, extracted_fact_id, source_fact_version, outcome,
+              corrected_source_name, corrected_source_value, corrected_source_unit,
+              observation_id, decided_by_user_id, decided_at, created_at)
+           VALUES ($1, $2, $3, 1, $4, $5, $6, $7, $8, $9, $10, $10)`,
+          [
+            decisionId,
+            scope.familyId,
+            fact.id,
+            command.decision,
+            command.correction?.sourceName ?? null,
+            command.correction?.sourceValue ?? null,
+            command.correction?.sourceUnit ?? null,
+            observationId,
+            actor.userId,
+            timestamp,
+          ],
+        );
+
+        if (observationId !== null && reference !== null) {
+          await client.query(
+            `INSERT INTO observation_reference_ranges
+               (id, family_id, observation_id, source_text, source_low, source_high,
+                source_unit, laboratory_out_of_range, normalized_low, normalized_high,
+                normalized_unit, conversion_version, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NULL, NULL, NULL, NULL, $9)`,
+            [
+              randomUUID(),
+              scope.familyId,
+              observationId,
+              reference.sourceText,
+              reference.sourceLow,
+              reference.sourceHigh,
+              reference.sourceUnit,
+              reference.laboratoryOutOfRange,
+              timestamp,
+            ],
+          );
+        }
+
+        await client.query(
+          `INSERT INTO review_requests
+             (id, family_id, actor_user_id, extracted_fact_id, review_decision_id,
+              idempotency_key_hash, request_hash, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            randomUUID(),
+            scope.familyId,
+            actor.userId,
+            fact.id,
+            decisionId,
+            keyHash,
+            commandHash,
+            timestamp,
+          ],
+        );
+
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "document.fact.reviewed",
+          resourceType: "ExtractedFact",
+          resourceId: fact.id,
+          correlationId,
+          createdAt: now,
+        });
+        await client.query(
+          `UPDATE extraction_runs
+              SET status = 'completed'
+            WHERE family_id = $1 AND id = $2 AND status = 'awaiting_review'
+              AND NOT EXISTS (
+                SELECT 1
+                  FROM extracted_facts f
+                  LEFT JOIN review_decisions d
+                    ON d.family_id = f.family_id AND d.extracted_fact_id = f.id
+                 WHERE f.family_id = $1
+                   AND f.extraction_run_id = $2
+                   AND d.id IS NULL
+              )`,
+          [scope.familyId, fact.extraction_run_id],
+        );
+        return {
+          response: factReviewResponse({
+            id: decisionId,
+            extracted_fact_id: fact.id,
+            source_fact_version: 1,
+            outcome: command.decision,
+            decided_at: timestamp,
+            observation_id: observationId,
+          }),
+          replayed: false,
+        };
       });
     },
 

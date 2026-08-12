@@ -113,7 +113,7 @@ test("a retry command reuses its idempotency key after a transient browser failu
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v2",
+          contractVersion: "document/v3",
           documentId,
           processing,
         }),
@@ -133,7 +133,7 @@ test("a retry command reuses its idempotency key after a transient browser failu
         status: 202,
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v2",
+          contractVersion: "document/v3",
           documentId,
           processing: { state: "queued", updatedAt: "2026-08-12T12:00:01.000Z" },
         }),

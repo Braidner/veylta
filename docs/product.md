@@ -62,18 +62,26 @@ The first slice proves one complete and safe path with synthetic data:
 5. A durable SQLite-backed background job runs a deterministic parser for one
    explicitly supported synthetic report format.
 6. Extracted facts retain raw text, value, unit, confidence, page, and fragment.
-7. The parser routes uncertain or ambiguous facts to `needs_review`.
-8. Confirmation or correction atomically creates an `Observation` and audit
-   event without altering the raw extracted fact (Task 6).
+7. The parser marks uncertain or ambiguous facts as `needs_review`; all other
+   extracted facts remain `extracted`. Both are untrusted and await an explicit
+   human decision.
+8. A user explicitly confirms, corrects, or rejects each fact. Confirmation or
+   correction atomically creates an `Observation` and audit event without
+   altering the raw extracted fact; rejection creates no observation (Task 6,
+   delivered).
 9. Indicator history displays the confirmed value, unit/reference, and an
-   authorized link to its source (Task 7).
+   authorized link to its source (Task 7, pending).
 
-The implementation currently reaches step 7. A document is uploaded as
+The implementation currently reaches step 8. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
 `validation`. Successful synthetic extraction ends at `awaiting_review`; a
-sanitized terminal failure is visible and may be retried. Human fact decisions,
-observations, and history are not implemented yet.
+sanitized terminal failure is visible and may be retried. A fact decision is
+always explicit: `confirm`, `correct`, or `reject`. The immutable decision,
+optional confirmed observation, optional source-specific reference range, and
+payload-free audit event commit together. Once every fact in the run has its
+one final decision, that extraction run becomes `completed`. Task 7 history is
+not implemented yet.
 
 The repository, fixtures, tests, and supported deterministic parser are
 synthetic-only. The local demo's upload boundary validates PDF MIME/signature,
@@ -99,8 +107,8 @@ independently reviewed.
   values.
 - Worker completion, retry scheduling, and terminal failure are audit events
   committed with their corresponding SQLite state transition.
-- Lint, typecheck, unit, integration, end-to-end, migration, and license checks
-  pass using synthetic fixtures only.
+- Task 8 records the scoped lint, typecheck, unit, integration, end-to-end,
+  migration, and license evidence using synthetic fixtures only.
 
 ## Full MVP direction
 
@@ -115,8 +123,9 @@ The planned complete processing state machine is:
 `uploaded → security_check → text_extraction → document_classification → structured_extraction → validation → awaiting_review → persisting → trend_recalculation → summary_generation → completed|failed`
 
 Only states backed by implemented behavior may be used. Task 5 implements the
-queue through `awaiting_review`; it does not fake OCR, trend, summary, fact
-decisions, or observations.
+queue through `awaiting_review`; Task 6 completes a run only after every fact
+has one final review decision. The implementation does not fake OCR, trends,
+summaries, or Task 7 history.
 
 ## Explicitly deferred
 

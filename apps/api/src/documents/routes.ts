@@ -1,5 +1,9 @@
 import multipart from "@fastify/multipart";
-import { DOCUMENT_CONTRACT_VERSION } from "@veylta/contracts";
+import {
+  DOCUMENT_CONTRACT_VERSION,
+  FACT_REVIEW_COMMAND_SCHEMA,
+  type FactReviewCommand,
+} from "@veylta/contracts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { FamilyService } from "../family/family-service.js";
 import {
@@ -28,6 +32,10 @@ interface DocumentParams extends ProfileParams {
   documentId: string;
 }
 
+interface FactParams extends DocumentParams {
+  factId: string;
+}
+
 export interface DocumentRouteOptions {
   allowedMutationOrigins: readonly string[];
   maxPdfBytes: number;
@@ -54,6 +62,18 @@ const documentParamsSchema = {
     familyId: canonicalUuidSchema,
     profileId: canonicalUuidSchema,
     documentId: canonicalUuidSchema,
+  },
+} as const;
+
+const factParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["familyId", "profileId", "documentId", "factId"],
+  properties: {
+    familyId: canonicalUuidSchema,
+    profileId: canonicalUuidSchema,
+    documentId: canonicalUuidSchema,
+    factId: { type: "string", pattern: "^fact_[a-f0-9]{40}$" },
   },
 } as const;
 
@@ -304,6 +324,29 @@ export function registerDocumentRoutes(
         if (actor === null) return;
         try {
           reply.send(await service.getFacts(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.post<{ Params: FactParams; Body: FactReviewCommand }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/facts/:factId/review",
+      { schema: { params: factParamsSchema, body: FACT_REVIEW_COMMAND_SCHEMA } },
+      async (request, reply) => {
+        privateResponse(reply);
+        try {
+          if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+          const actor = await requireActor(familyService, request, reply);
+          if (actor === null) return;
+          const result = await service.reviewFact(
+            actor,
+            request.params,
+            request.body,
+            idempotencyKey(request),
+            request.id,
+          );
+          reply.code(result.replayed ? 200 : 201).send(result.response);
         } catch (error) {
           if (!sendDocumentError(error, request, reply)) throw error;
         }

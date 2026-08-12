@@ -9,6 +9,10 @@ events, and durable idempotent jobs. Original documents
 live behind versioned `ObjectStorage/v1`; the first adapter uses a persistent
 local filesystem directory.
 
+The public document surface is `document/v3`: immutable extracted facts remain
+separate from explicit, idempotent fact-review decisions. Task 7 indicator
+history is intentionally not part of this deployed boundary.
+
 The first vertical slice uses a deterministic, versioned parser for one
 synthetic PDF format with a text layer. It does not invoke OCR, an LLM, or a
 cloud service. S3, OCR, and LLM providers remain adapter-level future work.
@@ -61,7 +65,8 @@ required. Shared code is extracted only when two real consumers need it.
   duplicate disclosure, authorized source download, and real processing status.
 - Polls the processing endpoint while work is active and presents only a
   sanitized failure category plus an authorized retry action.
-- Task 6 adds fact decisions and correction/confirmation; Task 7 adds history.
+- Task 6 presents source-first fact decisions and correction/confirmation;
+  Task 7 indicator history remains pending.
 - Treats API errors and authorization failures as data, with no domain state
   transitions hidden in React components.
 
@@ -75,8 +80,9 @@ required. Shared code is extracted only when two real consumers need it.
   local demo use remains explicitly unsuitable for real data.
 - Creates document/idempotency rows and audit events transactionally, then
   creates a durable extraction job in the same upload transaction.
-- Exposes tenant-scoped processing status and extracted facts, and accepts a
-  retry only for a terminal failed job with `Origin` and `Idempotency-Key`.
+- Exposes tenant-scoped processing status and extracted facts; accepts a retry
+  only for a terminal failed job and an explicit fact review only with exact
+  `Origin` and `Idempotency-Key`.
 - Proxies local document reads after authorization.
 
 ### Worker
@@ -132,7 +138,7 @@ sequenceDiagram
   W->>D: Transaction: pages + extraction run + immutable extracted facts
   W-->>D: job succeeded; run awaiting_review
   B->>A: GET processing / facts
-  Note over B,D: Fact decisions, observations, and history begin in Tasks 6–7
+  Note over B,D: Task 6 review decisions create optional observations; Task 7 history remains pending
 ```
 
 The storage/database boundary cannot provide a single distributed transaction.
@@ -155,9 +161,14 @@ separate confirmed workflows and remain deferred.
   immutable and idempotency-scoped to the family and actor.
 - Extraction output is unique by extraction run, parser version, source
   location, and fact key.
-- Observation creation is unique per reviewed extracted fact. A repeated
-  confirmation returns the existing result or a deterministic conflict.
-- Medical rows and their audit event commit in one database transaction.
+- Each fact has at most one immutable `ReviewDecision`. `ReviewRequest` scopes
+  an idempotency key to family and actor, so an exact replay returns the prior
+  response and a conflicting reuse fails deterministically.
+- `confirm` and `correct` create one confirmed `Observation` per reviewed fact;
+  `reject` creates none. The decision, optional observation and source range,
+  idempotency request, and audit event commit in one database transaction.
+- The raw extracted fact is never changed. Once every fact in an
+  `awaiting_review` run has its final decision, that run becomes `completed`.
 - A terminal worker outcome is committed with its fact graph or failure
   transition and is not duplicated by acknowledgement replay.
 - State transitions are compare-and-set operations; retries cannot move a newer
@@ -181,10 +192,12 @@ next storage slice and must satisfy the same contract tests.
 ## Medical data boundary
 
 `ExtractedFact` records untrusted parser output and provenance. It is never an
-asserted clinical fact. Human review creates an immutable `Observation` that
-retains source value/unit separately from any normalized value/unit. Unit
-conversion is a versioned, reproducible operation and never overwrites source
-data. See [ADR 0003](adr/0003-medical-data-model.md).
+asserted clinical fact. An immutable `ReviewDecision` records the explicit
+`confirm`, `correct`, or `reject` outcome without changing that evidence.
+Confirmation or correction creates an immutable `Observation` that retains
+source value/unit separately from any normalized value/unit; rejection creates
+no observation. Unit conversion is a versioned, reproducible operation and
+never overwrites source data. See [ADR 0003](adr/0003-medical-data-model.md).
 
 ## Authentication and tenant isolation
 

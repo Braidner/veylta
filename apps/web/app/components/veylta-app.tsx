@@ -2,11 +2,15 @@
 
 import type {
   DemoRegistrationResponse,
+  DocumentFactsResponse,
   DocumentProcessingResponse,
   DocumentProcessingRetryResponse,
   DocumentProcessingStatus,
   DocumentResponse,
   DocumentSummary,
+  ExtractedFactReviewStatus,
+  FactReviewCommand,
+  FactReviewResponse,
   PatientProfileSummary,
   ProfileCreateResponse,
   SessionFamily,
@@ -15,7 +19,7 @@ import type {
 import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { SystemStatus } from "./system-status";
 
 const apiPrefix = "/health-api";
@@ -94,7 +98,11 @@ function documentPath(familyId: string, profileId: string, documentId: string): 
 }
 
 function documentProcessingPath(familyId: string, profileId: string, documentId: string): string {
-  return `${documentPath(familyId, profileId, documentId)}/processing`;
+  return `/v1${documentPath(familyId, profileId, documentId)}/processing`;
+}
+
+function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
+  return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
 }
 
 interface VeyltaAppProps {
@@ -1046,6 +1054,29 @@ function DocumentProcessingPanel({
   const [retryError, setRetryError] = useState<string | null>(null);
   const retryKey = useRef<string | null>(null);
 
+  const refreshProcessing = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      try {
+        const response = await apiRequest<DocumentProcessingResponse>(
+          documentProcessingPath(familyId, profileId, savedDocument.id),
+          signal === undefined ? undefined : { signal },
+        );
+        if (signal?.aborted) return;
+        setRefreshFailed(false);
+        setProcessing((current) =>
+          processingStatusesEqual(current, response.processing) ? current : response.processing,
+        );
+      } catch {
+        if (!signal?.aborted) setRefreshFailed(true);
+      }
+    },
+    [familyId, profileId, savedDocument.id],
+  );
+
+  const refreshAfterReview = useCallback(() => {
+    void refreshProcessing();
+  }, [refreshProcessing]);
+
   useEffect(() => {
     setProcessing(savedDocument.processing);
     setRefreshFailed(false);
@@ -1054,43 +1085,23 @@ function DocumentProcessingPanel({
   }, [savedDocument.processing]);
 
   useEffect(() => {
-    let active = true;
     const controller = new AbortController();
-    const path = documentProcessingPath(familyId, profileId, savedDocument.id);
-
-    async function refreshProcessing(): Promise<void> {
-      try {
-        const response = await apiRequest<DocumentProcessingResponse>(path, {
-          signal: controller.signal,
-        });
-        if (!active) return;
-        setRefreshFailed(false);
-        setProcessing((current) =>
-          processingStatusesEqual(current, response.processing) ? current : response.processing,
-        );
-      } catch {
-        if (active) setRefreshFailed(true);
-      }
-    }
-
-    void refreshProcessing();
+    void refreshProcessing(controller.signal);
     if (!isProcessingActive(processing)) {
       return () => {
-        active = false;
         controller.abort();
       };
     }
 
     const interval = window.setInterval(() => {
-      void refreshProcessing();
+      void refreshProcessing(controller.signal);
     }, processingPollIntervalMs);
 
     return () => {
-      active = false;
       controller.abort();
       window.clearInterval(interval);
     };
-  }, [familyId, processing, profileId, savedDocument.id]);
+  }, [processing, refreshProcessing]);
 
   async function handleRetry(): Promise<void> {
     setRetryPending(true);
@@ -1163,6 +1174,15 @@ function DocumentProcessingPanel({
         </div>
       </section>
 
+      {processing.state === "awaiting_review" || processing.state === "completed" ? (
+        <DocumentReviewPanel
+          familyId={familyId}
+          profileId={profileId}
+          documentId={savedDocument.id}
+          onReviewSaved={refreshAfterReview}
+        />
+      ) : null}
+
       <details className="integrity-details">
         <summary>Проверить целостность</summary>
         <dl>
@@ -1179,6 +1199,531 @@ function DocumentProcessingPanel({
         </dl>
       </details>
     </>
+  );
+}
+
+type ReviewFactStatus = ExtractedFactReviewStatus;
+type ReviewFact = DocumentFactsResponse["items"][number];
+
+type FactListState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: readonly ReviewFact[] }
+  | { kind: "error" };
+
+type ReviewCommand = FactReviewCommand;
+type ConfirmedCorrection = NonNullable<ReviewCommand["correction"]>;
+
+interface ReviewCommandAttempt {
+  readonly fingerprint: string;
+  readonly key: string;
+}
+
+function isPendingReview(status: ReviewFactStatus): boolean {
+  return status === "extracted" || status === "needs_review";
+}
+
+function reviewStatusLabel(status: ReviewFactStatus): string {
+  switch (status) {
+    case "extracted":
+    case "needs_review":
+      return "Не подтверждено";
+    case "confirmed":
+      return "Подтверждено пользователем";
+    case "rejected":
+      return "Отклонено пользователем";
+  }
+}
+
+function reviewStatusDescription(status: ReviewFactStatus): string {
+  switch (status) {
+    case "extracted":
+      return "Автоматическое извлечение ожидает явного решения пользователя.";
+    case "needs_review":
+      return "Есть неопределённость в извлечении; решение нельзя принять автоматически.";
+    case "confirmed":
+      return "Создано подтверждённое значение с сохранённой ссылкой на источник.";
+    case "rejected":
+      return "Исходное извлечение сохранено как источник, но не стало подтверждённым значением.";
+  }
+}
+
+function reviewIssueLabel(issue: string): string {
+  switch (issue) {
+    case "LOW_CONFIDENCE":
+      return "Низкая уверенность";
+    case "AMBIGUOUS_UNIT":
+      return "Неоднозначная единица";
+    case "MISSING_UNIT":
+      return "Не указана единица";
+    case "INVALID_VALUE":
+      return "Значение требует проверки";
+    case "INVALID_REFERENCE_RANGE":
+      return "Диапазон требует проверки";
+    default:
+      return "Требуется проверка";
+  }
+}
+
+function proposedValue(value: string | null): string {
+  return value ?? "Не предложено";
+}
+
+function reviewErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && error.status === 409) {
+    return "Версия извлечения уже изменилась. Обновите список и проверьте источник ещё раз.";
+  }
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Этот документ больше недоступен в активном профиле. Обновите страницу.";
+  }
+  return "Не удалось сохранить решение. Исходное извлечение не изменилось.";
+}
+
+interface DocumentReviewPanelProps {
+  familyId: string;
+  profileId: string;
+  documentId: string;
+  onReviewSaved: () => void;
+}
+
+function DocumentReviewPanel({
+  familyId,
+  profileId,
+  documentId,
+  onReviewSaved,
+}: DocumentReviewPanelProps) {
+  const [facts, setFacts] = useState<FactListState>({ kind: "loading" });
+  const [pendingFactId, setPendingFactId] = useState<string | null>(null);
+  const [reviewError, setReviewError] = useState<{ factId: string; copy: string } | null>(null);
+  const [reviewNotice, setReviewNotice] = useState<{ factId: string; copy: string } | null>(null);
+  const [correctionFactId, setCorrectionFactId] = useState<string | null>(null);
+  const [confirmedCorrections, setConfirmedCorrections] = useState<
+    ReadonlyMap<string, ConfirmedCorrection>
+  >(() => new Map());
+  const commandAttempts = useRef<Map<string, ReviewCommandAttempt>>(new Map());
+
+  const loadFacts = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      try {
+        const init = signal === undefined ? undefined : { signal };
+        const response = await apiRequest<DocumentFactsResponse>(
+          documentFactsPath(familyId, profileId, documentId),
+          init,
+        );
+        if (signal?.aborted) return;
+        setFacts({
+          kind: "ready",
+          items: response.items,
+        });
+      } catch {
+        if (!signal?.aborted) setFacts({ kind: "error" });
+      }
+    },
+    [documentId, familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadFacts(controller.signal);
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadFacts]);
+
+  async function submitDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
+    const fingerprint = JSON.stringify(command);
+    const previousAttempt = commandAttempts.current.get(fact.id);
+    const attempt =
+      previousAttempt?.fingerprint === fingerprint
+        ? previousAttempt
+        : { fingerprint, key: crypto.randomUUID() };
+    commandAttempts.current.set(fact.id, attempt);
+    setPendingFactId(fact.id);
+    setReviewError(null);
+    setReviewNotice(null);
+
+    try {
+      await apiRequest<FactReviewResponse>(
+        `${documentFactsPath(familyId, profileId, documentId)}/${encodeURIComponent(fact.id)}/review`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": attempt.key },
+          body: JSON.stringify(command),
+        },
+      );
+      commandAttempts.current.delete(fact.id);
+      const nextStatus: ReviewFactStatus = command.decision === "reject" ? "rejected" : "confirmed";
+      setFacts((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              kind: "ready",
+              items: current.items.map((item) =>
+                item.id === fact.id ? { ...item, reviewStatus: nextStatus } : item,
+              ),
+            },
+      );
+      const confirmedCorrection =
+        command.decision === "correct" && command.correction !== undefined
+          ? command.correction
+          : null;
+      if (confirmedCorrection !== null) {
+        setConfirmedCorrections((current) => new Map(current).set(fact.id, confirmedCorrection));
+      }
+      setCorrectionFactId(null);
+      setReviewNotice({
+        factId: fact.id,
+        copy:
+          command.decision === "reject"
+            ? "Отклонено пользователем"
+            : command.decision === "correct"
+              ? "Исправлено и подтверждено"
+              : "Подтверждено пользователем",
+      });
+      onReviewSaved();
+      void loadFacts();
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) {
+        commandAttempts.current.delete(fact.id);
+      }
+      setReviewError({ factId: fact.id, copy: reviewErrorCopy(error) });
+    } finally {
+      setPendingFactId(null);
+    }
+  }
+
+  return (
+    <section
+      className="document-review"
+      aria-labelledby="document-review-title"
+      aria-busy={facts.kind === "loading" || pendingFactId !== null}
+    >
+      <div className="document-review__heading">
+        <p className="context-line">Проверка источника</p>
+        <h3 id="document-review-title">Проверьте извлечённые значения</h3>
+        <p>
+          Автоматическое извлечение остаётся черновиком, пока вы не сверите его со страницей и не
+          выберете действие. Здесь нет медицинской интерпретации.
+        </p>
+      </div>
+
+      {facts.kind === "loading" ? (
+        <div className="review-skeleton" aria-live="polite">
+          <div className="skeleton skeleton--review-heading" aria-hidden="true" />
+          <div className="skeleton skeleton--review-row" aria-hidden="true" />
+          <p>Загружаем черновые значения и их источник…</p>
+        </div>
+      ) : null}
+
+      {facts.kind === "error" ? (
+        <div className="review-empty" role="status">
+          <p>Черновые значения сейчас не загрузились. Исходный PDF и решения не изменены.</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadFacts()}
+          >
+            Обновить список
+          </button>
+        </div>
+      ) : null}
+
+      {facts.kind === "ready" && facts.items.length === 0 ? (
+        <div className="review-empty" role="status">
+          <p>В этом запуске нет значений для проверки.</p>
+        </div>
+      ) : null}
+
+      {facts.kind === "ready" && facts.items.length > 0 ? (
+        <div className="review-fact-list">
+          {facts.items.map((fact) => (
+            <ReviewFactCard
+              key={fact.id}
+              fact={fact}
+              pending={pendingFactId === fact.id}
+              anyPending={pendingFactId !== null}
+              correctionOpen={correctionFactId === fact.id}
+              error={reviewError?.factId === fact.id ? reviewError.copy : null}
+              notice={reviewNotice?.factId === fact.id ? reviewNotice.copy : null}
+              confirmedCorrection={fact.review?.correction ?? confirmedCorrections.get(fact.id)}
+              onCorrectionToggle={() => {
+                setReviewError(null);
+                setReviewNotice(null);
+                setCorrectionFactId((current) => (current === fact.id ? null : fact.id));
+              }}
+              onDecision={submitDecision}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+interface ReviewFactCardProps {
+  fact: ReviewFact;
+  pending: boolean;
+  anyPending: boolean;
+  correctionOpen: boolean;
+  error: string | null;
+  notice: string | null;
+  confirmedCorrection: ConfirmedCorrection | undefined;
+  onCorrectionToggle: () => void;
+  onDecision: (fact: ReviewFact, command: ReviewCommand) => Promise<void>;
+}
+
+function ReviewFactCard({
+  fact,
+  pending,
+  anyPending,
+  correctionOpen,
+  error,
+  notice,
+  confirmedCorrection,
+  onCorrectionToggle,
+  onDecision,
+}: ReviewFactCardProps) {
+  const pendingDecision = isPendingReview(fact.reviewStatus);
+  const confidence = new Intl.NumberFormat("ru-RU", {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(fact.confidence);
+  const isDisabled = anyPending;
+
+  async function submitCorrection(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    await onDecision(fact, {
+      factVersion: fact.factVersion,
+      decision: "correct",
+      correction: {
+        sourceName: String(form.get("sourceName") ?? "").trim(),
+        sourceValue: String(form.get("sourceValue") ?? "").trim(),
+        sourceUnit: String(form.get("sourceUnit") ?? "").trim(),
+      },
+    });
+  }
+
+  return (
+    <article className="review-fact" aria-labelledby={`review-fact-${fact.id}`}>
+      <div className="review-fact__summary">
+        <div>
+          <p className="review-fact__key">Извлечённый факт</p>
+          <h4 id={`review-fact-${fact.id}`}>{fact.sourceName}</h4>
+        </div>
+        <p className={`review-fact__state review-fact__state--${fact.reviewStatus}`}>
+          <strong>{reviewStatusLabel(fact.reviewStatus)}</strong>
+          <span>{reviewStatusDescription(fact.reviewStatus)}</span>
+        </p>
+      </div>
+
+      <div className="review-fact__evidence">
+        <section className="review-fact__source" aria-label={`Источник: ${fact.sourceName}`}>
+          <h5>Источник</h5>
+          <dl>
+            <div>
+              <dt>Как в документе</dt>
+              <dd>
+                {fact.sourceValue} {fact.sourceUnit}
+              </dd>
+            </div>
+            <div>
+              <dt>Страница</dt>
+              <dd>Страница {fact.source.pageNumber}</dd>
+            </div>
+            {fact.referenceRange !== null && fact.referenceRange.sourceText !== null ? (
+              <div>
+                <dt>Диапазон в документе</dt>
+                <dd>{fact.referenceRange.sourceText}</dd>
+              </div>
+            ) : null}
+          </dl>
+          <p className="review-fact__provenance">Фрагмент из исходного PDF</p>
+          <pre className="review-fact__fragment">
+            <code>{fact.source.fragment}</code>
+          </pre>
+        </section>
+
+        <section
+          className="review-fact__proposal"
+          aria-label={`Предложенные поля: ${fact.sourceName}`}
+        >
+          <h5>Предложенные поля</h5>
+          <dl>
+            <div>
+              <dt>Код показателя</dt>
+              <dd>{proposedValue(fact.proposedCanonicalCode)}</dd>
+            </div>
+            <div>
+              <dt>Нормализованное значение</dt>
+              <dd>
+                {fact.proposedNormalizedValue === null
+                  ? "Не предложено"
+                  : `${fact.proposedNormalizedValue} ${proposedValue(fact.proposedNormalizedUnit)}`}
+              </dd>
+            </div>
+            <div>
+              <dt>Дата биоматериала</dt>
+              <dd>{proposedValue(fact.proposedSampledAt)}</dd>
+            </div>
+            <div>
+              <dt>Лаборатория</dt>
+              <dd>{proposedValue(fact.proposedLaboratory)}</dd>
+            </div>
+          </dl>
+          <p className="review-fact__confidence">Уверенность извлечения: {confidence}</p>
+          {fact.validationIssues.length > 0 ? (
+            <ul className="review-fact__issues" aria-label="Причины проверки">
+              {fact.validationIssues.map((issue) => (
+                <li key={issue}>{reviewIssueLabel(issue)}</li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      </div>
+
+      {confirmedCorrection !== undefined ? (
+        <section
+          className="review-fact__confirmed-correction"
+          aria-label={`Подтверждённое исправление: ${fact.sourceName}`}
+        >
+          <h5>Подтверждённое исправление</h5>
+          <dl>
+            <div>
+              <dt>Название</dt>
+              <dd>{confirmedCorrection.sourceName}</dd>
+            </div>
+            <div>
+              <dt>Значение</dt>
+              <dd>
+                {confirmedCorrection.sourceValue} {confirmedCorrection.sourceUnit}
+              </dd>
+            </div>
+            <div>
+              <dt>Единица</dt>
+              <dd>{confirmedCorrection.sourceUnit}</dd>
+            </div>
+          </dl>
+        </section>
+      ) : null}
+
+      {pendingDecision ? (
+        <div className="review-fact__decision">
+          <p>
+            Сверьте источник. Подтверждение создаст отдельное подтверждённое значение; исходный факт
+            останется неизменным.
+          </p>
+          <div className="review-fact__actions">
+            <button
+              className="button button--primary"
+              type="button"
+              disabled={isDisabled}
+              aria-label={`Подтвердить ${fact.sourceName}`}
+              onClick={() =>
+                void onDecision(fact, { factVersion: fact.factVersion, decision: "confirm" })
+              }
+            >
+              {pending ? "Сохраняем…" : "Подтвердить"}
+            </button>
+            <button
+              className="button button--secondary"
+              type="button"
+              disabled={isDisabled}
+              aria-expanded={correctionOpen}
+              aria-controls={`correction-${fact.id}`}
+              aria-label={`Исправить ${fact.sourceName}`}
+              onClick={onCorrectionToggle}
+            >
+              Исправить
+            </button>
+            <button
+              className="button button--secondary review-fact__reject"
+              type="button"
+              disabled={isDisabled}
+              aria-label={`Отклонить ${fact.sourceName}`}
+              onClick={() =>
+                void onDecision(fact, { factVersion: fact.factVersion, decision: "reject" })
+              }
+            >
+              Отклонить
+            </button>
+          </div>
+
+          {correctionOpen ? (
+            <form
+              id={`correction-${fact.id}`}
+              className="review-correction"
+              aria-label={`Исправление: ${fact.sourceName}`}
+              onSubmit={(event) => void submitCorrection(event)}
+            >
+              <p>Введите проверенные поля. Исходное извлечение останется доступным выше.</p>
+              <div className="review-correction__fields">
+                <label className="field">
+                  <span>Корректное название</span>
+                  <input
+                    name="sourceName"
+                    type="text"
+                    required
+                    minLength={1}
+                    maxLength={200}
+                    defaultValue={fact.sourceName}
+                    disabled={isDisabled}
+                  />
+                </label>
+                <label className="field">
+                  <span>Корректное значение</span>
+                  <input
+                    name="sourceValue"
+                    type="text"
+                    required
+                    minLength={1}
+                    maxLength={100}
+                    defaultValue={fact.sourceValue}
+                    disabled={isDisabled}
+                  />
+                </label>
+                <label className="field">
+                  <span>Корректная единица</span>
+                  <input
+                    name="sourceUnit"
+                    type="text"
+                    required
+                    minLength={1}
+                    maxLength={100}
+                    defaultValue={fact.sourceUnit}
+                    disabled={isDisabled}
+                  />
+                </label>
+              </div>
+              <div className="review-correction__actions">
+                <button className="button button--primary" type="submit" disabled={isDisabled}>
+                  {pending ? "Сохраняем…" : "Сохранить исправление"}
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={isDisabled}
+                  onClick={onCorrectionToggle}
+                >
+                  Отменить
+                </button>
+              </div>
+            </form>
+          ) : null}
+        </div>
+      ) : null}
+
+      {notice !== null ? (
+        <p className="review-fact__notice" role="status">
+          {notice}
+        </p>
+      ) : null}
+      {error !== null ? (
+        <p className="form-error review-fact__error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </article>
   );
 }
 

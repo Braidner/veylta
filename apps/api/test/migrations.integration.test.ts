@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import { migrateDown, migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database, isSqliteConstraintError } from "../src/database/pool.js";
+import {
+  createDatabase,
+  type Database,
+  type DatabaseClient,
+  isSqliteConstraintError,
+} from "../src/database/pool.js";
 
 interface DocumentFixture {
   documentId: string;
@@ -13,6 +18,20 @@ interface DocumentFixture {
   documentVersionId: string;
   profileId: string;
   userId: string;
+}
+
+interface ProcessingGraph {
+  factId: string;
+  jobId: string;
+  pageId: string;
+  runId: string;
+}
+
+interface ReviewGraph {
+  decisionId: string;
+  observationId: string;
+  rangeId: string;
+  requestId: string;
 }
 
 async function tableExists(database: Database, name: string): Promise<boolean> {
@@ -121,7 +140,8 @@ async function insertProcessingGraph(
   database: Database,
   fixture: DocumentFixture,
   suffix: string,
-): Promise<{ factId: string; jobId: string; pageId: string; runId: string }> {
+  pageNumber = 1,
+): Promise<ProcessingGraph> {
   const now = new Date().toISOString();
   const jobId = randomUUID();
   const runId = randomUUID();
@@ -149,9 +169,9 @@ async function insertProcessingGraph(
       `INSERT INTO document_pages
          (id, family_id, document_version_id, page_number, extracted_text,
           extraction_method, extraction_version, text_sha256, created_at)
-       VALUES ($1, $2, $3, 1, 'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit',
-               'pdf_text_layer', '1', $4, $5)`,
-      [pageId, fixture.familyId, fixture.documentVersionId, "a".repeat(64), now],
+       VALUES ($1, $2, $3, $4, 'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit',
+               'pdf_text_layer', '1', $5, $6)`,
+      [pageId, fixture.familyId, fixture.documentVersionId, pageNumber, "a".repeat(64), now],
     );
     await client.query(
       `INSERT INTO extracted_facts
@@ -174,6 +194,99 @@ async function insertProcessingGraph(
   });
 
   return { factId, jobId, pageId, runId };
+}
+
+async function insertConfirmedReviewGraphRows(
+  client: DatabaseClient,
+  fixture: DocumentFixture,
+  processing: ProcessingGraph,
+  suffix: string,
+): Promise<ReviewGraph> {
+  const now = new Date().toISOString();
+  const decisionId = randomUUID();
+  const observationId = randomUUID();
+  const rangeId = randomUUID();
+  const requestId = randomUUID();
+  const idempotencyKeyHash = Buffer.from(`review:${suffix}`)
+    .toString("hex")
+    .padEnd(64, "0")
+    .slice(0, 64);
+  const requestHash = Buffer.from(`request:${suffix}`).toString("hex").padEnd(64, "0").slice(0, 64);
+
+  await client.query(
+    `INSERT INTO observations
+         (id, family_id, patient_profile_id, document_id, document_version_id,
+          document_page_id, source_extracted_fact_id, source_fact_version,
+          review_decision_id, status, canonical_code, source_name, source_value,
+          source_unit, normalized_value, normalized_unit, conversion_version,
+          sampled_at, resulted_at, uploaded_at, specimen_type, laboratory,
+          source_fragment, extraction_confidence, confirmed_by_user_id,
+          confirmed_at, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+               'synthetic-analyte-a', 'SYNTHETIC_ANALYTE_A', '7.0',
+               'synthetic-unit', NULL, NULL, NULL,
+               '2026-08-10T08:00:00.000Z', '2026-08-10T10:00:00.000Z', $9,
+               'synthetic specimen', 'Synthetic Laboratory',
+               'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit', 0.6, $10, $9, $9)`,
+    [
+      observationId,
+      fixture.familyId,
+      fixture.profileId,
+      fixture.documentId,
+      fixture.documentVersionId,
+      processing.pageId,
+      processing.factId,
+      decisionId,
+      now,
+      fixture.userId,
+    ],
+  );
+  await client.query(
+    `INSERT INTO review_decisions
+         (id, family_id, extracted_fact_id, source_fact_version, outcome,
+          corrected_source_name, corrected_source_value, corrected_source_unit,
+          observation_id, decided_by_user_id, decided_at, created_at)
+       VALUES ($1, $2, $3, 1, 'confirm', NULL, NULL, NULL, $4, $5, $6, $6)`,
+    [decisionId, fixture.familyId, processing.factId, observationId, fixture.userId, now],
+  );
+  await client.query(
+    `INSERT INTO review_requests
+         (id, family_id, actor_user_id, extracted_fact_id, review_decision_id,
+          idempotency_key_hash, request_hash, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      requestId,
+      fixture.familyId,
+      fixture.userId,
+      processing.factId,
+      decisionId,
+      idempotencyKeyHash,
+      requestHash,
+      now,
+    ],
+  );
+  await client.query(
+    `INSERT INTO observation_reference_ranges
+         (id, family_id, observation_id, source_text, source_low, source_high,
+          source_unit, laboratory_out_of_range, normalized_low, normalized_high,
+          normalized_unit, conversion_version, created_at)
+       VALUES ($1, $2, $3, 'synthetic reference', NULL, NULL,
+               'synthetic-unit', NULL, NULL, NULL, NULL, NULL, $4)`,
+    [rangeId, fixture.familyId, observationId, now],
+  );
+
+  return { decisionId, observationId, rangeId, requestId };
+}
+
+async function insertConfirmedReviewGraph(
+  database: Database,
+  fixture: DocumentFixture,
+  processing: ProcessingGraph,
+  suffix: string,
+): Promise<ReviewGraph> {
+  return database.transaction((client) =>
+    insertConfirmedReviewGraphRows(client, fixture, processing, suffix),
+  );
 }
 
 async function createDeadLetterJob(
@@ -248,10 +361,15 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "extraction_runs"), true);
     assert.equal(await tableExists(database, "document_pages"), true);
     assert.equal(await tableExists(database, "extracted_facts"), true);
+    assert.equal(await tableExists(database, "review_decisions"), true);
+    assert.equal(await tableExists(database, "review_requests"), true);
+    assert.equal(await tableExists(database, "observations"), true);
+    assert.equal(await tableExists(database, "observation_reference_ranges"), true);
     await assert.doesNotReject(() => database.check());
 
     const document = await createDocumentFixture(database, "Synthetic populated rollback");
-    await insertProcessingGraph(database, document, "populated-rollback");
+    const processing = await insertProcessingGraph(database, document, "populated-rollback");
+    await insertConfirmedReviewGraph(database, document, processing, "populated-rollback");
     const retryJobId = await createDeadLetterJob(database, document, "populated-rollback");
     await insertProcessingRetryRequest(database, {
       familyId: document.familyId,
@@ -260,6 +378,14 @@ test("all migrations apply, populated processing data rolls back, and migrations
       processingJobId: retryJobId,
       idempotencyKeyHash: "d".repeat(64),
     });
+
+    assert.equal(await migrateDown(database), "0005_review_observations");
+    assert.equal(await tableExists(database, "review_decisions"), false);
+    assert.equal(await tableExists(database, "review_requests"), false);
+    assert.equal(await tableExists(database, "observations"), false);
+    assert.equal(await tableExists(database, "observation_reference_ranges"), false);
+    assert.equal(await tableExists(database, "processing_jobs"), true);
+    assert.equal(await tableExists(database, "extracted_facts"), true);
 
     assert.equal(await migrateDown(database), "0004_processing");
     assert.equal(await tableExists(database, "processing_jobs"), false);
@@ -292,6 +418,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0002_family_profiles",
       "0003_documents",
       "0004_processing",
+      "0005_review_observations",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -635,6 +762,7 @@ test("processing schema enforces tenant, state, dedupe, and immutable provenance
         ]),
       "trigger",
     );
+
     await rejectsConstraint(
       () =>
         database.query("UPDATE extracted_facts SET source_value = 'changed' WHERE id = $1", [
@@ -750,6 +878,456 @@ test("processing schema enforces tenant, state, dedupe, and immutable provenance
       [graph.jobId],
     );
     assert.equal(visibleTerminalState.rows[0]?.state, "dead_letter");
+
+    const foreignKeyViolations = await database.query<Record<string, unknown>>(
+      "PRAGMA foreign_key_check",
+    );
+    assert.deepEqual(foreignKeyViolations.rows, []);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("review schema makes a final fact decision, confirmed observation, source range, and request atomic", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-review-schema-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const first = await createDocumentFixture(database, "Synthetic review first");
+    const second = await createDocumentFixture(database, "Synthetic review second");
+    const firstProcessing = await insertProcessingGraph(database, first, "review-first");
+    const secondProcessing = await insertProcessingGraph(database, second, "review-second");
+    const now = new Date().toISOString();
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO review_decisions
+             (id, family_id, extracted_fact_id, source_fact_version, outcome,
+              corrected_source_name, corrected_source_value, corrected_source_unit,
+              observation_id, decided_by_user_id, decided_at, created_at)
+           VALUES ($1, $2, $3, 2, 'reject', NULL, NULL, NULL, NULL, $4, $5, $5)`,
+          [randomUUID(), first.familyId, firstProcessing.factId, first.userId, now],
+        ),
+      "check",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO review_decisions
+             (id, family_id, extracted_fact_id, source_fact_version, outcome,
+              corrected_source_name, corrected_source_value, corrected_source_unit,
+              observation_id, decided_by_user_id, decided_at, created_at)
+           VALUES ($1, $2, $3, 1, 'correct', NULL, NULL, NULL, $4, $5, $6, $6)`,
+          [randomUUID(), first.familyId, firstProcessing.factId, randomUUID(), first.userId, now],
+        ),
+      "trigger",
+    );
+
+    const malformedCorrectProcessing = await insertProcessingGraph(
+      database,
+      first,
+      "review-malformed-correct",
+      2,
+    );
+    const malformedCorrectDecisionId = randomUUID();
+    await rejectsConstraint(
+      () =>
+        database.transaction(async (client) => {
+          const malformedCorrectObservationId = randomUUID();
+          await client.query(
+            `INSERT INTO observations
+               (id, family_id, patient_profile_id, document_id, document_version_id,
+                document_page_id, source_extracted_fact_id, source_fact_version,
+                review_decision_id, status, source_name, source_value, source_unit,
+                uploaded_at, source_fragment, extraction_confidence, confirmed_by_user_id,
+                confirmed_at, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+                     'SYNTHETIC_ANALYTE_A', '7.0', 'synthetic-unit', $9,
+                     'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit', 0.6, $10, $9, $9)`,
+            [
+              malformedCorrectObservationId,
+              first.familyId,
+              first.profileId,
+              first.documentId,
+              first.documentVersionId,
+              malformedCorrectProcessing.pageId,
+              malformedCorrectProcessing.factId,
+              malformedCorrectDecisionId,
+              now,
+              first.userId,
+            ],
+          );
+          await client.query(
+            `INSERT INTO review_decisions
+               (id, family_id, extracted_fact_id, source_fact_version, outcome,
+                corrected_source_name, corrected_source_value, corrected_source_unit,
+                observation_id, decided_by_user_id, decided_at, created_at)
+             VALUES ($1, $2, $3, 1, 'correct', NULL, NULL, NULL, $4, $5, $6, $6)`,
+            [
+              malformedCorrectDecisionId,
+              first.familyId,
+              malformedCorrectProcessing.factId,
+              malformedCorrectObservationId,
+              first.userId,
+              now,
+            ],
+          );
+        }),
+      "check",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO observations
+             (id, family_id, patient_profile_id, document_id, document_version_id,
+              document_page_id, source_extracted_fact_id, source_fact_version,
+              review_decision_id, status, source_name, source_value, source_unit,
+              uploaded_at, source_fragment, extraction_confidence, confirmed_by_user_id,
+              confirmed_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+                   'SYNTHETIC_ANALYTE_A', '7.0', 'synthetic-unit', $9,
+                   'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit', 0.6, $10, $9, $9)`,
+          [
+            randomUUID(),
+            first.familyId,
+            first.profileId,
+            first.documentId,
+            first.documentVersionId,
+            malformedCorrectProcessing.pageId,
+            firstProcessing.factId,
+            randomUUID(),
+            now,
+            first.userId,
+          ],
+        ),
+      "foreign-key",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO review_decisions
+             (id, family_id, extracted_fact_id, source_fact_version, outcome,
+              corrected_source_name, corrected_source_value, corrected_source_unit,
+              observation_id, decided_by_user_id, decided_at, created_at)
+           VALUES ($1, $2, $3, 1, 'reject', NULL, NULL, NULL, $4, $5, $6, $6)`,
+          [randomUUID(), first.familyId, firstProcessing.factId, randomUUID(), first.userId, now],
+        ),
+      "check",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO review_decisions
+             (id, family_id, extracted_fact_id, source_fact_version, outcome,
+              corrected_source_name, corrected_source_value, corrected_source_unit,
+              observation_id, decided_by_user_id, decided_at, created_at)
+           VALUES ($1, $2, $3, 1, 'confirm', NULL, NULL, NULL, $4, $5, $6, $6)`,
+          [randomUUID(), first.familyId, firstProcessing.factId, randomUUID(), first.userId, now],
+        ),
+      "trigger",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO observations
+             (id, family_id, patient_profile_id, document_id, document_version_id,
+              document_page_id, source_extracted_fact_id, source_fact_version,
+              review_decision_id, status, source_name, source_value, source_unit,
+              uploaded_at, source_fragment, extraction_confidence, confirmed_by_user_id,
+              confirmed_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+                   'SYNTHETIC_ANALYTE_A', '7.0', 'synthetic-unit', $9,
+                   'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit', 0.6, $10, $9, $9)`,
+          [
+            randomUUID(),
+            first.familyId,
+            first.profileId,
+            first.documentId,
+            first.documentVersionId,
+            firstProcessing.pageId,
+            firstProcessing.factId,
+            randomUUID(),
+            now,
+            first.userId,
+          ],
+        ),
+      "foreign-key",
+    );
+
+    const rejectedProcessing = await insertProcessingGraph(database, first, "review-rejected", 3);
+    const rejectedDecisionId = randomUUID();
+    await database.query(
+      `INSERT INTO review_decisions
+         (id, family_id, extracted_fact_id, source_fact_version, outcome,
+          corrected_source_name, corrected_source_value, corrected_source_unit,
+          observation_id, decided_by_user_id, decided_at, created_at)
+       VALUES ($1, $2, $3, 1, 'reject', NULL, NULL, NULL, NULL, $4, $5, $5)`,
+      [rejectedDecisionId, first.familyId, rejectedProcessing.factId, first.userId, now],
+    );
+    const rejectedOutput = await database.query<{
+      decision_count: number;
+      observation_count: number;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM review_decisions WHERE id = $1) AS decision_count,
+         (SELECT count(*) FROM observations WHERE source_extracted_fact_id = $2) AS observation_count`,
+      [rejectedDecisionId, rejectedProcessing.factId],
+    );
+    assert.deepEqual(rejectedOutput.rows, [{ decision_count: 1, observation_count: 0 }]);
+
+    const stagedProcessing = await insertProcessingGraph(
+      database,
+      first,
+      "review-reject-staged-observation",
+      4,
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.transaction(async (client) => {
+          const stagedObservationId = randomUUID();
+          const stagedDecisionId = randomUUID();
+          await client.query(
+            `INSERT INTO observations
+               (id, family_id, patient_profile_id, document_id, document_version_id,
+                document_page_id, source_extracted_fact_id, source_fact_version,
+                review_decision_id, status, source_name, source_value, source_unit,
+                uploaded_at, source_fragment, extraction_confidence, confirmed_by_user_id,
+                confirmed_at, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+                     'SYNTHETIC_ANALYTE_A', '7.0', 'synthetic-unit', $9,
+                     'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit', 0.6, $10, $9, $9)`,
+            [
+              stagedObservationId,
+              first.familyId,
+              first.profileId,
+              first.documentId,
+              first.documentVersionId,
+              stagedProcessing.pageId,
+              stagedProcessing.factId,
+              stagedDecisionId,
+              now,
+              first.userId,
+            ],
+          );
+          await client.query(
+            `INSERT INTO review_decisions
+               (id, family_id, extracted_fact_id, source_fact_version, outcome,
+                corrected_source_name, corrected_source_value, corrected_source_unit,
+                observation_id, decided_by_user_id, decided_at, created_at)
+             VALUES ($1, $2, $3, 1, 'reject', NULL, NULL, NULL, NULL, $4, $5, $5)`,
+            [stagedDecisionId, first.familyId, stagedProcessing.factId, first.userId, now],
+          );
+        }),
+      "trigger",
+    );
+
+    const rejectedThenObserved = await insertProcessingGraph(
+      database,
+      first,
+      "review-reject-then-observation",
+      5,
+    );
+    const rejectedThenObservedDecisionId = randomUUID();
+    await database.query(
+      `INSERT INTO review_decisions
+         (id, family_id, extracted_fact_id, source_fact_version, outcome,
+          corrected_source_name, corrected_source_value, corrected_source_unit,
+          observation_id, decided_by_user_id, decided_at, created_at)
+       VALUES ($1, $2, $3, 1, 'reject', NULL, NULL, NULL, NULL, $4, $5, $5)`,
+      [
+        rejectedThenObservedDecisionId,
+        first.familyId,
+        rejectedThenObserved.factId,
+        first.userId,
+        now,
+      ],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO observations
+             (id, family_id, patient_profile_id, document_id, document_version_id,
+              document_page_id, source_extracted_fact_id, source_fact_version,
+              review_decision_id, status, source_name, source_value, source_unit,
+              uploaded_at, source_fragment, extraction_confidence, confirmed_by_user_id,
+              confirmed_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+                   'SYNTHETIC_ANALYTE_A', '7.0', 'synthetic-unit', $9,
+                   'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit', 0.6, $10, $9, $9)`,
+          [
+            randomUUID(),
+            first.familyId,
+            first.profileId,
+            first.documentId,
+            first.documentVersionId,
+            rejectedThenObserved.pageId,
+            rejectedThenObserved.factId,
+            rejectedThenObservedDecisionId,
+            now,
+            first.userId,
+          ],
+        ),
+      "trigger",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO observations
+             (id, family_id, patient_profile_id, document_id, document_version_id,
+              document_page_id, source_extracted_fact_id, source_fact_version,
+              review_decision_id, status, source_name, source_value, source_unit,
+              uploaded_at, source_fragment, extraction_confidence, confirmed_by_user_id,
+              confirmed_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
+                   'SYNTHETIC_ANALYTE_A', '7.0', 'synthetic-unit', $9,
+                   'SYNTHETIC_ANALYTE_A 7.0 synthetic-unit', 0.6, $10, $9, $9)`,
+          [
+            randomUUID(),
+            second.familyId,
+            second.profileId,
+            second.documentId,
+            second.documentVersionId,
+            secondProcessing.pageId,
+            firstProcessing.factId,
+            randomUUID(),
+            now,
+            second.userId,
+          ],
+        ),
+      "foreign-key",
+    );
+
+    const review = await insertConfirmedReviewGraph(
+      database,
+      first,
+      firstProcessing,
+      "review-confirmed",
+    );
+    const persisted = await database.query<{
+      outcome: string;
+      observation_id: string;
+      source_extracted_fact_id: string;
+      source_value: string;
+    }>(
+      `SELECT decision.outcome, decision.observation_id, observation.source_extracted_fact_id,
+              observation.source_value
+         FROM review_decisions AS decision
+         JOIN observations AS observation ON observation.id = decision.observation_id
+        WHERE decision.id = $1`,
+      [review.decisionId],
+    );
+    assert.deepEqual(persisted.rows, [
+      {
+        outcome: "confirm",
+        observation_id: review.observationId,
+        source_extracted_fact_id: firstProcessing.factId,
+        source_value: "7.0",
+      },
+    ]);
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO review_decisions
+             (id, family_id, extracted_fact_id, source_fact_version, outcome,
+              corrected_source_name, corrected_source_value, corrected_source_unit,
+              observation_id, decided_by_user_id, decided_at, created_at)
+           VALUES ($1, $2, $3, 1, 'reject', NULL, NULL, NULL, NULL, $4, $5, $5)`,
+          [randomUUID(), first.familyId, firstProcessing.factId, first.userId, now],
+        ),
+      "unique",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query("UPDATE review_decisions SET outcome = 'reject' WHERE id = $1", [
+          review.decisionId,
+        ]),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query("UPDATE observations SET source_value = '7.1' WHERE id = $1", [
+          review.observationId,
+        ]),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          "UPDATE observation_reference_ranges SET source_text = 'changed' WHERE id = $1",
+          [review.rangeId],
+        ),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () => database.query("DELETE FROM review_requests WHERE id = $1", [review.requestId]),
+      "trigger",
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO review_requests
+             (id, family_id, actor_user_id, extracted_fact_id, review_decision_id,
+              idempotency_key_hash, request_hash, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+          [
+            randomUUID(),
+            first.familyId,
+            first.userId,
+            firstProcessing.factId,
+            review.decisionId,
+            Buffer.from("review:review-confirmed").toString("hex").padEnd(64, "0").slice(0, 64),
+            "a".repeat(64),
+            now,
+          ],
+        ),
+      "unique",
+    );
+
+    const rolledBackProcessing = await insertProcessingGraph(database, first, "review-rollback", 6);
+    await assert.rejects(
+      () =>
+        database.transaction(async (client) => {
+          await insertConfirmedReviewGraphRows(
+            client,
+            first,
+            rolledBackProcessing,
+            "review-rolled-back",
+          );
+          throw new Error("force review transaction rollback");
+        }),
+      /force review transaction rollback/,
+    );
+    const rolledBackRows = await database.query<{
+      decision_count: number;
+      observation_count: number;
+      request_count: number;
+      range_count: number;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM review_decisions WHERE extracted_fact_id = $1) AS decision_count,
+         (SELECT count(*) FROM observations WHERE source_extracted_fact_id = $1) AS observation_count,
+         (SELECT count(*) FROM review_requests WHERE extracted_fact_id = $1) AS request_count,
+         (SELECT count(*)
+            FROM observation_reference_ranges AS reference_range
+            JOIN observations ON observations.id = reference_range.observation_id
+           WHERE observations.source_extracted_fact_id = $1) AS range_count`,
+      [rolledBackProcessing.factId],
+    );
+    assert.deepEqual(rolledBackRows.rows, [
+      { decision_count: 0, observation_count: 0, request_count: 0, range_count: 0 },
+    ]);
 
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
       "PRAGMA foreign_key_check",

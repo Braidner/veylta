@@ -62,7 +62,7 @@ the family's trust boundary merely because it exposes an API.
 | Malware in accepted document | Harm when viewed/exported | Quarantine/security-check state, safe content disposition/viewer, production malware strategy isolated behind reviewed boundary | Strategy and implementation before real data |
 | Partial upload/database failure | Orphaned blob or document that cannot be read | Stage and atomically finalize before metadata commit; deterministic retry recovery; never claim success early; add bounded orphan cleanup before real data | Retry-safe path in first slice; cleanup before real data |
 | Original mutation | Loss of evidence/provenance | Immutable version keys; stored SHA-256 and size; verify checksum on controlled reads/backup restore | First slice |
-| Job retry/race | Duplicate or contradictory medical records | Stable job dedupe key; leased claims; compare-and-set transitions; immutable retry request; DB uniqueness; transactional fact persistence/confirmation | Extraction controls in Task 5; confirmation in Task 6 |
+| Job retry/race | Duplicate or contradictory medical records | Stable job dedupe key; leased claims; compare-and-set transitions; immutable retry/review requests; DB uniqueness; transactional fact persistence and final review | Extraction and Task 6 review controls in first slice |
 | Poisoned extraction | Incorrect value presented as truth | `ExtractedFact` is untrusted and separate from `Observation`; strict schema; confidence/review gate; preserve raw value | First slice |
 | Prompt injection | Future LLM follows document instructions | Treat text as quoted data; fixed system policy; tool allowlist; strict schema; deterministic pre/post safety layer | Before any LLM |
 | Unsafe medical output | Diagnosis/treatment harm or missed urgency | Role-limited agents; confirmed data only for longitudinal use; rule-based red flags; evidence/confidence/missing-data labels; clinician escalation | Before recommendation features |
@@ -102,6 +102,14 @@ the family's trust boundary merely because it exposes an API.
   The retry command is origin-checked and idempotent; it cannot choose a parser,
   job kind, storage key, URL, OCR provider, or LLM provider.
 - Raw extraction cannot become a confirmed observation without explicit review.
+  `confirm`, `correct`, and `reject` require the exact configured browser
+  origin and an idempotency key; a correction carries source name/value/unit
+  only and never edits the extraction.
+- One immutable final `ReviewDecision` is allowed per extracted fact. A
+  confirmation or correction, its optional source-specific range, its review
+  request, and payload-free audit event commit with the resulting observation;
+  rejection commits no observation. A run becomes `completed` only when every
+  fact has such a final decision.
 - State changes and medical persistence are idempotent and transactional.
 - Logs, tests, and audit metadata contain no document bodies or medical values.
 
@@ -123,11 +131,12 @@ without a separate scoped audit.
 
 ## Security verification
 
-- Integration tests use two families and attempt every document, fact,
-  observation, history, review, and download operation across the boundary.
+- Integration tests use two families and attempt implemented document, fact,
+  review, derived-observation, and download operations across the boundary.
+  Task 7 history remains pending.
 - Contract tests attempt traversal keys, mismatched MIME/signatures, oversized
   streams, interrupted writes, and checksum mismatch.
-- Concurrency tests replay uploads, job claims, and confirmations.
+- Concurrency tests replay uploads, job claims, and fact-review commands.
 - Fault injection fails before/after storage finalization and before transaction
   commit, proving no partial observation is created.
 - Log assertions reject synthetic medical value and document body leakage.

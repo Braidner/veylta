@@ -51,6 +51,28 @@ function parsedExtraction(): ParsedLabExtraction {
   ]);
 }
 
+function highConfidenceExtraction(): ParsedLabExtraction {
+  return parseSyntheticLabPages([
+    {
+      pageNumber: 1,
+      text: [
+        "VEYLTA SYNTHETIC LAB REPORT v1",
+        "SYNTHETIC TEST DATA — NOT FOR MEDICAL USE",
+        "FACT|synthetic-analyte-high",
+        "NAME|SYNTHETIC HIGH-CONFIDENCE ANALYTE",
+        "VALUE|7.0",
+        "UNIT|synthetic-unit",
+        "RANGE|synthetic reference",
+        "CONFIDENCE|0.95",
+        "ISSUES|NONE",
+        "END",
+      ].join("\n"),
+      extractionMethod: "pdf_text_layer",
+      extractionVersion: "pdfjs-dist/6.2.108",
+    },
+  ]);
+}
+
 async function advanceToValidation(
   jobs: ReturnType<typeof createProcessingJobService>,
   claim: NonNullable<
@@ -330,13 +352,13 @@ test("failures wait for retry and exhaust into a visible dead-letter state", asy
       [
         {
           automated: true,
-          contractVersion: "document/v2",
+          contractVersion: "document/v3",
           errorCode: "EXTRACTION_FAILED",
           outcome: "retry_wait",
         },
         {
           automated: true,
-          contractVersion: "document/v2",
+          contractVersion: "document/v3",
           errorCode: "VALIDATION_FAILED",
           outcome: "dead_letter",
         },
@@ -374,7 +396,7 @@ test("an expired final attempt is dead-lettered instead of remaining leased fore
           correlationId: `worker:${job.id}`,
           metadata: {
             automated: true,
-            contractVersion: "document/v2",
+            contractVersion: "document/v3",
             errorCode: "ATTEMPT_LIMIT",
             outcome: "dead_letter",
           },
@@ -445,10 +467,58 @@ test("completion atomically persists provenance once and is idempotent on acknow
     );
     assert.deepEqual(JSON.parse(events[0]?.metadata ?? ""), {
       automated: true,
-      contractVersion: "document/v2",
+      contractVersion: "document/v3",
       outcome: "completed",
     });
     assert.doesNotMatch(events[0]?.metadata ?? "", /synthetic-analyte-a|reference|7\.0/i);
+  });
+});
+
+test("completion keeps a high-confidence extraction awaiting an explicit final review", async () => {
+  await withDatabase(async (database, fixture) => {
+    const jobs = createProcessingJobService(database);
+    await jobs.enqueueDocumentExtraction({ ...fixture, now: start });
+    const claim = await jobs.claimNext({
+      workerId: "worker-high-confidence",
+      now: start,
+      leaseDurationMs: 60_000,
+    });
+    assert.ok(claim !== null);
+    await advanceToValidation(jobs, claim);
+
+    const completion = await jobs.completeExtraction(claim, highConfidenceExtraction(), after(500));
+    assert.deepEqual(
+      {
+        status: completion.status,
+        factCount: completion.factCount,
+        needsReviewCount: completion.needsReviewCount,
+      },
+      { status: "completed", factCount: 1, needsReviewCount: 0 },
+    );
+
+    const persisted = await database.query<{
+      run_status: string;
+      review_status: string;
+      decisions: number;
+      observations: number;
+    }>(
+      `SELECT r.status AS run_status, f.review_status,
+              (SELECT count(*) FROM review_decisions WHERE family_id = $1) AS decisions,
+              (SELECT count(*) FROM observations WHERE family_id = $1) AS observations
+         FROM extraction_runs r
+         JOIN extracted_facts f
+           ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+        WHERE r.family_id = $1 AND r.document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.deepEqual(persisted.rows, [
+      {
+        run_status: "awaiting_review",
+        review_status: "extracted",
+        decisions: 0,
+        observations: 0,
+      },
+    ]);
   });
 });
 

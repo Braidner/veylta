@@ -2,17 +2,17 @@
 
 ## Status and conventions
 
-This document defines the target `v1` contract for the first vertical slice. It
-does not claim that the endpoints exist before their implementation task lands.
+This document defines the implemented `v1` surface for the first vertical slice
+and identifies the still-deferred Task 7 history surface separately.
 
 - Base path: `/v1`
 - JSON for structured requests/responses; `multipart/form-data` only for upload.
 - Opaque identifiers; examples use placeholders, not real medical data.
-- Path identifiers use the canonical lower-case UUIDv4 form; alternate textual
-  forms fail request validation before domain or storage access.
+- Family, profile, and document path identifiers use the canonical lower-case
+  UUIDv4 form. Fact identifiers are opaque `fact_<40 lower-case hex>` values;
+  alternate forms fail request validation before domain or storage access.
 - RFC 3339 timestamps and explicit medically distinct date fields.
-- `Idempotency-Key` is required for upload and the retry command. Review and
-  confirmation commands are introduced by Task 6.
+- `Idempotency-Key` is required for upload, retry, and fact-review commands.
 - Browser identity is resolved server-side. A caller-supplied user ID is never
   accepted as authentication.
 - Cookie-authenticated mutations require an exact `Origin` match with the
@@ -148,7 +148,7 @@ Response `202`:
 
 ```json
 {
-  "contractVersion": "document/v2",
+  "contractVersion": "document/v3",
   "document": {
     "id": "document_placeholder",
     "familyId": "family_placeholder",
@@ -200,9 +200,10 @@ Returns immutable version metadata, possible same-family duplicate information,
 and real processing state. Its `document.status` remains `uploaded`; the nested
 processing state is one of `queued`, `security_check`, `text_extraction`,
 `document_classification`, `structured_extraction`, `validation`,
-`awaiting_review`, or sanitized `failed`. `awaiting_review` includes fact and
-needs-review counts. A failed state includes a safe category and retry
-eligibility, never a raw parser/database exception.
+`awaiting_review`, `completed`, or sanitized `failed`. `awaiting_review`
+includes fact and needs-review counts; `completed` includes the final fact
+count after every fact has one final decision. A failed state includes a safe
+category and retry eligibility, never a raw parser/database exception.
 
 Every successful metadata read records a payload-free audit event with actor,
 tenant, document, correlation ID, and time.
@@ -213,7 +214,7 @@ Returns a compact status response and records a payload-free access audit event:
 
 ```json
 {
-  "contractVersion": "document/v2",
+  "contractVersion": "document/v3",
   "documentId": "document_placeholder",
   "processing": {
     "state": "awaiting_review",
@@ -229,17 +230,17 @@ Returns a compact status response and records a payload-free access audit event:
 `attempts_exhausted`, plus `retryAllowed`. Neither processing status nor errors
 contain document text, a filename, a storage key, parser diagnostics, or values.
 
-The checked-in fixture deliberately contains an ambiguous-unit fact, so its
-implemented successful terminal result is `awaiting_review`. `completed` stays
-in the versioned response contract for a future safe path; the browser never
-fabricates it.
+The checked-in fixture deliberately contains an ambiguous-unit fact, so a
+successful extraction first reaches `awaiting_review`. The service changes the
+latest extraction run to `completed` only after every extracted fact has its
+one final review decision; the browser never fabricates either state.
 
 ### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/processing/retry`
 
 Requires the exact configured `Origin` and an `Idempotency-Key`. It accepts no
 body and is available only for the authorized document's `dead_letter` job. The
 server records an immutable retry request, resets that existing job to `queued`,
-and returns `202` with the same `document/v2` processing response shape.
+and returns `202` with the same `document/v3` processing response shape.
 Replaying the same family/actor/key returns the original accepted retry; a key
 used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
 select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
@@ -252,14 +253,18 @@ Uses `Content-Disposition: attachment`, `nosniff`, a sandbox policy, and
 never exposes the local path. Authorized access produces a payload-free audit
 event.
 
-## Extracted facts (Task 5)
+## Extracted facts and review (Tasks 5–6)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/facts`
 
 Returns immutable facts from the latest `awaiting_review` or `completed`
-extraction run. It records a payload-free access audit event. Task 5 emits only
-`extracted` and `needs_review`; it does not make a review decision or create an
-observation.
+extraction run. Every fact, including a high-confidence `extracted` fact,
+requires an explicit final decision before the run can be `completed`. It
+records a payload-free access audit event. `reviewStatus` is
+derived at read time: an undecided raw fact remains `extracted` or
+`needs_review`, a `confirm` or `correct` decision is exposed as `confirmed`,
+and a `reject` decision is exposed as `rejected`. The stored raw extracted fact
+is not changed by review.
 
 ```json
 {
@@ -291,6 +296,7 @@ observation.
       "confidence": 0.6,
       "validationIssues": ["AMBIGUOUS_UNIT"],
       "reviewStatus": "needs_review",
+      "review": null,
       "source": {
         "documentVersionId": "version_placeholder",
         "pageNumber": 1,
@@ -301,16 +307,84 @@ observation.
 }
 ```
 
-The UI must display source and proposed fields distinctly. A low-confidence or
-ambiguous fact cannot be silently confirmed. `POST` review decisions, corrections,
-and `Observation` creation are deliberately deferred to Task 6.
+`review` is `null` until the explicit decision is stored; afterwards it is the
+immutable decision summary, including its outcome, time, optional observation
+identifier, and (for `correct`) the confirmed source correction. The UI must
+display source and proposed fields distinctly. A low-confidence or ambiguous
+fact cannot be silently confirmed.
 
-## Observation history and provenance (Task 7)
+### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/facts/{factId}/review`
+
+Requires the exact configured `Origin` and an `Idempotency-Key` of 16–200
+printable ASCII characters. The command is one of:
+
+```json
+{
+  "factVersion": 1,
+  "decision": "confirm"
+}
+```
+
+```json
+{
+  "factVersion": 1,
+  "decision": "correct",
+  "correction": {
+    "sourceName": "SYNTHETIC_ANALYTE_A",
+    "sourceValue": "7.1",
+    "sourceUnit": "synthetic-unit"
+  }
+}
+```
+
+```json
+{
+  "factVersion": 1,
+  "decision": "reject"
+}
+```
+
+`correction` is required only for `correct`; it is forbidden for `confirm` and
+`reject`. Its name, value, and unit are required source strings, not a clinical
+interpretation. The supplied `factVersion` must match the immutable fact.
+
+The first accepted command returns `201`:
+
+```json
+{
+  "contractVersion": "document/v3",
+  "review": {
+    "id": "review_placeholder",
+    "factId": "fact_0123456789abcdef0123456789abcdef01234567",
+    "factVersion": 1,
+    "outcome": "confirmed",
+    "decidedAt": "2026-08-12T00:00:00.000Z",
+    "observationId": "observation_placeholder"
+  }
+}
+```
+
+`outcome` is `confirmed`, `corrected`, or `rejected`; `observationId` is `null`
+for a rejection. The same family, actor, idempotency key, fact, and canonical
+command replay the original response with `200`. A conflicting key reuse,
+stale version, or a different command after the fact has its final decision
+returns `409`; inaccessible resources return `404`.
+
+The command is atomic: it appends one immutable `ReviewDecision`, an immutable
+idempotency request, and a payload-free audit event. `confirm` and `correct`
+also create one confirmed `Observation` and, when the proposed source has one,
+an `ObservationReferenceRange`; `reject` creates no observation. A fact can
+have only one final decision. Review never mutates the extracted fact, and the
+latest extraction run becomes `completed` only when every fact has such a
+decision.
+
+## Observation history and provenance (Task 7, pending)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/observations`
 
-Optional query: `canonicalCode=<code>`. The response contains confirmed items
-only, ordered by sample/result/upload dates with missing-date semantics explicit.
+This endpoint and its browser history view are pending Task 7. The intended
+query is `canonicalCode=<code>`; its response will contain confirmed items only,
+ordered by sample/result/upload dates with missing-date semantics explicit.
 
 Each item includes:
 
@@ -322,7 +396,7 @@ Each item includes:
 - reviewer/time and extraction confidence;
 - document version, page number, source fragment, and authorized source URL.
 
-The first slice may render a history table. It does not claim longitudinal
+Task 7 may render a history table. It will not claim longitudinal
 comparability, trend analysis, or a meaningful graph from one point.
 
 ## Processing jobs
@@ -347,8 +421,9 @@ worker outcomes. The worker commits its successful fact graph or
 retry/dead-letter transition with exactly one payload-free event in the same
 SQLite transaction. It is attributed to the uploader, correlated as the bounded
 `worker:<jobId>`, and contains only `contractVersion`, `automated`, `outcome`,
-and (for failure) a sanitized error code. Review, confirmation/rejection, and
-future agent/provider egress add their own events in later tasks. Event metadata
+and (for failure) a sanitized error code. Fact review,
+confirmation/correction/rejection, and future agent/provider egress have their
+own events. Event metadata
 never includes filenames, file content, page text, source fragments, medical
 values, credentials, or signed URLs. Worker stdout carries only a processing
 outcome and safe error code; it does not carry identifiers, document text, or

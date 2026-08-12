@@ -13,7 +13,8 @@
 - Extracted facts are untrusted proposals. Only an explicit review creates a
   confirmed observation.
 - Originals, extraction runs, facts, review decisions, observations, and audit
-  events are append-oriented. Corrections preserve history.
+  events are append-oriented. A correction records corrected source fields in a
+  final decision without editing the extraction.
 - All status columns are constrained enums; all relationships use foreign keys.
 
 ## Logical model
@@ -37,7 +38,9 @@ erDiagram
   ExtractionRun ||--o{ ExtractedFact : emits
   DocumentVersion ||--o{ DiagnosticReport : supports
   DiagnosticReport ||--o{ Observation : groups
+  ExtractedFact ||--o| ReviewDecision : finalized_by
   ExtractedFact ||--o| Observation : reviewed_into
+  ReviewDecision ||--o| Observation : may_confirm
   Observation ||--o{ ObservationReferenceRange : has
 
   PatientProfile ||--o{ Condition : has
@@ -176,8 +179,9 @@ A stable idempotency key prevents the same extractor/version from creating a
 second active result for one document version.
 
 Task 5 creates an `awaiting_review` run only after page and fact provenance has
-been stored in the same transaction. `completed` is reserved for a later review
-workflow; it is not emitted merely because parsing succeeded.
+been stored in the same transaction. Task 6 changes that run to `completed`
+only after every fact has one final `ReviewDecision`; parsing alone never emits
+`completed`.
 
 ### ExtractedFact
 
@@ -187,12 +191,35 @@ workflow; it is not emitted merely because parsing succeeded.
 - proposed canonical code/value/unit and reference-range fields
 - proposed specimen/sample/result/laboratory fields
 - `confidence`, validation issues
-- `review_status`: `extracted | needs_review` in Task 5; `confirmed | rejected`
-  are added with the Task 6 review-decision model
+- stored `review_status`: `extracted | needs_review`
 - `created_at`
 
 Raw parser output is immutable. Review decisions refer to the fact rather than
-editing it.
+editing it. The public facts read derives `confirmed` for `confirm`/`correct`
+and `rejected` for `reject`; it leaves the stored raw status unchanged.
+
+### ReviewDecision
+
+- `id`, `family_id`, `extracted_fact_id`, `source_fact_version`
+- `outcome`: `confirm | correct | reject`
+- optional corrected source name/value/unit, required only for `correct`
+- optional `observation_id`; required for `confirm`/`correct` and absent for
+  `reject`
+- `decided_by_user_id`, `decided_at`, `created_at`
+
+Unique `(family_id, extracted_fact_id)` permits one immutable final decision
+per fact. A confirm or correction is linked to one confirmed `Observation`; a
+rejection has none. No review decision or raw fact can be updated or deleted.
+
+### ReviewRequest
+
+- `id`, `family_id`, `actor_user_id`, `extracted_fact_id`, `review_decision_id`
+- SHA-256 digests of the `Idempotency-Key` and canonical command
+- `created_at`
+
+This immutable request record is unique by family, actor, and idempotency-key
+digest. It enables an exact replay to return the original review response and
+makes conflicting key reuse fail without creating another decision.
 
 ### ProcessingJob
 
@@ -232,6 +259,7 @@ fact-confirmation path if the slice does not yet need report-level behavior.
 
 - `id`, `family_id`, `patient_profile_id`
 - optional `diagnostic_report_id`; required `source_extracted_fact_id`
+- required `review_decision_id`, `source_fact_version`
 - canonical code and source name exactly as reported
 - immutable `source_value`, `source_unit`
 - optional `normalized_value`, `normalized_unit`, `conversion_version`
@@ -239,13 +267,14 @@ fact-confirmation path if the slice does not yet need report-level behavior.
 - optional specimen type and laboratory
 - `document_version_id`, `document_page_id`, `source_fragment`
 - extraction confidence
-- `status`: `confirmed | rejected` for persisted review outcomes; upstream
-  extraction statuses remain on `ExtractedFact`
+- `status`: `confirmed`; a rejection is represented only by its
+  `ReviewDecision`, not by an observation row
 - `confirmed_by_user_id`, `confirmed_at`, `created_at`
 
-Unique `source_extracted_fact_id` for the first-slice confirmation path. A
-correction creates an explicit decision/new derived output while preserving the
-fact and prior audit history.
+Unique `source_extracted_fact_id` and `review_decision_id` enforce one
+confirmed observation for one confirming/correcting decision. A correction
+uses its corrected source fields for that observation while preserving the raw
+fact and its provenance.
 
 ### ObservationReferenceRange
 
@@ -299,8 +328,8 @@ behavior:
 - `AuditEvent`.
 
 Task 5 adds `DocumentPage`, `ExtractionRun`, `ExtractedFact`, `ProcessingJob`,
-and `ProcessingRetryRequest`. Task 6 adds `Observation`, `ObservationReferenceRange`, and any
-report/review rows its tested transaction needs. Add `ConsentGrant`, extended
+and `ProcessingRetryRequest`. Task 6 adds `ReviewDecision`, `ReviewRequest`,
+`Observation`, and `ObservationReferenceRange`. Add `ConsentGrant`, extended
 clinical entities, summaries, recommendations, and agent runs only with the
 slice that uses and tests them.
 
@@ -311,6 +340,10 @@ slice that uses and tests them.
 - A worker cannot claim or persist a job under a different family.
 - One available document version maps to one immutable storage key/checksum.
 - Job and extraction dedupe constraints survive concurrent retries.
-- One extracted fact cannot create duplicate observations.
-- Observation/reference/audit confirmation is atomic.
+- One extracted fact has one immutable final review decision and cannot create
+  duplicate observations.
+- Confirmation/correction creates its decision, observation, optional range,
+  idempotency request, and audit event atomically; rejection creates no
+  observation.
+- The raw extraction status and values cannot be changed by review.
 - Original and normalized values can coexist; neither can overwrite the other.

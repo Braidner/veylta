@@ -8,7 +8,11 @@ import {
   type DocumentProcessingResponse,
   type DocumentProcessingRetryResponse,
   type DocumentResponse,
+  FACT_REVIEW_COMMAND_SCHEMA,
+  FACT_REVIEW_DECISIONS,
+  FACT_REVIEW_OUTCOMES,
   FAMILY_PROFILE_CONTRACT_VERSION,
+  type FactReviewResponse,
   HTTP_API_VERSION,
   LAB_EXTRACTION_RESULT_SCHEMA,
   LAB_EXTRACTION_SCHEMA_VERSION,
@@ -20,11 +24,45 @@ import {
 
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
-  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v2");
+  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v1");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
+});
+
+test("fact review contract makes an explicit, versioned human decision", () => {
+  assert.deepEqual(FACT_REVIEW_DECISIONS, ["confirm", "correct", "reject"]);
+  assert.deepEqual(FACT_REVIEW_OUTCOMES, ["confirmed", "corrected", "rejected"]);
+  assert.equal(FACT_REVIEW_COMMAND_SCHEMA.additionalProperties, false);
+  assert.deepEqual(FACT_REVIEW_COMMAND_SCHEMA.required, ["factVersion", "decision"]);
+  assert.equal(FACT_REVIEW_COMMAND_SCHEMA.properties.factVersion.minimum, 1);
+  assert.equal(FACT_REVIEW_COMMAND_SCHEMA.properties.factVersion.maximum, 2_147_483_647);
+  assert.equal(FACT_REVIEW_COMMAND_SCHEMA.properties.correction.additionalProperties, false);
+  assert.equal(
+    FACT_REVIEW_COMMAND_SCHEMA.properties.correction.properties.sourceValue.maxLength,
+    100,
+  );
+  assert.equal(
+    FACT_REVIEW_COMMAND_SCHEMA.properties.correction.properties.sourceUnit.maxLength,
+    100,
+  );
+  assert.equal(FACT_REVIEW_COMMAND_SCHEMA.allOf[0]?.then.required[0], "correction");
+
+  const response = {
+    contractVersion: DOCUMENT_CONTRACT_VERSION,
+    review: {
+      id: "10000000-0000-4000-8000-000000000010",
+      factId: "10000000-0000-4000-8000-000000000011",
+      factVersion: 1,
+      outcome: "corrected",
+      decidedAt: "2026-08-12T12:00:00.000Z",
+      observationId: "10000000-0000-4000-8000-000000000012",
+    },
+  } as const satisfies FactReviewResponse;
+
+  assert.equal(response.review.outcome, "corrected");
+  assert.equal(response.review.observationId === null, false);
 });
 
 test("document processing exposes only supported observable states and sanitized failures", () => {
@@ -74,7 +112,7 @@ test("document processing exposes only supported observable states and sanitized
   assert.equal("message" in response.processing, false);
 });
 
-test("document v2 embeds discriminated processing status without changing original status", () => {
+test("document v3 embeds discriminated processing status without changing original status", () => {
   const response = {
     contractVersion: DOCUMENT_CONTRACT_VERSION,
     document: {
@@ -152,6 +190,7 @@ test("lab extraction contract preserves immutable source data and page provenanc
         id: "10000000-0000-4000-8000-000000000005",
         factVersion: 1,
         reviewStatus: "needs_review",
+        review: null,
         source: {
           ...extraction.items[0].source,
           documentVersionId: "10000000-0000-4000-8000-000000000006",

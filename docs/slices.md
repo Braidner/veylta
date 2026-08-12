@@ -89,20 +89,33 @@ transaction queues the SQLite job; the separate worker claims it with a lease,
 stores page/run/fact provenance atomically, and presents `awaiting_review` or a
 sanitized retryable terminal failure. The fixture is a checked-in synthetic
 text-PDF, parsed by PDF.js plus a narrow `lab-extraction/v1` grammar. The public
-processing/facts reads and failed-job retry are tenant-scoped; review decisions,
-observations, and history remain in Tasks 6–7.
+processing/facts reads and failed-job retry are tenant-scoped. Task 6 delivers
+review decisions and their optional observations; Task 7 history remains
+pending.
 
 ### Task 6 — Review and atomic observation confirmation
 
 Commit intent: `feat: review and confirm extracted observations`
 
-- API and UI tests begin with low-confidence/ambiguous-unit review gating.
+- API and UI tests begin with source-first explicit review for every extracted
+  fact, with extra warning treatment for low-confidence/ambiguous-unit facts.
 - Side-by-side source fragment and proposed fields; confirm, correct, or reject.
 - Raw fact remains immutable when corrected.
 - Transactional decision + observation + source reference/range + audit event.
 - Idempotency, stale-version, rollback, and cross-family tests.
 
-### Task 7 — Indicator history and authorized source
+Delivered in the Task 6 implementation: `document/v3` adds a tenant-scoped
+fact-review command requiring exact `Origin` and `Idempotency-Key`. It accepts
+`factVersion` plus `confirm`, `correct`, or `reject`; correction fields are
+required only for `correct`. The UI keeps source evidence and proposed values
+separate and offers explicit source-first decisions. The transaction writes one
+immutable `ReviewDecision`, an idempotency request, a payload-free audit event,
+and, for confirmation/correction, one `Observation` plus an optional
+source-specific range. Rejection creates no observation; raw facts are never
+edited. The public facts read derives confirmed/rejected status, and the run
+becomes `completed` only after every fact has its final decision.
+
+### Task 7 — Indicator history and authorized source (pending)
 
 Commit intent: `feat: show observation history with its source`
 
@@ -143,7 +156,7 @@ evidence commit.
 | Page-level provenance | Extraction schema/DB/API assertions |
 | Uncertain fact requires review | Domain + UI tests |
 | Correction preserves raw extraction | Database/API assertion |
-| Confirmed value appears in history | API + browser E2E |
+| Confirmed value appears in history | Task 7 pending: history API + browser E2E |
 | Source is authorized | Download and cross-family negative tests |
 | Failure makes no partial observation | Transaction fault-injection test |
 | Retry creates no duplicates | Concurrent/replay job test |

@@ -15,9 +15,9 @@ change treatment, or replace a clinician or an electronic health record.
 
 The repository is implementing its first vertical slice. The completed local
 path creates an opaque synthetic demo session, one owner-scoped family,
-adult/dependent profiles, immutable synthetic PDF records, and review-ready
-extracted facts in persistent local storage. The full first slice remains
-deliberately narrow:
+adult/dependent profiles, immutable synthetic PDF records, review-ready
+extracted facts, and explicit review decisions in persistent local storage.
+The full first slice remains deliberately narrow:
 
 1. create a family and a patient profile;
 2. upload a fully synthetic Russian-language PDF with a text layer;
@@ -25,8 +25,11 @@ deliberately narrow:
 4. detect a possible duplicate within that family;
 5. deterministically extract a small, versioned set of laboratory facts with
    provenance and a durable local job;
-6. review and confirm or correct those facts (Task 6);
-7. show confirmed observations with provenance back to the document and page.
+6. explicitly confirm, correct, or reject those facts; a confirmation or
+   correction creates a source-linked observation without changing the raw
+   extraction (Task 6, delivered);
+7. show confirmed observations as indicator history with provenance back to
+   the document and page (Task 7, pending).
 
 S3-compatible storage, OCR, LLM processing, trend summaries, recommendations,
 FHIR exchange, export/backup, and the rest of the full MVP are explicitly
@@ -38,7 +41,7 @@ are complete.
 - Family-first access with explicit per-profile grants.
 - Privacy-first processing and no external medical-data transfer by default.
 - Source-first, immutable originals and complete provenance.
-- Human review before uncertain extracted facts become medical observations.
+- Explicit human review before any extracted fact becomes a medical observation.
 - Explainable outputs; no opaque health score.
 - Portable data and provider-independent storage, OCR, and LLM boundaries.
 - Synthetic fixtures only. Never commit real medical documents or secrets.
@@ -104,7 +107,11 @@ not another blob. Source download is authorized again and returned as a safe
 attachment. The worker polls the same SQLite file and processes the checked-in
 synthetic text-PDF format through PDF.js and a strict deterministic parser. It
 does not call OCR, an LLM, or a network provider. Extracted facts are proposals
-for review, never confirmed medical observations.
+for review, never confirmed medical observations by themselves. A user
+confirmation or correction creates one immutable review decision and confirmed
+observation in the same transaction; a rejection creates no observation. The
+raw extracted fact is never edited, and Task 7 indicator-history UI/API remains
+pending.
 
 The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is

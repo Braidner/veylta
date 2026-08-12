@@ -1,0 +1,27 @@
+DROP TRIGGER review_requests_delete_forbidden;
+DROP TRIGGER review_requests_update_forbidden;
+DROP INDEX review_requests_fact;
+DROP TABLE review_requests;
+
+DROP TRIGGER observation_reference_ranges_delete_forbidden;
+DROP TRIGGER observation_reference_ranges_update_forbidden;
+DROP TABLE observation_reference_ranges;
+
+DROP TRIGGER observations_delete_forbidden;
+DROP TRIGGER observations_update_forbidden;
+DROP TRIGGER observations_rejected_decision_forbidden;
+DROP INDEX observations_indicator_time;
+DROP INDEX observations_profile_time;
+DROP TABLE observations;
+
+DROP TRIGGER review_decisions_delete_forbidden;
+DROP TRIGGER review_decisions_rejected_observation_forbidden;
+DROP TRIGGER review_decisions_confirmed_observation_required;
+DROP TRIGGER review_decisions_update_forbidden;
+DROP INDEX review_decisions_fact;
+DROP INDEX review_decisions_family_time;
+DROP TABLE review_decisions;
+
+DROP INDEX extracted_facts_family_document_version_id;
+DROP INDEX extracted_facts_family_document_page_id;
+DROP INDEX document_versions_family_document_id;

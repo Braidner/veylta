@@ -900,10 +900,7 @@ export function createProcessingJobService(
           throw new InvalidProcessingStageTransitionError();
         }
 
-        const needsReviewCount = output.extraction.items.filter(
-          (fact) => reviewStatusForFact(fact) === "needs_review",
-        ).length;
-        const extractionStatus = needsReviewCount > 0 ? "awaiting_review" : "completed";
+        const extractionStatus = "awaiting_review";
         await client.query(
           `INSERT INTO extraction_runs
                (id, family_id, document_version_id, job_id, extractor_kind,

@@ -12,14 +12,17 @@ and make later corrections hard to explain.
 
 ## Decision
 
-Keep three distinct layers:
+Keep four distinct layers:
 
 1. Immutable document/page evidence.
 2. `ExtractionRun` and immutable `ExtractedFact` records containing untrusted
    parser output, provenance, parser/schema version, confidence, and validation
    issues.
-3. `Observation` records created only by an explicit confirmation/correction
-   decision (or a future separately approved high-confidence policy).
+3. One immutable final `ReviewDecision` per extracted fact, recording explicit
+   `confirm`, `correct`, or `reject` without changing the fact.
+4. `Observation` records created only by an explicit confirmation/correction
+   decision (or a future separately approved high-confidence policy). A reject
+   decision creates no observation.
 
 For the first slice, all facts that are low-confidence or have ambiguous units
 must enter `needs_review`; no automatic confirmation policy exists.
@@ -27,18 +30,21 @@ must enter `needs_review`; no automatic confirmation policy exists.
 An observation stores the source name/value/unit exactly as reported separately
 from optional canonical code and normalized value/unit. It also stores sample,
 result, and upload dates separately; specimen and laboratory when known; the
-document version, page, and source fragment; extraction confidence; review
-status; reviewer; and review time. Reference ranges are source-specific child
-records, not global truth.
+document version, page, and source fragment; extraction confidence; reviewer;
+and review time. Reference ranges are source-specific child records, not global
+truth.
 
 Unit conversion is a separate, versioned and reproducible operation. It never
 overwrites source data. Longitudinal analysis may compare only confirmed,
 compatible observations and must retain differing laboratory references.
 
-Confirmation uses one database transaction for the review decision,
-observation/reference rows, and audit event. A uniqueness constraint from the
-reviewed fact to its observation makes retries idempotent. Corrections create a
-new review decision/output; raw extraction is not edited in place.
+Review uses one database transaction for the final decision, an immutable
+idempotency request, optional observation/reference rows, and audit event. A
+uniqueness constraint permits one final decision per fact; exact idempotency-key
+replays return its existing result. A correction is that final decision with
+corrected source fields, not a second output; raw extraction is not edited in
+place. A run becomes `completed` only after all of its facts have final
+decisions.
 
 ## Consequences
 
@@ -54,8 +60,8 @@ new review decision/output; raw extraction is not edited in place.
 
 - More records and explicit state transitions are required.
 - The review UI must show raw and proposed values clearly.
-- Re-extraction and correction history require careful queries rather than
-  updating one row.
+- Re-extraction history requires careful queries rather than updating one row;
+  a final decision cannot be revised in place.
 
 ## Deferred work
 
