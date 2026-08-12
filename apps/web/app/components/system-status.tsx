@@ -1,6 +1,6 @@
 "use client";
 
-import type { HealthStatus } from "@family-health/contracts";
+import type { HealthStatus } from "@veylta/contracts";
 import { useEffect, useState } from "react";
 
 type Status = "loading" | "ready" | "unavailable";

@@ -5,7 +5,7 @@
 
 ## Context
 
-Family Health needs a TypeScript web UI, a separately enforceable server-side
+Veylta needs a TypeScript web UI, a separately enforceable server-side
 authorization boundary, asynchronous document processing, durable relational
 persistence, and room for future provider adapters. The first slice must remain
 small and runnable, without moving business rules into React or adopting a heavy

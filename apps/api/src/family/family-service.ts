@@ -8,7 +8,7 @@ import {
   type PatientProfileKind,
   type PatientProfileSummary,
   type SessionResponse,
-} from "@family-health/contracts";
+} from "@veylta/contracts";
 import {
   type Database,
   type DatabaseClient,

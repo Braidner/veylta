@@ -1,4 +1,4 @@
-# Family Health Design System
+# Veylta Design System
 
 ## Intent
 

@@ -2,7 +2,7 @@ import {
   type DemoRegistrationRequest,
   FAMILY_PROFILE_CONTRACT_VERSION,
   type PatientProfileKind,
-} from "@family-health/contracts";
+} from "@veylta/contracts";
 import type { FastifyInstance } from "fastify";
 import {
   canonicalUuidSchema,

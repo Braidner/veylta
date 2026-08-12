@@ -4,7 +4,7 @@ import {
   DOCUMENT_CONTRACT_VERSION,
   type DocumentSummary,
   OBJECT_STORAGE_CONTRACT_VERSION,
-} from "@family-health/contracts";
+} from "@veylta/contracts";
 import type { Database, QueryResult } from "../database/pool.js";
 import { ResourceNotFoundError, type SessionActor } from "../family/family-service.js";
 import {

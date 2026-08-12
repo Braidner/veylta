@@ -1,5 +1,5 @@
-import { DOCUMENT_CONTRACT_VERSION } from "@family-health/contracts";
 import multipart from "@fastify/multipart";
+import { DOCUMENT_CONTRACT_VERSION } from "@veylta/contracts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import type { FamilyService } from "../family/family-service.js";
 import {

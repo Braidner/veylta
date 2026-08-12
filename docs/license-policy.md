@@ -2,8 +2,8 @@
 
 ## Project license
 
-Original Family Health code and documentation are released under the root MIT
-license: `Copyright (c) 2026 Family Health contributors`.
+Original Veylta code and documentation are released under the root MIT
+license: `Copyright (c) 2026 Veylta contributors`.
 
 The MIT license for this repository does not automatically make dependencies,
 container images, model weights, OCR trained data, fixtures, fonts, or external

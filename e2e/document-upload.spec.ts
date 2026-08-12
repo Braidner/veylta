@@ -11,7 +11,7 @@ function syntheticNames() {
 
 function syntheticPdf(label: string): Buffer {
   return Buffer.from(
-    `%PDF-1.7\n% Family Health synthetic fixture\n1 0 obj\n<< /Type /Catalog /Label (${label}) >>\nendobj\n%%EOF\n`,
+    `%PDF-1.7\n% Veylta synthetic fixture\n1 0 obj\n<< /Type /Catalog /Label (${label}) >>\nendobj\n%%EOF\n`,
     "utf8",
   );
 }

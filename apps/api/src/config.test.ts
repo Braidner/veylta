@@ -40,12 +40,12 @@ test("demo registration is disabled unless it is explicitly configured", () => {
     {
       API_HOST: "0.0.0.0",
       DEMO_REGISTRATION_ENABLED: undefined,
-      WEB_ORIGIN: "https://family-health.invalid",
+      WEB_ORIGIN: "https://veylta.invalid",
     },
     () => {
       const config = loadConfig();
       assert.equal(config.demoRegistrationEnabled, false);
-      assert.equal(config.webOrigin, "https://family-health.invalid");
+      assert.equal(config.webOrigin, "https://veylta.invalid");
     },
   );
 });

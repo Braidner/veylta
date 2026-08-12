@@ -74,14 +74,14 @@
       "norm_label": "dependencies"
     },
     {
-      "label": "@family-health/contracts",
+      "label": "@veylta/contracts",
       "file_type": "code",
       "source_file": "apps/api/package.json",
       "source_location": "L8",
       "_origin": "ast",
-      "id": "apps_api_package_dependencies_family_health_contracts",
+      "id": "apps_api_package_dependencies_veylta_contracts",
       "community": 5,
-      "norm_label": "@family-health/contracts"
+      "norm_label": "@veylta/contracts"
     },
     {
       "label": "@fastify/multipart",
@@ -2554,276 +2554,6 @@
       "norm_label": "include"
     },
     {
-      "label": "family-health-app.tsx",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L1",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app",
-      "community": 23,
-      "norm_label": "family-health-app.tsx"
-    },
-    {
-      "label": "ScreenState",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L20",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_screenstate",
-      "community": 23,
-      "norm_label": "screenstate"
-    },
-    {
-      "label": "ApiError",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L26",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_apierror",
-      "community": 23,
-      "norm_label": "apierror"
-    },
-    {
-      "label": ".constructor()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L27",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_apierror_constructor",
-      "community": 23,
-      "norm_label": ".constructor()"
-    },
-    {
-      "label": "apiRequest()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L33",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_apirequest",
-      "community": 23,
-      "norm_label": "apirequest()"
-    },
-    {
-      "label": "readSession()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L59",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_readsession",
-      "community": 23,
-      "norm_label": "readsession()"
-    },
-    {
-      "label": "firstProfile()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L70",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_firstprofile",
-      "community": 23,
-      "norm_label": "firstprofile()"
-    },
-    {
-      "label": "findProfileContext()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L74",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_findprofilecontext",
-      "community": 23,
-      "norm_label": "findprofilecontext()"
-    },
-    {
-      "label": "profilePath()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L84",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_profilepath",
-      "community": 23,
-      "norm_label": "profilepath()"
-    },
-    {
-      "label": "documentPath()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L88",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_documentpath",
-      "community": 23,
-      "norm_label": "documentpath()"
-    },
-    {
-      "label": "FamilyHealthAppProps",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L92",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_familyhealthappprops",
-      "community": 23,
-      "norm_label": "familyhealthappprops"
-    },
-    {
-      "label": "FamilyHealthApp()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L98",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_familyhealthapp",
-      "community": 23,
-      "norm_label": "familyhealthapp()"
-    },
-    {
-      "label": "LoadingScreen()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L295",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_loadingscreen",
-      "community": 23,
-      "norm_label": "loadingscreen()"
-    },
-    {
-      "label": "ErrorScreen()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L306",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_errorscreen",
-      "community": 23,
-      "norm_label": "errorscreen()"
-    },
-    {
-      "label": "MissingProfileScreen()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L321",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_missingprofilescreen",
-      "community": 23,
-      "norm_label": "missingprofilescreen()"
-    },
-    {
-      "label": "OnboardingScreenProps",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L349",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_onboardingscreenprops",
-      "community": 23,
-      "norm_label": "onboardingscreenprops"
-    },
-    {
-      "label": "OnboardingScreen()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L355",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_onboardingscreen",
-      "community": 23,
-      "norm_label": "onboardingscreen()"
-    },
-    {
-      "label": "ProfileWorkspaceProps",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L450",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_profileworkspaceprops",
-      "community": 23,
-      "norm_label": "profileworkspaceprops"
-    },
-    {
-      "label": "ProfileWorkspace()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L463",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_profileworkspace",
-      "community": 23,
-      "norm_label": "profileworkspace()"
-    },
-    {
-      "label": "uploadErrorCopy()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L644",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_uploaderrorcopy",
-      "community": 23,
-      "norm_label": "uploaderrorcopy()"
-    },
-    {
-      "label": "DocumentInboxProps",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L666",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_documentinboxprops",
-      "community": 23,
-      "norm_label": "documentinboxprops"
-    },
-    {
-      "label": "DocumentInbox()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L672",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_documentinbox",
-      "community": 23,
-      "norm_label": "documentinbox()"
-    },
-    {
-      "label": "DocumentViewState",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L723",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_documentviewstate",
-      "community": 23,
-      "norm_label": "documentviewstate"
-    },
-    {
-      "label": "DocumentViewProps",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L729",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_documentviewprops",
-      "community": 23,
-      "norm_label": "documentviewprops"
-    },
-    {
-      "label": "DocumentView()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L735",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_documentview",
-      "community": 23,
-      "norm_label": "documentview()"
-    },
-    {
-      "label": "formatBytes()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L873",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_formatbytes",
-      "community": 23,
-      "norm_label": "formatbytes()"
-    },
-    {
-      "label": "formatDate()",
-      "file_type": "code",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L878",
-      "_origin": "ast",
-      "id": "apps_web_app_components_family_health_app_formatdate",
-      "community": 23,
-      "norm_label": "formatdate()"
-    },
-    {
       "label": "system-status.tsx",
       "file_type": "code",
       "source_file": "apps/web/app/components/system-status.tsx",
@@ -2852,6 +2582,276 @@
       "id": "apps_web_app_components_system_status_systemstatus",
       "community": 23,
       "norm_label": "systemstatus()"
+    },
+    {
+      "label": "veylta-app.tsx",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app",
+      "community": 23,
+      "norm_label": "veylta-app.tsx"
+    },
+    {
+      "label": "ScreenState",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L20",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_screenstate",
+      "community": 23,
+      "norm_label": "screenstate"
+    },
+    {
+      "label": "ApiError",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L26",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_apierror",
+      "community": 23,
+      "norm_label": "apierror"
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L27",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_apierror_constructor",
+      "community": 23,
+      "norm_label": ".constructor()"
+    },
+    {
+      "label": "apiRequest()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L33",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_apirequest",
+      "community": 23,
+      "norm_label": "apirequest()"
+    },
+    {
+      "label": "readSession()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L59",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_readsession",
+      "community": 23,
+      "norm_label": "readsession()"
+    },
+    {
+      "label": "firstProfile()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L70",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_firstprofile",
+      "community": 23,
+      "norm_label": "firstprofile()"
+    },
+    {
+      "label": "findProfileContext()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L74",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_findprofilecontext",
+      "community": 23,
+      "norm_label": "findprofilecontext()"
+    },
+    {
+      "label": "profilePath()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L84",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_profilepath",
+      "community": 23,
+      "norm_label": "profilepath()"
+    },
+    {
+      "label": "documentPath()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L88",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_documentpath",
+      "community": 23,
+      "norm_label": "documentpath()"
+    },
+    {
+      "label": "VeyltaAppProps",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L92",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_veyltaappprops",
+      "community": 23,
+      "norm_label": "veyltaappprops"
+    },
+    {
+      "label": "VeyltaApp()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L98",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_veyltaapp",
+      "community": 23,
+      "norm_label": "veyltaapp()"
+    },
+    {
+      "label": "LoadingScreen()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L294",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_loadingscreen",
+      "community": 23,
+      "norm_label": "loadingscreen()"
+    },
+    {
+      "label": "ErrorScreen()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L305",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_errorscreen",
+      "community": 23,
+      "norm_label": "errorscreen()"
+    },
+    {
+      "label": "MissingProfileScreen()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L320",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_missingprofilescreen",
+      "community": 23,
+      "norm_label": "missingprofilescreen()"
+    },
+    {
+      "label": "OnboardingScreenProps",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L348",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_onboardingscreenprops",
+      "community": 23,
+      "norm_label": "onboardingscreenprops"
+    },
+    {
+      "label": "OnboardingScreen()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L354",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_onboardingscreen",
+      "community": 23,
+      "norm_label": "onboardingscreen()"
+    },
+    {
+      "label": "ProfileWorkspaceProps",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L449",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_profileworkspaceprops",
+      "community": 23,
+      "norm_label": "profileworkspaceprops"
+    },
+    {
+      "label": "ProfileWorkspace()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L462",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_profileworkspace",
+      "community": 23,
+      "norm_label": "profileworkspace()"
+    },
+    {
+      "label": "uploadErrorCopy()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L643",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_uploaderrorcopy",
+      "community": 23,
+      "norm_label": "uploaderrorcopy()"
+    },
+    {
+      "label": "DocumentInboxProps",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L665",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_documentinboxprops",
+      "community": 23,
+      "norm_label": "documentinboxprops"
+    },
+    {
+      "label": "DocumentInbox()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L671",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_documentinbox",
+      "community": 23,
+      "norm_label": "documentinbox()"
+    },
+    {
+      "label": "DocumentViewState",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L722",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_documentviewstate",
+      "community": 23,
+      "norm_label": "documentviewstate"
+    },
+    {
+      "label": "DocumentViewProps",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L728",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_documentviewprops",
+      "community": 23,
+      "norm_label": "documentviewprops"
+    },
+    {
+      "label": "DocumentView()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L734",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_documentview",
+      "community": 23,
+      "norm_label": "documentview()"
+    },
+    {
+      "label": "formatBytes()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L872",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_formatbytes",
+      "community": 23,
+      "norm_label": "formatbytes()"
+    },
+    {
+      "label": "formatDate()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L877",
+      "_origin": "ast",
+      "id": "apps_web_app_components_veylta_app_formatdate",
+      "community": 23,
+      "norm_label": "formatdate()"
     },
     {
       "label": "page.tsx",
@@ -3054,14 +3054,14 @@
       "norm_label": "dependencies"
     },
     {
-      "label": "@family-health/contracts",
+      "label": "@veylta/contracts",
       "file_type": "code",
       "source_file": "apps/web/package.json",
       "source_location": "L8",
       "_origin": "ast",
-      "id": "apps_web_package_dependencies_family_health_contracts",
+      "id": "apps_web_package_dependencies_veylta_contracts",
       "community": 9,
-      "norm_label": "@family-health/contracts"
+      "norm_label": "@veylta/contracts"
     },
     {
       "label": "next",
@@ -4714,14 +4714,14 @@
       "norm_label": "design.md"
     },
     {
-      "label": "Family Health Design System",
+      "label": "Veylta Design System",
       "file_type": "document",
       "source_file": "DESIGN.md",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "design_family_health_design_system",
+      "id": "design_veylta_design_system",
       "community": 16,
-      "norm_label": "family health design system"
+      "norm_label": "veylta design system"
     },
     {
       "label": "Intent",
@@ -4910,77 +4910,77 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "readme",
-      "community": 39,
+      "community": 2,
       "norm_label": "readme.md"
     },
     {
-      "label": "Family Health",
+      "label": "Veylta",
       "file_type": "document",
       "source_file": "README.md",
       "source_location": "L1",
       "_origin": "ast",
-      "id": "readme_family_health",
-      "community": 38,
-      "norm_label": "family health"
+      "id": "readme_veylta",
+      "community": 2,
+      "norm_label": "veylta"
     },
     {
       "label": "Project status",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L11",
+      "source_location": "L14",
       "_origin": "ast",
       "id": "readme_project_status",
-      "community": 38,
+      "community": 2,
       "norm_label": "project status"
     },
     {
       "label": "Product principles",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L31",
+      "source_location": "L34",
       "_origin": "ast",
       "id": "readme_product_principles",
-      "community": 38,
+      "community": 2,
       "norm_label": "product principles"
     },
     {
       "label": "Intended architecture",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L41",
+      "source_location": "L44",
       "_origin": "ast",
       "id": "readme_intended_architecture",
-      "community": 38,
+      "community": 2,
       "norm_label": "intended architecture"
     },
     {
       "label": "Local development",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L58",
+      "source_location": "L61",
       "_origin": "ast",
       "id": "readme_local_development",
-      "community": 38,
+      "community": 2,
       "norm_label": "local development"
     },
     {
       "label": "Safety and data policy",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L114",
+      "source_location": "L117",
       "_origin": "ast",
       "id": "readme_safety_and_data_policy",
-      "community": 38,
+      "community": 2,
       "norm_label": "safety and data policy"
     },
     {
       "label": "License",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L121",
+      "source_location": "L124",
       "_origin": "ast",
       "id": "readme_license",
-      "community": 38,
+      "community": 2,
       "norm_label": "license"
     },
     {
@@ -5490,7 +5490,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_api",
-      "community": 39,
+      "community": 2,
       "norm_label": "api.md"
     },
     {
@@ -6190,7 +6190,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_license_policy",
-      "community": 39,
+      "community": 2,
       "norm_label": "license-policy.md"
     },
     {
@@ -6290,7 +6290,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_product",
-      "community": 39,
+      "community": 2,
       "norm_label": "product.md"
     },
     {
@@ -6300,7 +6300,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_product_product_brief",
-      "community": 14,
+      "community": 2,
       "norm_label": "product brief"
     },
     {
@@ -6310,7 +6310,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "docs_product_purpose",
-      "community": 14,
+      "community": 2,
       "norm_label": "purpose"
     },
     {
@@ -6320,7 +6320,7 @@
       "source_location": "L18",
       "_origin": "ast",
       "id": "docs_product_users_and_access_model",
-      "community": 14,
+      "community": 2,
       "norm_label": "users and access model"
     },
     {
@@ -6330,7 +6330,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "docs_product_product_principles",
-      "community": 14,
+      "community": 2,
       "norm_label": "product principles"
     },
     {
@@ -6340,7 +6340,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "docs_product_first_vertical_slice",
-      "community": 14,
+      "community": 2,
       "norm_label": "first vertical slice"
     },
     {
@@ -6350,7 +6350,7 @@
       "source_location": "L74",
       "_origin": "ast",
       "id": "docs_product_acceptance_outcomes",
-      "community": 14,
+      "community": 2,
       "norm_label": "acceptance outcomes"
     },
     {
@@ -6360,7 +6360,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "docs_product_full_mvp_direction",
-      "community": 14,
+      "community": 2,
       "norm_label": "full mvp direction"
     },
     {
@@ -6370,7 +6370,7 @@
       "source_location": "L108",
       "_origin": "ast",
       "id": "docs_product_explicitly_deferred",
-      "community": 14,
+      "community": 2,
       "norm_label": "explicitly deferred"
     },
     {
@@ -6380,7 +6380,7 @@
       "source_location": "L123",
       "_origin": "ast",
       "id": "docs_product_product_evidence_rules",
-      "community": 14,
+      "community": 2,
       "norm_label": "product evidence rules"
     },
     {
@@ -6390,7 +6390,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_slices",
-      "community": 40,
+      "community": 10,
       "norm_label": "slices.md"
     },
     {
@@ -6400,7 +6400,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_slices_vertical_slice_plan",
-      "community": 40,
+      "community": 10,
       "norm_label": "vertical slice plan"
     },
     {
@@ -6410,7 +6410,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "docs_slices_delivery_rules",
-      "community": 40,
+      "community": 10,
       "norm_label": "delivery rules"
     },
     {
@@ -6510,7 +6510,7 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "docs_slices_first_slice_executable_acceptance_matrix",
-      "community": 40,
+      "community": 10,
       "norm_label": "first-slice executable acceptance matrix"
     },
     {
@@ -6520,7 +6520,7 @@
       "source_location": "L146",
       "_origin": "ast",
       "id": "docs_slices_later_mvp_slices",
-      "community": 40,
+      "community": 10,
       "norm_label": "later mvp slices"
     },
     {
@@ -6530,7 +6530,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_threat_model",
-      "community": 39,
+      "community": 2,
       "norm_label": "threat-model.md"
     },
     {
@@ -6540,7 +6540,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_threat_model_threat_model",
-      "community": 37,
+      "community": 2,
       "norm_label": "threat model"
     },
     {
@@ -6550,7 +6550,7 @@
       "source_location": "L3",
       "_origin": "ast",
       "id": "docs_threat_model_scope_and_status",
-      "community": 37,
+      "community": 2,
       "norm_label": "scope and status"
     },
     {
@@ -6560,7 +6560,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "docs_threat_model_assets",
-      "community": 37,
+      "community": 2,
       "norm_label": "assets"
     },
     {
@@ -6570,7 +6570,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "docs_threat_model_trust_boundaries",
-      "community": 37,
+      "community": 2,
       "norm_label": "trust boundaries"
     },
     {
@@ -6580,7 +6580,7 @@
       "source_location": "L37",
       "_origin": "ast",
       "id": "docs_threat_model_threat_actors_and_failure_modes",
-      "community": 37,
+      "community": 2,
       "norm_label": "threat actors and failure modes"
     },
     {
@@ -6590,7 +6590,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "docs_threat_model_threats_and_required_controls",
-      "community": 37,
+      "community": 2,
       "norm_label": "threats and required controls"
     },
     {
@@ -6600,7 +6600,7 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "docs_threat_model_first_slice_security_invariants",
-      "community": 37,
+      "community": 2,
       "norm_label": "first-slice security invariants"
     },
     {
@@ -6610,7 +6610,7 @@
       "source_location": "L97",
       "_origin": "ast",
       "id": "docs_threat_model_production_gate_for_real_data",
-      "community": 37,
+      "community": 2,
       "norm_label": "production gate for real data"
     },
     {
@@ -6620,7 +6620,7 @@
       "source_location": "L113",
       "_origin": "ast",
       "id": "docs_threat_model_security_verification",
-      "community": 37,
+      "community": 2,
       "norm_label": "security verification"
     }
   ],
@@ -6699,16 +6699,6 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "apps/api/package.json",
-      "source_location": "L8",
-      "weight": 1.0,
-      "source": "apps_api_package_dependencies",
-      "target": "apps_api_package_dependencies_family_health_contracts",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/api/package.json",
       "source_location": "L10",
       "weight": 1.0,
       "source": "apps_api_package_dependencies",
@@ -6723,6 +6713,16 @@
       "weight": 1.0,
       "source": "apps_api_package_dependencies",
       "target": "apps_api_package_dependencies_fastify_multipart",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/package.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "apps_api_package_dependencies",
+      "target": "apps_api_package_dependencies_veylta_contracts",
       "confidence_score": 1.0
     },
     {
@@ -12159,442 +12159,6 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L26",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_apierror",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L33",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_apirequest",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L672",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_documentinbox",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L666",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_documentinboxprops",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L88",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_documentpath",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L735",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_documentview",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L729",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_documentviewprops",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L723",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_documentviewstate",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L306",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_errorscreen",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L98",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_familyhealthapp",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L92",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_familyhealthappprops",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L74",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_findprofilecontext",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L70",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_firstprofile",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L873",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_formatbytes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L878",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_formatdate",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L295",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_loadingscreen",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L321",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_missingprofilescreen",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L355",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_onboardingscreen",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L349",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_onboardingscreenprops",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L84",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_profilepath",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L463",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_profileworkspace",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L450",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_profileworkspaceprops",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L59",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_readsession",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L20",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_screenstate",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L644",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_family_health_app_uploaderrorcopy",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L16",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_system_status",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L16",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app",
-      "target": "apps_web_app_components_system_status_systemstatus",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/documents/[documentId]/page.tsx",
-      "source_location": "L1",
-      "weight": 1.0,
-      "source": "apps_web_app_families_familyid_profiles_profileid_documents_documentid_page",
-      "target": "apps_web_app_components_family_health_app",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/page.tsx",
-      "source_location": "L1",
-      "weight": 1.0,
-      "source": "apps_web_app_families_familyid_profiles_profileid_page",
-      "target": "apps_web_app_components_family_health_app",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports_from",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/page.tsx",
-      "source_location": "L1",
-      "weight": 1.0,
-      "source": "apps_web_app_page",
-      "target": "apps_web_app_components_family_health_app",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "method",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L27",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_apierror",
-      "target": "apps_web_app_components_family_health_app_apierror_constructor",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L218",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_familyhealthapp",
-      "target": "apps_web_app_components_family_health_app_firstprofile",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L216",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_familyhealthapp",
-      "target": "apps_web_app_components_family_health_app_findprofilecontext",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L89",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_documentpath",
-      "target": "apps_web_app_components_family_health_app_profilepath",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L787",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_documentview",
-      "target": "apps_web_app_components_family_health_app_profilepath",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L336",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_missingprofilescreen",
-      "target": "apps_web_app_components_family_health_app_profilepath",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L579",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_profileworkspace",
-      "target": "apps_web_app_components_family_health_app_profilepath",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/documents/[documentId]/page.tsx",
-      "source_location": "L1",
-      "weight": 1.0,
-      "source": "apps_web_app_families_familyid_profiles_profileid_documents_documentid_page",
-      "target": "apps_web_app_components_family_health_app_familyhealthapp",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/page.tsx",
-      "source_location": "L1",
-      "weight": 1.0,
-      "source": "apps_web_app_families_familyid_profiles_profileid_page",
-      "target": "apps_web_app_components_family_health_app_familyhealthapp",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "imports",
-      "context": "import",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/page.tsx",
-      "source_location": "L1",
-      "weight": 1.0,
-      "source": "apps_web_app_page",
-      "target": "apps_web_app_components_family_health_app_familyhealthapp",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L825",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_documentview",
-      "target": "apps_web_app_components_family_health_app_formatbytes",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "calls",
-      "context": "call",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/app/components/family-health-app.tsx",
-      "source_location": "L825",
-      "weight": 1.0,
-      "source": "apps_web_app_components_family_health_app_documentview",
-      "target": "apps_web_app_components_family_health_app_formatdate",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
       "source_file": "apps/web/app/components/system-status.tsx",
       "source_location": "L6",
       "weight": 1.0,
@@ -12610,6 +12174,442 @@
       "weight": 1.0,
       "source": "apps_web_app_components_system_status",
       "target": "apps_web_app_components_system_status_systemstatus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_system_status",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L16",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_system_status_systemstatus",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L26",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_apierror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L33",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_apirequest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L671",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_documentinbox",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L665",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_documentinboxprops",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_documentpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L734",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_documentview",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L728",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_documentviewprops",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L722",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_documentviewstate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L305",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_errorscreen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L74",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_findprofilecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L70",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_firstprofile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L872",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_formatbytes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L877",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_formatdate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L294",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_loadingscreen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L320",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_missingprofilescreen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L354",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_onboardingscreen",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L348",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_onboardingscreenprops",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_profilepath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L462",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_profileworkspace",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L449",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_profileworkspaceprops",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L59",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_readsession",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_screenstate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L643",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_uploaderrorcopy",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L98",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_veyltaapp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L92",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app",
+      "target": "apps_web_app_components_veylta_app_veyltaappprops",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/documents/[documentId]/page.tsx",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "apps_web_app_families_familyid_profiles_profileid_documents_documentid_page",
+      "target": "apps_web_app_components_veylta_app",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/page.tsx",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "apps_web_app_families_familyid_profiles_profileid_page",
+      "target": "apps_web_app_components_veylta_app",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/page.tsx",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "apps_web_app_page",
+      "target": "apps_web_app_components_veylta_app",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L27",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_apierror",
+      "target": "apps_web_app_components_veylta_app_apierror_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L218",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_veyltaapp",
+      "target": "apps_web_app_components_veylta_app_firstprofile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L216",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_veyltaapp",
+      "target": "apps_web_app_components_veylta_app_findprofilecontext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L89",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_documentpath",
+      "target": "apps_web_app_components_veylta_app_profilepath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L786",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_documentview",
+      "target": "apps_web_app_components_veylta_app_profilepath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L335",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_missingprofilescreen",
+      "target": "apps_web_app_components_veylta_app_profilepath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L578",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_profileworkspace",
+      "target": "apps_web_app_components_veylta_app_profilepath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/documents/[documentId]/page.tsx",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "apps_web_app_families_familyid_profiles_profileid_documents_documentid_page",
+      "target": "apps_web_app_components_veylta_app_veyltaapp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/families/[familyId]/profiles/[profileId]/page.tsx",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "apps_web_app_families_familyid_profiles_profileid_page",
+      "target": "apps_web_app_components_veylta_app_veyltaapp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/page.tsx",
+      "source_location": "L1",
+      "weight": 1.0,
+      "source": "apps_web_app_page",
+      "target": "apps_web_app_components_veylta_app_veyltaapp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L824",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_documentview",
+      "target": "apps_web_app_components_veylta_app_formatbytes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/veylta-app.tsx",
+      "source_location": "L824",
+      "weight": 1.0,
+      "source": "apps_web_app_components_veylta_app_documentview",
+      "target": "apps_web_app_components_veylta_app_formatdate",
       "confidence_score": 1.0
     },
     {
@@ -12766,16 +12766,6 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "apps/web/package.json",
-      "source_location": "L8",
-      "weight": 1.0,
-      "source": "apps_web_package_dependencies",
-      "target": "apps_web_package_dependencies_family_health_contracts",
-      "confidence_score": 1.0
-    },
-    {
-      "relation": "contains",
-      "confidence": "EXTRACTED",
-      "source_file": "apps/web/package.json",
       "source_location": "L9",
       "weight": 1.0,
       "source": "apps_web_package_dependencies",
@@ -12800,6 +12790,16 @@
       "weight": 1.0,
       "source": "apps_web_package_dependencies",
       "target": "apps_web_package_dependencies_react_dom",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/package.json",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "apps_web_package_dependencies",
+      "target": "apps_web_package_dependencies_veylta_contracts",
       "confidence_score": 1.0
     },
     {
@@ -14368,7 +14368,7 @@
       "source_location": "L1",
       "weight": 1.0,
       "source": "design",
-      "target": "design_family_health_design_system",
+      "target": "design_veylta_design_system",
       "confidence_score": 1.0
     },
     {
@@ -14377,7 +14377,7 @@
       "source_file": "DESIGN.md",
       "source_location": "L9",
       "weight": 1.0,
-      "source": "design_family_health_design_system",
+      "source": "design_veylta_design_system",
       "target": "design_color",
       "confidence_score": 1.0
     },
@@ -14387,7 +14387,7 @@
       "source_file": "DESIGN.md",
       "source_location": "L44",
       "weight": 1.0,
-      "source": "design_family_health_design_system",
+      "source": "design_veylta_design_system",
       "target": "design_components",
       "confidence_score": 1.0
     },
@@ -14397,7 +14397,7 @@
       "source_file": "DESIGN.md",
       "source_location": "L57",
       "weight": 1.0,
-      "source": "design_family_health_design_system",
+      "source": "design_veylta_design_system",
       "target": "design_content",
       "confidence_score": 1.0
     },
@@ -14407,7 +14407,7 @@
       "source_file": "DESIGN.md",
       "source_location": "L3",
       "weight": 1.0,
-      "source": "design_family_health_design_system",
+      "source": "design_veylta_design_system",
       "target": "design_intent",
       "confidence_score": 1.0
     },
@@ -14417,7 +14417,7 @@
       "source_file": "DESIGN.md",
       "source_location": "L36",
       "weight": 1.0,
-      "source": "design_family_health_design_system",
+      "source": "design_veylta_design_system",
       "target": "design_layout",
       "confidence_score": 1.0
     },
@@ -14427,7 +14427,7 @@
       "source_file": "DESIGN.md",
       "source_location": "L53",
       "weight": 1.0,
-      "source": "design_family_health_design_system",
+      "source": "design_veylta_design_system",
       "target": "design_motion",
       "confidence_score": 1.0
     },
@@ -14437,7 +14437,7 @@
       "source_file": "DESIGN.md",
       "source_location": "L32",
       "weight": 1.0,
-      "source": "design_family_health_design_system",
+      "source": "design_veylta_design_system",
       "target": "design_typography",
       "confidence_score": 1.0
     },
@@ -14545,7 +14545,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L55",
+      "source_location": "L58",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_api",
@@ -14555,7 +14555,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_architecture",
@@ -14565,7 +14565,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L55",
+      "source_location": "L58",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_er_model",
@@ -14575,7 +14575,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L125",
+      "source_location": "L128",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_license_policy",
@@ -14585,7 +14585,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L54",
+      "source_location": "L57",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_product",
@@ -14595,7 +14595,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L56",
+      "source_location": "L59",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_slices",
@@ -14605,7 +14605,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L55",
+      "source_location": "L58",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_threat_model",
@@ -14618,16 +14618,16 @@
       "source_location": "L1",
       "weight": 1.0,
       "source": "readme",
-      "target": "readme_family_health",
+      "target": "readme_veylta",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L41",
+      "source_location": "L44",
       "weight": 1.0,
-      "source": "readme_family_health",
+      "source": "readme_veylta",
       "target": "readme_intended_architecture",
       "confidence_score": 1.0
     },
@@ -14635,9 +14635,9 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L121",
+      "source_location": "L124",
       "weight": 1.0,
-      "source": "readme_family_health",
+      "source": "readme_veylta",
       "target": "readme_license",
       "confidence_score": 1.0
     },
@@ -14645,9 +14645,9 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L58",
+      "source_location": "L61",
       "weight": 1.0,
-      "source": "readme_family_health",
+      "source": "readme_veylta",
       "target": "readme_local_development",
       "confidence_score": 1.0
     },
@@ -14655,9 +14655,9 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L31",
+      "source_location": "L34",
       "weight": 1.0,
-      "source": "readme_family_health",
+      "source": "readme_veylta",
       "target": "readme_product_principles",
       "confidence_score": 1.0
     },
@@ -14665,9 +14665,9 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L11",
+      "source_location": "L14",
       "weight": 1.0,
-      "source": "readme_family_health",
+      "source": "readme_veylta",
       "target": "readme_project_status",
       "confidence_score": 1.0
     },
@@ -14675,9 +14675,9 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L114",
+      "source_location": "L117",
       "weight": 1.0,
-      "source": "readme_family_health",
+      "source": "readme_veylta",
       "target": "readme_safety_and_data_policy",
       "confidence_score": 1.0
     },
@@ -16213,5 +16213,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "506b099050b9225b567e7a856e56bab6aa889df5"
+  "built_at_commit": "419918411e954e2ab3f40314da6f1f7ad7ba56ff"
 }

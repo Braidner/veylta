@@ -1,4 +1,4 @@
-import { FamilyHealthApp } from "../../../../components/family-health-app";
+import { VeyltaApp } from "../../../../components/veylta-app";
 
 interface ProfilePageProps {
   params: Promise<{ familyId: string; profileId: string }>;
@@ -6,5 +6,5 @@ interface ProfilePageProps {
 
 export default async function ProfilePage({ params }: ProfilePageProps) {
   const { familyId, profileId } = await params;
-  return <FamilyHealthApp requestedFamilyId={familyId} requestedProfileId={profileId} />;
+  return <VeyltaApp requestedFamilyId={familyId} requestedProfileId={profileId} />;
 }

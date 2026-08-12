@@ -1,4 +1,4 @@
-import { type HealthStatus, HTTP_API_VERSION } from "@family-health/contracts";
+import { type HealthStatus, HTTP_API_VERSION } from "@veylta/contracts";
 import Fastify, { type FastifyError, type FastifyInstance, LogController } from "fastify";
 import type { ReadinessProbe } from "./database/pool.js";
 

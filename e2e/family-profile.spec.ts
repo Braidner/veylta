@@ -21,7 +21,7 @@ async function registerDemoFamily(page: Page) {
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
-  await expect(page).toHaveTitle(`${names.profile} — Family Health`);
+  await expect(page).toHaveTitle(`${names.profile} — Veylta`);
 
   return names;
 }
@@ -46,13 +46,13 @@ test("a synthetic family session survives reload and keeps the active profile in
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: names.dependent })).toBeVisible();
-  await expect(page).toHaveTitle(`${names.dependent} — Family Health`);
+  await expect(page).toHaveTitle(`${names.dependent} — Veylta`);
   await expect(page.getByLabel("Активный профиль")).toHaveValue(/^[0-9a-f-]{36}$/);
 
   await page.getByLabel("Активный профиль").selectOption({ label: names.profile });
   await expect(page).toHaveURL(ownerProfileUrl);
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
-  await expect(page).toHaveTitle(`${names.profile} — Family Health`);
+  await expect(page).toHaveTitle(`${names.profile} — Veylta`);
 
   await page.getByRole("button", { name: "Выйти" }).click();
 

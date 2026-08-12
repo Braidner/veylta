@@ -23,7 +23,7 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm --filter @family-health/api dev:api",
+      command: "pnpm --filter @veylta/api dev:api",
       url: "http://127.0.0.1:4301/healthz",
       env: {
         DEMO_REGISTRATION_ENABLED: "true",
@@ -33,13 +33,13 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: "pnpm --filter @family-health/api dev:worker",
+      command: "pnpm --filter @veylta/api dev:worker",
       url: "http://127.0.0.1:4302/healthz",
       reuseExistingServer,
       timeout: 30_000,
     },
     {
-      command: "pnpm --filter @family-health/web dev",
+      command: "pnpm --filter @veylta/web dev",
       url: "http://127.0.0.1:4300",
       reuseExistingServer,
       timeout: 60_000,

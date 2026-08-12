@@ -16,3 +16,14 @@ test("the runnable foundation exposes web, API, worker, and SQLite readiness", a
   expect(worker.ok()).toBe(true);
   await expect(worker.json()).resolves.toMatchObject({ status: "ok", service: "worker" });
 });
+
+test("the synthetic-only safety marker remains fully visible on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/");
+
+  const marker = page.getByText("Только синтетика", { exact: true });
+  await expect(marker).toBeVisible();
+  await expect
+    .poll(() => marker.evaluate((element) => element.scrollWidth <= element.clientWidth))
+    .toBe(true);
+});

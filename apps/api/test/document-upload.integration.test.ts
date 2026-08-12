@@ -8,7 +8,7 @@ import {
   type DemoRegistrationResponse,
   DOCUMENT_CONTRACT_VERSION,
   MAX_SYNTHETIC_PDF_BYTES,
-} from "@family-health/contracts";
+} from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../src/app.js";
 import { migrateUp } from "../src/database/migrations.js";
@@ -48,7 +48,7 @@ function multipartFile(
   bytes: Buffer,
   options: MultipartOptions = {},
 ): { body: Buffer; contentType: string } {
-  const boundary = `family-health-${randomUUID()}`;
+  const boundary = `veylta-${randomUUID()}`;
   const filename = options.filename ?? "synthetic-result.pdf";
   const contentType = options.contentType ?? "application/pdf";
   const chunks = [
@@ -80,7 +80,7 @@ function multipartFile(
 }
 
 function multipartWithoutFile(): { body: Buffer; contentType: string } {
-  const boundary = `family-health-${randomUUID()}`;
+  const boundary = `veylta-${randomUUID()}`;
   return {
     body: Buffer.from(
       `--${boundary}\r\nContent-Disposition: form-data; name="unexpected"\r\n\r\nvalue\r\n--${boundary}--\r\n`,
@@ -90,7 +90,7 @@ function multipartWithoutFile(): { body: Buffer; contentType: string } {
 }
 
 function syntheticPdf(label: string, minimumBytes = 0): Buffer {
-  const source = `%PDF-1.7\n% FAMILY HEALTH SYNTHETIC ONLY\n${label}\n%%EOF\n`;
+  const source = `%PDF-1.7\n% VEYLTA SYNTHETIC ONLY\n${label}\n%%EOF\n`;
   return Buffer.from(source.padEnd(minimumBytes, "S"));
 }
 
@@ -102,7 +102,7 @@ function createTestApp(
 ) {
   const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
   const familyService = createFamilyService(database, {
-    cookieName: "fh_session",
+    cookieName: "veylta_session",
     secureCookie: false,
     sessionTtlSeconds: 3_600,
   });
@@ -223,7 +223,7 @@ async function withTestContext(
   maxPdfBytes = MAX_SYNTHETIC_PDF_BYTES,
   storageFactory: (root: string) => ObjectStorage = createLocalObjectStorage,
 ): Promise<void> {
-  const testRoot = await mkdtemp(join(tmpdir(), "family-health-upload-"));
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-upload-"));
   const storageRoot = join(testRoot, "storage");
   const database = createDatabase(join(testRoot, "test.sqlite"));
   await migrateUp(database);

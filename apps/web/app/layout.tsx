@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Family Health",
+  title: "Veylta",
   description: "Семейная история здоровья с проверяемыми источниками",
 };
 

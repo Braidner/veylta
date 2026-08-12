@@ -20,7 +20,7 @@ import { defineObjectStorageContract } from "./object-storage.contract.js";
 import { createObjectStorageKey, ObjectStorageSecurityError } from "./object-storage.js";
 
 async function createTemporaryRoot(): Promise<string> {
-  return mkdtemp(join(tmpdir(), "family-health-object-storage-"));
+  return mkdtemp(join(tmpdir(), "veylta-object-storage-"));
 }
 
 async function streamToText(stream: Readable): Promise<string> {

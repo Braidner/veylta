@@ -4,9 +4,9 @@ import { existsSync } from "node:fs";
 if (existsSync(".env")) process.loadEnvFile(".env");
 
 const commands = [
-  ["api", ["--filter", "@family-health/api", "dev:api"], { DEMO_REGISTRATION_ENABLED: "true" }],
-  ["worker", ["--filter", "@family-health/api", "dev:worker"], {}],
-  ["web", ["--filter", "@family-health/web", "dev"], {}],
+  ["api", ["--filter", "@veylta/api", "dev:api"], { DEMO_REGISTRATION_ENABLED: "true" }],
+  ["worker", ["--filter", "@veylta/api", "dev:worker"], {}],
+  ["web", ["--filter", "@veylta/web", "dev"], {}],
 ];
 
 const children = commands.map(([name, args, defaults]) => {

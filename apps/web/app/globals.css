@@ -784,14 +784,17 @@ h3 {
 }
 
 @media (max-width: 520px) {
+  .workspace-bar {
+    padding-inline: 16px;
+  }
+
   .workspace-actions {
     gap: 8px;
   }
 
   .environment {
-    max-width: 112px;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    padding-inline: 8px;
+    font-size: 0.75rem;
     white-space: nowrap;
   }
 

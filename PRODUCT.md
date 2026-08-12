@@ -16,7 +16,7 @@ Users may be reviewing unfamiliar medical language while worried or short on tim
 
 ## Product Purpose
 
-Family Health keeps immutable source documents together with structured, longitudinal health data. It helps a family upload a result, review uncertain extraction, confirm the facts, and understand how a measurement changed over time without presenting itself as a clinician or an electronic health record.
+Veylta keeps immutable source documents together with structured, longitudinal health data. It helps a family upload a result, review uncertain extraction, confirm the facts, and understand how a measurement changed over time without presenting itself as a clinician or an electronic health record.
 
 Success means a user can verify every displayed medical value against a specific page and fragment of the source, correct uncertain extraction without destroying the raw value, and export their information without vendor lock-in.
 

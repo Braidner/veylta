@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
-import { MAX_SYNTHETIC_PDF_BYTES } from "@family-health/contracts";
+import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
 
 function findProjectRoot(start: string): string {
   let candidate = start;
@@ -50,7 +50,7 @@ function isLoopback(host: string): boolean {
 }
 
 function databasePath(): string {
-  const configured = process.env.DATABASE_PATH ?? ".local/family-health.sqlite";
+  const configured = process.env.DATABASE_PATH ?? ".local/veylta.sqlite";
   if (configured === ":memory:") {
     throw new Error("DATABASE_PATH must point to a persistent SQLite file");
   }

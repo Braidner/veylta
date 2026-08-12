@@ -11,7 +11,7 @@ const config = loadConfig();
 const database = createDatabase(config.databasePath);
 const app = buildApp({ readiness: databaseReadiness(database) });
 const familyService = createFamilyService(database, {
-  cookieName: "fh_session",
+  cookieName: "veylta_session",
   secureCookie: config.secureSessionCookie,
   sessionTtlSeconds: config.sessionTtlSeconds,
 });

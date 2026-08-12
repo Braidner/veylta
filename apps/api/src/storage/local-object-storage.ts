@@ -14,7 +14,7 @@ import {
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable, Transform, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { MAX_SYNTHETIC_PDF_BYTES, OBJECT_STORAGE_CONTRACT_VERSION } from "@family-health/contracts";
+import { MAX_SYNTHETIC_PDF_BYTES, OBJECT_STORAGE_CONTRACT_VERSION } from "@veylta/contracts";
 import {
   assertContentType,
   assertMaxBytes,

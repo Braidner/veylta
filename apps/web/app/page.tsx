@@ -1,5 +1,5 @@
-import { FamilyHealthApp } from "./components/family-health-app";
+import { VeyltaApp } from "./components/veylta-app";
 
 export default function Home() {
-  return <FamilyHealthApp />;
+  return <VeyltaApp />;
 }

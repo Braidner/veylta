@@ -8,8 +8,8 @@ import type {
   ProfileCreateResponse,
   SessionFamily,
   SessionResponse,
-} from "@family-health/contracts";
-import { MAX_SYNTHETIC_PDF_BYTES } from "@family-health/contracts";
+} from "@veylta/contracts";
+import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
@@ -89,17 +89,17 @@ function documentPath(familyId: string, profileId: string, documentId: string): 
   return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }
 
-interface FamilyHealthAppProps {
+interface VeyltaAppProps {
   requestedFamilyId?: string;
   requestedProfileId?: string;
   requestedDocumentId?: string;
 }
 
-export function FamilyHealthApp({
+export function VeyltaApp({
   requestedFamilyId,
   requestedProfileId,
   requestedDocumentId,
-}: FamilyHealthAppProps) {
+}: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
   const [action, setAction] = useState<"register" | "add-profile" | "logout" | null>(null);
@@ -216,8 +216,7 @@ export function FamilyHealthApp({
       ? findProfileContext(session, requestedContext.familyId, requestedContext.profileId)
       : undefined;
   const redirectProfile = session === undefined ? undefined : firstProfile(session);
-  const pageTitle =
-    context === undefined ? "Family Health" : `${context.profile.displayName} — Family Health`;
+  const pageTitle = context === undefined ? "Veylta" : `${context.profile.displayName} — Veylta`;
 
   useEffect(() => {
     document.title = pageTitle;
@@ -229,9 +228,9 @@ export function FamilyHealthApp({
         Перейти к содержанию
       </a>
       <header className="workspace-bar">
-        <Link className="wordmark" href="/" aria-label="Family Health — главная">
-          <span aria-hidden="true">FH</span>
-          Family Health
+        <Link className="wordmark" href="/" aria-label="Veylta — главная">
+          <span aria-hidden="true">V</span>
+          Veylta
         </Link>
         <div className="workspace-actions">
           <span className="environment">Только синтетика</span>
@@ -295,7 +294,7 @@ export function FamilyHealthApp({
 function LoadingScreen({ copy = "Открываем семейное пространство…" }: { copy?: string }) {
   return (
     <section className="state-shell" aria-live="polite" aria-busy="true">
-      <p className="context-line">Family Health</p>
+      <p className="context-line">Veylta</p>
       <div className="skeleton skeleton--title" aria-hidden="true" />
       <div className="skeleton skeleton--copy" aria-hidden="true" />
       <p className="state-copy">{copy}</p>
@@ -759,8 +758,8 @@ function DocumentView({ family, profile, documentId }: DocumentViewProps) {
 
   const title =
     state.kind === "ready"
-      ? `${state.document.originalFilename} — ${profile.displayName} — Family Health`
-      : `${profile.displayName} — Family Health`;
+      ? `${state.document.originalFilename} — ${profile.displayName} — Veylta`
+      : `${profile.displayName} — Veylta`;
   useEffect(() => {
     document.title = title;
   }, [title]);

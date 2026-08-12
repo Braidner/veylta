@@ -32,7 +32,7 @@ importers:
 
   apps/api:
     dependencies:
-      '@family-health/contracts':
+      '@veylta/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       '@fastify/multipart':
@@ -44,7 +44,7 @@ importers:
 
   apps/web:
     dependencies:
-      '@family-health/contracts':
+      '@veylta/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
       next:

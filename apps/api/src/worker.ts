@@ -1,5 +1,5 @@
 import { createServer } from "node:http";
-import { type HealthStatus, HTTP_API_VERSION } from "@family-health/contracts";
+import { type HealthStatus, HTTP_API_VERSION } from "@veylta/contracts";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./database/pool.js";
 

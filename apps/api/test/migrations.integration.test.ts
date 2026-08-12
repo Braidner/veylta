@@ -16,7 +16,7 @@ async function tableExists(database: Database, name: string): Promise<boolean> {
 }
 
 test("all migrations apply, roll back in order, and reapply", async () => {
-  const testRoot = await mkdtemp(join(tmpdir(), "family-health-migrations-"));
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-migrations-"));
   const database = createDatabase(join(testRoot, "test.sqlite"));
   try {
     await migrateUp(database);

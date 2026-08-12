@@ -1,8 +1,11 @@
-# Family Health
+# Veylta
 
-Family Health is an open-source, family-first medical record for keeping source
+Veylta is an open-source, family-first medical record for keeping source
 documents, reviewing extracted laboratory facts, and following confirmed
 measurements over time.
+
+The coined name evokes a protective *veil*: private by default, with every
+derived claim still traceable to its source. It is pronounced “VAYL-ta”.
 
 The product helps a family understand its own health history and prepare for a
 conversation with a clinician. It does **not** diagnose disease, prescribe or
@@ -70,7 +73,7 @@ pnpm dev
 The web app is available at <http://127.0.0.1:4300>, the API at
 <http://127.0.0.1:4301>, and worker health at <http://127.0.0.1:4302>. `pnpm dev`
 starts all three application processes. Structured state remains in
-`.local/family-health.sqlite` and document bytes remain below `.local/storage`
+`.local/veylta.sqlite` and document bytes remain below `.local/storage`
 across process restarts. The SQLite connection enables foreign keys, a bounded
 busy timeout, and WAL mode. Defaults match `.env.example`; copy it to `.env`
 only when a local override is needed.
@@ -120,6 +123,6 @@ standards without a separate audit.
 
 ## License
 
-Family Health's original code and documentation are licensed under the
+Veylta's original code and documentation are licensed under the
 [MIT License](LICENSE). Dependency and integration rules are defined in
 [docs/license-policy.md](docs/license-policy.md).

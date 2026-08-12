@@ -20,7 +20,7 @@ external database service.
 ## Decision
 
 Use one local SQLite database selected by `DATABASE_PATH`, defaulting to
-`.local/family-health.sqlite`. Keep SQL behind the small application-owned
+`.local/veylta.sqlite`. Keep SQL behind the small application-owned
 database adapter and keep ordered up/down migrations in `db/migrations`.
 
 Every connection enables:

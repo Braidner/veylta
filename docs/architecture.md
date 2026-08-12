@@ -2,7 +2,7 @@
 
 ## Decision summary
 
-Family Health uses a small TypeScript monorepo with three deployable processes:
+Veylta uses a small TypeScript monorepo with three deployable processes:
 a Next.js web application, a Fastify API, and a worker. Embedded SQLite through
 Node.js `node:sqlite` stores domain state, explicit schema migrations, audit
 events, and—beginning with Task 5—durable idempotent jobs. Original documents
@@ -87,7 +87,7 @@ required. Shared code is extracted only when two real consumers need it.
 ### SQLite
 
 - Is the source of truth for structured state and, from Task 5, local job
-  coordination. The default file is `.local/family-health.sqlite`.
+  coordination. The default file is `.local/veylta.sqlite`.
 - Uses the SQLite runtime built into Node.js; no database server, container, ORM,
   or additional runtime package is required.
 - Enables foreign keys, a 5-second busy timeout, WAL journaling, and

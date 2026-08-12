@@ -1,5 +1,5 @@
 import type { Readable } from "node:stream";
-import type { OBJECT_STORAGE_CONTRACT_VERSION } from "@family-health/contracts";
+import type { OBJECT_STORAGE_CONTRACT_VERSION } from "@veylta/contracts";
 
 declare const objectStorageKeyBrand: unique symbol;
 

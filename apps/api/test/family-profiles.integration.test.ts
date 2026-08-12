@@ -41,7 +41,7 @@ function createTestApp(database: Database, demoRegistrationEnabled = true): Fast
   registerFamilyRoutes(
     app,
     createFamilyService(database, {
-      cookieName: "fh_session",
+      cookieName: "veylta_session",
       secureCookie: false,
       sessionTtlSeconds: 3_600,
     }),
@@ -55,7 +55,7 @@ async function createTestContext(demoRegistrationEnabled = true): Promise<{
   close(): Promise<void>;
   database: Database;
 }> {
-  const root = await mkdtemp(join(tmpdir(), "family-health-family-test-"));
+  const root = await mkdtemp(join(tmpdir(), "veylta-family-test-"));
   const database = createDatabase(join(root, "test.sqlite"));
   try {
     await migrateUp(database);

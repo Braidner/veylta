@@ -1,16 +1,16 @@
 # Graph Report - health  (2026-08-12)
 
 ## Corpus Check
-- 67 files · ~32,807 words
+- 67 files · ~32,850 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 662 nodes · 927 edges · 42 communities (37 shown, 5 thin omitted)
+- 662 nodes · 927 edges · 37 communities (32 shown, 5 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 1 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `506b0990`
+- Built from commit: `41991841`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -29,7 +29,6 @@
 - [[_COMMUNITY_Community 11|Community 11]]
 - [[_COMMUNITY_Community 12|Community 12]]
 - [[_COMMUNITY_Community 13|Community 13]]
-- [[_COMMUNITY_Community 14|Community 14]]
 - [[_COMMUNITY_Community 15|Community 15]]
 - [[_COMMUNITY_Community 16|Community 16]]
 - [[_COMMUNITY_Community 17|Community 17]]
@@ -50,9 +49,6 @@
 - [[_COMMUNITY_Community 34|Community 34]]
 - [[_COMMUNITY_Community 35|Community 35]]
 - [[_COMMUNITY_Community 36|Community 36]]
-- [[_COMMUNITY_Community 37|Community 37]]
-- [[_COMMUNITY_Community 38|Community 38]]
-- [[_COMMUNITY_Community 40|Community 40]]
 - [[_COMMUNITY_Community 41|Community 41]]
 
 ## God Nodes (most connected - your core abstractions)
@@ -82,7 +78,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (42 total, 5 thin omitted)
+## Communities (37 total, 5 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.06
@@ -93,8 +89,8 @@ Cohesion: 0.05
 Nodes (40): devDependencies, @biomejs/biome, @playwright/test, tsx, @types/node, @types/react, @types/react-dom, typescript (+32 more)
 
 ### Community 2 - "Community 2"
-Cohesion: 0.22
-Nodes (9): Dependency allowlist, Exceptions, License policy, Medical data and repository contents, Prohibited core inclusion, Project license, Provider and data boundary, Review workflow (+1 more)
+Cohesion: 0.05
+Nodes (34): Dependency allowlist, Exceptions, License policy, Medical data and repository contents, Prohibited core inclusion, Project license, Provider and data boundary, Review workflow (+26 more)
 
 ### Community 3 - "Community 3"
 Cohesion: 0.07
@@ -106,7 +102,7 @@ Nodes (29): AgentRun, AuditEvent, Condition, MedicationStatement, AllergyIntoler
 
 ### Community 5 - "Community 5"
 Cohesion: 0.10
-Nodes (20): dependencies, @family-health/contracts, fastify, @fastify/multipart, license, name, private, scripts (+12 more)
+Nodes (20): dependencies, fastify, @fastify/multipart, @veylta/contracts, license, name, private, scripts (+12 more)
 
 ### Community 6 - "Community 6"
 Cohesion: 0.10
@@ -122,11 +118,11 @@ Nodes (16): compilerOptions, allowJs, esModuleInterop, exactOptionalPropertyType
 
 ### Community 9 - "Community 9"
 Cohesion: 0.12
-Nodes (15): dependencies, @family-health/contracts, next, react, react-dom, license, name, private (+7 more)
+Nodes (15): dependencies, next, react, react-dom, @veylta/contracts, license, name, private (+7 more)
 
 ### Community 10 - "Community 10"
-Cohesion: 0.22
-Nodes (9): First vertical slice, Task 1 — Product, architecture, safety, and license foundation, Task 2 — Runnable TypeScript foundation, Task 3 — Tenant-scoped family profile, Task 4 — Immutable local document upload, Task 5 — Idempotent deterministic extraction, Task 6 — Review and atomic observation confirmation, Task 7 — Indicator history and authorized source (+1 more)
+Cohesion: 0.14
+Nodes (13): Delivery rules, First-slice executable acceptance matrix, First vertical slice, Later MVP slices, Task 1 — Product, architecture, safety, and license foundation, Task 2 — Runnable TypeScript foundation, Task 3 — Tenant-scoped family profile, Task 4 — Immutable local document upload (+5 more)
 
 ### Community 11 - "Community 11"
 Cohesion: 0.15
@@ -140,17 +136,13 @@ Nodes (11): compilerOptions, allowJs, incremental, jsx, module, moduleResolution
 Cohesion: 0.18
 Nodes (10): Accessibility & Inclusion, Anti-references, Brand Personality, Design Principles, Platform, Positioning, Product, Product Purpose (+2 more)
 
-### Community 14 - "Community 14"
-Cohesion: 0.22
-Nodes (9): Acceptance outcomes, Explicitly deferred, First vertical slice, Full MVP direction, Product brief, Product evidence rules, Product principles, Purpose (+1 more)
-
 ### Community 15 - "Community 15"
 Cohesion: 0.20
 Nodes (9): allowed, exceptions, policy, projectRoot, rejected, report, result, reviewedExpressions (+1 more)
 
 ### Community 16 - "Community 16"
 Cohesion: 0.22
-Nodes (8): Color, Components, Content, Family Health Design System, Intent, Layout, Motion, Typography
+Nodes (8): Color, Components, Content, Intent, Layout, Motion, Typography, Veylta Design System
 
 ### Community 17 - "Community 17"
 Cohesion: 0.11
@@ -178,7 +170,7 @@ Nodes (6): compilerOptions, declaration, outDir, rootDir, extends, include
 
 ### Community 23 - "Community 23"
 Cohesion: 0.07
-Nodes (22): ApiError, DocumentInboxProps, documentPath(), DocumentView(), DocumentViewProps, DocumentViewState, FamilyHealthApp(), FamilyHealthAppProps (+14 more)
+Nodes (22): Status, SystemStatus(), ApiError, DocumentInboxProps, documentPath(), DocumentView(), DocumentViewProps, DocumentViewState (+14 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.12
@@ -208,18 +200,6 @@ Nodes (13): boolean(), databasePath(), envFile, integer(), isLoopback(), loadCon
 Cohesion: 0.14
 Nodes (15): DocumentService, IdempotencyConflictError, InvalidPdfSignatureError, UnsupportedDocumentTypeError, DocumentParams, documentParamsSchema, DocumentRouteOptions, InvalidIdempotencyKeyError (+7 more)
 
-### Community 37 - "Community 37"
-Cohesion: 0.22
-Nodes (9): Assets, First-slice security invariants, Production gate for real data, Scope and status, Security verification, Threat actors and failure modes, Threat model, Threats and required controls (+1 more)
-
-### Community 38 - "Community 38"
-Cohesion: 0.29
-Nodes (7): Family Health, Intended architecture, License, Local development, Product principles, Project status, Safety and data policy
-
-### Community 40 - "Community 40"
-Cohesion: 0.40
-Nodes (4): Delivery rules, First-slice executable acceptance matrix, Later MVP slices, Vertical slice plan
-
 ## Knowledge Gaps
 - **347 isolated node(s):** `name`, `version`, `private`, `license`, `type` (+342 more)
   These have ≤1 connection - possible missing edges or undocumented components.
@@ -228,7 +208,7 @@ Nodes (4): Delivery rules, First-slice executable acceptance matrix, Later MVP s
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `HTTP API contract` connect `Community 7` to `Community 39`?**
+- **Why does `HTTP API contract` connect `Community 7` to `Community 2`?**
   _High betweenness centrality (0.011) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
   _347 weakly-connected nodes found - possible documentation gaps or missing edges._
@@ -236,9 +216,9 @@ _Questions this graph is uniquely positioned to answer:_
   _Cohesion score 0.05924978687127025 - nodes in this community are weakly interconnected._
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.04878048780487805 - nodes in this community are weakly interconnected._
+- **Should `Community 2` be split into smaller, more focused modules?**
+  _Cohesion score 0.05128205128205128 - nodes in this community are weakly interconnected._
 - **Should `Community 3` be split into smaller, more focused modules?**
   _Cohesion score 0.07407407407407407 - nodes in this community are weakly interconnected._
 - **Should `Community 4` be split into smaller, more focused modules?**
   _Cohesion score 0.06666666666666667 - nodes in this community are weakly interconnected._
-- **Should `Community 5` be split into smaller, more focused modules?**
-  _Cohesion score 0.09523809523809523 - nodes in this community are weakly interconnected._

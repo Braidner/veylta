@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Family Health is a self-managed family medical record centered on original
+Veylta is a self-managed family medical record centered on original
 documents and longitudinal, confirmed health data. Its core job is to help a
 person answer:
 

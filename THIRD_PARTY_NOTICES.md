@@ -1,6 +1,6 @@
 # Third-party notices
 
-Family Health's own source is MIT-licensed. Installed dependencies retain their
+Veylta's own source is MIT-licensed. Installed dependencies retain their
 own licenses and notices. This file records reviewed obligations that are not
 fully represented by the root MIT license; package distributions remain the
 authoritative source for complete license text.
@@ -10,7 +10,7 @@ authoritative source for complete license text.
 `caniuse-lite` 1.0.30001809 is required transitively by Next.js and distributes
 browser compatibility data under CC-BY-4.0. Source and attribution information:
 <https://github.com/browserslist/caniuse-lite>. The package's `LICENSE` file is
-retained in every installed distribution. Family Health does not modify that
+retained in every installed distribution. Veylta does not modify that
 dataset.
 
 ## Apache-2.0 and dual-licensed tooling
@@ -20,7 +20,7 @@ dataset.
 - `@biomejs/biome` 2.5.8 and its platform CLI packages — MIT OR Apache-2.0.
 
 Their complete license and NOTICE material is retained in the installed package
-distribution. No third-party source is copied into the Family Health codebase.
+distribution. No third-party source is copied into the Veylta codebase.
 
 ## Exact permissive ISC reviews
 
