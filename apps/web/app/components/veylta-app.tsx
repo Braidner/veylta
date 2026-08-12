@@ -11,6 +11,7 @@ import type {
   ExtractedFactReviewStatus,
   FactReviewCommand,
   FactReviewResponse,
+  FamilyAuditLogResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
   ObservationHistoryResponse,
@@ -114,6 +115,10 @@ function observationHistoryPath(familyId: string, profileId: string): string {
 
 function indicatorsPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/indicators`;
+}
+
+function familyAuditLogPath(familyId: string): string {
+  return `/v1/families/${encodeURIComponent(familyId)}/audit-events`;
 }
 
 interface VeyltaAppProps {
@@ -675,8 +680,193 @@ function ProfileWorkspace({
               ) : null}
             </div>
           ) : null}
+          {family.role === "owner" ? (
+            <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
+          ) : null}
         </aside>
       </div>
+    </section>
+  );
+}
+
+type FamilyAuditLogItem = FamilyAuditLogResponse["items"][number];
+type FamilyAuditLogState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: readonly FamilyAuditLogItem[]; nextCursor: string | null }
+  | { kind: "error"; copy: string };
+
+function familyAuditActionCopy(action: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    "document.downloaded": "Открыт исходный документ",
+    "document.facts.opened": "Открыты извлечённые значения",
+    "document.processing.opened": "Открыт статус обработки",
+    "document.uploaded": "Добавлен документ",
+    "family.audit_log.opened": "Открыт журнал действий",
+    "family.created": "Создана семья",
+    "indicator.catalog.opened": "Открыт каталог показателей",
+    "indicator.series.opened": "Открыта динамика показателя",
+    "observation.history.opened": "Открыта история подтверждённых значений",
+    "profile.created": "Создан профиль",
+    "review.fact.confirmed": "Подтверждено извлечённое значение",
+    "review.fact.corrected": "Исправлено извлечённое значение",
+    "review.fact.rejected": "Отклонено извлечённое значение",
+  };
+  return labels[action] ?? "Выполнено действие в семейном пространстве";
+}
+
+function familyAuditResultCopy(result: FamilyAuditLogItem["result"]): string {
+  if (result === "success") return "Готово";
+  if (result === "denied") return "Отклонено";
+  return "Не завершено";
+}
+
+function familyAuditLogErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Журнал этого семейного пространства недоступен.";
+  }
+  return "Не удалось загрузить журнал. Данные семьи и документы не изменены.";
+}
+
+function FamilyAuditLogPanel({ familyId }: { familyId: string }) {
+  const [auditLog, setAuditLog] = useState<FamilyAuditLogState>({ kind: "loading" });
+  const [loadMorePending, setLoadMorePending] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const loadMoreController = useRef<AbortController | null>(null);
+
+  const loadFirstPage = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setAuditLog({ kind: "loading" });
+      setLoadMoreError(null);
+      try {
+        const response = await apiRequest<FamilyAuditLogResponse>(
+          familyAuditLogPath(familyId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) {
+          setAuditLog({ kind: "ready", items: response.items, nextCursor: response.nextCursor });
+        }
+      } catch (error) {
+        if (!signal?.aborted) setAuditLog({ kind: "error", copy: familyAuditLogErrorCopy(error) });
+      }
+    },
+    [familyId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadFirstPage(controller.signal);
+    return () => {
+      controller.abort();
+      loadMoreController.current?.abort();
+      loadMoreController.current = null;
+    };
+  }, [loadFirstPage]);
+
+  async function loadNextPage(): Promise<void> {
+    if (auditLog.kind !== "ready" || auditLog.nextCursor === null || loadMorePending) return;
+    const controller = new AbortController();
+    loadMoreController.current = controller;
+    setLoadMorePending(true);
+    setLoadMoreError(null);
+    try {
+      const response = await apiRequest<FamilyAuditLogResponse>(
+        `${familyAuditLogPath(familyId)}?cursor=${encodeURIComponent(auditLog.nextCursor)}`,
+        { signal: controller.signal },
+      );
+      if (!controller.signal.aborted) {
+        setAuditLog((current) =>
+          current.kind !== "ready"
+            ? current
+            : {
+                kind: "ready",
+                items: [...current.items, ...response.items],
+                nextCursor: response.nextCursor,
+              },
+        );
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) setLoadMoreError(familyAuditLogErrorCopy(error));
+    } finally {
+      if (loadMoreController.current === controller) {
+        loadMoreController.current = null;
+        setLoadMorePending(false);
+      }
+    }
+  }
+
+  return (
+    <section
+      className="family-audit-log rail-section"
+      aria-labelledby="family-audit-log-title"
+      aria-busy={auditLog.kind === "loading" || loadMorePending}
+    >
+      <p className="context-line">Прозрачность доступа</p>
+      <h2 id="family-audit-log-title">Журнал действий семьи</h2>
+      <p>
+        Только краткие технические события: без значений, текста документов, имён файлов и скрытых
+        служебных метаданных.
+      </p>
+
+      {auditLog.kind === "loading" ? (
+        <div className="family-audit-log__loading" aria-live="polite">
+          <div className="skeleton skeleton--audit-row" aria-hidden="true" />
+          <p>Загружаем журнал действий…</p>
+        </div>
+      ) : null}
+
+      {auditLog.kind === "error" ? (
+        <div className="family-audit-log__empty" role="status">
+          <p>{auditLog.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadFirstPage()}
+          >
+            Повторить
+          </button>
+        </div>
+      ) : null}
+
+      {auditLog.kind === "ready" && auditLog.items.length === 0 ? (
+        <div className="family-audit-log__empty" role="status">
+          <p>
+            Пока нет доступных событий. Новые безопасные действия появятся здесь без их содержимого.
+          </p>
+        </div>
+      ) : null}
+
+      {auditLog.kind === "ready" && auditLog.items.length > 0 ? (
+        <>
+          <ol className="family-audit-log__list" aria-label="Последние действия семьи">
+            {auditLog.items.map((item) => (
+              <li key={item.id}>
+                <strong>{familyAuditActionCopy(item.action)}</strong>
+                <span>
+                  {familyAuditResultCopy(item.result)} · {item.actor.displayName}
+                </span>
+                <time dateTime={item.occurredAt}>{formatDate(item.occurredAt)}</time>
+              </li>
+            ))}
+          </ol>
+          {auditLog.nextCursor !== null ? (
+            <div className="family-audit-log__more">
+              <button
+                className="button button--secondary"
+                type="button"
+                disabled={loadMorePending}
+                onClick={() => void loadNextPage()}
+              >
+                {loadMorePending ? "Загружаем…" : "Показать ещё"}
+              </button>
+              {loadMoreError === null ? null : (
+                <p className="form-error" role="alert">
+                  {loadMoreError}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }

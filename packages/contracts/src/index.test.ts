@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AUDIT_LOG_CONTRACT_VERSION,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
@@ -13,6 +14,7 @@ import {
   FACT_REVIEW_OUTCOMES,
   FAMILY_PROFILE_CONTRACT_VERSION,
   type FactReviewResponse,
+  type FamilyAuditLogResponse,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorSeriesResponse,
@@ -20,6 +22,7 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
   LAB_FACT_VALIDATION_ISSUES,
   type LabExtractionResult,
+  MAX_AUDIT_LOG_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_PDF_BYTES,
@@ -36,8 +39,30 @@ test("public contracts carry explicit versions", () => {
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
   assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
+  assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
+});
+
+test("family audit log omits internal metadata and exposes explicit pagination", () => {
+  assert.equal(MAX_AUDIT_LOG_PAGE_SIZE, 100);
+  const response = {
+    contractVersion: AUDIT_LOG_CONTRACT_VERSION,
+    items: [
+      {
+        id: "10000000-0000-4000-8000-000000000001",
+        action: "profile.created",
+        result: "success",
+        occurredAt: "2026-08-12T12:00:00.000Z",
+        actor: { id: "10000000-0000-4000-8000-000000000002", displayName: "Owner" },
+        resource: { type: "PatientProfile", id: "10000000-0000-4000-8000-000000000003" },
+      },
+    ],
+    nextCursor: null,
+  } as const satisfies FamilyAuditLogResponse;
+
+  assert.equal("metadata" in response.items[0], false);
+  assert.equal("correlationId" in response.items[0], false);
 });
 
 test("indicator series keeps exact units and its comparison state explicit", () => {

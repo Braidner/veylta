@@ -5,9 +5,11 @@ export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v1" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
+export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
+export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
 
 /**
  * The only canonical codes the deterministic synthetic parser can propose.
@@ -97,6 +99,32 @@ export interface ProfileListResponse {
 export interface ProfileCreateResponse {
   contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
   profile: PatientProfileSummary;
+}
+
+/**
+ * Minimal, payload-free family audit projection. Metadata and correlation IDs
+ * remain internal operational records and are intentionally never serialized.
+ */
+export interface FamilyAuditEvent {
+  readonly id: string;
+  readonly action: string;
+  readonly result: "success" | "denied" | "failed";
+  readonly occurredAt: string;
+  readonly actor: {
+    readonly id: string;
+    readonly displayName: string;
+  };
+  readonly resource: {
+    readonly type: string;
+    readonly id: string;
+  };
+}
+
+export interface FamilyAuditLogResponse {
+  readonly contractVersion: typeof AUDIT_LOG_CONTRACT_VERSION;
+  readonly items: readonly FamilyAuditEvent[];
+  /** Opaque cursor for the next page, or null on the final page. */
+  readonly nextCursor: string | null;
 }
 
 export interface SessionFamily extends FamilySummary {

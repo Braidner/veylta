@@ -1,8 +1,10 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
+  AUDIT_LOG_CONTRACT_VERSION,
   type DemoRegistrationRequest,
   type DemoRegistrationResponse,
   FAMILY_PROFILE_CONTRACT_VERSION,
+  type FamilyAuditLogResponse,
   type FamilyRole,
   type FamilySummary,
   type PatientProfileKind,
@@ -37,6 +39,11 @@ export interface DemoRegistrationResult {
   cookie: string;
 }
 
+export interface FamilyAuditLogQuery {
+  limit?: string;
+  cursor?: string;
+}
+
 export interface FamilyService {
   authenticate(cookieHeader: string | undefined): Promise<SessionActor | null>;
   clearSessionCookie(): string;
@@ -47,6 +54,12 @@ export interface FamilyService {
     correlationId: string,
   ): Promise<PatientProfileSummary>;
   getSession(actor: SessionActor): Promise<SessionResponse>;
+  getAuditLog(
+    actor: SessionActor,
+    familyId: string,
+    query: FamilyAuditLogQuery,
+    correlationId: string,
+  ): Promise<FamilyAuditLogResponse>;
   listProfiles(actor: SessionActor, familyId: string): Promise<PatientProfileSummary[]>;
   logout(actor: SessionActor, correlationId: string): Promise<void>;
   registerDemo(
@@ -70,12 +83,104 @@ interface ProfileRow {
   created_at: string;
 }
 
+interface AuditLogRow {
+  id: string;
+  action: string;
+  result: "success" | "denied" | "failed";
+  resource_type: string;
+  resource_id: string;
+  created_at: string;
+  actor_user_id: string;
+  actor_display_name: string;
+}
+
+interface AuditLogCursor {
+  id: string;
+  occurredAt: string;
+}
+
 interface Queryable {
   query<T extends object>(queryText: string, values?: readonly unknown[]): Promise<QueryResult<T>>;
 }
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
+}
+
+const canonicalUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const auditCursorPattern = /^[A-Za-z0-9_-]{1,500}$/;
+const auditFieldPattern = /^[A-Za-z][A-Za-z0-9_.-]{0,119}$/;
+const defaultAuditLogPageSize = 50;
+
+function auditLogLimit(value: string | undefined): number {
+  if (value === undefined) return defaultAuditLogPageSize;
+  if (!/^(?:[1-9][0-9]?|100)$/.test(value)) throw new DomainValidationError();
+  return Number(value);
+}
+
+function auditTimestamp(value: unknown): string {
+  if (typeof value !== "string") throw new DomainValidationError();
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new DomainValidationError();
+  }
+  return value;
+}
+
+function decodeAuditLogCursor(value: string | undefined): AuditLogCursor | null {
+  if (value === undefined) return null;
+  if (!auditCursorPattern.test(value)) throw new DomainValidationError();
+  try {
+    const decoded = Buffer.from(value, "base64url");
+    if (decoded.toString("base64url") !== value) throw new Error("Non-canonical cursor");
+    const parsed: unknown = JSON.parse(decoded.toString("utf8"));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid cursor object");
+    }
+    const record = parsed as Record<string, unknown>;
+    if (Object.keys(record).sort().join(",") !== "id,t,v" || record.v !== 1) {
+      throw new Error("Invalid cursor shape");
+    }
+    if (typeof record.id !== "string" || !canonicalUuidPattern.test(record.id)) {
+      throw new Error("Invalid cursor id");
+    }
+    return { id: record.id, occurredAt: auditTimestamp(record.t) };
+  } catch (error) {
+    if (error instanceof DomainValidationError) throw error;
+    throw new DomainValidationError();
+  }
+}
+
+function encodeAuditLogCursor(cursor: AuditLogCursor): string {
+  return Buffer.from(
+    JSON.stringify({ v: 1, t: cursor.occurredAt, id: cursor.id }),
+    "utf8",
+  ).toString("base64url");
+}
+
+function auditLogItem(row: AuditLogRow) {
+  if (
+    !canonicalUuidPattern.test(row.id) ||
+    !canonicalUuidPattern.test(row.actor_user_id) ||
+    !auditFieldPattern.test(row.action) ||
+    !auditFieldPattern.test(row.resource_type) ||
+    row.resource_id.length === 0 ||
+    row.resource_id.length > 200 ||
+    !["success", "denied", "failed"].includes(row.result) ||
+    row.actor_display_name.length === 0 ||
+    row.actor_display_name.length > 120
+  ) {
+    throw new DomainValidationError();
+  }
+  return {
+    id: row.id,
+    action: row.action,
+    result: row.result,
+    occurredAt: auditTimestamp(row.created_at),
+    actor: { id: row.actor_user_id, displayName: row.actor_display_name },
+    resource: { type: row.resource_type, id: row.resource_id },
+  };
 }
 
 function profileSummary(row: ProfileRow): PatientProfileSummary {
@@ -117,6 +222,7 @@ async function audit(
     resourceId: string;
     correlationId: string;
     createdAt: Date;
+    contractVersion?: string;
   },
 ): Promise<void> {
   await client.query(
@@ -132,7 +238,7 @@ async function audit(
       event.resourceType,
       event.resourceId,
       event.correlationId,
-      { contractVersion: FAMILY_PROFILE_CONTRACT_VERSION },
+      { contractVersion: event.contractVersion ?? FAMILY_PROFILE_CONTRACT_VERSION },
       event.createdAt,
     ],
   );
@@ -258,6 +364,51 @@ export function createFamilyService(
           user: { id: actor.userId, displayName: actor.displayName },
           families,
         };
+      });
+    },
+
+    async getAuditLog(actor, familyId, query, correlationId) {
+      const normalizedFamilyId = familyId.toLowerCase();
+      const limit = auditLogLimit(query.limit);
+      return inTransaction(database, async (client) => {
+        await requireOwner(client, actor, normalizedFamilyId);
+        const cursor = decodeAuditLogCursor(query.cursor);
+        const result = await client.query<AuditLogRow>(
+          `SELECT e.id, e.action, e.result, e.resource_type, e.resource_id, e.created_at,
+                  e.actor_user_id, u.display_name AS actor_display_name
+             FROM audit_events e
+             JOIN users u ON u.id = e.actor_user_id
+            WHERE e.family_id = $1
+              AND (
+                $2 IS NULL
+                OR e.created_at < $2
+                OR (e.created_at = $2 AND e.id < $3)
+              )
+            ORDER BY e.created_at DESC, e.id DESC
+            LIMIT $4`,
+          [normalizedFamilyId, cursor?.occurredAt ?? null, cursor?.id ?? null, limit + 1],
+        );
+        const items = result.rows.slice(0, limit).map(auditLogItem);
+        const last = items.at(-1);
+        const response: FamilyAuditLogResponse = {
+          contractVersion: AUDIT_LOG_CONTRACT_VERSION,
+          items,
+          nextCursor:
+            result.rows.length > limit && last !== undefined
+              ? encodeAuditLogCursor({ id: last.id, occurredAt: last.occurredAt })
+              : null,
+        };
+        await audit(client, {
+          familyId: normalizedFamilyId,
+          actorUserId: actor.userId,
+          action: "family.audit_log.opened",
+          resourceType: "Family",
+          resourceId: normalizedFamilyId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: AUDIT_LOG_CONTRACT_VERSION,
+        });
+        return response;
       });
     },
 

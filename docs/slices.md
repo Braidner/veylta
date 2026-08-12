@@ -255,6 +255,21 @@ OCR, and that local recognition makes no network request. Provenance records
 the local OCR method/version. Exact engine, trained-data, renderer, and install
 script policy are reviewed under the MIT boundary.
 
+## Task 12 — Owner-only payload-free audit log
+
+Commit intent: `feat: add owner-only family audit log`
+
+- `audit-log/v1` projects only existing event id/action/result/time plus actor
+  and resource selectors; metadata, correlation IDs, filenames, text, and
+  medical values remain internal.
+- Owner-only family authorization, strict query parsing, opaque keyset cursor,
+  private response caching, and a payload-free read audit are covered by
+  integration tests.
+- The profile UI places a compact, paginated activity log in the owner rail,
+  with loading, empty, error, and mobile layouts.
+- This task creates no consent grants and does not grant medical-data access to
+  adult members or caregivers.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
@@ -264,7 +279,8 @@ commit chain:
    expansion beyond the delivered local English scanned-PDF fallback.
 2. Broader classification/extraction with provider interfaces and strict schemas.
 3. Evidence-backed versioned summary and carefully bounded recommendations.
-4. Full role/consent UX and audit-log view.
+4. Full role/consent UX. The delivered owner-only `audit-log/v1` view remains
+   read-only and does not implement grants, invitations, or caregiver access.
 5. Portable export, controlled deletion, backup, and verified restore.
 6. FHIR R4 mappings and Bundle import/export at the system edge.
 

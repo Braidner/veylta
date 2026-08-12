@@ -34,6 +34,9 @@ The full first slice remains deliberately narrow:
 8. compare compatible, confirmed synthetic indicators by exact code and source
    unit, with an accessible chart and no clinical assessment (Task 9,
    delivered).
+9. let the family owner inspect a paginated, payload-free activity log; it
+   exposes only action, result, time, actor, and resource selector (Task 12,
+   delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
 exchange, export/backup, and the rest of the full MVP are explicitly deferred. The

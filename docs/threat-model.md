@@ -117,6 +117,10 @@ the family's trust boundary merely because it exposes an API.
   fact has such a final decision.
 - State changes and medical persistence are idempotent and transactional.
 - Logs, tests, and audit metadata contain no document bodies or medical values.
+- The delivered family audit-log read is owner-only, tenant-scoped, paginated,
+  and payload-free; it serializes no metadata/correlation IDs and records its
+  own payload-free access event. Consent and broader role visibility remain
+  default-deny until their dedicated lifecycle is implemented.
 
 ## Production gate for real data
 

@@ -315,6 +315,11 @@ still records its parser/schema version and timing.
 - `action`, `resource_type`, `resource_id`, `result`
 - request/job correlation ID, timestamp, minimal non-medical metadata
 
+The physical SQLite subset makes audit events append-only: `UPDATE` and
+`DELETE` are rejected by triggers. Owner-only `audit-log/v1` projects just the
+event id, action, result, timestamp, actor, and resource selector; correlation
+and metadata stay internal.
+
 Audit events must not copy document bytes, page text, source fragments, values,
 units, secrets, session tokens, or signed URLs.
 

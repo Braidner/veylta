@@ -79,8 +79,13 @@ The first slice proves one complete and safe path with synthetic data:
 10. The two explicit synthetic analytes receive deterministic demonstration
     codes. A profile catalog and a compact chart compare only confirmed values
     with an identical code and exact source unit (Task 9, delivered).
+11. The family owner can inspect a compact technical activity log. It lists
+    only action, result, time, actor, and resource selector; it never exposes
+    audit metadata, document content, filenames, source fragments, or medical
+    values (Task 12, delivered).
 
-The implementation currently reaches step 9. A document is uploaded as
+The implemented synthetic record path reaches step 10, and the separate
+owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
 `validation`. Successful synthetic extraction ends at `awaiting_review`; a
@@ -132,7 +137,7 @@ independently reviewed.
 
 Later slices may add JPEG/PNG ingestion, a broader document classifier and
 extraction schema, evidence-backed summaries
-and safe recommendations, audit views, export, and backup/restore. Provider
+and safe recommendations, full role/consent management, export, and backup/restore. Provider
 boundaries must support local and external OCR/LLM implementations without
 coupling the core domain to one vendor.
 

@@ -62,6 +62,18 @@ test("a synthetic family session survives reload and keeps the active profile in
   );
 });
 
+test("an owner can inspect the payload-free family activity log", async ({ page }) => {
+  await registerDemoFamily(page);
+
+  const auditLog = page.getByRole("region", { name: "Журнал действий семьи" });
+  await expect(auditLog).toBeVisible();
+  await expect(auditLog.getByRole("heading", { name: "Журнал действий семьи" })).toBeVisible();
+  await expect(auditLog.getByText("Создана семья")).toBeVisible();
+  await expect(auditLog.getByText("Создан профиль")).toBeVisible();
+  await expect(auditLog).not.toContainText("metadata");
+  await expect(auditLog).not.toContainText("correlation");
+});
+
 test("an unavailable active profile does not disclose profile data", async ({ page }) => {
   const names = await registerDemoFamily(page);
 

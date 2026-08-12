@@ -11,7 +11,7 @@ import {
   requireTrustedOrigin,
   sendDomainError,
 } from "../http/route-helpers.js";
-import type { FamilyService } from "./family-service.js";
+import type { FamilyAuditLogQuery, FamilyService } from "./family-service.js";
 
 interface FamilyParams {
   familyId: string;
@@ -33,6 +33,14 @@ const familyParamsSchema = {
   additionalProperties: false,
   required: ["familyId"],
   properties: { familyId: canonicalUuidSchema },
+} as const;
+const auditLogQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    limit: { type: "string", pattern: "^(?:[1-9][0-9]?|100)$" },
+    cursor: { type: "string", minLength: 1, maxLength: 500, pattern: "^[A-Za-z0-9_-]+$" },
+  },
 } as const;
 
 export function registerFamilyRoutes(
@@ -87,6 +95,23 @@ export function registerFamilyRoutes(
     await service.logout(actor, request.id);
     reply.header("set-cookie", service.clearSessionCookie()).code(204).send();
   });
+
+  app.get<{ Params: FamilyParams; Querystring: FamilyAuditLogQuery }>(
+    "/v1/families/:familyId/audit-events",
+    { schema: { params: familyParamsSchema, querystring: auditLogQuerySchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        reply.send(
+          await service.getAuditLog(actor, request.params.familyId, request.query, request.id),
+        );
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
 
   app.get<{ Params: FamilyParams }>(
     "/v1/families/:familyId/profiles",

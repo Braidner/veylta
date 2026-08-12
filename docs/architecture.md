@@ -16,6 +16,9 @@ separate from explicit, idempotent fact-review decisions. The separate read-only
 that were explicitly confirmed or corrected. `indicator-series/v1` is a second
 read boundary that groups only the deterministic synthetic canonical codes and
 requires an exact source unit before it returns a comparable series.
+`audit-log/v1` is a third, owner-only and payload-free boundary: it projects
+only audit action/result/time/actor/resource selectors and never exposes event
+metadata or medical/document payloads.
 
 The first vertical slice uses a deterministic, versioned parser for one
 synthetic PDF format. It reads the text layer first and, only when that layer is
@@ -98,6 +101,9 @@ required. Shared code is extracted only when two real consumers need it.
   keyset pagination, and audits the payload-free history access. The returned
   source-document path remains a relative selector: the download endpoint
   performs authorization again.
+- Reads `audit-log/v1` only after an active owner check on the requested family;
+  it uses opaque keyset pagination, adds one payload-free access event per
+  successful page, and does not expose audit metadata or correlation IDs.
 - Proxies local document reads after authorization.
 
 ### Worker

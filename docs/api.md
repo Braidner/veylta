@@ -3,7 +3,7 @@
 ## Status and conventions
 
 This document defines the implemented `v1` surface for the first vertical slice,
-including the `observation-history/v1` read boundary.
+including the `observation-history/v1` and `audit-log/v1` read boundaries.
 
 - Base path: `/v1`
 - JSON for structured requests/responses; `multipart/form-data` only for upload.
@@ -126,6 +126,36 @@ Returns only profiles the actor may access. It is not an inventory of all
 profiles merely because the actor is a family member. Task 3 intentionally
 implements only the active owner capability. Adult/caregiver grants remain
 default-deny until their explicit consent lifecycle is implemented.
+
+### `GET /v1/families/{familyId}/audit-events`
+
+Returns the owner-only `audit-log/v1` activity projection for one family. It is
+always `Cache-Control: no-store`, uses newest-first keyset pagination, and
+accepts only optional `limit` (`1`–`100`) and opaque `cursor` query parameters.
+An active adult member or caregiver receives the same non-disclosing `404` as a
+different family; this route does not grant profile or document access.
+
+```json
+{
+  "contractVersion": "audit-log/v1",
+  "items": [
+    {
+      "id": "audit_event_placeholder",
+      "action": "profile.created",
+      "result": "success",
+      "occurredAt": "2026-08-12T12:00:00.000Z",
+      "actor": { "id": "user_placeholder", "displayName": "Synthetic owner" },
+      "resource": { "type": "PatientProfile", "id": "profile_placeholder" }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+The response intentionally omits audit metadata, correlation IDs, filenames,
+document bytes/text, page fragments, and medical values. Every successful page
+read records one new payload-free `family.audit_log.opened` event with only the
+`audit-log/v1` contract version.
 
 ## Document upload and status
 

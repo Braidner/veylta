@@ -229,6 +229,163 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
   }
 });
 
+test("an owner reads a paginated payload-free family audit log without a cross-family oracle", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Audit Owner",
+      familyName: "Audit Family",
+      profileName: "Audit Profile",
+    });
+    const outsiderRegistration = await register(app, {
+      displayName: "Audit Outsider",
+      familyName: "Other Audit Family",
+      profileName: "Other Audit Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    assert.equal(outsiderRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+    const session = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(session.statusCode, 200);
+    const ownerUserId = session.json().user.id as string;
+
+    for (const [index, result] of ["success", "denied", "failed"].entries()) {
+      await database.query(
+        `INSERT INTO audit_events
+           (id, family_id, actor_user_id, action, resource_type, resource_id, result,
+            correlation_id, metadata, created_at)
+         VALUES ($1, $2, $3, $4, 'SyntheticResource', $5, $6, $7, $8, $9)`,
+        [
+          randomUUID(),
+          owner.family.id,
+          ownerUserId,
+          `synthetic.audit.${index + 1}`,
+          `resource-${index + 1}`,
+          result,
+          `correlation-secret-${index + 1}`,
+          { secret: `audit-secret-${index + 1}` },
+          `2099-01-0${index + 1}T00:00:00.000Z`,
+        ],
+      );
+    }
+
+    const first = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?limit=2`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.headers["cache-control"], "no-store");
+    assert.equal(first.rawPayload.includes("audit-secret-"), false);
+    assert.equal(first.rawPayload.includes("correlation-secret-"), false);
+    const firstPage = first.json() as {
+      contractVersion: string;
+      items: Array<{
+        id: string;
+        action: string;
+        result: string;
+        actor: { id: string; displayName: string };
+        resource: { type: string; id: string };
+        occurredAt: string;
+      }>;
+      nextCursor: string | null;
+    };
+    assert.equal(firstPage.contractVersion, "audit-log/v1");
+    assert.equal(firstPage.items.length, 2);
+    assert.equal(typeof firstPage.nextCursor, "string");
+    assert.deepEqual(
+      firstPage.items.map((item) => item.action),
+      ["synthetic.audit.3", "synthetic.audit.2"],
+    );
+    assert.deepEqual(firstPage.items[0]?.resource, {
+      type: "SyntheticResource",
+      id: "resource-3",
+    });
+    assert.equal(firstPage.items[0]?.actor.displayName, "Audit Owner");
+    assert.equal("metadata" in (firstPage.items[0] ?? {}), false);
+    assert.equal("correlationId" in (firstPage.items[0] ?? {}), false);
+
+    const second = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor ?? "")}`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(second.statusCode, 200);
+    assert.equal(second.json().items[0].action, "synthetic.audit.1");
+
+    const malformedCursor = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?cursor=not-a-canonical-cursor`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(malformedCursor.statusCode, 422);
+    assert.equal(malformedCursor.json().error.code, "DOMAIN_VALIDATION_ERROR");
+
+    const unknownQuery = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?unexpected=1`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(unknownQuery.statusCode, 400);
+
+    const crossFamily = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events`,
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(crossFamily.statusCode, 404);
+    assert.equal(crossFamily.rawPayload.includes("Audit Owner"), false);
+
+    const outsiderSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(outsiderSession.statusCode, 200);
+    await database.query(
+      `INSERT INTO family_memberships
+         (id, family_id, user_id, role, status, created_at)
+       VALUES ($1, $2, $3, 'caregiver', 'active', $4)`,
+      [
+        randomUUID(),
+        owner.family.id,
+        outsiderSession.json().user.id as string,
+        "2098-12-31T00:00:00.000Z",
+      ],
+    );
+    const ungrantedMember = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events`,
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(ungrantedMember.statusCode, 404);
+    assert.equal(ungrantedMember.rawPayload.includes("Audit Owner"), false);
+
+    const auditReads = await database.query<{ metadata: string }>(
+      `SELECT metadata
+         FROM audit_events
+        WHERE family_id = $1 AND action = 'family.audit_log.opened'
+        ORDER BY created_at, id`,
+      [owner.family.id],
+    );
+    assert.equal(auditReads.rows.length, 2);
+    assert.deepEqual(
+      auditReads.rows.map((row) => JSON.parse(row.metadata)),
+      [{ contractVersion: "audit-log/v1" }, { contractVersion: "audit-log/v1" }],
+    );
+  } finally {
+    await context.close();
+  }
+});
+
 test("registration failure rolls back user, tenant, profile, session, and audit", async () => {
   const context = await createTestContext();
   const { app, database } = context;

@@ -1115,6 +1115,80 @@ h3 {
   border-bottom: 1px solid var(--color-line);
 }
 
+.family-audit-log {
+  padding-top: 32px;
+}
+
+.family-audit-log .context-line {
+  margin-bottom: 10px;
+  font-size: 0.8125rem;
+}
+
+.family-audit-log__loading,
+.family-audit-log__empty {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.family-audit-log__loading p,
+.family-audit-log__empty p {
+  max-width: 34ch;
+  margin: 0;
+}
+
+.family-audit-log__empty .button {
+  align-self: flex-start;
+}
+
+.skeleton--audit-row {
+  width: 100%;
+  height: 82px;
+}
+
+.family-audit-log__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin: 20px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--color-line);
+  list-style: none;
+}
+
+.family-audit-log__list li {
+  display: grid;
+  gap: 4px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.family-audit-log__list strong {
+  font-size: 0.8125rem;
+  line-height: 1.45;
+}
+
+.family-audit-log__list span,
+.family-audit-log__list time {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.family-audit-log__more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+.family-audit-log__more .form-error {
+  max-width: 34ch;
+}
+
 .profile-addition + .rail-section,
 .rail-section + .profile-addition {
   padding-top: 32px;

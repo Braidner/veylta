@@ -379,6 +379,9 @@ test("all migrations apply, populated processing data rolls back, and migrations
       idempotencyKeyHash: "d".repeat(64),
     });
 
+    assert.equal(await migrateDown(database), "0006_audit_log_integrity");
+    assert.equal(await tableExists(database, "audit_events"), true);
+
     assert.equal(await migrateDown(database), "0005_review_observations");
     assert.equal(await tableExists(database, "review_decisions"), false);
     assert.equal(await tableExists(database, "review_requests"), false);
@@ -419,12 +422,48 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0003_documents",
       "0004_processing",
       "0005_review_observations",
+      "0006_audit_log_integrity",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
       "PRAGMA foreign_key_check",
     );
     assert.deepEqual(foreignKeyViolations.rows, []);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("audit events are append-only after the audit-log integrity migration", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-audit-integrity-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const fixture = await createDocumentFixture(database, "Synthetic audit integrity");
+    const eventId = randomUUID();
+    await database.query(
+      `INSERT INTO audit_events
+         (id, family_id, actor_user_id, action, resource_type, resource_id, result,
+          correlation_id, metadata, created_at)
+       VALUES ($1, $2, $3, 'synthetic.audit.created', 'SyntheticResource', $4, 'success',
+               'synthetic-audit-correlation', '{"contractVersion":"audit-log/v1"}', $5)`,
+      [eventId, fixture.familyId, fixture.userId, fixture.profileId, "2026-08-12T12:00:00.000Z"],
+    );
+
+    await rejectsConstraint(
+      () => database.query("UPDATE audit_events SET action = 'changed' WHERE id = $1", [eventId]),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () => database.query("DELETE FROM audit_events WHERE id = $1", [eventId]),
+      "trigger",
+    );
+    const stored = await database.query<{ action: string }>(
+      "SELECT action FROM audit_events WHERE id = $1",
+      [eventId],
+    );
+    assert.deepEqual(stored.rows, [{ action: "synthetic.audit.created" }]);
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });
