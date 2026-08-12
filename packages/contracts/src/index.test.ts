@@ -33,6 +33,7 @@ import {
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
   PROFILE_CONSENT_CONTRACT_VERSION,
+  PROFILE_OVERVIEW_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
 } from "./index.js";
 
@@ -45,6 +46,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
   assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
   assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
+  assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v1");
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);

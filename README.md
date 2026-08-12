@@ -37,6 +37,9 @@ The full first slice remains deliberately narrow:
 9. let the family owner inspect a paginated, payload-free activity log; it
    exposes only action, result, time, actor, and resource selector (Task 12,
    delivered).
+10. open a compact profile overview of bounded recent source documents, pending
+    explicit reviews, and confirmed values, without a health score, diagnosis,
+    or recommendation (Task 17, delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
 exchange, export/backup, and the rest of the full MVP are explicitly deferred.
@@ -139,7 +142,11 @@ indicator view keeps exact source units apart and can show the arithmetic
 difference between the latest two numeric sources; it never assigns a
 reference-range meaning, clinical trend, or recommendation.
 
-The demo never asks for a real email. The opaque session token exists only in
+The profile landing view is an authorized `profile-overview/v1` read: it shows
+at most three recent immutable sources, three pending-review sources, and three
+explicitly confirmed values with links back to the original document. It is an
+operational overview, never a clinical summary, and its successful read is
+payload-free audited. The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
 disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.

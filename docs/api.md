@@ -475,6 +475,72 @@ decision.
 
 ## Observation history and provenance (Task 7)
 
+## Source-first profile overview (Task 17)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/overview`
+
+Returns the authorized profile's compact operational landing projection. It is
+a safe `GET`, requires neither `Origin` nor an idempotency key, and returns
+`Cache-Control: no-store`. Owner, self-linked adult, and explicitly
+`profile.read`-granted adult/caregiver access use the same server-side profile
+boundary as documents and history. Inaccessible and cross-family selectors
+produce the same non-disclosing `404`.
+
+The response is deliberately bounded: `recentDocuments`,
+`reviewQueue.documents`, and `recentObservations` contain at most three entries
+each, newest first. `reviewQueue.pendingFactCount` counts raw facts without a
+final decision; `needsAttentionFactCount` is the subset marked
+`needs_review`. A review queue item contains no extracted medical value: the
+client follows the authorized document path to inspect evidence and choose an
+explicit decision.
+
+```json
+{
+  "contractVersion": "profile-overview/v1",
+  "profile": {
+    "id": "profile_placeholder",
+    "familyId": "family_placeholder",
+    "displayName": "Synthetic profile",
+    "kind": "adult",
+    "access": "owner",
+    "createdAt": "2026-08-12T00:00:00.000Z"
+  },
+  "recentDocuments": [
+    {
+      "id": "document_placeholder",
+      "originalFilename": "synthetic.pdf",
+      "contentType": "application/pdf",
+      "uploadedAt": "2026-08-12T00:00:00.000Z",
+      "processing": { "state": "awaiting_review", "updatedAt": "2026-08-12T00:01:00.000Z", "factCount": 2, "needsReviewCount": 1 }
+    }
+  ],
+  "reviewQueue": {
+    "documentCount": 1,
+    "pendingFactCount": 2,
+    "needsAttentionFactCount": 1,
+    "documents": [
+      {
+        "id": "document_placeholder",
+        "originalFilename": "synthetic.pdf",
+        "contentType": "application/pdf",
+        "uploadedAt": "2026-08-12T00:00:00.000Z",
+        "pendingFactCount": 2,
+        "needsAttentionFactCount": 1
+      }
+    ]
+  },
+  "recentObservations": []
+}
+```
+
+It is not a diagnosis, medical summary, health score, risk state, trend, or
+recommendation. Each successful read writes a payload-free
+`profile.overview.opened` audit event against the profile with only
+`profile-overview/v1` as metadata; it never records filenames, values, units,
+fragments, source bytes, or cursor data.
+
+## Observation history and provenance (Task 7)
+
 ### `GET /v1/families/{familyId}/profiles/{profileId}/observations`
 
 Returns a source-first, profile-wide page of immutable confirmed observations.

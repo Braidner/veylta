@@ -22,6 +22,9 @@ import {
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
+  type PatientProfileSummary,
+  PROFILE_OVERVIEW_CONTRACT_VERSION,
+  type ProfileOverviewResponse,
   SYNTHETIC_INDICATOR_CATALOG,
   type SyntheticDocumentContentType,
 } from "@veylta/contracts";
@@ -107,6 +110,11 @@ export interface DocumentService {
     query: ObservationHistoryQuery,
     correlationId: string,
   ): Promise<ObservationHistoryResponse>;
+  getProfileOverview(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<ProfileOverviewResponse>;
   getIndicatorCatalog(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -306,6 +314,34 @@ interface IndicatorSeriesCursor {
   unit: string;
   id: string;
   timelineAt: string;
+}
+
+interface ProfileOverviewDocumentRow extends DocumentRow {
+  job_id: string | null;
+  job_state: string | null;
+  job_current_stage: string | null;
+  job_last_error_code: string | null;
+  job_updated_at: string | null;
+  extraction_run_id: string | null;
+  extraction_status: string | null;
+  fact_count: number | null;
+  pending_fact_count: number | null;
+  needs_attention_fact_count: number | null;
+}
+
+interface ProfileOverviewProfileRow {
+  id: string;
+  family_id: string;
+  display_name: string;
+  kind: string;
+  access: string;
+  created_at: string;
+}
+
+interface ProfileOverviewQueueRow {
+  document_count: number;
+  pending_fact_count: number;
+  needs_attention_fact_count: number;
 }
 
 interface RetryRequestRow {
@@ -670,6 +706,88 @@ function processingStatus(
     default:
       throw new ObjectStorageIntegrityError("Stored processing state is invalid");
   }
+}
+
+function profileOverviewProcessing(row: ProfileOverviewDocumentRow): DocumentProcessingStatus {
+  if (row.job_id === null || row.job_state === null || row.job_updated_at === null) {
+    return { state: "not_started" };
+  }
+  const job: ProcessingJobRow = {
+    id: requiredBoundedString(row.job_id, 200, "overview processing job"),
+    state: row.job_state,
+    current_stage: row.job_current_stage,
+    last_error_code: row.job_last_error_code,
+    updated_at: row.job_updated_at,
+  };
+  const counts =
+    row.extraction_run_id === null ||
+    row.extraction_status === null ||
+    row.fact_count === null ||
+    row.needs_attention_fact_count === null
+      ? undefined
+      : ({
+          extraction_run_id: requiredBoundedString(
+            row.extraction_run_id,
+            200,
+            "overview extraction run",
+          ),
+          status: row.extraction_status,
+          fact_count: row.fact_count,
+          needs_review_count: row.needs_attention_fact_count,
+        } satisfies ProcessingCountsRow);
+  return processingStatus(job, counts);
+}
+
+function profileOverviewProfile(row: ProfileOverviewProfileRow): PatientProfileSummary {
+  if (row.kind !== "adult" && row.kind !== "dependent") {
+    throw new ObjectStorageIntegrityError("Stored profile kind is invalid");
+  }
+  if (row.access !== "owner" && row.access !== "self" && row.access !== "granted_read") {
+    throw new ObjectStorageIntegrityError("Stored profile access is invalid");
+  }
+  return {
+    id: requiredCanonicalUuid(row.id, "overview profile"),
+    familyId: requiredCanonicalUuid(row.family_id, "overview family"),
+    displayName: requiredBoundedString(row.display_name, 120, "overview profile name"),
+    kind: row.kind,
+    access: row.access,
+    createdAt: canonicalTimestamp(row.created_at),
+  };
+}
+
+function profileOverviewDocument(
+  row: ProfileOverviewDocumentRow,
+): ProfileOverviewResponse["recentDocuments"][number] {
+  const document = summary(row, profileOverviewProcessing(row));
+  return {
+    id: document.id,
+    originalFilename: document.originalFilename,
+    contentType: document.contentType,
+    uploadedAt: document.uploadedAt,
+    processing: document.processing,
+  };
+}
+
+function profileOverviewReviewDocument(
+  row: ProfileOverviewDocumentRow,
+): ProfileOverviewResponse["reviewQueue"]["documents"][number] {
+  const pendingFactCount = asCount(row.pending_fact_count ?? -1, "overview pending fact count");
+  const needsAttentionFactCount = asCount(
+    row.needs_attention_fact_count ?? -1,
+    "overview attention fact count",
+  );
+  if (needsAttentionFactCount > pendingFactCount) {
+    throw new ObjectStorageIntegrityError("Stored overview attention count is invalid");
+  }
+  const document = summary(row, profileOverviewProcessing(row));
+  return {
+    id: document.id,
+    originalFilename: document.originalFilename,
+    contentType: document.contentType,
+    uploadedAt: document.uploadedAt,
+    pendingFactCount,
+    needsAttentionFactCount,
+  };
 }
 
 function summary(
@@ -1960,6 +2078,276 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
           contractVersion: OBSERVATION_HISTORY_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getProfileOverview(actor, requestedScope, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+
+        const profile = (
+          await client.query<ProfileOverviewProfileRow>(
+            `SELECT p.id,
+                    p.family_id,
+                    p.display_name,
+                    p.kind,
+                    p.created_at,
+                    CASE
+                      WHEN m.role = 'owner' THEN 'owner'
+                      WHEN m.role = 'adult_member' AND p.linked_user_id = m.user_id THEN 'self'
+                      ELSE 'granted_read'
+                    END AS access
+               FROM patient_profiles p
+               JOIN family_memberships m
+                 ON m.family_id = p.family_id
+                AND m.user_id = $3
+                AND m.status = 'active'
+              WHERE p.family_id = $1
+                AND p.id = $2
+                AND p.archived_at IS NULL
+                AND (
+                  m.role = 'owner'
+                  OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
+                  OR (
+                    m.role IN ('adult_member', 'caregiver')
+                    AND EXISTS (
+                      SELECT 1
+                        FROM profile_consent_grants g
+                       WHERE g.family_id = p.family_id
+                         AND g.patient_profile_id = p.id
+                         AND g.grantee_user_id = m.user_id
+                         AND g.capability = 'profile.read'
+                         AND g.revoked_at IS NULL
+                    )
+                  )
+                )`,
+            [scope.familyId, scope.profileId, actor.userId],
+          )
+        ).rows[0];
+        if (profile === undefined) throw new ResourceNotFoundError();
+
+        const recentDocuments = await client.query<ProfileOverviewDocumentRow>(
+          `SELECT d.id,
+                  d.family_id,
+                  d.patient_profile_id,
+                  d.status,
+                  d.original_filename,
+                  d.uploaded_at,
+                  d.duplicate_of_document_id,
+                  duplicate.patient_profile_id AS duplicate_profile_id,
+                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
+                  b.byte_size,
+                  b.sha256,
+                  b.storage_key,
+                  v.id AS document_version_id,
+                  j.id AS job_id,
+                  j.state AS job_state,
+                  j.current_stage AS job_current_stage,
+                  j.last_error_code AS job_last_error_code,
+                  j.updated_at AS job_updated_at,
+                  r.id AS extraction_run_id,
+                  r.status AS extraction_status,
+                  COUNT(f.id) AS fact_count,
+                  COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS pending_fact_count,
+                  COALESCE(SUM(CASE
+                    WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
+                    ELSE 0
+                  END), 0) AS needs_attention_fact_count
+             FROM documents d
+             JOIN document_versions v
+               ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+             JOIN document_blobs b
+               ON b.family_id = v.family_id AND b.id = v.blob_id
+             LEFT JOIN document_blob_content_types blob_type
+               ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
+             LEFT JOIN documents duplicate
+               ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+             LEFT JOIN processing_jobs j
+               ON j.family_id = d.family_id
+              AND j.document_version_id = v.id
+              AND j.kind = 'document_extraction'
+             LEFT JOIN extraction_runs r
+               ON r.id = (
+                 SELECT latest_run.id
+                   FROM extraction_runs latest_run
+                  WHERE latest_run.family_id = d.family_id
+                    AND latest_run.document_version_id = v.id
+                  ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                  LIMIT 1
+               )
+             LEFT JOIN extracted_facts f
+               ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+             LEFT JOIN review_decisions d_review
+               ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            GROUP BY d.id, d.family_id, d.patient_profile_id, d.status, d.original_filename,
+                     d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
+                     blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
+                     v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
+                     r.id, r.status
+            ORDER BY d.uploaded_at DESC, d.id DESC
+            LIMIT 3`,
+          [scope.familyId, scope.profileId],
+        );
+
+        const reviewQueue = (
+          await client.query<ProfileOverviewQueueRow>(
+            `SELECT COUNT(DISTINCT d.id) AS document_count,
+                    COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                      AS pending_fact_count,
+                    COALESCE(SUM(CASE
+                      WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
+                      ELSE 0
+                    END), 0) AS needs_attention_fact_count
+               FROM documents d
+               JOIN document_versions v
+                 ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+               JOIN extraction_runs r
+                 ON r.family_id = v.family_id
+                AND r.document_version_id = v.id
+                AND r.status = 'awaiting_review'
+               LEFT JOIN extracted_facts f
+                 ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+               LEFT JOIN review_decisions d_review
+                 ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
+              WHERE d.family_id = $1 AND d.patient_profile_id = $2`,
+            [scope.familyId, scope.profileId],
+          )
+        ).rows[0];
+        if (reviewQueue === undefined) {
+          throw new ObjectStorageIntegrityError("Profile overview review queue is unavailable");
+        }
+
+        const reviewDocuments = await client.query<ProfileOverviewDocumentRow>(
+          `SELECT d.id,
+                  d.family_id,
+                  d.patient_profile_id,
+                  d.status,
+                  d.original_filename,
+                  d.uploaded_at,
+                  d.duplicate_of_document_id,
+                  duplicate.patient_profile_id AS duplicate_profile_id,
+                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
+                  b.byte_size,
+                  b.sha256,
+                  b.storage_key,
+                  v.id AS document_version_id,
+                  j.id AS job_id,
+                  j.state AS job_state,
+                  j.current_stage AS job_current_stage,
+                  j.last_error_code AS job_last_error_code,
+                  j.updated_at AS job_updated_at,
+                  r.id AS extraction_run_id,
+                  r.status AS extraction_status,
+                  COUNT(f.id) AS fact_count,
+                  COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS pending_fact_count,
+                  COALESCE(SUM(CASE
+                    WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
+                    ELSE 0
+                  END), 0) AS needs_attention_fact_count
+             FROM documents d
+             JOIN document_versions v
+               ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+             JOIN document_blobs b
+               ON b.family_id = v.family_id AND b.id = v.blob_id
+             LEFT JOIN document_blob_content_types blob_type
+               ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
+             LEFT JOIN documents duplicate
+               ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+             JOIN extraction_runs r
+               ON r.family_id = v.family_id
+              AND r.document_version_id = v.id
+              AND r.status = 'awaiting_review'
+             LEFT JOIN processing_jobs j
+               ON j.family_id = d.family_id
+              AND j.document_version_id = v.id
+              AND j.kind = 'document_extraction'
+             LEFT JOIN extracted_facts f
+               ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+             LEFT JOIN review_decisions d_review
+               ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            GROUP BY d.id, d.family_id, d.patient_profile_id, d.status, d.original_filename,
+                     d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
+                     blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
+                     v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
+                     r.id, r.status
+            ORDER BY d.uploaded_at DESC, d.id DESC
+            LIMIT 3`,
+          [scope.familyId, scope.profileId],
+        );
+
+        const recentObservations = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+            LIMIT 3`,
+          [scope.familyId, scope.profileId],
+        );
+
+        const response: ProfileOverviewResponse = {
+          contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
+          profile: profileOverviewProfile(profile),
+          recentDocuments: recentDocuments.rows.map(profileOverviewDocument),
+          reviewQueue: {
+            documentCount: asCount(reviewQueue.document_count, "overview review document count"),
+            pendingFactCount: asCount(
+              reviewQueue.pending_fact_count,
+              "overview pending fact count",
+            ),
+            needsAttentionFactCount: asCount(
+              reviewQueue.needs_attention_fact_count,
+              "overview attention fact count",
+            ),
+            documents: reviewDocuments.rows.map(profileOverviewReviewDocument),
+          },
+          recentObservations: recentObservations.rows.map((row) =>
+            observationHistoryItem(row, scope),
+          ),
+        };
+        if (response.reviewQueue.needsAttentionFactCount > response.reviewQueue.pendingFactCount) {
+          throw new ObjectStorageIntegrityError("Stored overview review counts are invalid");
+        }
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.overview.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
         });
         return response;
       });

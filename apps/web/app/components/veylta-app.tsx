@@ -24,6 +24,7 @@ import type {
   ProfileConsentGrantCreateResponse,
   ProfileConsentGrantListResponse,
   ProfileCreateResponse,
+  ProfileOverviewResponse,
   SessionFamily,
   SessionResponse,
 } from "@veylta/contracts";
@@ -114,6 +115,10 @@ function documentProcessingPath(familyId: string, profileId: string, documentId:
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
   return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
+}
+
+function profileOverviewPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/overview`;
 }
 
 function observationHistoryPath(familyId: string, profileId: string): string {
@@ -754,6 +759,12 @@ function ProfileWorkspace({
         <div className="profile-workspace__main">
           {requestedDocumentId === undefined ? (
             <>
+              <ProfileOverviewPanel
+                key={`overview:${family.id}:${profile.id}`}
+                familyId={family.id}
+                profileId={profile.id}
+                canWriteProfile={canWriteProfile}
+              />
               {canWriteProfile ? (
                 <DocumentInbox
                   pending={uploadPending}
@@ -1315,6 +1326,255 @@ function uploadErrorCopy(error: unknown): string {
     return "Профиль недоступен. Обновите страницу и проверьте активный профиль.";
   }
   return "Не удалось загрузить документ. Данные не изменились; попробуйте ещё раз.";
+}
+
+type ProfileOverviewState =
+  | { kind: "loading" }
+  | { kind: "ready"; overview: ProfileOverviewResponse }
+  | { kind: "error"; copy: string };
+
+function profileOverviewErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Обзор этого профиля недоступен. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось загрузить обзор. Исходники и подтверждённые значения не изменены.";
+}
+
+function profileOverviewProcessingCopy(
+  status: ProfileOverviewResponse["recentDocuments"][number]["processing"],
+): string {
+  switch (status.state) {
+    case "not_started":
+      return "Обработка ещё не началась";
+    case "queued":
+      return "В очереди обработки";
+    case "security_check":
+      return "Проверяем исходник";
+    case "text_extraction":
+      return "Извлекаем текст";
+    case "document_classification":
+      return "Проверяем тип документа";
+    case "structured_extraction":
+      return "Готовим черновые значения";
+    case "validation":
+      return "Проверяем черновой результат";
+    case "awaiting_review":
+      return `${factCountCopy(status.factCount)} ждут явной проверки`;
+    case "completed":
+      return `${factCountCopy(status.factCount)} подтверждены пользователем`;
+    case "failed":
+      return "Обработка не завершилась";
+  }
+}
+
+function ProfileOverviewPanel({
+  familyId,
+  profileId,
+  canWriteProfile,
+}: {
+  familyId: string;
+  profileId: string;
+  canWriteProfile: boolean;
+}) {
+  const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
+
+  const loadOverview = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const overview = await apiRequest<ProfileOverviewResponse>(
+          profileOverviewPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", overview });
+      } catch (error) {
+        if (!signal?.aborted) setState({ kind: "error", copy: profileOverviewErrorCopy(error) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadOverview(controller.signal);
+    return () => controller.abort();
+  }, [loadOverview]);
+
+  return (
+    <section
+      className="profile-overview"
+      aria-labelledby="profile-overview-title"
+      aria-busy={state.kind === "loading"}
+    >
+      <div className="profile-overview__heading">
+        <p className="context-line">Профиль · источники и решения</p>
+        <h2 id="profile-overview-title">Обзор профиля</h2>
+        <p>
+          Здесь только состояние исходников, явные решения и подтверждённые значения. Медицинские
+          выводы, оценки и рекомендации не формируются.
+        </p>
+      </div>
+
+      {state.kind === "loading" ? (
+        <div className="profile-overview__loading" aria-live="polite">
+          <div className="skeleton skeleton--overview-row" aria-hidden="true" />
+          <div className="skeleton skeleton--overview-row" aria-hidden="true" />
+          <p>Сверяем последние источники и решения…</p>
+        </div>
+      ) : null}
+
+      {state.kind === "error" ? (
+        <div className="profile-overview__empty" role="status">
+          <p>{state.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadOverview()}
+          >
+            Обновить обзор
+          </button>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" ? (
+        <div className="profile-overview__sections">
+          <section className="profile-overview__section" aria-labelledby="overview-review-title">
+            <div className="profile-overview__section-heading">
+              <div>
+                <p className="context-line">Следующее действие</p>
+                <h3 id="overview-review-title">Проверка исходников</h3>
+              </div>
+              <span className="profile-overview__count">
+                <span className="visually-hidden">Документов в очереди: </span>
+                {state.overview.reviewQueue.documentCount}
+              </span>
+            </div>
+            {state.overview.reviewQueue.documentCount === 0 ? (
+              <div className="profile-overview__empty">
+                <p>
+                  Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                </p>
+              </div>
+            ) : (
+              <ol className="profile-overview__list">
+                {state.overview.reviewQueue.documents.map((document) => (
+                  <li key={document.id} className="profile-overview__row">
+                    <div>
+                      <strong>{document.originalFilename}</strong>
+                      <span>
+                        {factCountCopy(document.pendingFactCount)} ждут решения
+                        {document.needsAttentionFactCount > 0
+                          ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                          : ""}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, document.id)}
+                    >
+                      Открыть проверку
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {state.overview.reviewQueue.documentCount >
+            state.overview.reviewQueue.documents.length ? (
+              <p className="profile-overview__more">
+                Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
+                очереди.
+              </p>
+            ) : null}
+          </section>
+
+          <section className="profile-overview__section" aria-labelledby="overview-documents-title">
+            <div className="profile-overview__section-heading">
+              <div>
+                <p className="context-line">Неизменяемые байты</p>
+                <h3 id="overview-documents-title">Последние исходники</h3>
+              </div>
+            </div>
+            {state.overview.recentDocuments.length === 0 ? (
+              <div className="profile-overview__empty">
+                <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
+                {canWriteProfile ? (
+                  <a className="text-link" href="#document-inbox-title">
+                    Добавить исходник
+                  </a>
+                ) : null}
+              </div>
+            ) : (
+              <ol className="profile-overview__list">
+                {state.overview.recentDocuments.map((document) => (
+                  <li key={document.id} className="profile-overview__row">
+                    <div>
+                      <strong>{document.originalFilename}</strong>
+                      <span>
+                        {documentKindLabel(document.contentType)} ·{" "}
+                        {formatDate(document.uploadedAt)} ·{" "}
+                        {profileOverviewProcessingCopy(document.processing)}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, document.id)}
+                    >
+                      Открыть источник
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          <section
+            className="profile-overview__section"
+            aria-labelledby="overview-observations-title"
+          >
+            <div className="profile-overview__section-heading">
+              <div>
+                <p className="context-line">Явно подтверждено</p>
+                <h3 id="overview-observations-title">Последние значения</h3>
+              </div>
+              <a className="text-link" href="#observation-history">
+                Вся история
+              </a>
+            </div>
+            {state.overview.recentObservations.length === 0 ? (
+              <div className="profile-overview__empty">
+                <p>
+                  Подтверждённых значений пока нет. Они появятся здесь только после явного решения.
+                </p>
+              </div>
+            ) : (
+              <ol className="profile-overview__list">
+                {state.overview.recentObservations.map((observation) => (
+                  <li key={observation.id} className="profile-overview__row">
+                    <div>
+                      <strong>
+                        {observation.source.name}: {observation.source.value}{" "}
+                        {observation.source.unit}
+                      </strong>
+                      <span>
+                        Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
+                        {observation.sourceDocument.pageNumber}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                    >
+                      Открыть источник
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 interface DocumentInboxProps {

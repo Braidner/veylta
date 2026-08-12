@@ -22,6 +22,10 @@ async function registerDemoFamily(page: Page) {
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
   await expect(page).toHaveTitle(`${names.profile} — Veylta`);
+  const overview = page.getByRole("region", { name: "Обзор профиля" });
+  await expect(overview).toBeVisible();
+  await expect(overview.getByText("Ничего не ожидает проверки.")).toBeVisible();
+  await expect(overview.getByText("Исходников пока нет.")).toBeVisible();
 
   return names;
 }

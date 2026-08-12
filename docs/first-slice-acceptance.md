@@ -1,7 +1,7 @@
 # First-slice acceptance evidence
 
 **Recorded:** 2026-08-12
-**Code baseline:** local Task 16 worktree atop `a1b5c2e feat: add local caregiver read access`
+**Code baseline:** local Task 17 worktree atop `46de15e feat: add direct synthetic image ingestion`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
@@ -39,7 +39,8 @@ fact and represents the user-confirmed source value separately.
 | `424b25f` | Explicit review decisions and atomic, immutable confirmed observations. |
 | `c949b8f` | Authorized source-first confirmed-observation history. |
 | Task 15 worktree | Local caregiver invitation with default-deny, explicit read-only profile sharing. |
-| Task 16 worktree | Direct synthetic PNG/JPEG ingestion, bounded local OCR, and immutable content-type provenance. |
+| `46de15e` | Direct synthetic PNG/JPEG ingestion, bounded local OCR, and immutable content-type provenance. |
+| Task 17 worktree | Authorized source-first profile overview with bounded document/review/observation projections. |
 
 ## Fresh local verification
 
@@ -50,11 +51,11 @@ its output.
 | Command | Result |
 | --- | --- |
 | `pnpm license:check` | Passed: 8 license groups and 5 exact reviewed exceptions. |
-| `pnpm lint` | Passed: Biome checked 73 files; no fixes applied. |
+| `pnpm lint` | Passed: Biome checked 74 files; no fixes applied. |
 | `pnpm typecheck` | Passed: contracts, API, and web typechecks completed. |
 | `pnpm test` | Passed: 79 unit/contract tests (10 contracts, 69 API), 0 failed. |
 | `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0010_direct_image_documents`. |
-| `pnpm test:integration` | Passed: 34 isolated SQLite integration tests, 0 failed. |
+| `pnpm test:integration` | Passed: 37 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
 | `pnpm test:e2e` | Passed: 18 Chromium browser tests, 0 failed, including direct synthetic PNG upload/OCR/download. |
 | `git diff --check` | Passed after this evidence documentation was prepared. |
@@ -93,6 +94,7 @@ gates on every push and pull request.
 | Uncertain data cannot bypass human review | Parser and processing tests keep high-confidence facts unconfirmed and route uncertain facts to review; browser review tests require an explicit decision. |
 | A correction preserves raw extraction | Integration test `a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation`; browser review and history scenarios verify the displayed source distinction. |
 | Confirmed data appears in history with its source | Integration test `observation history is source-first, paginated, re-authorized, and audited without payloads`; browser test `profile history shows confirmed and corrected observations with their authorized sources only`. |
+| Profile landing view stays source-first | Integration tests cover bounded overview projections, payload-free audit, non-disclosing denial, and revocable read access; browser upload flow shows the review queue after returning to the profile. |
 | Caregiver remains default-deny until profile consent | Integration and browser tests `a caregiver joins without an implicit profile and reads only an explicitly shared profile` / `a caregiver starts without a profile and sees only a profile explicitly shared by the owner`; SQLite trigger regression prevents caregiver linkage to a personal profile. |
 | Failed writes leave no partial medical record | Integration test `an audit failure rolls back review decision, observation, reference range, and idempotency record together`; processing tests cover invalid-output rollback. |
 | Retry is idempotent and terminal failure remains visible | Job-service tests cover stable dedupe, exclusive lease/reclaim, replay-safe completion, retry schedule, and dead-letter exhaustion; processing integration covers a replay-safe terminal retry command. |

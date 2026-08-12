@@ -85,6 +85,10 @@ The first slice proves one complete and safe path with synthetic data:
     only action, result, time, actor, and resource selector; it never exposes
     audit metadata, document content, filenames, source fragments, or medical
     values (Task 12, delivered).
+12. The profile landing view lists a bounded source-first operational overview:
+    recent immutable documents, sources awaiting explicit review, and explicitly
+    confirmed values. It does not calculate a health score, clinical state,
+    diagnosis, trend, or recommendation (Task 17, delivered).
 
 The implemented synthetic record path reaches step 10, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
@@ -134,6 +138,9 @@ independently reviewed.
   migration, and license evidence using synthetic fixtures only.
 - The compatible indicator catalog and chart preserve source links, exact units,
   and explicit insufficient/unavailable comparison states.
+- The profile overview is bounded, profile-authorized, source-first, and links
+  only to already-authorized document detail paths; opening it neither creates
+  a clinical summary nor changes a record.
 
 ## Full MVP direction
 

@@ -74,6 +74,14 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
 
   await page.getByRole("link", { name: "Загрузить ещё документ" }).click();
   await expect(page).toHaveURL(profileUrl);
+  const overview = page.getByRole("region", { name: "Обзор профиля" });
+  await expect(
+    overview
+      .getByRole("region", { name: "Проверка исходников" })
+      .getByText(filename, { exact: true }),
+  ).toBeVisible();
+  await expect(overview.getByText("2 значения ждут решения")).toBeVisible();
+  await expect(overview.getByRole("link", { name: "Открыть проверку" })).toBeVisible();
   await uploadPdf(page, filename, bytes);
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);

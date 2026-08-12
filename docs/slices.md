@@ -182,6 +182,24 @@ not claim a remote CI run or production readiness.
 | Only synthetic fixtures | Fixture inventory and log/telemetry assertion |
 | CI quality and license gates pass | Recorded CI/local command output |
 
+## Task 17 — Source-first profile overview
+
+Commit intent: `feat: add source-first profile overview`
+
+- `profile-overview/v1` returns one authorized profile plus at most three recent
+  immutable sources, three sources awaiting final review, and three explicitly
+  confirmed observations.
+- Review counts include only facts without a final decision; the displayed
+  `needsAttention` count remains distinct from all pending facts.
+- The overview is a safe `GET`, returns `no-store`, uses the existing
+  owner/self/granted-read profile boundary, and produces the same non-disclosing
+  `404` outside that boundary.
+- Each successful read records only `profile.overview.opened` with its contract
+  version. It logs no medical value, fragment, filename, storage key, or cursor.
+- The web landing view makes pending review the next visible action and keeps
+  documents and confirmed values linked to their source. It deliberately does
+  not show a health score, clinical state, diagnosis, or recommendation.
+
 ## Task 9 — Comparable indicator catalog and chart
 
 Commit intent: `feat: compare compatible confirmed indicators`

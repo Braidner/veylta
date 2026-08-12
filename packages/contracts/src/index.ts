@@ -8,6 +8,7 @@ export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
+export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
 export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
 /** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
 export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
@@ -302,6 +303,44 @@ export interface DocumentProcessingRetryResponse {
   readonly contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
   readonly documentId: string;
   readonly processing: DocumentProcessingQueued;
+}
+
+/**
+ * A bounded, source-first profile landing view. It deliberately contains no
+ * diagnosis, health score, recommendation, or inferred clinical status.
+ */
+export interface ProfileOverviewDocument {
+  readonly id: string;
+  readonly originalFilename: string;
+  readonly contentType: SyntheticDocumentContentType;
+  readonly uploadedAt: string;
+  readonly processing: DocumentProcessingStatus;
+}
+
+/** A document with raw facts that still require an explicit final decision. */
+export interface ProfileOverviewReviewDocument {
+  readonly id: string;
+  readonly originalFilename: string;
+  readonly contentType: SyntheticDocumentContentType;
+  readonly uploadedAt: string;
+  readonly pendingFactCount: number;
+  readonly needsAttentionFactCount: number;
+}
+
+export interface ProfileOverviewResponse {
+  readonly contractVersion: typeof PROFILE_OVERVIEW_CONTRACT_VERSION;
+  readonly profile: PatientProfileSummary;
+  /** Newest first; bounded to three immutable source documents. */
+  readonly recentDocuments: readonly ProfileOverviewDocument[];
+  readonly reviewQueue: {
+    readonly documentCount: number;
+    readonly pendingFactCount: number;
+    readonly needsAttentionFactCount: number;
+    /** Newest first; bounded to three source documents that need review. */
+    readonly documents: readonly ProfileOverviewReviewDocument[];
+  };
+  /** Newest first; bounded to three explicitly confirmed source values. */
+  readonly recentObservations: readonly ObservationHistoryItem[];
 }
 
 export type LabFactValidationIssue = (typeof LAB_FACT_VALIDATION_ISSUES)[number];

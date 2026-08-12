@@ -88,6 +88,9 @@ required. Shared code is extracted only when two real consumers need it.
   sanitized failure category plus an authorized retry action.
 - Presents source-first fact decisions and correction/confirmation, then a
   profile-wide confirmed-observation history with source document provenance.
+- Reads `profile-overview/v1` after the same profile authorization and presents
+  only bounded source/document/review state; it does not synthesize a clinical
+  profile, score, diagnosis, or recommendation.
 - Presents an authorized catalog of known synthetic indicators and, only for an
   exact code/unit series, a compact numeric chart and deterministic source-value
   difference. The timeline and source links remain available beside the chart.
@@ -111,6 +114,10 @@ required. Shared code is extracted only when two real consumers need it.
   keyset pagination, and audits the payload-free history access. The returned
   source-document path remains a relative selector: the download endpoint
   performs authorization again.
+- Reads `profile-overview/v1` in one profile-authorized transaction, returning
+  only bounded recent document, unresolved-review, and confirmed-observation
+  projections. The `profile.overview.opened` audit event stores only the
+  versioned contract marker, never a filename, value, fragment, or cursor.
 - Reads `audit-log/v1` only after an active owner check on the requested family;
   it uses opaque keyset pagination, adds one payload-free access event per
   successful page, and does not expose audit metadata or correlation IDs.

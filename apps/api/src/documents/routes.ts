@@ -277,6 +277,21 @@ export function registerDocumentRoutes(
     );
 
     scope.get<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/overview",
+      { schema: { params: profileParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(await service.getProfileOverview(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams }>(
       "/v1/families/:familyId/profiles/:profileId/indicators",
       { schema: { params: profileParamsSchema } },
       async (request, reply) => {
