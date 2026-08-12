@@ -171,7 +171,7 @@ async function registerOwner(app: FastifyInstance, suffix: string): Promise<Iden
 
 async function upload(
   app: FastifyInstance,
-  identity: Identity,
+  identity: { body: Pick<DemoRegistrationResponse, "family" | "profile">; cookie: string },
   bytes: Buffer,
   idempotencyKey: string,
   options: MultipartOptions = {},
@@ -661,7 +661,7 @@ test("a finalized orphan is recovered by retry after a database rollback", async
   });
 });
 
-test("an invited adult can access only the self-linked profile, not the owner document", async () => {
+test("an invited adult receives only a revocable document read grant, never document write", async () => {
   await withTestContext(async ({ app }) => {
     const owner = await registerOwner(app, "Adult Access");
     const uploaded = await upload(
@@ -691,6 +691,13 @@ test("an invited adult can access only the self-linked profile, not the owner do
     });
     assert.equal(accepted.statusCode, 201);
     const adultCookie = cookieFrom(accepted);
+    const adultSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: adultCookie },
+    });
+    assert.equal(adultSession.statusCode, 200);
+    const adultUserId = adultSession.json().user.id as string;
 
     const ownerDocumentPath = `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${uploaded.json().document.id}`;
     const randomPath = `/v1/families/${owner.body.family.id}/profiles/${randomUUID()}/documents/${randomUUID()}`;
@@ -713,5 +720,48 @@ test("an invited adult can access only the self-linked profile, not the owner do
       assert.equal(foreign.rawPayload.includes("OWNER_PRIVATE_DOCUMENT"), false);
       assert.equal(foreign.rawPayload.includes("synthetic-result.pdf"), false);
     }
+
+    const granted = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/consent-grants`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { granteeUserId: adultUserId, capability: "profile.read" },
+    });
+    assert.equal(granted.statusCode, 201);
+    const grantId = granted.json().grant.id as string;
+
+    for (const suffix of ["", "/content"] as const) {
+      const grantedRead = await app.inject({
+        method: "GET",
+        url: `${ownerDocumentPath}${suffix}`,
+        headers: { cookie: adultCookie },
+      });
+      assert.equal(grantedRead.statusCode, 200);
+    }
+
+    const rejectedWrite = await upload(
+      app,
+      {
+        body: { family: owner.body.family, profile: owner.body.profile },
+        cookie: adultCookie,
+      },
+      syntheticPdf("GRANTED_ADULT_MUST_NOT_WRITE"),
+      "granted-adult-write",
+    );
+    assert.equal(rejectedWrite.statusCode, 404);
+
+    const revoked = await app.inject({
+      method: "DELETE",
+      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/consent-grants/${grantId}`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+    });
+    assert.equal(revoked.statusCode, 204);
+    const revokedRead = await app.inject({
+      method: "GET",
+      url: ownerDocumentPath,
+      headers: { cookie: adultCookie },
+    });
+    assert.equal(revokedRead.statusCode, 404);
+    assert.equal(revokedRead.rawPayload.includes("OWNER_PRIVATE_DOCUMENT"), false);
   });
 });

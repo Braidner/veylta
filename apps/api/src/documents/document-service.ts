@@ -129,7 +129,7 @@ export interface DocumentService {
     idempotencyKey: string,
     correlationId: string,
   ): Promise<DocumentProcessingRetryResponse>;
-  requireProfileAccess(
+  requireProfileWriteAccess(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
   ): Promise<void>;
@@ -714,7 +714,7 @@ async function* verifiedPdfBytes(body: Readable): AsyncGenerator<Buffer> {
   if (!verified) throw new InvalidPdfSignatureError();
 }
 
-async function requireProfileAccess(
+async function requireProfileReadAccess(
   client: Queryable,
   actor: SessionActor,
   familyId: string,
@@ -733,7 +733,44 @@ async function requireProfileAccess(
        AND (
          m.role = 'owner'
          OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
+         OR (
+           m.role = 'adult_member'
+           AND EXISTS (
+             SELECT 1
+               FROM profile_consent_grants g
+              WHERE g.family_id = p.family_id
+                AND g.patient_profile_id = p.id
+                AND g.grantee_user_id = m.user_id
+                AND g.capability = 'profile.read'
+                AND g.revoked_at IS NULL
+           )
+         )
        )`,
+    [familyId, profileId, actor.userId],
+  );
+  if (result.rows[0] === undefined) throw new ResourceNotFoundError();
+}
+
+async function requireProfileWriteAccess(
+  client: Queryable,
+  actor: SessionActor,
+  familyId: string,
+  profileId: string,
+): Promise<void> {
+  const result = await client.query<{ id: string }>(
+    `SELECT p.id
+       FROM patient_profiles p
+       JOIN family_memberships m
+         ON m.family_id = p.family_id
+        AND m.user_id = $3
+       WHERE p.family_id = $1
+         AND p.id = $2
+         AND p.archived_at IS NULL
+         AND m.status = 'active'
+         AND (
+           m.role = 'owner'
+           OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
+         )`,
     [familyId, profileId, actor.userId],
   );
   if (result.rows[0] === undefined) throw new ResourceNotFoundError();
@@ -775,6 +812,7 @@ async function documentRow(
   client: Queryable,
   actor: SessionActor,
   scope: { familyId: string; profileId: string; documentId: string },
+  access: "read" | "write" = "read",
 ): Promise<DocumentRow> {
   const result = await client.query<DocumentRow>(
     `SELECT d.id,
@@ -804,6 +842,19 @@ async function documentRow(
              AND p.id = d.patient_profile_id
              AND p.linked_user_id = m.user_id
         ))
+        OR (
+          $5 = 'read'
+          AND m.role = 'adult_member'
+          AND EXISTS (
+            SELECT 1
+              FROM profile_consent_grants g
+             WHERE g.family_id = d.family_id
+               AND g.patient_profile_id = d.patient_profile_id
+               AND g.grantee_user_id = m.user_id
+               AND g.capability = 'profile.read'
+               AND g.revoked_at IS NULL
+          )
+        )
       )
      JOIN document_versions v
        ON v.family_id = d.family_id
@@ -818,7 +869,7 @@ async function documentRow(
      WHERE d.family_id = $1
        AND d.patient_profile_id = $2
        AND d.id = $3`,
-    [scope.familyId, scope.profileId, scope.documentId, actor.userId],
+    [scope.familyId, scope.profileId, scope.documentId, actor.userId, access],
   );
   const row = result.rows[0];
   if (row === undefined) throw new ResourceNotFoundError();
@@ -1440,9 +1491,9 @@ export function createDocumentService(
   }
 
   return {
-    async requireProfileAccess(actor, requestedScope) {
+    async requireProfileWriteAccess(actor, requestedScope) {
       const scope = canonicalProfileScope(requestedScope);
-      await requireProfileAccess(database, actor, scope.familyId, scope.profileId);
+      await requireProfileWriteAccess(database, actor, scope.familyId, scope.profileId);
     },
 
     async stagePdf(input) {
@@ -1474,7 +1525,7 @@ export function createDocumentService(
       try {
         return await database
           .transaction(async (client) => {
-            await requireProfileAccess(client, actor, scope.familyId, scope.profileId);
+            await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
 
             const replay = await client.query<UploadRequestRow>(
               `SELECT document_id,
@@ -1498,10 +1549,15 @@ export function createDocumentService(
               ) {
                 throw new IdempotencyConflictError();
               }
-              const replayed = await documentRow(client, actor, {
-                ...scope,
-                documentId: previous.document_id,
-              });
+              const replayed = await documentRow(
+                client,
+                actor,
+                {
+                  ...scope,
+                  documentId: previous.document_id,
+                },
+                "write",
+              );
               await audit(client, {
                 familyId: scope.familyId,
                 actorUserId: actor.userId,
@@ -1748,7 +1804,7 @@ export function createDocumentService(
       const canonicalCode = historyCanonicalCode(requestedQuery.canonicalCode);
       const limit = observationHistoryLimit(requestedQuery.limit);
       return database.transaction(async (client) => {
-        await requireProfileAccess(client, actor, scope.familyId, scope.profileId);
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
         const cursor = decodeObservationHistoryCursor(requestedQuery.cursor, canonicalCode);
         const observations = await client.query<ObservationHistoryRow>(
           `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
@@ -1832,7 +1888,7 @@ export function createDocumentService(
     async getIndicatorCatalog(actor, requestedScope, correlationId) {
       const scope = canonicalProfileScope(requestedScope);
       return database.transaction(async (client) => {
-        await requireProfileAccess(client, actor, scope.familyId, scope.profileId);
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
         const rows = await client.query<IndicatorCatalogRow>(
           `SELECT o.canonical_code, o.source_unit, o.source_value,
                   COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at, o.id
@@ -1901,7 +1957,12 @@ export function createDocumentService(
       const unit = indicatorUnit(requestedQuery.unit);
       const limit = indicatorSeriesLimit(requestedQuery.limit);
       return database.transaction(async (client) => {
-        await requireProfileAccess(client, actor, profileScope.familyId, profileScope.profileId);
+        await requireProfileReadAccess(
+          client,
+          actor,
+          profileScope.familyId,
+          profileScope.profileId,
+        );
         const cursor = decodeIndicatorSeriesCursor(requestedQuery.cursor, canonicalCode, unit);
         const comparisonRows = await client.query<ObservationHistoryRow>(
           `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
@@ -2053,7 +2114,7 @@ export function createDocumentService(
       const keyHash = sha256(idempotencyKey);
       const commandHash = reviewRequestHash(scope.factId, command);
       return database.transaction(async (client) => {
-        const document = await documentRow(client, actor, scope);
+        const document = await documentRow(client, actor, scope, "write");
         const fact = (
           await client.query<FactForReviewRow>(
             `SELECT f.id, f.document_version_id, f.document_page_id, f.extraction_run_id,
@@ -2304,7 +2365,7 @@ export function createDocumentService(
       const scope = canonicalDocumentScope(requestedScope);
       const keyHash = sha256(idempotencyKey);
       return database.transaction(async (client) => {
-        const row = await documentRow(client, actor, scope);
+        const row = await documentRow(client, actor, scope, "write");
         const replay = await client.query<RetryRequestRow>(
           `SELECT document_version_id, created_at
              FROM processing_retry_requests

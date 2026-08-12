@@ -24,8 +24,8 @@ erDiagram
   User ||--o{ FamilyMembership : joins
   Family ||--o{ FamilyMembership : has
   Family ||--o{ PatientProfile : contains
-  PatientProfile ||--o{ ConsentGrant : protects
-  User ||--o{ ConsentGrant : receives
+  PatientProfile ||--o{ ProfileConsentGrant : protects
+  User ||--o{ ProfileConsentGrant : receives
 
   Family ||--o{ Document : owns
   PatientProfile ||--o{ Document : concerns
@@ -56,8 +56,9 @@ erDiagram
   ProcessingJob ||--o{ ProcessingRetryRequest : requeued_by
 ```
 
-`ConsentGrant`, the extended clinical resources, `HealthSummary`,
-`Recommendation`, and live `AgentRun` providers are designed boundaries, not a
+`ProfileConsentGrant` is the current narrow migrated boundary. The extended
+clinical resources, `HealthSummary`, `Recommendation`, broader consent
+capabilities, and live `AgentRun` providers are designed boundaries, not a
 claim that they are migrated in the first slice.
 
 ## Identity and access
@@ -106,7 +107,7 @@ access to every profile.
 The local-demo token is returned only when created, is single-use, and never
 becomes a stored plaintext credential. Database triggers restrict issuance to
 an active owner and make its identity/token/expiry fields immutable. Accepting
-it creates a linked adult profile; it does not create a consent grant.
+it creates a linked adult profile; it creates no access to another profile.
 
 ### PatientProfile
 
@@ -118,15 +119,18 @@ it creates a linked adult profile; it does not create a consent grant.
 The first slice needs owner-created profiles. Broader demographic/clinical data
 is added only when a real use case needs it.
 
-### ConsentGrant
+### ProfileConsentGrant
 
 - `id`, `family_id`, `patient_profile_id`
 - `grantee_user_id`, `granted_by_user_id`
-- versioned capability set, for example read/review/share
-- `starts_at`, `expires_at`, `revoked_at`, `created_at`
+- fixed `profile.read` capability, `created_at`, optional `revoked_at`
 
-Grant evaluation is default-deny. A caregiver never receives access merely by
-joining a family.
+The current synthetic-demo grant is issued only by an active owner to an active
+`adult_member`, has one active capability per profile/member, and is immutable
+except for a one-way revoke. It is evaluated on every profile/document/history
+read and never grants upload, review, retry, invitations, audit-log access, or
+caregiver access. Broader capability sets, expiry, and caregiver lifecycle
+remain deferred.
 
 ## Documents and processing
 
@@ -348,7 +352,7 @@ and `ProcessingRetryRequest`. Task 6 adds `ReviewDecision`, `ReviewRequest`,
 `Observation`, and `ObservationReferenceRange`. Task 7 adds no speculative
 tables: `observation-history/v1` is an authorized profile-scoped read over
 confirmed `Observation` rows, their optional source range, reviewer, and
-document/page provenance. Add `ConsentGrant`, extended
+document/page provenance. Add broader consent capabilities, extended
 clinical entities, summaries, recommendations, and agent runs only with the
 slice that uses and tests them.
 

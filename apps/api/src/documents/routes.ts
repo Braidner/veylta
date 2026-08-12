@@ -320,7 +320,7 @@ export function registerDocumentRoutes(
           const actor = await requireActor(familyService, request, reply);
           if (actor === null) return;
           const commandKey = idempotencyKey(request);
-          await service.requireProfileAccess(actor, request.params);
+          await service.requireProfileWriteAccess(actor, request.params);
 
           let invalidShape = false;
           for await (const part of request.parts()) {

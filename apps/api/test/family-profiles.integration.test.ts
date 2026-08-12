@@ -155,7 +155,7 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
       false,
     );
     assert.equal(
-      metadata.every((value) => value.contractVersion === "family-profile/v1"),
+      metadata.every((value) => value.contractVersion === "family-profile/v2"),
       true,
     );
 
@@ -867,6 +867,212 @@ test("an owner can issue a one-time local adult invitation without granting anot
         (event) =>
           JSON.parse(event.metadata).contractVersion === "family-invitation/v1" &&
           !event.metadata.includes(invitationBody.invitation.code),
+      ),
+      true,
+    );
+  } finally {
+    await context.close();
+  }
+});
+
+test("an owner grants and revokes explicit profile read access for an invited adult", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Consent Owner",
+      familyName: "Consent Family",
+      profileName: "Owner Profile",
+    });
+    const outsiderRegistration = await register(app, {
+      displayName: "Consent Outsider",
+      familyName: "Other Consent Family",
+      profileName: "Other Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    assert.equal(outsiderRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+
+    const dependent = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { displayName: "Shared Dependent", kind: "dependent" },
+    });
+    assert.equal(dependent.statusCode, 201);
+    const sharedProfile = dependent.json().profile as { id: string; familyId: string };
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(invitation.statusCode, 201);
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitation.json().invitation.code,
+        displayName: "Consent Adult",
+        profileName: "Adult Personal Profile",
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    const memberCookie = cookieFrom(accepted).pair;
+    const memberSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberSession.statusCode, 200);
+    const memberUserId = memberSession.json().user.id as string;
+
+    const memberCatalog = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/members`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(memberCatalog.statusCode, 200);
+    assert.deepEqual(memberCatalog.json().items, [
+      { id: memberUserId, displayName: "Consent Adult", role: "adult_member" },
+    ]);
+
+    const memberCatalogDenied = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/members`,
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberCatalogDenied.statusCode, 404);
+
+    const noOrigin = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie },
+      payload: { granteeUserId: memberUserId, capability: "profile.read" },
+    });
+    assert.equal(noOrigin.statusCode, 403);
+
+    const granted = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { granteeUserId: memberUserId, capability: "profile.read" },
+    });
+    assert.equal(granted.statusCode, 201);
+    const grant = granted.json() as {
+      contractVersion: string;
+      grant: {
+        id: string;
+        familyId: string;
+        profileId: string;
+        capability: string;
+        grantee: { id: string; displayName: string; role: string };
+        createdAt: string;
+      };
+    };
+    assert.equal(grant.contractVersion, "profile-consent/v1");
+    assert.equal(grant.grant.familyId, owner.family.id);
+    assert.equal(grant.grant.profileId, sharedProfile.id);
+    assert.equal(grant.grant.capability, "profile.read");
+    assert.deepEqual(grant.grant.grantee, {
+      id: memberUserId,
+      displayName: "Consent Adult",
+      role: "adult_member",
+    });
+
+    const duplicateGrant = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { granteeUserId: memberUserId, capability: "profile.read" },
+    });
+    assert.equal(duplicateGrant.statusCode, 409);
+
+    const memberAfterGrant = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberAfterGrant.statusCode, 200);
+    assert.equal(
+      memberAfterGrant
+        .json()
+        .families[0].profiles.some((profile: { id: string }) => profile.id === sharedProfile.id),
+      true,
+    );
+
+    const listed = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(listed.statusCode, 200);
+    assert.deepEqual(listed.json().items, [grant.grant]);
+
+    const outsiderSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(outsiderSession.statusCode, 200);
+    const crossFamilyGrant = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: {
+        granteeUserId: outsiderSession.json().user.id,
+        capability: "profile.read",
+      },
+    });
+    assert.equal(crossFamilyGrant.statusCode, 404);
+
+    const revoked = await app.inject({
+      method: "DELETE",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants/${grant.grant.id}`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+    });
+    assert.equal(revoked.statusCode, 204);
+
+    const memberAfterRevocation = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberAfterRevocation.statusCode, 200);
+    assert.equal(
+      memberAfterRevocation
+        .json()
+        .families[0].profiles.some((profile: { id: string }) => profile.id === sharedProfile.id),
+      false,
+    );
+
+    const events = await database.query<{ action: string; metadata: string }>(
+      `SELECT action, metadata
+         FROM audit_events
+        WHERE family_id = $1
+          AND action LIKE 'profile.consent_%'
+        ORDER BY action`,
+      [owner.family.id],
+    );
+    assert.deepEqual(
+      events.rows.map((event) => event.action),
+      [
+        "profile.consent_granted",
+        "profile.consent_grants.opened",
+        "profile.consent_members.opened",
+        "profile.consent_revoked",
+      ],
+    );
+    assert.equal(
+      events.rows.every(
+        (event) =>
+          JSON.parse(event.metadata).contractVersion === "profile-consent/v1" &&
+          !event.metadata.includes("Consent Adult"),
       ),
       true,
     );

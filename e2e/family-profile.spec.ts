@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { type Browser, expect, type Page, test } from "@playwright/test";
 
 function syntheticNames() {
   const suffix = crypto.randomUUID().slice(0, 8);
@@ -102,6 +102,61 @@ test("an owner can issue a one-time local adult invitation with no access to ano
   await page.goto(ownerProfile);
   await expect(page.getByRole("heading", { level: 1, name: "Профиль недоступен" })).toBeVisible();
   await expect(page.getByText(names.profile, { exact: true })).toHaveCount(0);
+});
+
+test("an owner grants and revokes read-only access to a profile for an invited adult", async ({
+  browser,
+}: {
+  browser: Browser;
+}) => {
+  const ownerContext = await browser.newContext();
+  const adultContext = await browser.newContext();
+  const ownerPage = await ownerContext.newPage();
+  const adultPage = await adultContext.newPage();
+
+  try {
+    const names = await registerDemoFamily(ownerPage);
+    const ownerProfileUrl = ownerPage.url();
+    const invitation = ownerPage.getByRole("region", { name: "Пригласить взрослого" });
+    await invitation.getByRole("button", { name: "Создать одноразовый код" }).click();
+    const code = await invitation.locator("code").textContent();
+    expect(code).toMatch(/^vi_[A-Za-z0-9_-]{43}$/);
+
+    await adultPage.goto("/");
+    await adultPage.getByRole("button", { name: "У меня есть код приглашения" }).click();
+    await adultPage.getByLabel("Одноразовый код").fill(code ?? "");
+    await adultPage.getByLabel("Ваше имя").fill(`Читатель ${crypto.randomUUID().slice(0, 8)}`);
+    const adultProfile = `Личный профиль ${crypto.randomUUID().slice(0, 8)}`;
+    await adultPage.getByLabel("Имя вашего профиля").fill(adultProfile);
+    await adultPage.getByRole("button", { name: "Присоединиться к семье" }).click();
+    await expect(adultPage.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
+
+    await ownerPage.reload();
+    const consent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
+    await expect(consent).toBeVisible();
+    await consent.getByRole("button", { name: "Разрешить чтение" }).click();
+    await expect(consent.getByText("Только чтение", { exact: true })).toBeVisible();
+    await expect(consent.getByRole("button", { name: "Отозвать доступ" })).toBeVisible();
+
+    await adultPage.goto(ownerProfileUrl);
+    await expect(adultPage.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
+    await expect(adultPage.getByText("Доступ по согласию: только чтение")).toBeVisible();
+    await expect(
+      adultPage.getByRole("heading", { level: 2, name: "Доступ выдан владельцем профиля" }),
+    ).toBeVisible();
+    await expect(adultPage.getByLabel("Синтетический PDF", { exact: true })).toHaveCount(0);
+
+    await consent.getByRole("button", { name: "Отозвать доступ" }).click();
+    await expect(consent.getByText("Нет доступа", { exact: true })).toBeVisible();
+
+    await adultPage.reload();
+    await expect(
+      adultPage.getByRole("heading", { level: 1, name: "Профиль недоступен" }),
+    ).toBeVisible();
+  } finally {
+    await ownerContext.close();
+    await adultContext.close();
+  }
 });
 
 test("an unavailable active profile does not disclose profile data", async ({ page }) => {

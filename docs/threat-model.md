@@ -52,9 +52,9 @@ the family's trust boundary merely because it exposes an API.
 | Threat | Impact | Required control | Delivery gate |
 | --- | --- | --- | --- |
 | IDOR/cross-family query | Disclosure or modification of another tenant's data | Resolve actor server-side; scope every query by authorized family/profile; test two families; return non-disclosing `404` | First slice |
-| Implicit family-wide access | Adult/caregiver sees an ungranted profile | Separate membership from profile consent; capability-based grants; default deny | Basic owner path in first slice; full roles before real data |
+| Implicit family-wide access | Adult/caregiver sees an ungranted profile | Separate membership from profile consent; fixed `profile.read` grants; default deny | Owner-to-invited-adult read grant in synthetic demo; full roles before real data |
 | Duplicate checksum oracle | Confirms another family has a document | Deduplicate and report matches only within `family_id`; no global match response | First slice |
-| Stale/revoked consent | Continued access after permission changes | Check grant on every request; expiry/revocation; invalidate affected sessions/cache; audit denial | Before real data |
+| Stale/revoked consent | Continued access after permission changes | Check the grant in every read query; one-way revoke; do not cache capability in the session; audit grant lifecycle | Synthetic demo read grant; expiry and broader lifecycle before real data |
 | Invitation-code theft or replay | Unintended local demo membership | Loopback-only demo routes, strict Origin, high-entropy one-time SHA-256-hashed code, 24-hour expiry, atomic consume, active-owner issuance, payload-free audit | Synthetic local demo only |
 | Session theft/CSRF | Account takeover or state-changing request | Secure, HttpOnly, SameSite session cookies or equivalent bearer protections; CSRF defense where cookies are used; rotation and logout | Before real data |
 | MIME/extension spoofing | Unsafe parser input | Allowlist PDF/JPEG/PNG, inspect magic bytes, reject mismatch, set bounded size/page/count limits | PDF subset in first slice |
@@ -120,8 +120,9 @@ the family's trust boundary merely because it exposes an API.
 - Logs, tests, and audit metadata contain no document bodies or medical values.
 - The delivered family audit-log read is owner-only, tenant-scoped, paginated,
   and payload-free; it serializes no metadata/correlation IDs and records its
-  own payload-free access event. Consent and broader role visibility remain
-  default-deny until their dedicated lifecycle is implemented.
+  own payload-free access event. The narrow local `profile.read` grant is
+  owner-to-active-adult only, profile-scoped, server-checked per read, and
+  revocable; all write and broader role visibility remain default-deny.
 
 ## Production gate for real data
 

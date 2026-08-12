@@ -31,17 +31,19 @@ import {
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
+  PROFILE_CONSENT_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
 } from "./index.js";
 
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
-  assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v1");
+  assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
   assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
   assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
+  assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v1");
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
 });

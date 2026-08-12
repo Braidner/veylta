@@ -281,6 +281,21 @@ Commit intent: `feat: add local one-time adult invitations`
 - Integration, migration, and browser tests cover one-time consumption, expiry,
   CSRF origin gate, owner-only issuance, and the self-profile boundary.
 
+## Task 14 — Explicit revocable profile read grant
+
+Commit intent: `feat: add explicit profile read consent`
+
+- An active owner can grant and revoke the single `profile.read` capability for
+  one active invited adult and one active profile through `profile-consent/v1`.
+- Grant evaluation is server-side on every profile/document/history/indicator
+  read; session state carries the visible access label but never caches authority.
+- The capability excludes upload, retry, extracted-fact review, invitation,
+  audit-log, and caregiver powers. A one-way revoke returns the same
+  non-disclosing boundary as an unknown resource.
+- SQLite constraints/triggers, integration tests, and a two-session browser
+  scenario cover owner-only lifecycle, cross-family denial, one-time revoke,
+  and absence of write access.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
@@ -290,10 +305,9 @@ commit chain:
    expansion beyond the delivered local English scanned-PDF fallback.
 2. Broader classification/extraction with provider interfaces and strict schemas.
 3. Evidence-backed versioned summary and carefully bounded recommendations.
-4. Full role/consent UX. The delivered owner-only `audit-log/v1` view remains
-   read-only. Task 13 adds only a loopback-local one-time adult invitation and
-   the linked adult self-profile; it does not implement caregiver access or
-   profile consent grants.
+4. Full role/consent UX: caregiver membership/invitations, broader capability
+   sets, expiry, delegation, and production identity. Task 14 delivers only an
+   owner-to-invited-adult, local `profile.read` grant.
 5. Portable export, controlled deletion, backup, and verified restore.
 6. FHIR R4 mappings and Bundle import/export at the system edge.
 

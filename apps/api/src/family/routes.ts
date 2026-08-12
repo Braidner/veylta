@@ -4,6 +4,7 @@ import {
   FAMILY_PROFILE_CONTRACT_VERSION,
   type FamilyInvitationCreateRequest,
   type PatientProfileKind,
+  type ProfileConsentGrantCreateRequest,
 } from "@veylta/contracts";
 import type { FastifyInstance } from "fastify";
 import {
@@ -24,6 +25,14 @@ interface ProfileInput {
   kind: PatientProfileKind;
 }
 
+interface ProfileParams extends FamilyParams {
+  profileId: string;
+}
+
+interface ConsentGrantParams extends ProfileParams {
+  grantId: string;
+}
+
 export interface FamilyRouteOptions {
   allowedMutationOrigins: readonly string[];
   demoRegistrationEnabled: boolean;
@@ -35,6 +44,31 @@ const familyParamsSchema = {
   additionalProperties: false,
   required: ["familyId"],
   properties: { familyId: canonicalUuidSchema },
+} as const;
+const profileParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["familyId", "profileId"],
+  properties: { familyId: canonicalUuidSchema, profileId: canonicalUuidSchema },
+} as const;
+const consentGrantParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["familyId", "profileId", "grantId"],
+  properties: {
+    familyId: canonicalUuidSchema,
+    profileId: canonicalUuidSchema,
+    grantId: canonicalUuidSchema,
+  },
+} as const;
+const consentGrantInputSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["granteeUserId", "capability"],
+  properties: {
+    granteeUserId: canonicalUuidSchema,
+    capability: { type: "string", const: "profile.read" },
+  },
 } as const;
 const auditLogQuerySchema = {
   type: "object",
@@ -158,6 +192,78 @@ export function registerFamilyRoutes(
         reply.send(
           await service.getAuditLog(actor, request.params.familyId, request.query, request.id),
         );
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: FamilyParams }>(
+    "/v1/families/:familyId/members",
+    { schema: { params: familyParamsSchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        reply.send(await service.listConsentMembers(actor, request.params.familyId, request.id));
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.get<{ Params: ProfileParams }>(
+    "/v1/families/:familyId/profiles/:profileId/consent-grants",
+    { schema: { params: profileParamsSchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        reply.send(await service.getProfileConsentGrants(actor, request.params, request.id));
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: ProfileParams; Body: ProfileConsentGrantCreateRequest }>(
+    "/v1/families/:familyId/profiles/:profileId/consent-grants",
+    { schema: { params: profileParamsSchema, body: consentGrantInputSchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        reply
+          .code(201)
+          .send(
+            await service.createProfileConsentGrant(
+              actor,
+              request.params,
+              request.body,
+              request.id,
+            ),
+          );
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.delete<{ Params: ConsentGrantParams }>(
+    "/v1/families/:familyId/profiles/:profileId/consent-grants/:grantId",
+    { schema: { params: consentGrantParamsSchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        await service.revokeProfileConsentGrant(actor, request.params, request.id);
+        reply.code(204).send();
       } catch (error) {
         if (!sendDomainError(error, request, reply)) throw error;
       }

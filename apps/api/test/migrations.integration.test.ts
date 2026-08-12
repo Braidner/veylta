@@ -366,6 +366,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "observations"), true);
     assert.equal(await tableExists(database, "observation_reference_ranges"), true);
     assert.equal(await tableExists(database, "family_invitations"), true);
+    assert.equal(await tableExists(database, "profile_consent_grants"), true);
     await assert.doesNotReject(() => database.check());
 
     const document = await createDocumentFixture(database, "Synthetic populated rollback");
@@ -433,6 +434,32 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ]),
       "trigger",
     );
+    const consentGrantId = randomUUID();
+    await database.query(
+      `INSERT INTO profile_consent_grants
+         (id, family_id, patient_profile_id, grantee_user_id, granted_by_user_id, capability)
+       VALUES ($1, $2, $3, $4, $5, 'profile.read')`,
+      [consentGrantId, document.familyId, document.profileId, nonOwnerUserId, document.userId],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          "UPDATE profile_consent_grants SET capability = 'profile.write' WHERE id = $1",
+          [consentGrantId],
+        ),
+      "trigger",
+    );
+    await database.query("UPDATE profile_consent_grants SET revoked_at = $1 WHERE id = $2", [
+      new Date().toISOString(),
+      consentGrantId,
+    ]);
+    await rejectsConstraint(
+      () =>
+        database.query("UPDATE profile_consent_grants SET revoked_at = NULL WHERE id = $1", [
+          consentGrantId,
+        ]),
+      "trigger",
+    );
     const processing = await insertProcessingGraph(database, document, "populated-rollback");
     await insertConfirmedReviewGraph(database, document, processing, "populated-rollback");
     const retryJobId = await createDeadLetterJob(database, document, "populated-rollback");
@@ -443,6 +470,9 @@ test("all migrations apply, populated processing data rolls back, and migrations
       processingJobId: retryJobId,
       idempotencyKeyHash: "d".repeat(64),
     });
+
+    assert.equal(await migrateDown(database), "0008_profile_consent_grants");
+    assert.equal(await tableExists(database, "profile_consent_grants"), false);
 
     assert.equal(await migrateDown(database), "0007_family_invitations");
     assert.equal(await tableExists(database, "family_invitations"), false);
@@ -492,6 +522,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0005_review_observations",
       "0006_audit_log_integrity",
       "0007_family_invitations",
+      "0008_profile_consent_grants",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(

@@ -13,11 +13,15 @@ import type {
   FactReviewCommand,
   FactReviewResponse,
   FamilyAuditLogResponse,
+  FamilyConsentMemberListResponse,
   FamilyInvitationCreateResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
+  ProfileConsentGrant,
+  ProfileConsentGrantCreateResponse,
+  ProfileConsentGrantListResponse,
   ProfileCreateResponse,
   SessionFamily,
   SessionResponse,
@@ -121,6 +125,14 @@ function indicatorsPath(familyId: string, profileId: string): string {
 
 function familyAuditLogPath(familyId: string): string {
   return `/v1/families/${encodeURIComponent(familyId)}/audit-events`;
+}
+
+function familyConsentMembersPath(familyId: string): string {
+  return `/v1/families/${encodeURIComponent(familyId)}/members`;
+}
+
+function profileConsentGrantsPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/consent-grants`;
 }
 
 interface VeyltaAppProps {
@@ -621,6 +633,7 @@ function ProfileWorkspace({
   const router = useRouter();
   const profiles = session.families.flatMap((sessionFamily) => sessionFamily.profiles);
   const ownerCanAddProfile = family.role === "owner";
+  const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const uploadAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
@@ -683,6 +696,9 @@ function ProfileWorkspace({
             {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}:{" "}
             {session.user.displayName}
           </p>
+          {profile.access === "granted_read" ? (
+            <p className="profile-access">Доступ по согласию: только чтение</p>
+          ) : null}
         </div>
 
         <label className="profile-switcher">
@@ -713,11 +729,22 @@ function ProfileWorkspace({
         <div className="profile-workspace__main">
           {requestedDocumentId === undefined ? (
             <>
-              <DocumentInbox
-                pending={uploadPending}
-                error={documentError}
-                onSubmit={handleDocumentUpload}
-              />
+              {canWriteProfile ? (
+                <DocumentInbox
+                  pending={uploadPending}
+                  error={documentError}
+                  onSubmit={handleDocumentUpload}
+                />
+              ) : (
+                <section className="read-only-profile" aria-labelledby="read-only-profile-title">
+                  <p className="context-line">Только чтение</p>
+                  <h2 id="read-only-profile-title">Доступ выдан владельцем профиля</h2>
+                  <p>
+                    Здесь можно читать источник и подтверждённую историю. Загрузка, повторная
+                    обработка и проверка извлечений остаются только у владельца или личного профиля.
+                  </p>
+                </section>
+              )}
               <ObservationHistoryPanel
                 key={`${family.id}:${profile.id}`}
                 familyId={family.id}
@@ -730,7 +757,12 @@ function ProfileWorkspace({
               />
             </>
           ) : (
-            <DocumentView family={family} profile={profile} documentId={requestedDocumentId} />
+            <DocumentView
+              family={family}
+              profile={profile}
+              documentId={requestedDocumentId}
+              canWriteProfile={canWriteProfile}
+            />
           )}
         </div>
 
@@ -799,6 +831,13 @@ function ProfileWorkspace({
             </div>
           ) : null}
           {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
+          {family.role === "owner" ? (
+            <ProfileConsentPanel
+              key={`consent:${family.id}:${profile.id}`}
+              familyId={family.id}
+              profileId={profile.id}
+            />
+          ) : null}
           {family.role === "owner" ? (
             <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
           ) : null}
@@ -871,6 +910,156 @@ function FamilyInvitationPanel({ familyId }: { familyId: string }) {
           ) : null}
         </>
       )}
+    </section>
+  );
+}
+
+type ConsentPanelState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      members: readonly FamilyConsentMemberListResponse["items"][number][];
+      grants: readonly ProfileConsentGrant[];
+    }
+  | { kind: "error" };
+
+function ProfileConsentPanel({ familyId, profileId }: { familyId: string; profileId: string }) {
+  const [state, setState] = useState<ConsentPanelState>({ kind: "loading" });
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const [revokePendingId, setRevokePendingId] = useState<string | null>(null);
+
+  const load = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const [members, grants] = await Promise.all([
+          apiRequest<FamilyConsentMemberListResponse>(
+            familyConsentMembersPath(familyId),
+            signal === undefined ? undefined : { signal },
+          ),
+          apiRequest<ProfileConsentGrantListResponse>(
+            profileConsentGrantsPath(familyId, profileId),
+            signal === undefined ? undefined : { signal },
+          ),
+        ]);
+        if (!signal?.aborted)
+          setState({ kind: "ready", members: members.items, grants: grants.items });
+      } catch {
+        if (!signal?.aborted) setState({ kind: "error" });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  async function grant(memberId: string): Promise<void> {
+    setPendingUserId(memberId);
+    try {
+      const response = await apiRequest<ProfileConsentGrantCreateResponse>(
+        profileConsentGrantsPath(familyId, profileId),
+        {
+          method: "POST",
+          body: JSON.stringify({ granteeUserId: memberId, capability: "profile.read" }),
+        },
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { ...current, grants: [...current.grants, response.grant] },
+      );
+    } catch {
+      setState({ kind: "error" });
+    } finally {
+      setPendingUserId(null);
+    }
+  }
+
+  async function revoke(grantId: string): Promise<void> {
+    setRevokePendingId(grantId);
+    try {
+      await apiRequest<void>(
+        `${profileConsentGrantsPath(familyId, profileId)}/${encodeURIComponent(grantId)}`,
+        { method: "DELETE" },
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { ...current, grants: current.grants.filter((grant) => grant.id !== grantId) },
+      );
+    } catch {
+      setState({ kind: "error" });
+    } finally {
+      setRevokePendingId(null);
+    }
+  }
+
+  const activeGranteeIds =
+    state.kind === "ready"
+      ? new Set(state.grants.map((grant) => grant.grantee.id))
+      : new Set<string>();
+
+  return (
+    <section className="profile-consent rail-section" aria-labelledby="profile-consent-title">
+      <p className="context-line">Явное согласие</p>
+      <h2 id="profile-consent-title">Доступ к этому профилю</h2>
+      <p>
+        Взрослый участник получает только чтение этого профиля. Загрузка, редактирование и решения
+        по извлечениям не передаются.
+      </p>
+      {state.kind === "loading" ? <p aria-live="polite">Проверяем доступ…</p> : null}
+      {state.kind === "error" ? (
+        <div className="profile-consent__error" role="status">
+          <p>Не удалось загрузить или изменить доступ. Данные и действующие права не изменены.</p>
+          <button className="button button--secondary" type="button" onClick={() => void load()}>
+            Повторить
+          </button>
+        </div>
+      ) : null}
+      {state.kind === "ready" && state.members.length === 0 ? (
+        <p className="profile-consent__empty">
+          Сначала создайте локальное приглашение и подключите взрослого участника.
+        </p>
+      ) : null}
+      {state.kind === "ready" && state.members.length > 0 ? (
+        <ul className="profile-consent__list" aria-label="Взрослые участники и доступ">
+          {state.members.map((member) => {
+            const existing = state.grants.find((grant) => grant.grantee.id === member.id);
+            return (
+              <li key={member.id}>
+                <strong>{member.displayName}</strong>
+                <span>{existing === undefined ? "Нет доступа" : "Только чтение"}</span>
+                {existing === undefined ? (
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    disabled={pendingUserId === member.id}
+                    onClick={() => void grant(member.id)}
+                  >
+                    {pendingUserId === member.id ? "Выдаём…" : "Разрешить чтение"}
+                  </button>
+                ) : (
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    disabled={revokePendingId === existing.id}
+                    onClick={() => void revoke(existing.id)}
+                  >
+                    {revokePendingId === existing.id ? "Отзываем…" : "Отозвать доступ"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {state.kind === "ready" && activeGranteeIds.size > 0 ? (
+        <p className="profile-consent__note">Доступ проверяется сервером при каждом открытии.</p>
+      ) : null}
     </section>
   );
 }
@@ -1892,9 +2081,10 @@ interface DocumentViewProps {
   family: SessionFamily;
   profile: PatientProfileSummary;
   documentId: string;
+  canWriteProfile: boolean;
 }
 
-function DocumentView({ family, profile, documentId }: DocumentViewProps) {
+function DocumentView({ family, profile, documentId, canWriteProfile }: DocumentViewProps) {
   const [state, setState] = useState<DocumentViewState>({ kind: "loading" });
 
   useEffect(() => {
@@ -2004,6 +2194,7 @@ function DocumentView({ family, profile, documentId }: DocumentViewProps) {
         familyId={family.id}
         profileId={profile.id}
         document={savedDocument}
+        canWriteProfile={canWriteProfile}
       />
     </section>
   );
@@ -2013,6 +2204,7 @@ interface DocumentProcessingPanelProps {
   familyId: string;
   profileId: string;
   document: DocumentSummary;
+  canWriteProfile: boolean;
 }
 
 interface ProcessingPresentation {
@@ -2194,6 +2386,7 @@ function DocumentProcessingPanel({
   familyId,
   profileId,
   document: savedDocument,
+  canWriteProfile,
 }: DocumentProcessingPanelProps) {
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -2277,7 +2470,7 @@ function DocumentProcessingPanel({
   }
 
   const presentation = processingPresentation(processing);
-  const showRetry = processing.state === "failed" && processing.retryAllowed;
+  const showRetry = canWriteProfile && processing.state === "failed" && processing.retryAllowed;
 
   return (
     <>
@@ -2321,7 +2514,8 @@ function DocumentProcessingPanel({
         </div>
       </section>
 
-      {processing.state === "awaiting_review" || processing.state === "completed" ? (
+      {canWriteProfile &&
+      (processing.state === "awaiting_review" || processing.state === "completed") ? (
         <DocumentReviewPanel
           familyId={familyId}
           profileId={profileId}

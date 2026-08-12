@@ -39,11 +39,13 @@ The full first slice remains deliberately narrow:
    delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
-exchange, export/backup, and the rest of the full MVP are explicitly deferred. A
-loopback-local one-time adult invitation creates only a self-linked synthetic
-profile; it is not production identity or consent management. The
-optional S3-compatible storage adapter is implemented only for synthetic
-operator testing and is not a real-data readiness claim.
+exchange, export/backup, and the rest of the full MVP are explicitly deferred.
+In the loopback-local synthetic demo, an owner may issue a single explicit,
+revocable `profile.read` grant to an invited adult for one profile; it never
+transfers upload, review, invitation, or family-audit powers. This is not
+production identity or consent management. The optional S3-compatible storage
+adapter is implemented only for synthetic operator testing and is not a
+real-data readiness claim.
 
 ## Product principles
 

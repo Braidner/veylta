@@ -8,11 +8,18 @@ import {
   FAMILY_INVITATION_CONTRACT_VERSION,
   FAMILY_PROFILE_CONTRACT_VERSION,
   type FamilyAuditLogResponse,
+  type FamilyConsentMember,
+  type FamilyConsentMemberListResponse,
   type FamilyInvitationCreateResponse,
   type FamilyRole,
   type FamilySummary,
+  type PatientProfileAccess,
   type PatientProfileKind,
   type PatientProfileSummary,
+  PROFILE_CONSENT_CONTRACT_VERSION,
+  type ProfileConsentGrant,
+  type ProfileConsentGrantCreateResponse,
+  type ProfileConsentGrantListResponse,
   type SessionResponse,
 } from "@veylta/contracts";
 import {
@@ -67,6 +74,12 @@ export interface FamilyService {
     familyId: string,
     correlationId: string,
   ): Promise<FamilyInvitationCreateResponse>;
+  createProfileConsentGrant(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    input: { granteeUserId: string; capability: "profile.read" },
+    correlationId: string,
+  ): Promise<ProfileConsentGrantCreateResponse>;
   acceptDemoInvitation(
     input: DemoInvitationAcceptRequest,
     correlationId: string,
@@ -78,12 +91,27 @@ export interface FamilyService {
     query: FamilyAuditLogQuery,
     correlationId: string,
   ): Promise<FamilyAuditLogResponse>;
+  getProfileConsentGrants(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<ProfileConsentGrantListResponse>;
+  listConsentMembers(
+    actor: SessionActor,
+    familyId: string,
+    correlationId: string,
+  ): Promise<FamilyConsentMemberListResponse>;
   listProfiles(actor: SessionActor, familyId: string): Promise<PatientProfileSummary[]>;
   logout(actor: SessionActor, correlationId: string): Promise<void>;
   registerDemo(
     input: DemoRegistrationRequest,
     correlationId: string,
   ): Promise<DemoRegistrationResult>;
+  revokeProfileConsentGrant(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; grantId: string },
+    correlationId: string,
+  ): Promise<void>;
 }
 
 interface MembershipRow {
@@ -98,6 +126,21 @@ interface ProfileRow {
   family_id: string;
   display_name: string;
   kind: PatientProfileKind;
+  access: PatientProfileAccess;
+  created_at: string;
+}
+
+interface ConsentMemberRow {
+  id: string;
+  display_name: string;
+  role: "adult_member";
+}
+
+interface ConsentGrantRow extends ConsentMemberRow {
+  grant_id: string;
+  family_id: string;
+  patient_profile_id: string;
+  capability: "profile.read";
   created_at: string;
 }
 
@@ -216,6 +259,22 @@ function profileSummary(row: ProfileRow): PatientProfileSummary {
     familyId: row.family_id,
     displayName: row.display_name,
     kind: row.kind,
+    access: row.access,
+    createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+function consentMember(row: ConsentMemberRow): FamilyConsentMember {
+  return { id: row.id, displayName: row.display_name, role: row.role };
+}
+
+function consentGrant(row: ConsentGrantRow): ProfileConsentGrant {
+  return {
+    id: row.grant_id,
+    familyId: row.family_id,
+    profileId: row.patient_profile_id,
+    capability: row.capability,
+    grantee: consentMember(row),
     createdAt: new Date(row.created_at).toISOString(),
   };
 }
@@ -289,7 +348,7 @@ async function requireOwner(
 
 async function profilesFor(client: Queryable, familyId: string): Promise<PatientProfileSummary[]> {
   const result = await client.query<ProfileRow>(
-    `SELECT id, family_id, display_name, kind, created_at
+    `SELECT id, family_id, display_name, kind, 'owner' AS access, created_at
      FROM patient_profiles
      WHERE family_id = $1 AND archived_at IS NULL
      ORDER BY created_at, id`,
@@ -298,16 +357,29 @@ async function profilesFor(client: Queryable, familyId: string): Promise<Patient
   return result.rows.map(profileSummary);
 }
 
-async function profilesForLinkedUser(
+async function profilesForAdultUser(
   client: Queryable,
   familyId: string,
   userId: string,
 ): Promise<PatientProfileSummary[]> {
   const result = await client.query<ProfileRow>(
-    `SELECT id, family_id, display_name, kind, created_at
-       FROM patient_profiles
-      WHERE family_id = $1 AND linked_user_id = $2 AND archived_at IS NULL
-      ORDER BY created_at, id`,
+    `SELECT p.id,
+            p.family_id,
+            p.display_name,
+            p.kind,
+            CASE WHEN p.linked_user_id = $2 THEN 'self' ELSE 'granted_read' END AS access,
+            p.created_at
+       FROM patient_profiles p
+       LEFT JOIN profile_consent_grants g
+         ON g.family_id = p.family_id
+        AND g.patient_profile_id = p.id
+        AND g.grantee_user_id = $2
+        AND g.capability = 'profile.read'
+        AND g.revoked_at IS NULL
+      WHERE p.family_id = $1
+        AND p.archived_at IS NULL
+        AND (p.linked_user_id = $2 OR g.id IS NOT NULL)
+      ORDER BY p.created_at, p.id`,
     [familyId, userId],
   );
   return result.rows.map(profileSummary);
@@ -359,6 +431,7 @@ export function createFamilyService(
           family_id: familyId,
           display_name: displayName,
           kind: input.kind,
+          access: "owner",
           created_at: now.toISOString(),
         };
         await client.query(
@@ -423,6 +496,72 @@ export function createFamilyService(
         contractVersion: FAMILY_INVITATION_CONTRACT_VERSION,
         invitation: { ...invitation, code },
       };
+    },
+
+    async createProfileConsentGrant(actor, requestedScope, input, correlationId) {
+      const scope = {
+        familyId: requestedScope.familyId.toLowerCase(),
+        profileId: requestedScope.profileId.toLowerCase(),
+      };
+      const granteeUserId = input.granteeUserId.toLowerCase();
+      const now = new Date();
+      const grantId = randomUUID();
+      try {
+        const grant = await inTransaction(database, async (client) => {
+          await requireOwner(client, actor, scope.familyId);
+          const profile = await client.query<{ id: string }>(
+            `SELECT id
+               FROM patient_profiles
+              WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
+            [scope.familyId, scope.profileId],
+          );
+          if (profile.rows[0] === undefined) throw new ResourceNotFoundError();
+          const grantee = (
+            await client.query<ConsentMemberRow>(
+              `SELECT u.id, u.display_name, m.role
+                 FROM family_memberships m
+                 JOIN users u ON u.id = m.user_id
+                WHERE m.family_id = $1
+                  AND m.user_id = $2
+                  AND m.role = 'adult_member'
+                  AND m.status = 'active'
+                  AND u.disabled_at IS NULL`,
+              [scope.familyId, granteeUserId],
+            )
+          ).rows[0];
+          if (grantee === undefined) throw new ResourceNotFoundError();
+          await client.query(
+            `INSERT INTO profile_consent_grants
+               (id, family_id, patient_profile_id, grantee_user_id, granted_by_user_id,
+                capability, created_at)
+             VALUES ($1, $2, $3, $4, $5, 'profile.read', $6)`,
+            [grantId, scope.familyId, scope.profileId, grantee.id, actor.userId, now],
+          );
+          const created: ConsentGrantRow = {
+            grant_id: grantId,
+            family_id: scope.familyId,
+            patient_profile_id: scope.profileId,
+            capability: "profile.read",
+            created_at: now.toISOString(),
+            ...grantee,
+          };
+          await audit(client, {
+            familyId: scope.familyId,
+            actorUserId: actor.userId,
+            action: "profile.consent_granted",
+            resourceType: "ProfileConsentGrant",
+            resourceId: grantId,
+            correlationId,
+            createdAt: now,
+            contractVersion: PROFILE_CONSENT_CONTRACT_VERSION,
+          });
+          return consentGrant(created);
+        });
+        return { contractVersion: PROFILE_CONSENT_CONTRACT_VERSION, grant };
+      } catch (error) {
+        if (isSqliteConstraintError(error, "unique")) throw new DomainConflictError();
+        throw error;
+      }
     },
 
     async acceptDemoInvitation(input, correlationId) {
@@ -519,6 +658,7 @@ export function createFamilyService(
         familyId: result.id,
         displayName: profileName,
         kind: "adult",
+        access: "self",
         createdAt: now.toISOString(),
       };
       return {
@@ -548,7 +688,7 @@ export function createFamilyService(
               row.role === "owner"
                 ? await profilesFor(client, row.id)
                 : row.role === "adult_member"
-                  ? await profilesForLinkedUser(client, row.id, actor.userId)
+                  ? await profilesForAdultUser(client, row.id, actor.userId)
                   : [],
           });
         }
@@ -605,6 +745,94 @@ export function createFamilyService(
       });
     },
 
+    async getProfileConsentGrants(actor, requestedScope, correlationId) {
+      const scope = {
+        familyId: requestedScope.familyId.toLowerCase(),
+        profileId: requestedScope.profileId.toLowerCase(),
+      };
+      return inTransaction(database, async (client) => {
+        await requireOwner(client, actor, scope.familyId);
+        const profile = await client.query<{ id: string }>(
+          `SELECT id
+             FROM patient_profiles
+            WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
+          [scope.familyId, scope.profileId],
+        );
+        if (profile.rows[0] === undefined) throw new ResourceNotFoundError();
+        const grants = await client.query<ConsentGrantRow>(
+          `SELECT g.id AS grant_id,
+                  g.family_id,
+                  g.patient_profile_id,
+                  g.capability,
+                  g.created_at,
+                  u.id,
+                  u.display_name,
+                  m.role
+             FROM profile_consent_grants g
+             JOIN family_memberships m
+               ON m.family_id = g.family_id
+              AND m.user_id = g.grantee_user_id
+             JOIN users u ON u.id = g.grantee_user_id
+            WHERE g.family_id = $1
+              AND g.patient_profile_id = $2
+              AND g.revoked_at IS NULL
+              AND m.role = 'adult_member'
+              AND m.status = 'active'
+              AND u.disabled_at IS NULL
+            ORDER BY g.created_at, g.id`,
+          [scope.familyId, scope.profileId],
+        );
+        const response: ProfileConsentGrantListResponse = {
+          contractVersion: PROFILE_CONSENT_CONTRACT_VERSION,
+          items: grants.rows.map(consentGrant),
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.consent_grants.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: PROFILE_CONSENT_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async listConsentMembers(actor, familyId, correlationId) {
+      const normalizedFamilyId = familyId.toLowerCase();
+      return inTransaction(database, async (client) => {
+        await requireOwner(client, actor, normalizedFamilyId);
+        const members = await client.query<ConsentMemberRow>(
+          `SELECT u.id, u.display_name, m.role
+             FROM family_memberships m
+             JOIN users u ON u.id = m.user_id
+            WHERE m.family_id = $1
+              AND m.role = 'adult_member'
+              AND m.status = 'active'
+              AND u.disabled_at IS NULL
+            ORDER BY u.display_name, u.id`,
+          [normalizedFamilyId],
+        );
+        const response: FamilyConsentMemberListResponse = {
+          contractVersion: PROFILE_CONSENT_CONTRACT_VERSION,
+          items: members.rows.map(consentMember),
+        };
+        await audit(client, {
+          familyId: normalizedFamilyId,
+          actorUserId: actor.userId,
+          action: "profile.consent_members.opened",
+          resourceType: "Family",
+          resourceId: normalizedFamilyId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: PROFILE_CONSENT_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
     async listProfiles(actor, familyId) {
       return inTransaction(database, async (client) => {
         const memberships = await client.query<{ role: FamilyRole }>(
@@ -615,7 +843,7 @@ export function createFamilyService(
         );
         const role = memberships.rows[0]?.role;
         if (role === "owner") return profilesFor(client, familyId);
-        if (role === "adult_member") return profilesForLinkedUser(client, familyId, actor.userId);
+        if (role === "adult_member") return profilesForAdultUser(client, familyId, actor.userId);
         throw new ResourceNotFoundError();
       });
     },
@@ -639,6 +867,38 @@ export function createFamilyService(
           resourceId: actor.userId,
           correlationId,
           createdAt: revokedAt,
+        });
+      });
+    },
+
+    async revokeProfileConsentGrant(actor, requestedScope, correlationId) {
+      const scope = {
+        familyId: requestedScope.familyId.toLowerCase(),
+        profileId: requestedScope.profileId.toLowerCase(),
+        grantId: requestedScope.grantId.toLowerCase(),
+      };
+      await inTransaction(database, async (client) => {
+        await requireOwner(client, actor, scope.familyId);
+        const now = new Date();
+        const revoked = await client.query(
+          `UPDATE profile_consent_grants
+              SET revoked_at = $1
+            WHERE id = $2
+              AND family_id = $3
+              AND patient_profile_id = $4
+              AND revoked_at IS NULL`,
+          [now, scope.grantId, scope.familyId, scope.profileId],
+        );
+        if (revoked.rowCount !== 1) throw new ResourceNotFoundError();
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.consent_revoked",
+          resourceType: "ProfileConsentGrant",
+          resourceId: scope.grantId,
+          correlationId,
+          createdAt: now,
+          contractVersion: PROFILE_CONSENT_CONTRACT_VERSION,
         });
       });
     },
@@ -736,6 +996,7 @@ export function createFamilyService(
         familyId: ids.family,
         displayName: profileName,
         kind: "adult",
+        access: "owner",
         createdAt: now.toISOString(),
       };
       return {

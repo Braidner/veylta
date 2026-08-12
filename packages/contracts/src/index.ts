@@ -1,12 +1,13 @@
 export const HTTP_API_VERSION = "v1" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
-export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v1" as const;
+export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v1" as const;
+export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v1" as const;
 export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
@@ -64,6 +65,7 @@ export interface HealthStatus {
 
 export type FamilyRole = "owner" | "adult_member" | "caregiver";
 export type PatientProfileKind = "adult" | "dependent";
+export type PatientProfileAccess = "owner" | "self" | "granted_read";
 
 export interface FamilySummary {
   id: string;
@@ -77,6 +79,8 @@ export interface PatientProfileSummary {
   familyId: string;
   displayName: string;
   kind: PatientProfileKind;
+  /** The server-authorized scope this session has for the profile. */
+  access: PatientProfileAccess;
   createdAt: string;
 }
 
@@ -131,6 +135,41 @@ export interface DemoInvitationAcceptResponse {
   readonly contractVersion: typeof FAMILY_INVITATION_CONTRACT_VERSION;
   readonly family: FamilySummary;
   readonly profile: PatientProfileSummary;
+}
+
+export interface FamilyConsentMember {
+  readonly id: string;
+  readonly displayName: string;
+  readonly role: "adult_member";
+}
+
+export interface FamilyConsentMemberListResponse {
+  readonly contractVersion: typeof PROFILE_CONSENT_CONTRACT_VERSION;
+  readonly items: readonly FamilyConsentMember[];
+}
+
+export interface ProfileConsentGrantCreateRequest {
+  readonly granteeUserId: string;
+  readonly capability: "profile.read";
+}
+
+export interface ProfileConsentGrant {
+  readonly id: string;
+  readonly familyId: string;
+  readonly profileId: string;
+  readonly capability: "profile.read";
+  readonly grantee: FamilyConsentMember;
+  readonly createdAt: string;
+}
+
+export interface ProfileConsentGrantCreateResponse {
+  readonly contractVersion: typeof PROFILE_CONSENT_CONTRACT_VERSION;
+  readonly grant: ProfileConsentGrant;
+}
+
+export interface ProfileConsentGrantListResponse {
+  readonly contractVersion: typeof PROFILE_CONSENT_CONTRACT_VERSION;
+  readonly items: readonly ProfileConsentGrant[];
 }
 
 /**

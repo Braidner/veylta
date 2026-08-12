@@ -73,7 +73,7 @@ Response `201`:
 
 ```json
 {
-  "contractVersion": "family-profile/v1",
+  "contractVersion": "family-profile/v2",
   "family": {
     "id": "family_placeholder",
     "displayName": "Synthetic demo family",
@@ -85,6 +85,7 @@ Response `201`:
     "familyId": "family_placeholder",
     "displayName": "Synthetic owner profile",
     "kind": "adult",
+    "access": "owner",
     "createdAt": "2026-08-11T00:00:00Z"
   }
 }
@@ -98,10 +99,11 @@ session token.
 
 Resolves the cookie server-side and returns the current demo user plus active
 families and profiles that actor may access. An owner receives all active
-profiles in their family; an adult that joined with the local invitation receives
-only their linked adult profile; a caregiver receives no profile list until a
-later consent grant exists. It returns `401` for an absent, expired, revoked,
-or disabled session and is always `Cache-Control: no-store`.
+profiles in their family; an invited adult receives their linked adult profile
+plus any currently granted `profile.read` profile. Each returned profile names
+its server-determined access as `owner`, `self`, or `granted_read`. A caregiver
+receives no profile list. It returns `401` for an absent, expired, revoked, or
+disabled session and is always `Cache-Control: no-store`.
 
 ### `DELETE /v1/session`
 
@@ -119,17 +121,17 @@ Creates an adult or dependent profile within an authorized family.
 }
 ```
 
-Response `201` contains the `family-profile/v1` contract version and a profile
-with `id`, `familyId`, display name, kind, and `createdAt`. Additional adult
+Response `201` contains the `family-profile/v2` contract version and a profile
+with `id`, `familyId`, display name, kind, access, and `createdAt`. Additional adult
 profiles are not implicitly linked to the owner identity.
 
 ### `GET /v1/families/{familyId}/profiles`
 
 Returns only profiles the actor may access. It is not an inventory of all
 profiles merely because the actor is a family member. The owner receives all
-active family profiles; the invited adult receives only their linked profile;
-caregivers remain default-deny until their explicit consent lifecycle is
-implemented.
+active family profiles; an invited adult receives their linked profile plus
+each currently granted `profile.read` profile, marked as `granted_read`.
+Caregivers remain default-deny.
 
 ### `POST /v1/families/{familyId}/invitations`
 
@@ -148,6 +150,44 @@ synthetic user, one active `adult_member` membership, one linked adult profile,
 and an opaque HttpOnly session. It never reveals whether an invalid code was
 unknown, expired, or already used. That adult can read only this linked profile;
 it does not gain family-wide or caregiver access.
+
+### `GET /v1/families/{familyId}/members`
+
+Owner-only `profile-consent/v1` helper. Returns active invited adults in this
+family as `{ id, displayName, role: "adult_member" }`; it does not expose
+owners, caregivers, sessions, or profile data. An adult or another family gets
+the same non-disclosing `404`.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/consent-grants`
+
+Owner-only `profile-consent/v1` projection of active grants for exactly one
+profile. It returns only grant id, profile/family selectors, fixed capability,
+creation time, and the receiving adult's minimal member projection. It does not
+return revocation history or medical data; successful reads create a payload-free
+audit event.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/consent-grants`
+
+Owner-only and requires the trusted `Origin`:
+
+```json
+{ "granteeUserId": "user_uuid", "capability": "profile.read" }
+```
+
+The receiving user must be an active invited `adult_member` in the same family.
+The response `201` is `profile-consent/v1` and returns the new grant. There can
+be one active `profile.read` grant per profile/adult; a duplicate returns `409`.
+The server records a payload-free grant audit event. This capability permits only
+profile/document/history/indicator reads; it does not permit upload, retry,
+extraction review, invitations, audit-log reads, or caregiver access.
+
+### `DELETE /v1/families/{familyId}/profiles/{profileId}/consent-grants/{grantId}`
+
+Owner-only and requires the trusted `Origin`. It performs a one-way revoke and
+returns `204`. Every later authorized read evaluates active grants again, so the
+former recipient immediately receives the same non-disclosing `404` as for an
+unknown profile or document. Revoke is payload-free audited and cannot be undone
+by updating the immutable grant row.
 
 ### `GET /v1/families/{familyId}/audit-events`
 
@@ -650,8 +690,8 @@ stack traces.
 ## Deferred APIs
 
 No first-slice endpoint is defined for production authentication/account
-recovery, caregiver invitations, adult/caregiver consent grants beyond the
-linked adult self-profile, S3 configuration or presigned
+recovery, caregiver invitations, broader adult/caregiver consent capabilities
+beyond the delivered local `profile.read` grant, S3 configuration or presigned
 URLs, JPEG/PNG ingestion, cloud OCR, LLM providers, summaries,
 recommendations, FHIR, exports, backups, or account deletion. Those contracts
 follow their own product, threat-model, and license review.
