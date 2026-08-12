@@ -11,6 +11,8 @@ import type {
   ExtractedFactReviewStatus,
   FactReviewCommand,
   FactReviewResponse,
+  IndicatorCatalogResponse,
+  IndicatorSeriesResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
   ProfileCreateResponse,
@@ -20,7 +22,7 @@ import type {
 import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { SystemStatus } from "./system-status";
 
 const apiPrefix = "/health-api";
@@ -108,6 +110,10 @@ function documentFactsPath(familyId: string, profileId: string, documentId: stri
 
 function observationHistoryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/observations`;
+}
+
+function indicatorsPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/indicators`;
 }
 
 interface VeyltaAppProps {
@@ -591,6 +597,11 @@ function ProfileWorkspace({
               />
               <ObservationHistoryPanel
                 key={`${family.id}:${profile.id}`}
+                familyId={family.id}
+                profileId={profile.id}
+              />
+              <IndicatorCatalogPanel
+                key={`indicators:${family.id}:${profile.id}`}
                 familyId={family.id}
                 profileId={profile.id}
               />
@@ -1085,6 +1096,411 @@ function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {
         </details>
       </td>
     </tr>
+  );
+}
+
+type IndicatorCatalogItem = IndicatorCatalogResponse["items"][number];
+type IndicatorCatalogState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: readonly IndicatorCatalogItem[] }
+  | { kind: "error"; copy: string };
+
+function indicatorCatalogErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Показатели этого профиля недоступны. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось загрузить каталог. Подтверждённые значения и исходные документы не изменены.";
+}
+
+function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelProps) {
+  const [catalog, setCatalog] = useState<IndicatorCatalogState>({ kind: "loading" });
+  const [selected, setSelected] = useState<{ canonicalCode: string; unit: string } | null>(null);
+
+  const loadCatalog = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setCatalog({ kind: "loading" });
+      try {
+        const response = await apiRequest<IndicatorCatalogResponse>(
+          indicatorsPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (signal?.aborted) return;
+        setCatalog({ kind: "ready", items: response.items });
+        setSelected((current) => {
+          if (
+            current !== null &&
+            response.items.some(
+              (item) =>
+                item.canonicalCode === current.canonicalCode &&
+                item.units.some((unit) => unit.unit === current.unit),
+            )
+          ) {
+            return current;
+          }
+          const first = response.items[0];
+          const firstUnit = first?.units[0];
+          return first === undefined || firstUnit === undefined
+            ? null
+            : { canonicalCode: first.canonicalCode, unit: firstUnit.unit };
+        });
+      } catch (error) {
+        if (!signal?.aborted) setCatalog({ kind: "error", copy: indicatorCatalogErrorCopy(error) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadCatalog(controller.signal);
+    return () => controller.abort();
+  }, [loadCatalog]);
+
+  return (
+    <section
+      id="indicator-catalog"
+      className="indicator-catalog"
+      aria-labelledby="indicator-catalog-title"
+      aria-busy={catalog.kind === "loading"}
+    >
+      <div className="indicator-catalog__heading">
+        <p className="context-line">Сопоставимые показатели</p>
+        <h2 id="indicator-catalog-title">Подтверждённая динамика</h2>
+        <p>
+          Сравнение доступно только внутри одного кода и точно совпадающей единицы. Оно описывает
+          изменение между источниками, но не даёт медицинской оценки.
+        </p>
+      </div>
+
+      {catalog.kind === "loading" ? (
+        <div className="indicator-catalog__loading" aria-live="polite">
+          <div className="skeleton skeleton--indicator-heading" aria-hidden="true" />
+          <div className="skeleton skeleton--indicator-row" aria-hidden="true" />
+          <p>Готовим сопоставимые подтверждённые показатели…</p>
+        </div>
+      ) : null}
+
+      {catalog.kind === "error" ? (
+        <div className="indicator-catalog__empty" role="status">
+          <p>{catalog.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadCatalog()}
+          >
+            Обновить каталог
+          </button>
+        </div>
+      ) : null}
+
+      {catalog.kind === "ready" && catalog.items.length === 0 ? (
+        <div className="indicator-catalog__empty" role="status">
+          <p>
+            Пока нет подтверждённых показателей с известным синтетическим кодом. Сначала подтвердите
+            факт в источнике — он появится здесь без автоматической интерпретации.
+          </p>
+        </div>
+      ) : null}
+
+      {catalog.kind === "ready" && catalog.items.length > 0 ? (
+        <div className="indicator-catalog__workspace">
+          <ul className="indicator-catalog__list" aria-label="Показатели профиля">
+            {catalog.items.flatMap((item) =>
+              item.units.map((summary) => {
+                const active =
+                  selected?.canonicalCode === item.canonicalCode && selected.unit === summary.unit;
+                return (
+                  <li key={`${item.canonicalCode}:${summary.unit}`}>
+                    <button
+                      className="indicator-catalog__item"
+                      data-active={active ? "true" : undefined}
+                      type="button"
+                      onClick={() =>
+                        setSelected({ canonicalCode: item.canonicalCode, unit: summary.unit })
+                      }
+                    >
+                      <span className="indicator-catalog__item-name">{item.displayName}</span>
+                      <span className="indicator-catalog__item-latest">
+                        {summary.latest.value} {summary.unit}
+                      </span>
+                      <span className="indicator-catalog__item-meta">
+                        {summary.observationCount === 1
+                          ? "1 подтверждённое значение"
+                          : `${summary.observationCount} подтверждённых значения`}
+                      </span>
+                    </button>
+                  </li>
+                );
+              }),
+            )}
+          </ul>
+          {selected !== null ? (
+            <IndicatorSeriesPanel
+              familyId={familyId}
+              profileId={profileId}
+              canonicalCode={selected.canonicalCode}
+              unit={selected.unit}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+type IndicatorSeriesState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      items: readonly IndicatorSeriesResponse["items"][number][];
+      series: IndicatorSeriesResponse;
+    }
+  | { kind: "error"; copy: string };
+
+function indicatorSeriesErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Этот ряд больше недоступен для активного профиля.";
+  }
+  return "Не удалось загрузить ряд. Подтверждённые значения и исходные документы не изменены.";
+}
+
+function differenceCopy(comparison: IndicatorSeriesResponse["comparison"]): string {
+  if (comparison.state === "insufficient_data") {
+    return "Нужно хотя бы два подтверждённых значения в этой же единице, чтобы показать изменение.";
+  }
+  if (comparison.state === "unavailable") {
+    return "Значения сохранены как источник, но их формат нельзя безопасно сравнить автоматически.";
+  }
+  const direction =
+    comparison.delta.direction === "increased"
+      ? "выше"
+      : comparison.delta.direction === "decreased"
+        ? "ниже"
+        : "без изменения";
+  return `Последнее значение ${direction} предыдущего на ${comparison.delta.value} в той же единице.`;
+}
+
+interface IndicatorChartPoint {
+  item: IndicatorSeriesResponse["items"][number];
+  value: number;
+}
+
+function indicatorChartPoints(
+  items: readonly IndicatorSeriesResponse["items"][number][],
+): readonly IndicatorChartPoint[] | null {
+  const points = [...items].reverse().map((item) => {
+    if (!/^[+-]?\d+(?:\.\d+)?$/.test(item.source.value)) return null;
+    const value = Number(item.source.value);
+    return Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER
+      ? { item, value }
+      : null;
+  });
+  return points.some((point) => point === null) || points.length < 2
+    ? null
+    : (points as IndicatorChartPoint[]);
+}
+
+function IndicatorSeriesChart({
+  points,
+  unit,
+}: {
+  points: readonly IndicatorChartPoint[];
+  unit: string;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const chartWidth = 560;
+  const chartHeight = 220;
+  const padding = 34;
+  const values = points.map((point) => point.value);
+  const lower = Math.min(...values);
+  const upper = Math.max(...values);
+  const range = upper - lower || 1;
+  const positioned = points.map((point, index) => ({
+    ...point,
+    x: padding + (index / (points.length - 1)) * (chartWidth - padding * 2),
+    y: chartHeight - padding - ((point.value - lower) / range) * (chartHeight - padding * 2),
+  }));
+  const polyline = positioned.map((point) => `${point.x},${point.y}`).join(" ");
+
+  return (
+    <figure className="indicator-series__chart">
+      <svg
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        role="img"
+        aria-labelledby={`${titleId} ${descriptionId}`}
+      >
+        <title id={titleId}>Расположение подтверждённых значений по времени</title>
+        <desc id={descriptionId}>
+          {points
+            .map(
+              (point) => `${formatDate(point.item.timelineAt)}: ${point.item.source.value} ${unit}`,
+            )
+            .join("; ")}
+        </desc>
+        <line x1={padding} y1={padding} x2={padding} y2={chartHeight - padding} />
+        <line
+          x1={padding}
+          y1={chartHeight - padding}
+          x2={chartWidth - padding}
+          y2={chartHeight - padding}
+        />
+        <polyline points={polyline} />
+        {positioned.map((point) => (
+          <circle cx={point.x} cy={point.y} key={point.item.id} r="5">
+            <title>
+              {formatDate(point.item.timelineAt)}: {point.item.source.value} {unit}
+            </title>
+          </circle>
+        ))}
+        <text x={padding} y={padding - 10} textAnchor="start">
+          {upper}
+        </text>
+        <text x={padding} y={chartHeight - 12} textAnchor="start">
+          {lower}
+        </text>
+      </svg>
+      <figcaption>
+        Расположение точек помогает читать последовательность. Точные значения, даты и источники
+        приведены ниже; шкала не означает референсный диапазон.
+      </figcaption>
+    </figure>
+  );
+}
+
+function IndicatorSeriesPanel({
+  familyId,
+  profileId,
+  canonicalCode,
+  unit,
+}: {
+  familyId: string;
+  profileId: string;
+  canonicalCode: string;
+  unit: string;
+}) {
+  const [state, setState] = useState<IndicatorSeriesState>({ kind: "loading" });
+  const [loadMorePending, setLoadMorePending] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+
+  const loadSeries = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      setLoadMoreError(null);
+      try {
+        const response = await apiRequest<IndicatorSeriesResponse>(
+          `${indicatorsPath(familyId, profileId)}/${encodeURIComponent(canonicalCode)}?unit=${encodeURIComponent(unit)}`,
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", items: response.items, series: response });
+      } catch (error) {
+        if (!signal?.aborted) setState({ kind: "error", copy: indicatorSeriesErrorCopy(error) });
+      }
+    },
+    [canonicalCode, familyId, profileId, unit],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadSeries(controller.signal);
+    return () => controller.abort();
+  }, [loadSeries]);
+
+  async function loadNextPage(): Promise<void> {
+    if (state.kind !== "ready" || state.series.nextCursor === null || loadMorePending) return;
+    setLoadMorePending(true);
+    setLoadMoreError(null);
+    try {
+      const response = await apiRequest<IndicatorSeriesResponse>(
+        `${indicatorsPath(familyId, profileId)}/${encodeURIComponent(canonicalCode)}?unit=${encodeURIComponent(unit)}&cursor=${encodeURIComponent(state.series.nextCursor)}`,
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { kind: "ready", items: [...current.items, ...response.items], series: response },
+      );
+    } catch (error) {
+      setLoadMoreError(indicatorSeriesErrorCopy(error));
+    } finally {
+      setLoadMorePending(false);
+    }
+  }
+
+  const chartPoints = useMemo(
+    () => (state.kind === "ready" ? indicatorChartPoints(state.items) : null),
+    [state],
+  );
+
+  if (state.kind === "loading") {
+    return (
+      <div className="indicator-series indicator-series--loading" aria-live="polite">
+        <div className="skeleton skeleton--indicator-plot" aria-hidden="true" />
+        <p>Загружаем ряд источников…</p>
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <div className="indicator-series indicator-series--empty" role="status">
+        <p>{state.copy}</p>
+        <button
+          className="button button--secondary"
+          type="button"
+          onClick={() => void loadSeries()}
+        >
+          Повторить
+        </button>
+      </div>
+    );
+  }
+
+  const chronological = [...state.items].reverse();
+  return (
+    <div className="indicator-series" aria-live="polite">
+      <div className="indicator-series__title">
+        <div>
+          <h3>{state.series.indicator.displayName}</h3>
+          <p>
+            {state.series.indicator.canonicalCode} · {state.series.indicator.unit}
+          </p>
+        </div>
+        <strong>{state.items.length} источника</strong>
+      </div>
+      <p className="indicator-series__comparison">{differenceCopy(state.series.comparison)}</p>
+      {chartPoints === null ? null : (
+        <IndicatorSeriesChart points={chartPoints} unit={state.series.indicator.unit} />
+      )}
+      <ol className="indicator-series__timeline" aria-label="Подтверждённые значения по времени">
+        {chronological.map((item) => (
+          <li key={item.id}>
+            <div>
+              <strong>
+                {item.source.value} {item.source.unit}
+              </strong>
+              <time dateTime={item.timelineAt}>{formatDate(item.timelineAt)}</time>
+            </div>
+            <a href={observationSourceHref(item.sourceDocument.contentPath)}>Источник · PDF</a>
+          </li>
+        ))}
+      </ol>
+      {state.series.nextCursor === null ? null : (
+        <div className="indicator-series__more">
+          <button
+            className="button button--secondary"
+            type="button"
+            disabled={loadMorePending}
+            onClick={() => void loadNextPage()}
+          >
+            {loadMorePending ? "Загружаем…" : "Показать следующие значения"}
+          </button>
+          {loadMoreError === null ? null : (
+            <p className="form-error" role="alert">
+              {loadMoreError}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

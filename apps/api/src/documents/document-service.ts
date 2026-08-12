@@ -10,13 +10,19 @@ import {
   type FactReviewCommand,
   type FactReviewOutcome,
   type FactReviewResponse,
+  INDICATOR_SERIES_CONTRACT_VERSION,
+  type IndicatorCatalogResponse,
+  type IndicatorComparison,
+  type IndicatorSeriesResponse,
   LAB_EXTRACTION_SCHEMA_VERSION,
   type LabFactReferenceRange,
   type LabFactValidationIssue,
+  MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
+  SYNTHETIC_INDICATOR_CATALOG,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
@@ -58,6 +64,12 @@ export interface ObservationHistoryQuery {
   cursor?: string;
 }
 
+export interface IndicatorSeriesQuery {
+  unit: string;
+  limit?: string;
+  cursor?: string;
+}
+
 export interface DocumentService {
   acceptUpload(
     actor: SessionActor,
@@ -93,6 +105,17 @@ export interface DocumentService {
     query: ObservationHistoryQuery,
     correlationId: string,
   ): Promise<ObservationHistoryResponse>;
+  getIndicatorCatalog(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<IndicatorCatalogResponse>;
+  getIndicatorSeries(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; canonicalCode: string },
+    query: IndicatorSeriesQuery,
+    correlationId: string,
+  ): Promise<IndicatorSeriesResponse>;
   reviewFact(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string; factId: string },
@@ -268,6 +291,21 @@ interface ObservationHistoryCursor {
   timelineAt: string;
 }
 
+interface IndicatorCatalogRow {
+  canonical_code: string;
+  source_unit: string;
+  source_value: string;
+  timeline_at: string;
+  id: string;
+}
+
+interface IndicatorSeriesCursor {
+  canonicalCode: string;
+  unit: string;
+  id: string;
+  timelineAt: string;
+}
+
 interface RetryRequestRow {
   document_version_id: string;
   created_at: string;
@@ -338,6 +376,9 @@ const canonicalUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const historyCursorPattern = /^[A-Za-z0-9_-]{1,500}$/;
 const defaultObservationHistoryPageSize = 50;
+const defaultIndicatorSeriesPageSize = 100;
+const syntheticIndicatorCatalog: ReadonlyMap<string, (typeof SYNTHETIC_INDICATOR_CATALOG)[number]> =
+  new Map(SYNTHETIC_INDICATOR_CATALOG.map((indicator) => [indicator.canonicalCode, indicator]));
 
 function historyCanonicalCode(value: string | undefined): string | null {
   if (value === undefined) return null;
@@ -353,6 +394,32 @@ function observationHistoryLimit(value: string | undefined): number {
     throw new DomainValidationError();
   }
   return limit;
+}
+
+function indicatorSeriesLimit(value: string | undefined): number {
+  if (value === undefined) return defaultIndicatorSeriesPageSize;
+  if (!/^(?:[1-9][0-9]?|100)$/.test(value)) throw new DomainValidationError();
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_INDICATOR_SERIES_PAGE_SIZE) {
+    throw new DomainValidationError();
+  }
+  return limit;
+}
+
+function indicatorUnit(value: string): string {
+  if (
+    value.length === 0 ||
+    value.length > 100 ||
+    value !== value.trim() ||
+    value.includes("|") ||
+    [...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint < 32 || codePoint === 127);
+    })
+  ) {
+    throw new DomainValidationError();
+  }
+  return value;
 }
 
 function cursorTimestamp(value: unknown): string {
@@ -398,6 +465,86 @@ function encodeObservationHistoryCursor(cursor: ObservationHistoryCursor): strin
     JSON.stringify({ v: 1, t: cursor.timelineAt, id: cursor.id, c: cursor.canonicalCode }),
     "utf8",
   ).toString("base64url");
+}
+
+function decodeIndicatorSeriesCursor(
+  value: string | undefined,
+  canonicalCode: string,
+  unit: string,
+): IndicatorSeriesCursor | null {
+  if (value === undefined) return null;
+  if (!historyCursorPattern.test(value)) throw new DomainValidationError();
+  try {
+    const decoded = Buffer.from(value, "base64url");
+    if (decoded.toString("base64url") !== value) throw new Error("Non-canonical cursor");
+    const parsed: unknown = JSON.parse(decoded.toString("utf8"));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid cursor object");
+    }
+    const record = parsed as Record<string, unknown>;
+    if (Object.keys(record).sort().join(",") !== "c,id,t,u,v" || record.v !== 1) {
+      throw new Error("Invalid cursor shape");
+    }
+    if (record.c !== canonicalCode || record.u !== unit || typeof record.id !== "string") {
+      throw new Error("Cursor query mismatch");
+    }
+    if (!canonicalUuidPattern.test(record.id)) throw new Error("Invalid cursor id");
+    return { canonicalCode, unit, id: record.id, timelineAt: cursorTimestamp(record.t) };
+  } catch (error) {
+    if (error instanceof DomainValidationError) throw error;
+    throw new DomainValidationError();
+  }
+}
+
+function encodeIndicatorSeriesCursor(cursor: IndicatorSeriesCursor): string {
+  return Buffer.from(
+    JSON.stringify({
+      v: 1,
+      t: cursor.timelineAt,
+      id: cursor.id,
+      c: cursor.canonicalCode,
+      u: cursor.unit,
+    }),
+    "utf8",
+  ).toString("base64url");
+}
+
+interface ParsedDecimal {
+  readonly unscaled: bigint;
+  readonly scale: number;
+}
+
+function parseSourceDecimal(value: string): ParsedDecimal | null {
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(value);
+  if (match === null) return null;
+  const sign = match[1] === "-" ? -1n : 1n;
+  const integer = match[2] ?? "";
+  const fraction = match[3] ?? "";
+  const digits = `${integer}${fraction}`.replace(/^0+(?=\d)/, "");
+  return { unscaled: sign * BigInt(digits.length === 0 ? "0" : digits), scale: fraction.length };
+}
+
+function decimalDelta(
+  current: string,
+  previous: string,
+): Extract<IndicatorComparison, { state: "available" }>["delta"] | null {
+  const currentDecimal = parseSourceDecimal(current);
+  const previousDecimal = parseSourceDecimal(previous);
+  if (currentDecimal === null || previousDecimal === null) return null;
+  const scale = Math.max(currentDecimal.scale, previousDecimal.scale);
+  const currentUnscaled = currentDecimal.unscaled * 10n ** BigInt(scale - currentDecimal.scale);
+  const previousUnscaled = previousDecimal.unscaled * 10n ** BigInt(scale - previousDecimal.scale);
+  const signedDelta = currentUnscaled - previousUnscaled;
+  const magnitude = signedDelta < 0n ? -signedDelta : signedDelta;
+  const digits = magnitude.toString().padStart(scale + 1, "0");
+  const formatted =
+    scale === 0
+      ? digits
+      : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`.replace(/\.?0+$/, "");
+  return {
+    value: formatted === "" ? "0" : formatted,
+    direction: signedDelta > 0n ? "increased" : signedDelta < 0n ? "decreased" : "unchanged",
+  };
 }
 
 function safeFilename(value: string | undefined): string {
@@ -1665,6 +1812,224 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
           contractVersion: OBSERVATION_HISTORY_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getIndicatorCatalog(actor, requestedScope, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      return database.transaction(async (client) => {
+        await requireProfileAccess(client, actor, scope.familyId, scope.profileId);
+        const rows = await client.query<IndicatorCatalogRow>(
+          `SELECT o.canonical_code, o.source_unit, o.source_value,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at, o.id
+             FROM observations o
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.canonical_code IS NOT NULL
+            ORDER BY o.canonical_code, o.source_unit,
+                     COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC`,
+          [scope.familyId, scope.profileId],
+        );
+        const grouped = new Map<
+          string,
+          Map<string, { observationCount: number; latest: { value: string; timelineAt: string } }>
+        >();
+        for (const row of rows.rows) {
+          if (!canonicalCodePattern.test(row.canonical_code)) {
+            throw new ObjectStorageIntegrityError("Stored observation canonical code is invalid");
+          }
+          const indicator = syntheticIndicatorCatalog.get(row.canonical_code);
+          if (indicator === undefined) continue;
+          const unit = indicatorUnit(row.source_unit);
+          const value = requiredBoundedString(row.source_value, 100, "observation source value");
+          const timelineAt = canonicalTimestamp(row.timeline_at);
+          const units = grouped.get(row.canonical_code) ?? new Map();
+          const current = units.get(unit);
+          units.set(unit, {
+            observationCount: (current?.observationCount ?? 0) + 1,
+            latest: current?.latest ?? { value, timelineAt },
+          });
+          grouped.set(row.canonical_code, units);
+        }
+        const response: IndicatorCatalogResponse = {
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+          items: [...grouped.entries()].map(([canonicalCode, units]) => {
+            const indicator = syntheticIndicatorCatalog.get(canonicalCode);
+            if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
+            return {
+              canonicalCode,
+              displayName: indicator.displayName,
+              units: [...units.entries()].map(([unit, summary]) => ({ unit, ...summary })),
+            };
+          }),
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "indicator.catalog.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getIndicatorSeries(actor, requestedScope, requestedQuery, correlationId) {
+      const profileScope = canonicalProfileScope(requestedScope);
+      const canonicalCode = historyCanonicalCode(requestedScope.canonicalCode);
+      if (canonicalCode === null || syntheticIndicatorCatalog.get(canonicalCode) === undefined) {
+        throw new ResourceNotFoundError();
+      }
+      const unit = indicatorUnit(requestedQuery.unit);
+      const limit = indicatorSeriesLimit(requestedQuery.limit);
+      return database.transaction(async (client) => {
+        await requireProfileAccess(client, actor, profileScope.familyId, profileScope.profileId);
+        const cursor = decodeIndicatorSeriesCursor(requestedQuery.cursor, canonicalCode, unit);
+        const comparisonRows = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.canonical_code = $3
+              AND o.source_unit = $4
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+            LIMIT 2`,
+          [profileScope.familyId, profileScope.profileId, canonicalCode, unit],
+        );
+        const observations = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.canonical_code = $3
+              AND o.source_unit = $4
+              AND (
+                $5 IS NULL
+                OR COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) < $5
+                OR (
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) = $5
+                  AND o.id < $6
+                )
+              )
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+            LIMIT $7`,
+          [
+            profileScope.familyId,
+            profileScope.profileId,
+            canonicalCode,
+            unit,
+            cursor?.timelineAt ?? null,
+            cursor?.id ?? null,
+            limit + 1,
+          ],
+        );
+        const pageRows = observations.rows.slice(0, limit);
+        const items = pageRows.map((row) => observationHistoryItem(row, profileScope));
+        const lastItem = items.at(-1);
+        const nextCursor =
+          observations.rows.length > limit && lastItem !== undefined
+            ? encodeIndicatorSeriesCursor({
+                canonicalCode,
+                unit,
+                id: lastItem.id,
+                timelineAt: lastItem.timelineAt,
+              })
+            : null;
+        const first = comparisonRows.rows[0]
+          ? observationHistoryItem(comparisonRows.rows[0], profileScope)
+          : undefined;
+        const second = comparisonRows.rows[1]
+          ? observationHistoryItem(comparisonRows.rows[1], profileScope)
+          : undefined;
+        const comparison: IndicatorComparison =
+          first === undefined || second === undefined
+            ? { state: "insufficient_data" }
+            : (() => {
+                const delta = decimalDelta(first.source.value, second.source.value);
+                if (delta === null)
+                  return { state: "unavailable", reason: "non_numeric_source_value" };
+                return {
+                  state: "available",
+                  previous: {
+                    id: second.id,
+                    value: second.source.value,
+                    timelineAt: second.timelineAt,
+                  },
+                  delta,
+                };
+              })();
+        const indicator = syntheticIndicatorCatalog.get(canonicalCode);
+        if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
+        const response: IndicatorSeriesResponse = {
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+          indicator: { canonicalCode, displayName: indicator.displayName, unit },
+          items,
+          comparison,
+          nextCursor,
+        };
+        await audit(client, {
+          familyId: profileScope.familyId,
+          actorUserId: actor.userId,
+          action: "indicator.series.opened",
+          resourceType: "PatientProfile",
+          resourceId: profileScope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
         });
         return response;
       });

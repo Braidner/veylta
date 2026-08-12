@@ -182,6 +182,32 @@ not claim a remote CI run or production readiness.
 | Only synthetic fixtures | Fixture inventory and log/telemetry assertion |
 | CI quality and license gates pass | Recorded CI/local command output |
 
+## Task 9 — Comparable indicator catalog and chart
+
+Commit intent: `feat: compare compatible confirmed indicators`
+
+- The deterministic parser assigns canonical codes only to its two explicit
+  synthetic analytes; unknown facts remain unclassified rather than being
+  guessed into a clinical vocabulary.
+- Tenant- and profile-authorized `indicator-series/v1` catalog and detail reads
+  are payload-free audited and never expose a cross-family indicator oracle.
+- A catalog keeps each exact source unit separate. A series permits one known
+  canonical code plus one exact unit; no unit conversion, reference-range
+  inference, or clinical interpretation occurs.
+- The detail response has keyset pagination, source-first timeline items, and
+  an explicit comparison state. The arithmetic difference uses exact decimal
+  parsing only; nonnumeric source values fail closed to an unavailable state.
+- The profile UI shows the compact accessible line chart only when there are at
+  least two finite numeric source values. The timeline and re-authorized source
+  links remain the authoritative detailed view, and copy states that the chart
+  is not a reference range or health assessment.
+
+Delivered in `feat: compare compatible confirmed indicators`: the catalog and
+chart work only for confirmed, compatible synthetic observations. Corrections
+remain immutable source-first observations; a second unit creates a distinct
+row rather than a mixed comparison. Tests cover the two-value path, pagination,
+separate units, unknown codes, audit events, tenant denial, and browser flow.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
@@ -192,11 +218,10 @@ commit chain:
 2. JPEG/PNG and scanned-PDF OCR fallback, beginning with a reviewed local
    permissive engine and trained-data license inventory.
 3. Broader classification/extraction with provider interfaces and strict schemas.
-4. Comparable indicator chart and deterministic trend recalculation.
-5. Evidence-backed versioned summary and carefully bounded recommendations.
-6. Full role/consent UX and audit-log view.
-7. Portable export, controlled deletion, backup, and verified restore.
-8. FHIR R4 mappings and Bundle import/export at the system edge.
+4. Evidence-backed versioned summary and carefully bounded recommendations.
+5. Full role/consent UX and audit-log view.
+6. Portable export, controlled deletion, backup, and verified restore.
+7. FHIR R4 mappings and Bundle import/export at the system edge.
 
 The complete MVP is not part of the first vertical slice. External OCR/LLM,
 clinical advice, and real-data readiness remain off until their production gates

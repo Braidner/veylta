@@ -17,6 +17,7 @@ import {
 import {
   type DocumentService,
   IdempotencyConflictError,
+  type IndicatorSeriesQuery,
   InvalidPdfSignatureError,
   type ObservationHistoryQuery,
   type StagedDocument,
@@ -35,6 +36,10 @@ interface DocumentParams extends ProfileParams {
 
 interface FactParams extends DocumentParams {
   factId: string;
+}
+
+interface IndicatorParams extends ProfileParams {
+  canonicalCode: string;
 }
 
 export interface DocumentRouteOptions {
@@ -88,6 +93,33 @@ const observationHistoryQuerySchema = {
       maxLength: 100,
       pattern: "^[a-z0-9][a-z0-9._-]{0,99}$",
     },
+    limit: { type: "string", pattern: "^(?:[1-9][0-9]?|100)$" },
+    cursor: { type: "string", minLength: 1, maxLength: 500, pattern: "^[A-Za-z0-9_-]+$" },
+  },
+} as const;
+
+const indicatorParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["familyId", "profileId", "canonicalCode"],
+  properties: {
+    familyId: canonicalUuidSchema,
+    profileId: canonicalUuidSchema,
+    canonicalCode: {
+      type: "string",
+      minLength: 1,
+      maxLength: 100,
+      pattern: "^[a-z0-9][a-z0-9._-]{0,99}$",
+    },
+  },
+} as const;
+
+const indicatorSeriesQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["unit"],
+  properties: {
+    unit: { type: "string", minLength: 1, maxLength: 100 },
     limit: { type: "string", pattern: "^(?:[1-9][0-9]?|100)$" },
     cursor: { type: "string", minLength: 1, maxLength: 500, pattern: "^[A-Za-z0-9_-]+$" },
   },
@@ -235,6 +267,38 @@ export function registerDocumentRoutes(
         try {
           reply.send(
             await service.getObservationHistory(actor, request.params, request.query, request.id),
+          );
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/indicators",
+      { schema: { params: profileParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(await service.getIndicatorCatalog(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: IndicatorParams; Querystring: IndicatorSeriesQuery }>(
+      "/v1/families/:familyId/profiles/:profileId/indicators/:canonicalCode",
+      { schema: { params: indicatorParamsSchema, querystring: indicatorSeriesQuerySchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(
+            await service.getIndicatorSeries(actor, request.params, request.query, request.id),
           );
         } catch (error) {
           if (!sendDocumentError(error, request, reply)) throw error;

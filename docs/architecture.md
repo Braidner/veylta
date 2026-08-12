@@ -12,7 +12,9 @@ local filesystem directory.
 The public document surface is `document/v3`: immutable extracted facts remain
 separate from explicit, idempotent fact-review decisions. The separate read-only
 `observation-history/v1` boundary exposes only those immutable observations
-that were explicitly confirmed or corrected.
+that were explicitly confirmed or corrected. `indicator-series/v1` is a second
+read boundary that groups only the deterministic synthetic canonical codes and
+requires an exact source unit before it returns a comparable series.
 
 The first vertical slice uses a deterministic, versioned parser for one
 synthetic PDF format with a text layer. It does not invoke OCR, an LLM, or a
@@ -68,6 +70,9 @@ required. Shared code is extracted only when two real consumers need it.
   sanitized failure category plus an authorized retry action.
 - Presents source-first fact decisions and correction/confirmation, then a
   profile-wide confirmed-observation history with source document provenance.
+- Presents an authorized catalog of known synthetic indicators and, only for an
+  exact code/unit series, a compact numeric chart and deterministic source-value
+  difference. The timeline and source links remain available beside the chart.
 - Treats API errors and authorization failures as data, with no domain state
   transitions hidden in React components.
 
@@ -176,7 +181,10 @@ separate confirmed workflows and remain deferred.
   `awaiting_review` run has its final decision, that run becomes `completed`.
 - `observation-history/v1` reads confirmed observations only, orders by the
   deterministic sample/result/upload timeline with an ID tie-breaker, and does
-  not derive trends, comparisons, or clinical interpretations.
+  not derive clinical interpretations. `indicator-series/v1` separately admits
+  only explicitly known synthetic canonical codes and one exact source unit;
+  its comparison is arithmetic on the latest two finite decimal source strings,
+  with an explicit insufficient/unavailable state for every other case.
 - A terminal worker outcome is committed with its fact graph or failure
   transition and is not duplicated by acknowledgement replay.
 - State transitions are compare-and-set operations; retries cannot move a newer

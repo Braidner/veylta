@@ -29,12 +29,15 @@ The full first slice remains deliberately narrow:
    correction creates a source-linked observation without changing the raw
    extraction (Task 6, delivered);
 7. show confirmed observations as indicator history with provenance back to
-   the document and page (Task 7, delivered).
+   the document and page (Task 7, delivered);
+8. compare compatible, confirmed synthetic indicators by exact code and source
+   unit, with an accessible chart and no clinical assessment (Task 9,
+   delivered).
 
-S3-compatible storage, OCR, LLM processing, trend summaries, recommendations,
-FHIR exchange, export/backup, and the rest of the full MVP are explicitly
-deferred. They must not be represented as implemented until their own slices
-are complete.
+S3-compatible storage, OCR, LLM processing, clinical trend summaries,
+recommendations, FHIR exchange, export/backup, and the rest of the full MVP
+are explicitly deferred. They must not be represented as implemented until
+their own slices are complete.
 
 ## Product principles
 
@@ -113,8 +116,10 @@ confirmation or correction creates one immutable review decision and confirmed
 observation in the same transaction; a rejection creates no observation. The
 raw extracted fact is never edited. The profile page then lists confirmed
 observations source-first, with their document-specific provenance and an
-authorized link back to the immutable original; it is a history table, not a
-trend or clinical interpretation.
+authorized link back to the immutable original. Its separate compatible-
+indicator view keeps exact source units apart and can show the arithmetic
+difference between the latest two numeric sources; it never assigns a
+reference-range meaning, clinical trend, or recommendation.
 
 The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is

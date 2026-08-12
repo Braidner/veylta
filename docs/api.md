@@ -479,6 +479,88 @@ fragments, document text, filenames, or cursor data. The browser presents the
 same data as a table and does not claim longitudinal comparability, trend
 analysis, or a meaningful graph from one point.
 
+## Comparable indicator catalog (Task 9)
+
+The deterministic parser recognizes exactly two **synthetic demonstration**
+codes: `synthetic-analyte-a` and `synthetic-analyte-b`. They are not a clinical
+terminology, diagnosis, or broad code-mapping claim. Unknown extracted facts
+remain unclassified and never appear in this catalog.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/indicators`
+
+Returns the authorized profile's known-code confirmed observations grouped by
+canonical code and exact source unit. It is a safe, strict `GET`; it requires
+no `Origin` or idempotency key. There are no query parameters. A code with two
+units yields two unit groups rather than an implicit conversion.
+
+```json
+{
+  "contractVersion": "indicator-series/v1",
+  "items": [
+    {
+      "canonicalCode": "synthetic-analyte-a",
+      "displayName": "Синтетический аналит A",
+      "units": [
+        {
+          "unit": "synthetic-unit",
+          "observationCount": 2,
+          "latest": {
+            "value": "7.5",
+            "timelineAt": "2026-08-12T00:00:00.000Z"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/indicators/{canonicalCode}`
+
+Returns one source-first, keyset-paginated series only when `canonicalCode` is
+one of the known synthetic codes and the required exact `unit` query is present.
+The item shape is the same immutable source/provenance item used by
+`observation-history/v1`, ordered newest first.
+
+- `unit`: required 1–100 character exact source unit; it is not normalized or
+  converted.
+- `limit`: optional ASCII integer `1` through `100`, default `100`.
+- `cursor`: optional 1–500 character opaque URL-safe cursor bound to both the
+  code and unit.
+
+When at least two observations have finite decimal source values, `comparison`
+contains their unsigned absolute arithmetic difference and direction. The
+comparison is a data description only: it does not compare with a reference
+range, assess health, or recommend an action. Any nonnumeric value produces an
+explicit `unavailable` state; fewer than two values produce `insufficient_data`.
+
+```json
+{
+  "contractVersion": "indicator-series/v1",
+  "indicator": {
+    "canonicalCode": "synthetic-analyte-a",
+    "displayName": "Синтетический аналит A",
+    "unit": "synthetic-unit"
+  },
+  "items": ["same source-first observation items as observation-history/v1"],
+  "comparison": {
+    "state": "available",
+    "previous": {
+      "id": "observation_placeholder",
+      "value": "7.0",
+      "timelineAt": "2026-08-11T00:00:00.000Z"
+    },
+    "delta": { "value": "0.5", "direction": "increased" }
+  },
+  "nextCursor": null
+}
+```
+
+Unknown code and inaccessible profile paths have the same non-disclosing `404`.
+Every successful catalog or series read records a payload-free profile audit
+event (`indicator.catalog.opened` or `indicator.series.opened`) containing only
+the `indicator-series/v1` contract version.
+
 ## Processing jobs
 
 Jobs are internal and not accepted from arbitrary browser payloads. The worker

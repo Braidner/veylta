@@ -80,6 +80,10 @@ function historyPath(identity: Identity): string {
   return `${profilePath(identity)}/observations`;
 }
 
+function indicatorsPath(identity: Identity): string {
+  return `${profilePath(identity)}/indicators`;
+}
+
 function createTestApp(database: Database, storageRoot: string): FastifyInstance {
   const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
   const familyService = createFamilyService(database, {
@@ -308,7 +312,8 @@ test("observation history is source-first, paginated, re-authorized, and audited
       headers: { cookie: owner.cookie },
     });
     assert.equal(filtered.statusCode, 200);
-    assert.deepEqual(filtered.json().items, []);
+    assert.equal(filtered.json().items.length, 1);
+    assert.equal(filtered.json().items[0].canonicalCode, "synthetic-analyte-a");
     assert.equal(filtered.json().nextCursor, null);
 
     const unknownQuery = await context.app.inject({
@@ -363,5 +368,199 @@ test("observation history is source-first, paginated, re-authorized, and audited
         metadata: JSON.stringify({ contractVersion: OBSERVATION_HISTORY_CONTRACT_VERSION }),
       },
     ]);
+  });
+});
+
+test("compatible confirmed observations form a canonical indicator series without crossing units", async () => {
+  await withTestContext(async (context) => {
+    const owner = await registerOwner(context.app, "Indicators owner");
+    const outsider = await registerOwner(context.app, "Indicators outsider");
+
+    const first = await uploadAndExtract(context, owner, "indicators-first");
+    const firstFact = first.facts.find((fact) => fact.factKey === "synthetic-analyte-a");
+    if (firstFact === undefined) throw new Error("Expected first synthetic analyte");
+    const firstReview = await review(
+      context.app,
+      owner,
+      first.documentId,
+      firstFact.id,
+      { factVersion: firstFact.factVersion, decision: "confirm" },
+      "indicators-first-review",
+    );
+    assert.equal(firstReview.statusCode, 201);
+
+    const second = await uploadAndExtract(context, owner, "indicators-second");
+    const secondFact = second.facts.find((fact) => fact.factKey === "synthetic-analyte-a");
+    if (secondFact === undefined) throw new Error("Expected second synthetic analyte");
+    const secondReview = await review(
+      context.app,
+      owner,
+      second.documentId,
+      secondFact.id,
+      {
+        factVersion: secondFact.factVersion,
+        decision: "correct",
+        correction: {
+          sourceName: "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
+          sourceValue: "7.5",
+          sourceUnit: "synthetic-unit",
+        },
+      },
+      "indicators-second-review",
+    );
+    assert.equal(secondReview.statusCode, 201);
+
+    const incompatible = await uploadAndExtract(context, owner, "indicators-incompatible");
+    const incompatibleFact = incompatible.facts.find(
+      (fact) => fact.factKey === "synthetic-analyte-a",
+    );
+    if (incompatibleFact === undefined) throw new Error("Expected incompatible synthetic analyte");
+    const incompatibleReview = await review(
+      context.app,
+      owner,
+      incompatible.documentId,
+      incompatibleFact.id,
+      {
+        factVersion: incompatibleFact.factVersion,
+        decision: "correct",
+        correction: {
+          sourceName: "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
+          sourceValue: "9.0",
+          sourceUnit: "other-synthetic-unit",
+        },
+      },
+      "indicators-incompatible-review",
+    );
+    assert.equal(incompatibleReview.statusCode, 201);
+
+    const catalog = await context.app.inject({
+      method: "GET",
+      url: indicatorsPath(owner),
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(catalog.statusCode, 200);
+    const catalogResponse = catalog.json();
+    assert.equal(catalogResponse.contractVersion, "indicator-series/v1");
+    assert.deepEqual(catalogResponse.items, [
+      {
+        canonicalCode: "synthetic-analyte-a",
+        displayName: "Синтетический аналит A",
+        units: [
+          {
+            unit: "other-synthetic-unit",
+            observationCount: 1,
+            latest: {
+              value: "9.0",
+              timelineAt: catalogResponse.items[0].units[0].latest.timelineAt,
+            },
+          },
+          {
+            unit: "synthetic-unit",
+            observationCount: 2,
+            latest: {
+              value: "7.5",
+              timelineAt: catalogResponse.items[0].units[1].latest.timelineAt,
+            },
+          },
+        ],
+      },
+    ]);
+
+    const series = await context.app.inject({
+      method: "GET",
+      url: `${indicatorsPath(owner)}/synthetic-analyte-a?unit=synthetic-unit`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(series.statusCode, 200);
+    const response = series.json();
+    assert.equal(response.contractVersion, "indicator-series/v1");
+    assert.equal(response.indicator.canonicalCode, "synthetic-analyte-a");
+    assert.equal(response.indicator.unit, "synthetic-unit");
+    assert.deepEqual(
+      response.items.map((item: { source: { value: string } }) => item.source.value),
+      ["7.5", "7.0"],
+    );
+    assert.deepEqual(response.comparison, {
+      state: "available",
+      previous: {
+        id: response.items[1].id,
+        value: "7.0",
+        timelineAt: response.items[1].timelineAt,
+      },
+      delta: { value: "0.5", direction: "increased" },
+    });
+    assert.equal(response.nextCursor, null);
+
+    const limitedSeries = await context.app.inject({
+      method: "GET",
+      url: `${indicatorsPath(owner)}/synthetic-analyte-a?unit=synthetic-unit&limit=1`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(limitedSeries.statusCode, 200);
+    assert.equal(limitedSeries.json().items.length, 1);
+    assert.equal(typeof limitedSeries.json().nextCursor, "string");
+    assert.deepEqual(limitedSeries.json().comparison, response.comparison);
+
+    const nextSeriesPage = await context.app.inject({
+      method: "GET",
+      url: `${indicatorsPath(owner)}/synthetic-analyte-a?unit=synthetic-unit&limit=1&cursor=${encodeURIComponent(limitedSeries.json().nextCursor)}`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(nextSeriesPage.statusCode, 200);
+    assert.deepEqual(
+      nextSeriesPage.json().items.map((item: { source: { value: string } }) => item.source.value),
+      ["7.0"],
+    );
+    assert.deepEqual(nextSeriesPage.json().comparison, response.comparison);
+
+    const incompatibleUnit = await context.app.inject({
+      method: "GET",
+      url: `${indicatorsPath(owner)}/synthetic-analyte-a?unit=other-synthetic-unit`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(incompatibleUnit.statusCode, 200);
+    assert.deepEqual(
+      incompatibleUnit.json().items.map((item: { source: { value: string } }) => item.source.value),
+      ["9.0"],
+    );
+    assert.deepEqual(incompatibleUnit.json().comparison, { state: "insufficient_data" });
+
+    const unknownCode = await context.app.inject({
+      method: "GET",
+      url: `${indicatorsPath(owner)}/not-a-known-indicator?unit=synthetic-unit`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(unknownCode.statusCode, 404);
+
+    const catalogAudits = await context.database.query<{ metadata: string }>(
+      `SELECT metadata
+         FROM audit_events
+        WHERE family_id = $1 AND action = 'indicator.catalog.opened'`,
+      [owner.body.family.id],
+    );
+    assert.deepEqual(catalogAudits.rows, [
+      { metadata: JSON.stringify({ contractVersion: "indicator-series/v1" }) },
+    ]);
+    const seriesAudits = await context.database.query<{ metadata: string }>(
+      `SELECT metadata
+         FROM audit_events
+        WHERE family_id = $1 AND action = 'indicator.series.opened'
+        ORDER BY created_at, id`,
+      [owner.body.family.id],
+    );
+    assert.deepEqual(seriesAudits.rows, [
+      { metadata: JSON.stringify({ contractVersion: "indicator-series/v1" }) },
+      { metadata: JSON.stringify({ contractVersion: "indicator-series/v1" }) },
+      { metadata: JSON.stringify({ contractVersion: "indicator-series/v1" }) },
+      { metadata: JSON.stringify({ contractVersion: "indicator-series/v1" }) },
+    ]);
+
+    const crossFamily = await context.app.inject({
+      method: "GET",
+      url: `${indicatorsPath(owner)}/synthetic-analyte-a?unit=synthetic-unit`,
+      headers: { cookie: outsider.cookie },
+    });
+    assert.equal(crossFamily.statusCode, 404);
+    assert.equal(crossFamily.rawPayload.includes("Синтетический аналит A"), false);
   });
 });

@@ -53,7 +53,7 @@ test("parses the narrow synthetic format into a strict fact with page provenance
       sourceName: "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
       sourceValue: "7.0",
       sourceUnit: "synthetic-unit",
-      proposedCanonicalCode: null,
+      proposedCanonicalCode: "synthetic-analyte-a",
       proposedNormalizedValue: null,
       proposedNormalizedUnit: null,
       referenceRange: {

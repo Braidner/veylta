@@ -14,15 +14,19 @@ import {
   FAMILY_PROFILE_CONTRACT_VERSION,
   type FactReviewResponse,
   HTTP_API_VERSION,
+  INDICATOR_SERIES_CONTRACT_VERSION,
+  type IndicatorSeriesResponse,
   LAB_EXTRACTION_RESULT_SCHEMA,
   LAB_EXTRACTION_SCHEMA_VERSION,
   LAB_FACT_VALIDATION_ISSUES,
   type LabExtractionResult,
+  MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_PDF_BYTES,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
+  SYNTHETIC_INDICATOR_CATALOG,
 } from "./index.js";
 
 test("public contracts carry explicit versions", () => {
@@ -31,8 +35,32 @@ test("public contracts carry explicit versions", () => {
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v1");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
+  assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
+});
+
+test("indicator series keeps exact units and its comparison state explicit", () => {
+  assert.equal(MAX_INDICATOR_SERIES_PAGE_SIZE, 100);
+  assert.deepEqual(SYNTHETIC_INDICATOR_CATALOG, [
+    { canonicalCode: "synthetic-analyte-a", displayName: "Синтетический аналит A" },
+    { canonicalCode: "synthetic-analyte-b", displayName: "Синтетический аналит B" },
+  ]);
+
+  const response = {
+    contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+    indicator: {
+      canonicalCode: "synthetic-analyte-a",
+      displayName: "Синтетический аналит A",
+      unit: "synthetic-unit",
+    },
+    items: [],
+    comparison: { state: "insufficient_data" },
+    nextCursor: null,
+  } as const satisfies IndicatorSeriesResponse;
+
+  assert.equal(response.indicator.unit, "synthetic-unit");
+  assert.equal(response.comparison.state, "insufficient_data");
 });
 
 test("observation history keeps confirmed source evidence and pagination explicit", () => {

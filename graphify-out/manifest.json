@@ -115,13 +115,13 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/index.test.ts": {
-    "mtime": 1786536172.0103495,
-    "ast_hash": "0f2715b49f4c5802414b5e82df88b0f9",
+    "mtime": 1786538692.5890367,
+    "ast_hash": "c288f32806038b1611941699d588c81e",
     "semantic_hash": ""
   },
   "packages/contracts/src/index.ts": {
-    "mtime": 1786535636.9630957,
-    "ast_hash": "a923fe02d01525aa0b3b454d22809b09",
+    "mtime": 1786538201.269945,
+    "ast_hash": "c338b33ad685c5362b367f5fb0bd03c7",
     "semantic_hash": ""
   },
   "packages/contracts/tsconfig.json": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786536348.7319927,
-    "ast_hash": "7d9c35091c9eb0c70174557298baa15a",
+    "mtime": 1786539519.5568607,
+    "ast_hash": "19e35331d12a15da88a5025bf542b658",
     "semantic_hash": ""
   },
   "THIRD_PARTY_NOTICES.md": {
@@ -195,13 +195,13 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1786536409.4049187,
-    "ast_hash": "aecc764377e8b4acab2addabfdd9d583",
+    "mtime": 1786539016.956621,
+    "ast_hash": "29ffbeae9d8ff60efcc28e9a1fbd5ba2",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1786536348.8470824,
-    "ast_hash": "c1eb1ce173e2294f0c0f6cc74005c112",
+    "mtime": 1786538990.0816941,
+    "ast_hash": "1fa3cc5c24e5a7c485fe6e0cb60d4209",
     "semantic_hash": ""
   },
   "docs/er-model.md": {
@@ -215,13 +215,13 @@
     "semantic_hash": ""
   },
   "docs/product.md": {
-    "mtime": 1786536409.4426177,
-    "ast_hash": "4a057b6a6b9541d13787aea77754907a",
+    "mtime": 1786538979.9389806,
+    "ast_hash": "1cb413e12011774b3a64a9b02b4a20e5",
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786536348.809143,
-    "ast_hash": "2f2d55187d059b2cf57bc5247889b7cb",
+    "mtime": 1786538962.1256273,
+    "ast_hash": "9658ac22f7a06655f87919d933d73f65",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
@@ -275,13 +275,13 @@
     "semantic_hash": ""
   },
   "apps/api/src/documents/document-service.ts": {
-    "mtime": 1786536171.9715302,
-    "ast_hash": "c2897818a8c1224c74c000ad6f70d629",
+    "mtime": 1786539377.4047828,
+    "ast_hash": "a1cc61eb757ee7a4b18025da6224edea",
     "semantic_hash": ""
   },
   "apps/api/src/documents/routes.ts": {
-    "mtime": 1786535989.602593,
-    "ast_hash": "0e934de9922aa0dc79e8882b8220c848",
+    "mtime": 1786538692.4104016,
+    "ast_hash": "3dadafabeb79162ef204a1dffc511d7f",
     "semantic_hash": ""
   },
   "apps/api/src/http/route-helpers.ts": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786536432.2974167,
-    "ast_hash": "2e7cfd8f922af1eeeeb49738c7c268d5",
+    "mtime": 1786539690.5520184,
+    "ast_hash": "d834148724ef208ee9602b4e95fee02d",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -375,13 +375,13 @@
     "semantic_hash": ""
   },
   "apps/api/src/processing/synthetic-lab-parser.test.ts": {
-    "mtime": 1786527753.8073478,
-    "ast_hash": "8c05b758af00caca3e3fb2dbd076e296",
+    "mtime": 1786537978.6586192,
+    "ast_hash": "9edc283b47bf1acb8d169048357d5f35",
     "semantic_hash": ""
   },
   "apps/api/src/processing/synthetic-lab-parser.ts": {
-    "mtime": 1786527753.808411,
-    "ast_hash": "959c6a68fdf89d94d0cd143b8dc20053",
+    "mtime": 1786539701.3748155,
+    "ast_hash": "59cc649f2653ce73ceb3968ca1da5507",
     "semantic_hash": ""
   },
   "apps/api/test/document-processing.integration.test.ts": {
@@ -435,13 +435,18 @@
     "semantic_hash": ""
   },
   "apps/api/test/observation-history.integration.test.ts": {
-    "mtime": 1786536100.1485858,
-    "ast_hash": "b4515d755e6df7a5cd33481126fb5481",
+    "mtime": 1786539401.3056798,
+    "ast_hash": "5199bd29f3ad7cb82bb51bb65a8fd323",
     "semantic_hash": ""
   },
   "e2e/observation-history.spec.ts": {
-    "mtime": 1786536232.3866923,
-    "ast_hash": "e3e03c6039ffed9a324c7bfeb335a280",
+    "mtime": 1786539089.1827378,
+    "ast_hash": "6571286f17507927f304bb6523a66d3c",
+    "semantic_hash": ""
+  },
+  "docs/first-slice-acceptance.md": {
+    "mtime": 1786537102.8004873,
+    "ast_hash": "e86deac9c358187e38625195283772de",
     "semantic_hash": ""
   }
 }

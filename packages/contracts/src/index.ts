@@ -4,8 +4,19 @@ export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v1" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
+export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
+export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
+
+/**
+ * The only canonical codes the deterministic synthetic parser can propose.
+ * They are demonstration identifiers, not clinical vocabularies or diagnoses.
+ */
+export const SYNTHETIC_INDICATOR_CATALOG = [
+  { canonicalCode: "synthetic-analyte-a", displayName: "Синтетический аналит A" },
+  { canonicalCode: "synthetic-analyte-b", displayName: "Синтетический аналит B" },
+] as const;
 
 export const DOCUMENT_PROCESSING_STATES = [
   "not_started",
@@ -346,6 +357,64 @@ export interface ObservationHistoryResponse {
   readonly contractVersion: typeof OBSERVATION_HISTORY_CONTRACT_VERSION;
   readonly items: readonly ObservationHistoryItem[];
   /** Opaque cursor for the next page, or null when this is the final page. */
+  readonly nextCursor: string | null;
+}
+
+/** The latest confirmed value for one exact source unit. */
+export interface IndicatorUnitSummary {
+  readonly unit: string;
+  readonly observationCount: number;
+  readonly latest: {
+    readonly value: string;
+    readonly timelineAt: string;
+  };
+}
+
+/** A catalog row only exists when the profile has confirmed observations for it. */
+export interface IndicatorCatalogItem {
+  readonly canonicalCode: string;
+  readonly displayName: string;
+  /** Units remain separate; the API never silently converts or mixes them. */
+  readonly units: readonly IndicatorUnitSummary[];
+}
+
+export interface IndicatorCatalogResponse {
+  readonly contractVersion: typeof INDICATOR_SERIES_CONTRACT_VERSION;
+  readonly items: readonly IndicatorCatalogItem[];
+}
+
+export type IndicatorComparison =
+  | { readonly state: "insufficient_data" }
+  | {
+      readonly state: "unavailable";
+      readonly reason: "non_numeric_source_value";
+    }
+  | {
+      readonly state: "available";
+      readonly previous: {
+        readonly id: string;
+        readonly value: string;
+        readonly timelineAt: string;
+      };
+      readonly delta: {
+        readonly value: string;
+        readonly direction: "increased" | "decreased" | "unchanged";
+      };
+    };
+
+/**
+ * A bounded, source-first series for one canonical code and one exact unit.
+ * `items` are newest first; UI may reverse the sequence for a temporal chart.
+ */
+export interface IndicatorSeriesResponse {
+  readonly contractVersion: typeof INDICATOR_SERIES_CONTRACT_VERSION;
+  readonly indicator: {
+    readonly canonicalCode: string;
+    readonly displayName: string;
+    readonly unit: string;
+  };
+  readonly items: readonly ObservationHistoryItem[];
+  readonly comparison: IndicatorComparison;
   readonly nextCursor: string | null;
 }
 

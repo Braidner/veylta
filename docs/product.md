@@ -71,6 +71,9 @@ The first slice proves one complete and safe path with synthetic data:
    delivered).
 9. Indicator history displays the confirmed value, unit/reference, and an
    authorized link to its source (Task 7, delivered).
+10. The two explicit synthetic analytes receive deterministic demonstration
+    codes. A profile catalog and a compact chart compare only confirmed values
+    with an identical code and exact source unit (Task 9, delivered).
 
 The implementation currently reaches step 9. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
@@ -83,7 +86,11 @@ payload-free audit event commit together. Once every fact in the run has its
 one final decision, that extraction run becomes `completed`. The profile-wide
 history reads only immutable `confirmed` observations: it preserves corrected
 source fields, distinguishes optional normalized fields, and re-authorizes the
-original document when a user follows its source link.
+original document when a user follows its source link. The Task 9 catalog adds
+only deterministic, source-unit-compatible arithmetic: a display can state the
+difference between the latest two numeric values, but never a reference-range
+judgment, health conclusion, or recommendation. A nonnumeric value or another
+unit is a separate source record, not an implicit conversion.
 
 The repository, fixtures, tests, and supported deterministic parser are
 synthetic-only. The local demo's upload boundary validates PDF MIME/signature,
@@ -113,14 +120,16 @@ independently reviewed.
   committed with their corresponding SQLite state transition.
 - Task 8 records the scoped lint, typecheck, unit, integration, end-to-end,
   migration, and license evidence using synthetic fixtures only.
+- The compatible indicator catalog and chart preserve source links, exact units,
+  and explicit insufficient/unavailable comparison states.
 
 ## Full MVP direction
 
 Later slices may add S3-compatible storage, scanned-document OCR fallback, a
-broader document classifier and extraction schema, indicator charts and
-comparisons, evidence-backed summaries and safe recommendations, audit views,
-export, and backup/restore. Provider boundaries must support local and external
-OCR/LLM implementations without coupling the core domain to one vendor.
+broader document classifier and extraction schema, evidence-backed summaries
+and safe recommendations, audit views, export, and backup/restore. Provider
+boundaries must support local and external OCR/LLM implementations without
+coupling the core domain to one vendor.
 
 The planned complete processing state machine is:
 
@@ -129,8 +138,9 @@ The planned complete processing state machine is:
 Only states backed by implemented behavior may be used. Task 5 implements the
 queue through `awaiting_review`; Task 6 completes a run only after every fact
 has one final review decision; Task 7 exposes those confirmed observations as a
-source-first history. The implementation does not fake OCR, trends, or
-summaries.
+source-first history; and Task 9 calculates a bounded compatible-value
+difference without adding a processing state. The implementation does not fake
+OCR, clinical trends, or summaries.
 
 ## Explicitly deferred
 
