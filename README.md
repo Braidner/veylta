@@ -61,7 +61,8 @@ are complete.
 
 See [product](docs/product.md), [architecture](docs/architecture.md),
 [threat model](docs/threat-model.md), [API](docs/api.md), [ER model](docs/er-model.md),
-and [slice plan](docs/slices.md).
+[slice plan](docs/slices.md), and the
+[first-slice acceptance evidence](docs/first-slice-acceptance.md).
 
 ## Local development
 

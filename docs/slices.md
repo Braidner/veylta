@@ -156,6 +156,13 @@ Commit intent: `docs: record first-slice acceptance evidence`
 Any code fix found during acceptance is its own tested task/commit before the
 evidence commit.
 
+Delivered in
+[`docs: record first-slice acceptance evidence`](first-slice-acceptance.md):
+the durable record identifies the implementation commits, exact locally run
+gate results, test counts, acceptance-to-test mapping, migration verification,
+MIT boundary, and explicit synthetic/local/non-production limitations. It does
+not claim a remote CI run or production readiness.
+
 ## First-slice executable acceptance matrix
 
 | Requirement | Primary evidence |
