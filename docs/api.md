@@ -130,37 +130,38 @@ profiles are not implicitly linked to the owner identity.
 Returns only profiles the actor may access. It is not an inventory of all
 profiles merely because the actor is a family member. The owner receives all
 active family profiles; an invited adult receives their linked profile plus
-each currently granted `profile.read` profile, marked as `granted_read`.
-Caregivers remain default-deny.
+each currently granted `profile.read` profile, marked as `granted_read`; a
+caregiver receives only those explicitly granted profiles. Both remain
+default-deny for every other profile.
 
 ### `POST /v1/families/{familyId}/invitations`
 
 Local-demo only; requires the active owner session plus a trusted `Origin` and
-the exact JSON body `{ "role": "adult_member" }`. It returns a
-`family-invitation/v1` one-time code exactly once. The server stores only its
+the exact JSON body `{ "role": "adult_member" }` or `{ "role": "caregiver" }`.
+It returns a `family-invitation/v2` one-time code exactly once. The server stores only its
 SHA-256 hash, the invitation expires after 24 hours, and a database trigger
 requires the issuer to be an active owner at issuance. The code is neither a family
 credential nor a profile grant.
 
 ### `POST /v1/demo/invitations/accept`
 
-Local-demo only; requires a trusted `Origin` and `{ code, displayName,
-profileName }`. A valid, unexpired, unconsumed code atomically creates a new
-synthetic user, one active `adult_member` membership, one linked adult profile,
-and an opaque HttpOnly session. It never reveals whether an invalid code was
-unknown, expired, or already used. That adult can read only this linked profile;
-it does not gain family-wide or caregiver access.
+Local-demo only; requires a trusted `Origin`. `{ code, displayName, profileName }`
+accepts an `adult_member` invitation and atomically creates the linked adult
+profile. `{ code, displayName }` accepts a `caregiver` invitation and creates no
+profile at all. Both receive an opaque HttpOnly session; no invalid code reveals
+whether it was unknown, expired, or already used. Neither role gains
+family-wide access.
 
 ### `GET /v1/families/{familyId}/members`
 
-Owner-only `profile-consent/v1` helper. Returns active invited adults in this
-family as `{ id, displayName, role: "adult_member" }`; it does not expose
-owners, caregivers, sessions, or profile data. An adult or another family gets
-the same non-disclosing `404`.
+Owner-only `profile-consent/v2` helper. Returns active invited adults and
+caregivers in this family as `{ id, displayName, role }`; it does not expose
+owners, sessions, or profile data. A member or another family gets the same
+non-disclosing `404`.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/consent-grants`
 
-Owner-only `profile-consent/v1` projection of active grants for exactly one
+Owner-only `profile-consent/v2` projection of active grants for exactly one
 profile. It returns only grant id, profile/family selectors, fixed capability,
 creation time, and the receiving adult's minimal member projection. It does not
 return revocation history or medical data; successful reads create a payload-free
@@ -174,12 +175,12 @@ Owner-only and requires the trusted `Origin`:
 { "granteeUserId": "user_uuid", "capability": "profile.read" }
 ```
 
-The receiving user must be an active invited `adult_member` in the same family.
-The response `201` is `profile-consent/v1` and returns the new grant. There can
-be one active `profile.read` grant per profile/adult; a duplicate returns `409`.
+The receiving user must be an active invited `adult_member` or `caregiver` in
+the same family. The response `201` is `profile-consent/v2` and returns the new
+grant. There can be one active `profile.read` grant per profile/member; a duplicate returns `409`.
 The server records a payload-free grant audit event. This capability permits only
 profile/document/history/indicator reads; it does not permit upload, retry,
-extraction review, invitations, audit-log reads, or caregiver access.
+extraction review, invitations, or audit-log reads.
 
 ### `DELETE /v1/families/{familyId}/profiles/{profileId}/consent-grants/{grantId}`
 

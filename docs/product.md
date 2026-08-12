@@ -21,7 +21,7 @@ prescribing system, or complete EHR.
 | --- | --- |
 | Family owner | Manages the family, configured storage, and access grants. |
 | Adult member | Manages their linked personal profile and may receive a specific read grant. |
-| Caregiver | Has no local-demo access until a future explicit lifecycle is delivered. |
+| Caregiver | Starts without a profile and may read only a profile explicitly shared by the owner. |
 | Dependent profile | Represents a child or other dependent without its own login. |
 
 Membership in a family is not blanket access to every patient profile. Every
@@ -138,11 +138,11 @@ independently reviewed.
 Later slices may add JPEG/PNG ingestion, a broader document classifier and
 extraction schema, evidence-backed summaries
 and safe recommendations, full role/consent management, export, and backup/restore. The local
-demo now supports a one-time adult join with one self-linked profile and one
-explicit, revocable owner-issued `profile.read` grant for another profile. That
-grant is read-only and does not grant upload, review, invitation, audit, or
-caregiver capability; this is not a production account, invitation, or
-consent-management system. Provider
+demo now supports one-time adult and caregiver joins. An adult receives one
+self-linked profile; a caregiver receives no profile until an owner explicitly
+issues the one revocable `profile.read` grant. That grant is read-only and does
+not grant upload, review, invitation, or audit capability; this is not a
+production account, invitation, or consent-management system. Provider
 boundaries must support local and external OCR/LLM implementations without
 coupling the core domain to one vendor.
 

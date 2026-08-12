@@ -296,6 +296,22 @@ Commit intent: `feat: add explicit profile read consent`
   scenario cover owner-only lifecycle, cross-family denial, one-time revoke,
   and absence of write access.
 
+## Task 15 — Local caregiver invitation and explicit read access
+
+Commit intent: `feat: add local caregiver read access`
+
+- `family-invitation/v2` extends the loopback synthetic invitation only with
+  `caregiver`; accepting it creates an active caregiver session but never a
+  self-linked profile.
+- `profile-consent/v2` permits the existing singular `profile.read` capability
+  for an active invited adult or caregiver. Both roles remain default-deny and
+  write-denied for every other profile.
+- SQLite triggers prevent caregiver linkage to an adult profile; rollback
+  fails closed while caregiver records exist rather than deleting them.
+- A two-session browser scenario proves the caregiver sees no profile name
+  before the owner grants access, then only the shared read-only profile, and
+  returns to the empty state after revocation.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
@@ -305,9 +321,9 @@ commit chain:
    expansion beyond the delivered local English scanned-PDF fallback.
 2. Broader classification/extraction with provider interfaces and strict schemas.
 3. Evidence-backed versioned summary and carefully bounded recommendations.
-4. Full role/consent UX: caregiver membership/invitations, broader capability
-   sets, expiry, delegation, and production identity. Task 14 delivers only an
-   owner-to-invited-adult, local `profile.read` grant.
+4. Broader role/consent UX: additional capability sets, expiry, delegation, and
+   production identity. Task 15 delivers only local adult/caregiver invitation
+   plus a single owner-issued `profile.read` grant.
 5. Portable export, controlled deletion, backup, and verified restore.
 6. FHIR R4 mappings and Bundle import/export at the system edge.
 

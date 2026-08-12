@@ -1181,7 +1181,15 @@ h3 {
 }
 
 .profile-consent__list strong {
+  display: grid;
+  gap: 2px;
   font-size: 0.875rem;
+}
+
+.profile-consent__role {
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  font-weight: 550;
 }
 
 .profile-consent__list span,
@@ -1241,6 +1249,21 @@ h3 {
 
 .family-invitation__code .button {
   justify-self: start;
+}
+
+.family-invitation__role {
+  max-width: 100%;
+  margin-top: 18px;
+}
+
+.family-invitation__role select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  color: var(--color-ink);
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
 }
 
 .family-audit-log .context-line {

@@ -40,8 +40,10 @@ The full first slice remains deliberately narrow:
 
 Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
 exchange, export/backup, and the rest of the full MVP are explicitly deferred.
-In the loopback-local synthetic demo, an owner may issue a single explicit,
-revocable `profile.read` grant to an invited adult for one profile; it never
+In the loopback-local synthetic demo, an owner can issue a one-time invitation
+to an adult or caregiver. An adult receives only a personal linked profile;
+a caregiver receives no profile at all until the owner explicitly grants the
+single, revocable `profile.read` capability for one profile. The grant never
 transfers upload, review, invitation, or family-audit powers. This is not
 production identity or consent management. The optional S3-compatible storage
 adapter is implemented only for synthetic operator testing and is not a

@@ -1,7 +1,7 @@
 # First-slice acceptance evidence
 
 **Recorded:** 2026-08-12
-**Code baseline:** `c949b8f feat: show observation history with its source`
+**Code baseline:** local Task 15 worktree atop `1598eb7 feat: add explicit profile read consent`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
@@ -37,6 +37,7 @@ raw extracted fact and represents the user-confirmed source value separately.
 | `e603cc7` | Durable idempotent deterministic extraction of synthetic laboratory facts. |
 | `424b25f` | Explicit review decisions and atomic, immutable confirmed observations. |
 | `c949b8f` | Authorized source-first confirmed-observation history. |
+| Task 15 worktree | Local caregiver invitation with default-deny, explicit read-only profile sharing. |
 
 ## Fresh local verification
 
@@ -46,14 +47,14 @@ its output.
 
 | Command | Result |
 | --- | --- |
-| `pnpm license:check` | Passed: 7 license groups and 5 exact reviewed exceptions. |
-| `pnpm lint` | Passed: Biome checked 61 files; no fixes applied. |
+| `pnpm license:check` | Passed: 8 license groups and 5 exact reviewed exceptions. |
+| `pnpm lint` | Passed: Biome checked 69 files; no fixes applied. |
 | `pnpm typecheck` | Passed: contracts, API, and web typechecks completed. |
-| `pnpm test` | Passed: 55 unit/contract tests (7 contracts, 48 API), 0 failed. |
-| `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0005_review_observations`. |
-| `pnpm test:integration` | Passed: 22 isolated SQLite integration tests, 0 failed. |
+| `pnpm test` | Passed: 75 unit/contract tests (10 contracts, 65 API), 0 failed. |
+| `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0009_caregiver_access`. |
+| `pnpm test:integration` | Passed: 31 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
-| `pnpm test:e2e` | Passed: 12 Chromium browser tests, 0 failed. |
+| `pnpm test:e2e` | Passed: 17 Chromium browser tests, 0 failed. |
 | `git diff --check` | Passed after this evidence documentation was prepared. |
 
 `tsx` needs a local IPC socket on this host, so its test and migration commands
@@ -89,6 +90,7 @@ gates on every push and pull request.
 | Uncertain data cannot bypass human review | Parser and processing tests keep high-confidence facts unconfirmed and route uncertain facts to review; browser review tests require an explicit decision. |
 | A correction preserves raw extraction | Integration test `a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation`; browser review and history scenarios verify the displayed source distinction. |
 | Confirmed data appears in history with its source | Integration test `observation history is source-first, paginated, re-authorized, and audited without payloads`; browser test `profile history shows confirmed and corrected observations with their authorized sources only`. |
+| Caregiver remains default-deny until profile consent | Integration and browser tests `a caregiver joins without an implicit profile and reads only an explicitly shared profile` / `a caregiver starts without a profile and sees only a profile explicitly shared by the owner`; SQLite trigger regression prevents caregiver linkage to a personal profile. |
 | Failed writes leave no partial medical record | Integration test `an audit failure rolls back review decision, observation, reference range, and idempotency record together`; processing tests cover invalid-output rollback. |
 | Retry is idempotent and terminal failure remains visible | Job-service tests cover stable dedupe, exclusive lease/reclaim, replay-safe completion, retry schedule, and dead-letter exhaustion; processing integration covers a replay-safe terminal retry command. |
 | Migration rollback/reapply is verified | Isolated migration integration test described above; CI has an explicit `db:rollback` then `db:migrate` sequence. |

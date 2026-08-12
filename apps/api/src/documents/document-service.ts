@@ -734,7 +734,7 @@ async function requireProfileReadAccess(
          m.role = 'owner'
          OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
          OR (
-           m.role = 'adult_member'
+           m.role IN ('adult_member', 'caregiver')
            AND EXISTS (
              SELECT 1
                FROM profile_consent_grants g
@@ -844,7 +844,7 @@ async function documentRow(
         ))
         OR (
           $5 = 'read'
-          AND m.role = 'adult_member'
+          AND m.role IN ('adult_member', 'caregiver')
           AND EXISTS (
             SELECT 1
               FROM profile_consent_grants g

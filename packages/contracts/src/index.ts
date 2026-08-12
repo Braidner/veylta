@@ -6,8 +6,8 @@ export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
-export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v1" as const;
-export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v1" as const;
+export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
+export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
 export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
@@ -64,6 +64,7 @@ export interface HealthStatus {
 }
 
 export type FamilyRole = "owner" | "adult_member" | "caregiver";
+export type FamilyInvitationRole = "adult_member" | "caregiver";
 export type PatientProfileKind = "adult" | "dependent";
 export type PatientProfileAccess = "owner" | "self" | "granted_read";
 
@@ -111,7 +112,7 @@ export interface ProfileCreateResponse {
  * the database retains only its SHA-256 hash.
  */
 export interface FamilyInvitationCreateRequest {
-  readonly role: "adult_member";
+  readonly role: FamilyInvitationRole;
 }
 
 export interface FamilyInvitationCreateResponse {
@@ -119,7 +120,7 @@ export interface FamilyInvitationCreateResponse {
   readonly invitation: {
     readonly id: string;
     readonly familyId: string;
-    readonly role: "adult_member";
+    readonly role: FamilyInvitationRole;
     readonly code: string;
     readonly expiresAt: string;
   };
@@ -128,19 +129,21 @@ export interface FamilyInvitationCreateResponse {
 export interface DemoInvitationAcceptRequest {
   readonly code: string;
   readonly displayName: string;
-  readonly profileName: string;
+  /** Required only for an adult-member invitation; caregivers leave it absent. */
+  readonly profileName?: string;
 }
 
 export interface DemoInvitationAcceptResponse {
   readonly contractVersion: typeof FAMILY_INVITATION_CONTRACT_VERSION;
   readonly family: FamilySummary;
-  readonly profile: PatientProfileSummary;
+  /** Caregivers start with no profile until an owner explicitly grants one. */
+  readonly profile: PatientProfileSummary | null;
 }
 
 export interface FamilyConsentMember {
   readonly id: string;
   readonly displayName: string;
-  readonly role: "adult_member";
+  readonly role: FamilyInvitationRole;
 }
 
 export interface FamilyConsentMemberListResponse {

@@ -367,15 +367,26 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "observation_reference_ranges"), true);
     assert.equal(await tableExists(database, "family_invitations"), true);
     assert.equal(await tableExists(database, "profile_consent_grants"), true);
+    assert.equal(await tableExists(database, "caregiver_rollback_guard"), false);
     await assert.doesNotReject(() => database.check());
 
     const document = await createDocumentFixture(database, "Synthetic populated rollback");
     await rejectsConstraint(
       () =>
         database.query(
+          `UPDATE family_memberships
+              SET role = 'caregiver'
+            WHERE family_id = $1 AND user_id = $2`,
+          [document.familyId, document.userId],
+        ),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
           `INSERT INTO family_invitations
              (id, family_id, issued_by_user_id, token_hash, role, expires_at)
-           VALUES ($1, $2, $3, $4, 'caregiver', $5)`,
+           VALUES ($1, $2, $3, $4, 'owner', $5)`,
           [
             randomUUID(),
             document.familyId,
@@ -386,15 +397,38 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
-    const nonOwnerUserId = randomUUID();
+    const caregiverUserId = randomUUID();
     await database.query(
-      "INSERT INTO users (id, display_name) VALUES ($1, 'Synthetic non-owner')",
-      [nonOwnerUserId],
+      "INSERT INTO users (id, display_name) VALUES ($1, 'Synthetic caregiver')",
+      [caregiverUserId],
     );
     await database.query(
       `INSERT INTO family_memberships (id, family_id, user_id, role, status)
-       VALUES ($1, $2, $3, 'adult_member', 'active')`,
-      [randomUUID(), document.familyId, nonOwnerUserId],
+       VALUES ($1, $2, $3, 'caregiver', 'active')`,
+      [randomUUID(), document.familyId, caregiverUserId],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO patient_profiles
+             (id, family_id, display_name, kind, linked_user_id, created_by_user_id)
+           VALUES ($1, $2, 'Invalid caregiver profile', 'adult', $3, $4)`,
+          [randomUUID(), document.familyId, caregiverUserId, document.userId],
+        ),
+      "trigger",
+    );
+    const caregiverInvitationId = randomUUID();
+    await database.query(
+      `INSERT INTO family_invitations
+         (id, family_id, issued_by_user_id, token_hash, role, expires_at)
+       VALUES ($1, $2, $3, $4, 'caregiver', $5)`,
+      [
+        caregiverInvitationId,
+        document.familyId,
+        document.userId,
+        "e".repeat(64),
+        "2027-01-01T00:00:00.000Z",
+      ],
     );
     await rejectsConstraint(
       () =>
@@ -405,7 +439,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
           [
             randomUUID(),
             document.familyId,
-            nonOwnerUserId,
+            caregiverUserId,
             "f".repeat(64),
             "2027-01-01T00:00:00.000Z",
           ],
@@ -439,7 +473,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       `INSERT INTO profile_consent_grants
          (id, family_id, patient_profile_id, grantee_user_id, granted_by_user_id, capability)
        VALUES ($1, $2, $3, $4, $5, 'profile.read')`,
-      [consentGrantId, document.familyId, document.profileId, nonOwnerUserId, document.userId],
+      [consentGrantId, document.familyId, document.profileId, caregiverUserId, document.userId],
     );
     await rejectsConstraint(
       () =>
@@ -460,6 +494,11 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ]),
       "trigger",
     );
+    await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
+    await database.query("DELETE FROM profile_consent_grants WHERE id = $1", [consentGrantId]);
+    await database.query("DELETE FROM family_invitations WHERE id = $1", [caregiverInvitationId]);
+    await database.query("DELETE FROM family_memberships WHERE user_id = $1", [caregiverUserId]);
+    await database.query("DELETE FROM users WHERE id = $1", [caregiverUserId]);
     const processing = await insertProcessingGraph(database, document, "populated-rollback");
     await insertConfirmedReviewGraph(database, document, processing, "populated-rollback");
     const retryJobId = await createDeadLetterJob(database, document, "populated-rollback");
@@ -470,6 +509,9 @@ test("all migrations apply, populated processing data rolls back, and migrations
       processingJobId: retryJobId,
       idempotencyKeyHash: "d".repeat(64),
     });
+
+    assert.equal(await migrateDown(database), "0009_caregiver_access");
+    assert.equal(await tableExists(database, "profile_consent_grants"), true);
 
     assert.equal(await migrateDown(database), "0008_profile_consent_grants");
     assert.equal(await tableExists(database, "profile_consent_grants"), false);
@@ -523,6 +565,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0006_audit_log_integrity",
       "0007_family_invitations",
       "0008_profile_consent_grants",
+      "0009_caregiver_access",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(

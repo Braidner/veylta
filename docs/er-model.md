@@ -101,13 +101,14 @@ access to every profile.
 ### FamilyInvitation
 
 - `id`, `family_id`, `issued_by_user_id`, SHA-256 `token_hash`
-- fixed `adult_member` role, `expires_at`, optional `accepted_by_user_id` /
+- fixed `adult_member | caregiver` role, `expires_at`, optional `accepted_by_user_id` /
   `accepted_at`, `created_at`
 
 The local-demo token is returned only when created, is single-use, and never
 becomes a stored plaintext credential. Database triggers restrict issuance to
 an active owner and make its identity/token/expiry fields immutable. Accepting
-it creates a linked adult profile; it creates no access to another profile.
+an adult invitation creates a linked adult profile; accepting a caregiver
+invitation creates no profile and no access to another profile.
 
 ### PatientProfile
 
@@ -126,11 +127,11 @@ is added only when a real use case needs it.
 - fixed `profile.read` capability, `created_at`, optional `revoked_at`
 
 The current synthetic-demo grant is issued only by an active owner to an active
-`adult_member`, has one active capability per profile/member, and is immutable
-except for a one-way revoke. It is evaluated on every profile/document/history
-read and never grants upload, review, retry, invitations, audit-log access, or
-caregiver access. Broader capability sets, expiry, and caregiver lifecycle
-remain deferred.
+`adult_member` or `caregiver`, has one active capability per profile/member,
+and is immutable except for a one-way revoke. A caregiver may never be linked
+to an adult profile. The grant is evaluated on every profile/document/history
+read and never grants upload, review, retry, invitations, or audit-log access.
+Broader capability sets, expiry, and delegation remain deferred.
 
 ## Documents and processing
 

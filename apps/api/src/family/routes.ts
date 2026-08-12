@@ -82,12 +82,12 @@ const invitationInputSchema = {
   type: "object",
   additionalProperties: false,
   required: ["role"],
-  properties: { role: { type: "string", const: "adult_member" } },
+  properties: { role: { type: "string", enum: ["adult_member", "caregiver"] } },
 } as const;
 const invitationAcceptSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["code", "displayName", "profileName"],
+  required: ["code", "displayName"],
   properties: {
     code: { type: "string", minLength: 46, maxLength: 46, pattern: "^vi_[A-Za-z0-9_-]{43}$" },
     displayName: nameSchema,
@@ -142,7 +142,14 @@ export function registerFamilyRoutes(
         try {
           reply
             .code(201)
-            .send(await service.createInvitation(actor, request.params.familyId, request.id));
+            .send(
+              await service.createInvitation(
+                actor,
+                request.params.familyId,
+                request.body,
+                request.id,
+              ),
+            );
         } catch (error) {
           if (!sendDomainError(error, request, reply)) throw error;
         }

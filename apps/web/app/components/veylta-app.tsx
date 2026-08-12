@@ -15,6 +15,7 @@ import type {
   FamilyAuditLogResponse,
   FamilyConsentMemberListResponse,
   FamilyInvitationCreateResponse,
+  FamilyInvitationRole,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
   ObservationHistoryResponse,
@@ -173,9 +174,12 @@ export function VeyltaApp({
         }
 
         setScreen({ kind: "authenticated", session });
-        if (!hasRequestedProfile) {
-          const profile = firstProfile(session);
-          if (profile !== undefined) router.replace(profilePath(profile.familyId, profile.id));
+        const profile = firstProfile(session);
+        if (!hasRequestedProfile && profile !== undefined) {
+          router.replace(profilePath(profile.familyId, profile.id));
+        }
+        if (hasRequestedProfile && profile === undefined) {
+          router.replace("/");
         }
       })
       .catch(() => {
@@ -227,14 +231,18 @@ export function VeyltaApp({
           body: JSON.stringify({
             code: String(form.get("code") ?? "").trim(),
             displayName: String(form.get("displayName") ?? "").trim(),
-            profileName: String(form.get("profileName") ?? "").trim(),
+            ...(String(form.get("profileName") ?? "").trim().length > 0
+              ? { profileName: String(form.get("profileName") ?? "").trim() }
+              : {}),
           }),
         },
       );
       const session = await readSession();
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
-      router.replace(profilePath(accepted.family.id, accepted.profile.id));
+      router.replace(
+        accepted.profile === null ? "/" : profilePath(accepted.family.id, accepted.profile.id),
+      );
     } catch {
       setActionError(
         "Не удалось принять приглашение. Проверьте одноразовый код и попробуйте ещё раз.",
@@ -341,8 +349,11 @@ export function VeyltaApp({
         {screen.kind === "unauthenticated" && hasRequestedProfile ? (
           <LoadingScreen copy="Возвращаем к началу…" />
         ) : null}
-        {session !== undefined && !hasRequestedProfile ? (
+        {session !== undefined && !hasRequestedProfile && redirectProfile !== undefined ? (
           <LoadingScreen copy="Открываем профиль…" />
+        ) : null}
+        {session !== undefined && !hasRequestedProfile && redirectProfile === undefined ? (
+          <NoAuthorizedProfilesScreen />
         ) : null}
         {session !== undefined && hasRequestedProfile && context === undefined ? (
           <MissingProfileScreen fallbackProfile={redirectProfile} />
@@ -422,6 +433,20 @@ function MissingProfileScreen({
           На главную
         </Link>
       )}
+    </section>
+  );
+}
+
+function NoAuthorizedProfilesScreen() {
+  return (
+    <section className="state-shell" aria-labelledby="no-authorized-profiles-title">
+      <p className="context-line">Доступ ожидает согласия</p>
+      <h1 id="no-authorized-profiles-title">Пока нет доступных профилей</h1>
+      <p className="lede">
+        Владелец семьи должен явно открыть вам чтение конкретного профиля. Имена и данные профилей
+        до этого не показываются.
+      </p>
+      <p className="state-copy">После выдачи согласия обновите эту страницу.</p>
     </section>
   );
 }
@@ -552,15 +577,14 @@ function OnboardingScreen({
               />
             </label>
             <label className="field">
-              <span>Имя вашего профиля</span>
+              <span>Имя вашего профиля, если приглашены как взрослый</span>
               <input
                 name="profileName"
                 type="text"
-                required
                 minLength={1}
                 maxLength={120}
                 autoComplete="off"
-                placeholder="Например, Профиль участника"
+                placeholder="Не заполняйте для помощника по уходу"
                 disabled={formPending}
               />
             </label>
@@ -597,8 +621,9 @@ function OnboardingScreen({
           {mode === "register" ? "У меня есть код приглашения" : "Создать новое пространство"}
         </button>
         <p id="demo-form-note" className="form-note">
-          Код действует один раз 24 часа. Demo-сессия хранится в защищённой HttpOnly cookie; в
-          браузере нет токена доступа.
+          Код действует один раз 24 часа. Для взрослого укажите имя личного профиля; помощник по
+          уходу оставляет его пустым. Demo-сессия хранится в защищённой HttpOnly cookie; в браузере
+          нет токена доступа.
         </p>
       </form>
     </section>
@@ -848,6 +873,7 @@ function ProfileWorkspace({
 }
 
 function FamilyInvitationPanel({ familyId }: { familyId: string }) {
+  const [role, setRole] = useState<FamilyInvitationRole>("adult_member");
   const [state, setState] = useState<
     | { kind: "idle" }
     | { kind: "pending" }
@@ -860,7 +886,7 @@ function FamilyInvitationPanel({ familyId }: { familyId: string }) {
     try {
       const response = await apiRequest<FamilyInvitationCreateResponse>(
         `/v1/families/${encodeURIComponent(familyId)}/invitations`,
-        { method: "POST", body: JSON.stringify({ role: "adult_member" }) },
+        { method: "POST", body: JSON.stringify({ role }) },
       );
       setState({
         kind: "ready",
@@ -875,10 +901,10 @@ function FamilyInvitationPanel({ familyId }: { familyId: string }) {
   return (
     <section className="family-invitation rail-section" aria-labelledby="family-invitation-title">
       <p className="context-line">Локальный доступ</p>
-      <h2 id="family-invitation-title">Пригласить взрослого</h2>
+      <h2 id="family-invitation-title">Пригласить участника</h2>
       <p>
-        Одноразовый код создаёт отдельную demo-сессию и только личный взрослый профиль. Он не
-        открывает другие профили и не даёт доступ к ним.
+        Одноразовый код не открывает ни один профиль. Взрослый получает личный профиль; помощник по
+        уходу не получает профиль, пока владелец отдельно не разрешит чтение.
       </p>
       {state.kind === "ready" ? (
         <div className="family-invitation__code" role="status">
@@ -895,13 +921,28 @@ function FamilyInvitationPanel({ familyId }: { familyId: string }) {
         </div>
       ) : (
         <>
+          <label className="field family-invitation__role">
+            <span>Роль приглашения</span>
+            <select
+              value={role}
+              disabled={state.kind === "pending"}
+              onChange={(event) => setRole(event.target.value as FamilyInvitationRole)}
+            >
+              <option value="adult_member">Взрослый участник</option>
+              <option value="caregiver">Помощник по уходу</option>
+            </select>
+          </label>
           <button
             className="button button--secondary"
             type="button"
             disabled={state.kind === "pending"}
             onClick={() => void createInvitation()}
           >
-            {state.kind === "pending" ? "Создаём код…" : "Создать одноразовый код"}
+            {state.kind === "pending"
+              ? "Создаём код…"
+              : role === "caregiver"
+                ? "Создать код для помощника"
+                : "Создать код для взрослого"}
           </button>
           {state.kind === "error" ? (
             <p className="form-error" role="alert">
@@ -1008,8 +1049,8 @@ function ProfileConsentPanel({ familyId, profileId }: { familyId: string; profil
       <p className="context-line">Явное согласие</p>
       <h2 id="profile-consent-title">Доступ к этому профилю</h2>
       <p>
-        Взрослый участник получает только чтение этого профиля. Загрузка, редактирование и решения
-        по извлечениям не передаются.
+        Взрослый участник или помощник по уходу получает только чтение этого профиля. Загрузка,
+        редактирование и решения по извлечениям не передаются.
       </p>
       {state.kind === "loading" ? <p aria-live="polite">Проверяем доступ…</p> : null}
       {state.kind === "error" ? (
@@ -1022,16 +1063,22 @@ function ProfileConsentPanel({ familyId, profileId }: { familyId: string; profil
       ) : null}
       {state.kind === "ready" && state.members.length === 0 ? (
         <p className="profile-consent__empty">
-          Сначала создайте локальное приглашение и подключите взрослого участника.
+          Сначала создайте локальное приглашение и подключите взрослого участника или помощника по
+          уходу.
         </p>
       ) : null}
       {state.kind === "ready" && state.members.length > 0 ? (
-        <ul className="profile-consent__list" aria-label="Взрослые участники и доступ">
+        <ul className="profile-consent__list" aria-label="Приглашённые участники и доступ">
           {state.members.map((member) => {
             const existing = state.grants.find((grant) => grant.grantee.id === member.id);
             return (
               <li key={member.id}>
-                <strong>{member.displayName}</strong>
+                <strong>
+                  {member.displayName}
+                  <span className="profile-consent__role">
+                    {member.role === "caregiver" ? "Помощник по уходу" : "Взрослый участник"}
+                  </span>
+                </strong>
                 <span>{existing === undefined ? "Нет доступа" : "Только чтение"}</span>
                 {existing === undefined ? (
                   <button

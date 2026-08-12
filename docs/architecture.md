@@ -20,14 +20,14 @@ requires an exact source unit before it returns a comparable series.
 only audit action/result/time/actor/resource selectors and never exposes event
 metadata or medical/document payloads.
 
-The local synthetic demo additionally supports a one-time adult invitation. The
-code is returned only at issuance and stored only as a SHA-256 hash. Its atomic
-acceptance creates a self-linked adult profile. An active owner may additionally
-create one explicit, revocable `profile.read` grant to an active invited adult
-for one profile. Server-side authorization evaluates that grant on every read;
-it never implies upload, extraction review, retry, invitations, audit-log access,
-or any caregiver capability. This is not a production identity or full consent
-system.
+The local synthetic demo additionally supports a one-time adult or caregiver
+invitation. The code is returned only at issuance and stored only as a SHA-256
+hash. Adult acceptance creates a self-linked adult profile; caregiver acceptance
+creates no profile. An active owner may additionally create one explicit,
+revocable `profile.read` grant to an active invited adult or caregiver for one
+profile. Server-side authorization evaluates that grant on every read; it never
+implies upload, extraction review, retry, invitations, or audit-log access. This
+is not a production identity or full consent system.
 
 The first vertical slice uses a deterministic, versioned parser for one
 synthetic PDF format. It reads the text layer first and, only when that layer is
