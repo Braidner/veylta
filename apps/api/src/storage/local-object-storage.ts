@@ -14,7 +14,7 @@ import {
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { Readable, Transform, type TransformCallback } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { MAX_SYNTHETIC_PDF_BYTES, OBJECT_STORAGE_CONTRACT_VERSION } from "@veylta/contracts";
+import { MAX_SYNTHETIC_DOCUMENT_BYTES, OBJECT_STORAGE_CONTRACT_VERSION } from "@veylta/contracts";
 import {
   assertContentType,
   assertMaxBytes,
@@ -96,7 +96,7 @@ function storedMetadata(value: unknown): StoredMetadata {
     typeof record.byteSize !== "number" ||
     !Number.isSafeInteger(record.byteSize) ||
     record.byteSize < 0 ||
-    record.byteSize > MAX_SYNTHETIC_PDF_BYTES ||
+    record.byteSize > MAX_SYNTHETIC_DOCUMENT_BYTES ||
     typeof record.sha256 !== "string" ||
     !/^[a-f0-9]{64}$/.test(record.sha256)
   ) {

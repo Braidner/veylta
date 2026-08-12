@@ -80,7 +80,7 @@ the browser. Before adding or changing a provider integration, review separately
 - container base image and included operating-system packages;
 - sample documents, fonts, icons, and other assets.
 
-The implemented local synthetic-PDF OCR boundary uses exact
+The implemented local synthetic PDF/image OCR boundary uses exact
 `tesseract.js` 7.0.0 and `tesseract.js-core` 7.0.0 (Apache-2.0), the exact
 `@tesseract.js-data/eng` 1.0.0 trained-data package (MIT), and
 `@napi-rs/canvas` 1.0.5 (MIT). They are server/worker-only, use a locked local

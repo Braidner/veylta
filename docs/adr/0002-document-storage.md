@@ -27,7 +27,7 @@ opaque, tenant-scoped trusted identifiers/checksums and never use a
 user-supplied path or filename. The adapter enforces containment under its
 configured root and the API proxies downloads after authorization.
 
-The Task 4 local adapter bounds accepted PDFs to 5 MiB and returns controlled
+The local adapter bounds accepted synthetic documents to 5 MiB and returns controlled
 reads from a checksum-verified byte snapshot. This deliberately spends at most
 the upload cap in memory on download so a local same-inode write cannot change
 the bytes between verification and response. A future large-object adapter must
@@ -101,9 +101,10 @@ was used to validate this slice.
   authorized.
 - Explicit backup/restore and export manifests.
 - Confirmed retention/deletion workflow and orphan cleanup automation.
-- JPEG/PNG handling and OCR-related derived artifacts.
+- OCR language/model expansion, alternate grammar formats, and derived
+  artifacts beyond the bounded direct image support.
 
-None is represented as implemented by the first local/text-PDF slice.
+None is represented as implemented by the first local document slice.
 
 ## Rejected alternatives
 

@@ -25,12 +25,12 @@ async function registerDemoFamily(page: Page) {
 
 async function openReview(page: Page): Promise<void> {
   await registerDemoFamily(page);
-  await page.getByLabel("Синтетический PDF", { exact: true }).setInputFiles({
+  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
     name: `review-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await page.getByRole("button", { name: "Загрузить PDF" }).click();
+  await page.getByRole("button", { name: "Загрузить исходник" }).click();
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );

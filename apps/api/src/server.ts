@@ -23,11 +23,11 @@ registerDocumentRoutes(
   app,
   familyService,
   createDocumentService(database, createObjectStorage(config.objectStorage), {
-    maxPdfBytes: config.maxPdfBytes,
+    maxDocumentBytes: config.maxDocumentBytes,
   }),
   {
     allowedMutationOrigins: [config.webOrigin],
-    maxPdfBytes: config.maxPdfBytes,
+    maxDocumentBytes: config.maxDocumentBytes,
   },
 );
 

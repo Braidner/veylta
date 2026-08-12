@@ -227,11 +227,11 @@ read records one new payload-free `family.audit_log.opened` event with only the
 Headers:
 
 - `Idempotency-Key: <opaque client-generated value>`
-- multipart part `file`; the first slice accepts only a bounded PDF whose magic
-  bytes and validated type agree.
+- multipart part `file`; the local slice accepts one bounded PDF, PNG, or JPEG
+  whose magic bytes agree with the declared MIME type.
 
 The idempotency key is 16–200 printable ASCII characters and only its SHA-256
-digest is stored. The current PDF limit is 5 MiB. The request must contain
+digest is stored. The current document limit is 5 MiB. The request must contain
 exactly one file part and no fields.
 
 The server streams the body through size/signature checks, SHA-256 hashing, and
@@ -340,7 +340,7 @@ select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content`
 
-After fresh authorization, proxies the original PDF stream from the configured
+After fresh authorization, proxies the original PDF, PNG, or JPEG stream from the configured
 `ObjectStorage/v1` adapter. The default is local storage; the optional
 S3-compatible adapter does not change this HTTP surface or turn the path into a
 provider bearer URL. Uses `Content-Disposition: attachment`, `nosniff`, a
@@ -662,11 +662,12 @@ Jobs are internal and not accepted from arbitrary browser payloads. The worker
 polls SQLite for the single known `document_extraction` kind and versioned
 identifier-only payloads, claims a bounded lease, and persists an attempt with
 one of the implemented stages. It reads the authorized version through
-`ObjectStorage/v1`, bounds and verifies its bytes, extracts its PDF text layer,
-and only when that layer is absent renders at most three bounded pages for the
-checked-in local English OCR model. Both paths accept only the versioned
-synthetic grammar. There is no external OCR/LLM provider SDK, arbitrary URL, or
-worker HTTP command surface.
+`ObjectStorage/v1`, bounds and verifies its bytes, and extracts a PDF text
+layer. Only when that layer is absent does it render at most three bounded pages
+for the checked-in local English OCR model. Direct PNG/JPEG uses the same model
+only after exact-signature and bounded header-pixel checks. Every path accepts
+only the versioned synthetic grammar. There is no external OCR/LLM provider
+SDK, arbitrary URL, or worker HTTP command surface.
 
 User-visible retry is the authorized endpoint above. It can requeue only the
 stable failed job and cannot inject a job kind, storage key, URL, or
@@ -693,6 +694,6 @@ stack traces.
 No first-slice endpoint is defined for production authentication/account
 recovery, caregiver invitations, broader adult/caregiver consent capabilities
 beyond the delivered local `profile.read` grant, S3 configuration or presigned
-URLs, JPEG/PNG ingestion, cloud OCR, LLM providers, summaries,
+URLs, cloud OCR, LLM providers, summaries,
 recommendations, FHIR, exports, backups, or account deletion. Those contracts
 follow their own product, threat-model, and license review.

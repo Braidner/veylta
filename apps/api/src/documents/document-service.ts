@@ -23,6 +23,7 @@ import {
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
   SYNTHETIC_INDICATOR_CATALOG,
+  type SyntheticDocumentContentType,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
@@ -43,7 +44,7 @@ import {
 } from "../storage/object-storage.js";
 
 export class UnsupportedDocumentTypeError extends Error {}
-export class InvalidPdfSignatureError extends Error {}
+export class InvalidDocumentSignatureError extends Error {}
 export class UploadTooLargeError extends Error {}
 export class IdempotencyConflictError extends Error {}
 export class ProcessingNotAvailableError extends DomainConflictError {}
@@ -56,6 +57,7 @@ export interface StagedDocument {
 export interface DocumentContent {
   body: Readable;
   byteSize: number;
+  contentType: SyntheticDocumentContentType;
 }
 
 export interface ObservationHistoryQuery {
@@ -133,7 +135,7 @@ export interface DocumentService {
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
   ): Promise<void>;
-  stagePdf(input: {
+  stageDocument(input: {
     body: Readable;
     contentType: string;
     filename: string | undefined;
@@ -141,7 +143,7 @@ export interface DocumentService {
 }
 
 export interface DocumentServiceOptions {
-  maxPdfBytes: number;
+  maxDocumentBytes: number;
 }
 
 interface Queryable {
@@ -157,7 +159,7 @@ interface DocumentRow {
   uploaded_at: string;
   duplicate_of_document_id: string | null;
   duplicate_profile_id: string | null;
-  content_type: "application/pdf";
+  content_type: SyntheticDocumentContentType;
   byte_size: number;
   sha256: string;
   storage_key: string;
@@ -322,12 +324,20 @@ interface UploadRequestRow {
 interface BlobRow {
   id: string;
   storage_key: string;
-  content_type: "application/pdf";
+  content_type: SyntheticDocumentContentType;
   byte_size: number;
   sha256: string;
 }
 
 const pdfSignature = Buffer.from("%PDF-");
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const jpegSignature = Buffer.from([255, 216, 255]);
+
+const syntheticDocumentContentTypes = new Set<SyntheticDocumentContentType>([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+]);
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -547,7 +557,10 @@ function decimalDelta(
   };
 }
 
-function safeFilename(value: string | undefined): string {
+function safeFilename(
+  value: string | undefined,
+  contentType: SyntheticDocumentContentType,
+): string {
   const leaf = (value ?? "").split(/[\\/]/).at(-1) ?? "";
   const cleaned = [...leaf]
     .filter((character) => {
@@ -557,7 +570,12 @@ function safeFilename(value: string | undefined): string {
     .join("")
     .trim();
   const bounded = [...cleaned].slice(0, 255).join("");
-  return bounded.length === 0 ? "document.pdf" : bounded;
+  if (bounded.length > 0) return bounded;
+  return contentType === "application/pdf"
+    ? "document.pdf"
+    : contentType === "image/png"
+      ? "document.png"
+      : "document.jpg";
 }
 
 function byteSize(value: number): number {
@@ -689,7 +707,29 @@ function metadataMatches(
   );
 }
 
-async function* verifiedPdfBytes(body: Readable): AsyncGenerator<Buffer> {
+function documentContentType(value: string): SyntheticDocumentContentType | null {
+  const normalized = value.toLowerCase();
+  return syntheticDocumentContentTypes.has(normalized as SyntheticDocumentContentType)
+    ? (normalized as SyntheticDocumentContentType)
+    : null;
+}
+
+function signatureFor(contentType: SyntheticDocumentContentType): Buffer {
+  switch (contentType) {
+    case "application/pdf":
+      return pdfSignature;
+    case "image/png":
+      return pngSignature;
+    case "image/jpeg":
+      return jpegSignature;
+  }
+}
+
+async function* verifiedDocumentBytes(
+  body: Readable,
+  contentType: SyntheticDocumentContentType,
+): AsyncGenerator<Buffer> {
+  const signature = signatureFor(contentType);
   let prefix = Buffer.alloc(0);
   let verified = false;
 
@@ -699,19 +739,19 @@ async function* verifiedPdfBytes(body: Readable): AsyncGenerator<Buffer> {
       yield bytes;
       continue;
     }
-    const needed = pdfSignature.byteLength - prefix.byteLength;
+    const needed = signature.byteLength - prefix.byteLength;
     prefix = Buffer.concat([prefix, bytes.subarray(0, needed)]);
-    if (prefix.byteLength < pdfSignature.byteLength) continue;
-    if (!prefix.equals(pdfSignature)) {
+    if (prefix.byteLength < signature.byteLength) continue;
+    if (!prefix.equals(signature)) {
       body.resume();
-      throw new InvalidPdfSignatureError();
+      throw new InvalidDocumentSignatureError();
     }
     verified = true;
     yield prefix;
     const remainder = bytes.subarray(needed);
     if (remainder.byteLength > 0) yield remainder;
   }
-  if (!verified) throw new InvalidPdfSignatureError();
+  if (!verified) throw new InvalidDocumentSignatureError();
 }
 
 async function requireProfileReadAccess(
@@ -823,7 +863,7 @@ async function documentRow(
             d.uploaded_at,
             d.duplicate_of_document_id,
             duplicate.patient_profile_id AS duplicate_profile_id,
-            b.content_type,
+            COALESCE(bt.content_type, b.content_type) AS content_type,
             b.byte_size,
             b.sha256,
             b.storage_key,
@@ -863,6 +903,9 @@ async function documentRow(
      JOIN document_blobs b
        ON b.family_id = v.family_id
       AND b.id = v.blob_id
+     LEFT JOIN document_blob_content_types bt
+       ON bt.family_id = b.family_id
+      AND bt.blob_id = b.id
      LEFT JOIN documents duplicate
        ON duplicate.family_id = d.family_id
       AND duplicate.id = d.duplicate_of_document_id
@@ -1486,8 +1529,11 @@ export function createDocumentService(
   storage: ObjectStorage,
   options: DocumentServiceOptions,
 ): DocumentService {
-  if (!Number.isSafeInteger(options.maxPdfBytes) || options.maxPdfBytes < pdfSignature.byteLength) {
-    throw new Error("maxPdfBytes must fit a PDF signature");
+  if (
+    !Number.isSafeInteger(options.maxDocumentBytes) ||
+    options.maxDocumentBytes < pngSignature.byteLength
+  ) {
+    throw new Error("maxDocumentBytes must fit a document signature");
   }
 
   return {
@@ -1496,19 +1542,20 @@ export function createDocumentService(
       await requireProfileWriteAccess(database, actor, scope.familyId, scope.profileId);
     },
 
-    async stagePdf(input) {
-      if (input.contentType.toLowerCase() !== "application/pdf") {
+    async stageDocument(input) {
+      const contentType = documentContentType(input.contentType);
+      if (contentType === null) {
         input.body.resume();
         throw new UnsupportedDocumentTypeError();
       }
       try {
         const metadata = await storage.putStaging({
           key: stagingObjectKey(),
-          body: Readable.from(verifiedPdfBytes(input.body)),
-          contentType: "application/pdf",
-          maxBytes: options.maxPdfBytes,
+          body: Readable.from(verifiedDocumentBytes(input.body, contentType)),
+          contentType,
+          maxBytes: options.maxDocumentBytes,
         });
-        return { metadata, originalFilename: safeFilename(input.filename) };
+        return { metadata, originalFilename: safeFilename(input.filename, contentType) };
       } catch (error) {
         if (error instanceof ObjectStorageSizeLimitError) throw new UploadTooLargeError();
         throw error;
@@ -1531,12 +1578,15 @@ export function createDocumentService(
               `SELECT document_id,
                     patient_profile_id,
                     request_byte_size,
-                    request_content_type,
+                    COALESCE(rt.content_type, request_content_type) AS request_content_type,
                     request_sha256
              FROM document_upload_requests
-             WHERE family_id = $1
-               AND actor_user_id = $2
-               AND idempotency_key_hash = $3`,
+             LEFT JOIN document_upload_request_content_types rt
+               ON rt.family_id = document_upload_requests.family_id
+              AND rt.upload_request_id = document_upload_requests.id
+             WHERE document_upload_requests.family_id = $1
+               AND document_upload_requests.actor_user_id = $2
+               AND document_upload_requests.idempotency_key_hash = $3`,
               [scope.familyId, actor.userId, keyHash],
             );
             const previous = replay.rows[0];
@@ -1570,9 +1620,13 @@ export function createDocumentService(
             }
 
             const existingBlobs = await client.query<BlobRow>(
-              `SELECT id, storage_key, content_type, byte_size, sha256
-             FROM document_blobs
-             WHERE family_id = $1 AND sha256 = $2`,
+              `SELECT b.id, b.storage_key, COALESCE(bt.content_type, b.content_type) AS content_type,
+                      b.byte_size, b.sha256
+                 FROM document_blobs b
+                 LEFT JOIN document_blob_content_types bt
+                   ON bt.family_id = b.family_id
+                  AND bt.blob_id = b.id
+             WHERE b.family_id = $1 AND b.sha256 = $2`,
               [scope.familyId, staged.metadata.sha256],
             );
             let blob = existingBlobs.rows[0];
@@ -1587,7 +1641,7 @@ export function createDocumentService(
               blob = {
                 id: randomUUID(),
                 storage_key: finalKey,
-                content_type: "application/pdf",
+                content_type: staged.metadata.contentType as SyntheticDocumentContentType,
                 byte_size: staged.metadata.byteSize,
                 sha256: staged.metadata.sha256,
               };
@@ -1601,11 +1655,19 @@ export function createDocumentService(
                   scope.familyId,
                   OBJECT_STORAGE_CONTRACT_VERSION,
                   blob.storage_key,
-                  blob.content_type,
+                  "application/pdf",
                   staged.metadata.byteSize,
                   blob.sha256,
                 ],
               );
+              if (blob.content_type !== "application/pdf") {
+                await client.query(
+                  `INSERT INTO document_blob_content_types
+                     (blob_id, family_id, content_type, created_at)
+                   VALUES ($1, $2, $3, $4)`,
+                  [blob.id, scope.familyId, blob.content_type, new Date()],
+                );
+              }
             } else {
               const metadata = await storage.stat(createObjectStorageKey(blob.storage_key));
               if (
@@ -1676,12 +1738,30 @@ export function createDocumentService(
                 scope.profileId,
                 keyHash,
                 staged.metadata.sha256,
-                staged.metadata.contentType,
+                "application/pdf",
                 staged.metadata.byteSize,
                 documentId,
                 uploadedAt,
               ],
             );
+            if (staged.metadata.contentType !== "application/pdf") {
+              const uploadRequest = await client.query<{ id: string }>(
+                `SELECT id
+                   FROM document_upload_requests
+                  WHERE family_id = $1
+                    AND actor_user_id = $2
+                    AND idempotency_key_hash = $3`,
+                [scope.familyId, actor.userId, keyHash],
+              );
+              const uploadRequestId = uploadRequest.rows[0]?.id;
+              if (uploadRequestId === undefined) throw new ObjectStorageIntegrityError();
+              await client.query(
+                `INSERT INTO document_upload_request_content_types
+                   (upload_request_id, family_id, content_type, created_at)
+                 VALUES ($1, $2, $3, $4)`,
+                [uploadRequestId, scope.familyId, staged.metadata.contentType, uploadedAt],
+              );
+            }
             await audit(client, {
               familyId: scope.familyId,
               actorUserId: actor.userId,
@@ -2464,7 +2544,11 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
         });
-        return { body: stored.body, byteSize: stored.metadata.byteSize };
+        return {
+          body: stored.body,
+          byteSize: stored.metadata.byteSize,
+          contentType: row.content_type,
+        };
       });
     },
   };

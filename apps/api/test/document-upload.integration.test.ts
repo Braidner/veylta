@@ -97,7 +97,7 @@ function syntheticPdf(label: string, minimumBytes = 0): Buffer {
 function createTestApp(
   database: Database,
   storageRoot: string,
-  maxPdfBytes = MAX_SYNTHETIC_PDF_BYTES,
+  maxDocumentBytes = MAX_SYNTHETIC_PDF_BYTES,
   storage: ObjectStorage = createLocalObjectStorage(storageRoot),
 ) {
   const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
@@ -113,8 +113,8 @@ function createTestApp(
   registerDocumentRoutes(
     app,
     familyService,
-    createDocumentService(database, storage, { maxPdfBytes }),
-    { allowedMutationOrigins: [webOrigin], maxPdfBytes },
+    createDocumentService(database, storage, { maxDocumentBytes }),
+    { allowedMutationOrigins: [webOrigin], maxDocumentBytes },
   );
   return app;
 }
@@ -220,14 +220,14 @@ async function withTestContext(
     database: Database;
     storageRoot: string;
   }) => Promise<void>,
-  maxPdfBytes = MAX_SYNTHETIC_PDF_BYTES,
+  maxDocumentBytes = MAX_SYNTHETIC_PDF_BYTES,
   storageFactory: (root: string) => ObjectStorage = createLocalObjectStorage,
 ): Promise<void> {
   const testRoot = await mkdtemp(join(tmpdir(), "veylta-upload-"));
   const storageRoot = join(testRoot, "storage");
   const database = createDatabase(join(testRoot, "test.sqlite"));
   await migrateUp(database);
-  const app = createTestApp(database, storageRoot, maxPdfBytes, storageFactory(storageRoot));
+  const app = createTestApp(database, storageRoot, maxDocumentBytes, storageFactory(storageRoot));
   try {
     await operation({ app, database, storageRoot });
   } finally {
@@ -408,7 +408,17 @@ test("upload validation rejects bad type, signature, size, and multipart shape w
 
     const badSignature = await upload(app, owner, Buffer.from("NOT A PDF"), "bad-signature");
     assert.equal(badSignature.statusCode, 415);
-    assert.equal(badSignature.json().error.code, "INVALID_PDF_SIGNATURE");
+    assert.equal(badSignature.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
+
+    const pngDeclaredAsJpeg = await upload(
+      app,
+      owner,
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      "image-signature-mismatch",
+      { contentType: "image/jpeg", filename: "declared-jpeg.jpg" },
+    );
+    assert.equal(pngDeclaredAsJpeg.statusCode, 415);
+    assert.equal(pngDeclaredAsJpeg.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
 
     const wrongMediaType = await app.inject({
       method: "POST",

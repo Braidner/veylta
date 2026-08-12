@@ -57,8 +57,8 @@ the family's trust boundary merely because it exposes an API.
 | Stale/revoked consent | Continued access after permission changes | Check the grant in every read query; one-way revoke; do not cache capability in the session; audit grant lifecycle | Synthetic demo read grant; expiry and broader lifecycle before real data |
 | Invitation-code theft or replay | Unintended local demo membership | Loopback-only demo routes, strict Origin, high-entropy one-time SHA-256-hashed code, 24-hour expiry, atomic consume, active-owner issuance, payload-free audit | Synthetic local demo only |
 | Session theft/CSRF | Account takeover or state-changing request | Secure, HttpOnly, SameSite session cookies or equivalent bearer protections; CSRF defense where cookies are used; rotation and logout | Before real data |
-| MIME/extension spoofing | Unsafe parser input | Allowlist PDF/JPEG/PNG, inspect magic bytes, reject mismatch, set bounded size/page/count limits | PDF subset in first slice |
-| Malformed PDF/parser/OCR exploit | Code execution, crash, or data disclosure | Bounded PDF.js text-layer extraction; for text-layer-missing PDFs only, a local rendered-page OCR path with a 5 MiB PDF cap, at most 3 pages, 2 million pixels/page, 4 million pixels total, 8 MiB PNG/page, timeout, strict synthetic grammar, controlled byte snapshot, security updates, and adversarial tests; process isolation remains required before real data | Bounded subset in first slice; isolation hardening before real data |
+| MIME/extension spoofing | Unsafe parser input | Allowlist PDF/JPEG/PNG, inspect exact magic bytes, reject mismatch, set bounded size/page/count/pixel limits | Bounded subset in first slice |
+| Malformed PDF/image/parser/OCR exploit | Code execution, crash, or data disclosure | Bounded PDF.js text-layer extraction; for text-layer-missing PDFs only, a local rendered-page OCR path with a 5 MiB document cap, at most 3 pages, 2 million pixels/page, 4 million pixels total, 8 MiB PNG/page, timeout, strict synthetic grammar, controlled byte snapshot, security updates, and adversarial tests. Direct PNG/JPEG has exact signature plus header pixel-cap preflight before decode. Process isolation remains required before real data | Bounded subset in first slice; isolation hardening before real data |
 | Path traversal/symlink race | Read/write outside storage root | Ignore user filename for keys; canonical root containment; safe permissions; atomic creation; reject links | First slice |
 | Upload memory/disk exhaustion | Denial of service | Stream with byte limit; quotas/rate limits; staging cleanup; disk monitoring; reject early | Stream/size in first slice; quotas before real data |
 | Malware in accepted document | Harm when viewed/exported | Quarantine/security-check state, safe content disposition/viewer, production malware strategy isolated behind reviewed boundary | Strategy and implementation before real data |
@@ -84,24 +84,26 @@ the family's trust boundary merely because it exposes an API.
 - Local demo onboarding binds only to loopback, collects no email/password,
   persists only a SHA-256 session-token digest, and requires an exact configured
   browser origin for mutations. It is not production authentication.
-- Synthetic PDF only; no real medical data enters the repository or demo flow.
+- Synthetic PDF/PNG/JPEG only; no real medical data enters the repository or demo flow.
 - Every family/profile/document/fact/observation query starts from the authorized
   tenant scope, including worker queries.
 - Upload is streamed, bounded, signature-checked, hashed, and stored under an
   opaque trusted key.
 - Original bytes are immutable. Duplicate detection never crosses tenant
   boundaries and never automatically deletes content.
-- Deterministic parsing has no network egress. The only OCR path is local,
-  invoked only after a missing text layer, bounded before rendering/recognition,
-  and still accepted only through the same fixed synthetic grammar. LLM and
+- Deterministic parsing has no network egress. OCR is local: only after a missing
+  PDF text layer, or directly for PNG/JPEG after signature and header pixel-cap
+  checks. It remains bounded before rendering/recognition and accepted only through
+  the same fixed synthetic grammar. LLM and
   external OCR adapters are absent or disabled, not mocked as successful stages.
 - The repository, fixtures, tests, and supported parser format are
-  synthetic-only. PDF signature/type/size checks are not content classification
-  and cannot prevent a local user from selecting a real medical PDF; therefore
+  synthetic-only. PDF/PNG/JPEG signature/type/size checks are not content classification
+  and cannot prevent a local user from selecting a real medical document; therefore
   this demo is explicitly unsuitable for real data.
-- The worker accepts only the bounded, checksum-verified PDF stored for its
-  tenant-scoped document version. It extracts the text layer with PDF.js; only a
-  missing layer can activate the bounded local OCR fallback. Both paths accept
+- The worker accepts only the bounded, checksum-verified PDF/PNG/JPEG stored for its
+  tenant-scoped document version. It extracts PDF text with PDF.js; only a
+  missing PDF layer can activate rendered-page OCR, while direct image inputs
+  use bounded local OCR after header validation. All paths accept
   only the checked-in synthetic report grammar; unsupported documents become a
   sanitized failure category.
 - A `dead_letter` result exposes only a safe category and retry eligibility.

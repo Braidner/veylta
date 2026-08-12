@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { MAX_SYNTHETIC_PDF_BYTES, OBJECT_STORAGE_CONTRACT_VERSION } from "@veylta/contracts";
+import {
+  MAX_SYNTHETIC_DOCUMENT_BYTES,
+  OBJECT_STORAGE_CONTRACT_VERSION,
+  type SyntheticDocumentContentType,
+} from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import {
   createObjectStorageKey,
@@ -9,6 +13,11 @@ import {
   ObjectStorageSecurityError,
   ObjectStorageValidationError,
 } from "../storage/object-storage.js";
+import {
+  type DirectImageContentType,
+  extractImageTextWithLocalSyntheticOcr,
+  ImageOcrExtractionError,
+} from "./image-ocr-extractor.js";
 import { extractPdfTextWithLocalSyntheticOcr, PdfOcrExtractionError } from "./pdf-ocr-extractor.js";
 import {
   extractPdfTextLayer,
@@ -49,6 +58,10 @@ export interface DocumentExtractionProcessorDependencies {
     options?: PdfTextExtractionOptions,
   ) => Promise<ExtractedPageText[]>;
   extractScannedPdf?: (bytes: Uint8Array) => Promise<ExtractedPageText[]>;
+  extractImage?: (
+    bytes: Uint8Array,
+    contentType: DirectImageContentType,
+  ) => Promise<ExtractedPageText[]>;
   parse?: (pages: readonly ExtractedPageText[]) => ParsedLabExtraction;
   now?: () => Date;
 }
@@ -90,7 +103,7 @@ interface DocumentSourceRow {
 
 interface DocumentSource {
   storageKey: ReturnType<typeof createObjectStorageKey>;
-  contentType: "application/pdf";
+  contentType: SyntheticDocumentContentType;
   byteSize: number;
   sha256: string;
 }
@@ -116,11 +129,15 @@ async function sourceForClaim(
   claim: LeasedProcessingJob,
 ): Promise<DocumentSource> {
   const result = await database.query<DocumentSourceRow>(
-    `SELECT b.storage_key, b.content_type, b.byte_size, b.sha256
+    `SELECT b.storage_key, COALESCE(bt.content_type, b.content_type) AS content_type,
+            b.byte_size, b.sha256
        FROM document_versions AS v
        JOIN document_blobs AS b
          ON b.family_id = v.family_id
         AND b.id = v.blob_id
+       LEFT JOIN document_blob_content_types AS bt
+         ON bt.family_id = b.family_id
+        AND bt.blob_id = b.id
       WHERE v.family_id = $1 AND v.id = $2`,
     [claim.familyId, claim.documentVersionId],
   );
@@ -129,10 +146,10 @@ async function sourceForClaim(
   if (
     result.rowCount !== 1 ||
     row === undefined ||
-    row.content_type !== "application/pdf" ||
+    !["application/pdf", "image/png", "image/jpeg"].includes(row.content_type) ||
     !Number.isSafeInteger(byteSize) ||
     byteSize < 5 ||
-    byteSize > MAX_SYNTHETIC_PDF_BYTES ||
+    byteSize > MAX_SYNTHETIC_DOCUMENT_BYTES ||
     !/^[a-f0-9]{64}$/.test(row.sha256)
   ) {
     throw new DocumentSourceUnavailableError();
@@ -140,7 +157,7 @@ async function sourceForClaim(
   try {
     return {
       storageKey: createObjectStorageKey(row.storage_key),
-      contentType: "application/pdf",
+      contentType: row.content_type as SyntheticDocumentContentType,
       byteSize,
       sha256: row.sha256,
     };
@@ -165,7 +182,7 @@ async function exactBodyBytes(
           ? chunk
           : Buffer.from(chunk as Uint8Array);
     byteSize += bytes.byteLength;
-    if (byteSize > source.byteSize || byteSize > MAX_SYNTHETIC_PDF_BYTES) {
+    if (byteSize > source.byteSize || byteSize > MAX_SYNTHETIC_DOCUMENT_BYTES) {
       throw new DocumentSourceUnavailableError();
     }
     digest.update(bytes);
@@ -221,6 +238,12 @@ function failureCode(error: unknown): ProcessingErrorCode {
       return "UNSUPPORTED_DOCUMENT";
     }
   }
+  if (error instanceof ImageOcrExtractionError) {
+    if (error.code === "INVALID_IMAGE") return "INVALID_DOCUMENT";
+    if (error.code === "IMAGE_LIMIT_EXCEEDED" || error.code === "OCR_FAILED") {
+      return "UNSUPPORTED_DOCUMENT";
+    }
+  }
   if (error instanceof SyntheticLabParseError) {
     return error.code === "UNSUPPORTED_SYNTHETIC_FORMAT"
       ? "UNSUPPORTED_DOCUMENT"
@@ -269,6 +292,7 @@ export function createDocumentExtractionProcessor(
     dependencies.jobs ?? createProcessingJobService(transactionalDatabase(dependencies.database));
   const extractText = dependencies.extractText ?? extractPdfTextLayer;
   const extractScannedPdf = dependencies.extractScannedPdf ?? extractPdfTextWithLocalSyntheticOcr;
+  const extractImage = dependencies.extractImage ?? extractImageTextWithLocalSyntheticOcr;
   const parse = dependencies.parse ?? parseSyntheticLabPages;
   const now = dependencies.now ?? (() => new Date());
 
@@ -286,13 +310,17 @@ export function createDocumentExtractionProcessor(
         const bytes = await loadDocumentBytes(dependencies.storage, source);
         await advance(jobs, claim, "text_extraction", now);
         let pages: ExtractedPageText[];
-        try {
-          pages = await extractText(bytes, { maxPdfBytes: source.byteSize });
-        } catch (error) {
-          if (!(error instanceof PdfTextExtractionError) || error.code !== "TEXT_LAYER_MISSING") {
-            throw error;
+        if (source.contentType === "application/pdf") {
+          try {
+            pages = await extractText(bytes, { maxPdfBytes: source.byteSize });
+          } catch (error) {
+            if (!(error instanceof PdfTextExtractionError) || error.code !== "TEXT_LAYER_MISSING") {
+              throw error;
+            }
+            pages = await extractScannedPdf(bytes);
           }
-          pages = await extractScannedPdf(bytes);
+        } else {
+          pages = await extractImage(bytes, source.contentType);
         }
         await advance(jobs, claim, "document_classification", now);
         requireSyntheticLabFixture(pages);

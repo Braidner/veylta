@@ -146,7 +146,7 @@ test("an owner grants and revokes read-only access to a profile for an invited a
     await expect(
       adultPage.getByRole("heading", { level: 2, name: "Доступ выдан владельцем профиля" }),
     ).toBeVisible();
-    await expect(adultPage.getByLabel("Синтетический PDF", { exact: true })).toHaveCount(0);
+    await expect(adultPage.getByLabel("Синтетический документ", { exact: true })).toHaveCount(0);
 
     await consent.getByRole("button", { name: "Отозвать доступ" }).click();
     await expect(consent.getByText("Нет доступа", { exact: true })).toBeVisible();
@@ -208,7 +208,9 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
       caregiverPage.getByRole("heading", { level: 1, name: names.dependent }),
     ).toBeVisible();
     await expect(caregiverPage.getByText("Доступ по согласию: только чтение")).toBeVisible();
-    await expect(caregiverPage.getByLabel("Синтетический PDF", { exact: true })).toHaveCount(0);
+    await expect(caregiverPage.getByLabel("Синтетический документ", { exact: true })).toHaveCount(
+      0,
+    );
 
     await ownerPage.goto(sharedProfileUrl);
     const refreshedConsent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });

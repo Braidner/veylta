@@ -27,7 +27,7 @@ import type {
   SessionFamily,
   SessionResponse,
 } from "@veylta/contracts";
-import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
+import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
@@ -670,11 +670,11 @@ function ProfileWorkspace({
     const form = new FormData(event.currentTarget);
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) {
-      setDocumentError("Выберите один синтетический PDF-файл.");
+      setDocumentError("Выберите один синтетический PDF, PNG или JPEG-файл.");
       return;
     }
-    if (file.size > MAX_SYNTHETIC_PDF_BYTES) {
-      setDocumentError("Файл больше 5 МБ. Выберите синтетический PDF меньшего размера.");
+    if (file.size > MAX_SYNTHETIC_DOCUMENT_BYTES) {
+      setDocumentError("Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.");
       return;
     }
 
@@ -795,7 +795,7 @@ function ProfileWorkspace({
           {requestedDocumentId !== undefined ? (
             <div className="rail-section">
               <h2>Другой документ</h2>
-              <p>Вернитесь в профиль, чтобы загрузить следующий синтетический PDF.</p>
+              <p>Вернитесь в профиль, чтобы загрузить следующий синтетический исходник.</p>
               <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
                 Загрузить ещё документ
               </Link>
@@ -1300,16 +1300,16 @@ function uploadErrorCopy(error: unknown): string {
     return "Не удалось загрузить документ. Проверьте соединение и повторите попытку.";
   }
   if (error.status === 415) {
-    return "Файл не похож на поддерживаемый PDF. Проверьте его формат и содержимое.";
+    return "Файл не похож на поддерживаемый PDF, PNG или JPEG. Проверьте формат и содержимое.";
   }
   if (error.status === 413) {
-    return "Файл больше 5 МБ. Выберите синтетический PDF меньшего размера.";
+    return "Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.";
   }
   if (error.status === 409) {
     return "Эта попытка загрузки уже относится к другому файлу. Выберите файл заново.";
   }
   if (error.status === 400) {
-    return "Нужен ровно один синтетический PDF-файл.";
+    return "Нужен ровно один синтетический PDF, PNG или JPEG-файл.";
   }
   if (error.status === 401 || error.status === 404) {
     return "Профиль недоступен. Обновите страницу и проверьте активный профиль.";
@@ -1327,10 +1327,10 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
   return (
     <section className="document-inbox" aria-labelledby="document-inbox-title">
       <span className="source-mark" aria-hidden="true">
-        PDF
+        PDF · PNG · JPEG
       </span>
       <p className="context-line">Исходные документы</p>
-      <h2 id="document-inbox-title">Добавьте синтетический PDF</h2>
+      <h2 id="document-inbox-title">Добавьте синтетический исходник</h2>
       <p className="document-intro">
         Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Затем локальная
         детерминированная обработка поставит в очередь черновое извлечение значений для проверки.
@@ -1338,23 +1338,23 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
 
       <div className="synthetic-reminder" role="note">
         <strong>Не загружайте реальные медицинские данные.</strong>
-        <span> Контур принимает только вымышленные PDF до 5 МБ.</span>
+        <span> Контур принимает только вымышленные PDF, PNG и JPEG до 5 МБ.</span>
       </div>
 
       <form className="upload-form" onSubmit={onSubmit} aria-busy={pending}>
         <label className="file-field">
-          <span>Синтетический PDF</span>
+          <span>Синтетический документ</span>
           <input
             name="file"
             type="file"
-            accept="application/pdf,.pdf"
+            accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
             required
             disabled={pending}
-            aria-describedby="pdf-requirements"
+            aria-describedby="document-requirements"
           />
         </label>
-        <p id="pdf-requirements" className="form-note">
-          Один PDF, не больше 5 МБ. Имя файла используется только для отображения.
+        <p id="document-requirements" className="form-note">
+          Один PDF, PNG или JPEG, не больше 5 МБ. Имя файла используется только для отображения.
         </p>
         {error !== null ? (
           <p className="form-error" role="alert">
@@ -1362,11 +1362,11 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
           </p>
         ) : null}
         <button className="button button--primary" type="submit" disabled={pending}>
-          {pending ? "Сохраняем исходник…" : "Загрузить PDF"}
+          {pending ? "Сохраняем исходник…" : "Загрузить исходник"}
         </button>
         {pending ? (
           <p className="form-note" role="status">
-            Загружаем и проверяем PDF…
+            Загружаем и проверяем исходник…
           </p>
         ) : null}
       </form>
@@ -1520,7 +1520,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
         <h2 id="observation-history-title">История подтверждённых значений</h2>
         <p>
           Здесь показаны только значения, которые пользователь явно подтвердил или исправил.
-          Исходный фрагмент и ссылка на PDF остаются рядом с каждым значением. Тенденции и
+          Исходный фрагмент и ссылка на исходник остаются рядом с каждым значением. Тенденции и
           медицинские выводы не формируются.
         </p>
       </div>
@@ -1695,7 +1695,7 @@ function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {
                 </>
               ) : null}
             </dl>
-            <p className="observation-history__fragment-label">Фрагмент из исходного PDF</p>
+            <p className="observation-history__fragment-label">Фрагмент из исходника</p>
             <pre className="observation-history__fragment">
               <code>{item.sourceDocument.fragment}</code>
             </pre>
@@ -1704,7 +1704,7 @@ function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {
               href={observationSourceHref(item.sourceDocument.contentPath)}
               download
             >
-              Открыть исходный PDF
+              Открыть исходник
             </a>
           </div>
         </details>
@@ -2093,7 +2093,7 @@ function IndicatorSeriesPanel({
               </strong>
               <time dateTime={item.timelineAt}>{formatDate(item.timelineAt)}</time>
             </div>
-            <a href={observationSourceHref(item.sourceDocument.contentPath)}>Источник · PDF</a>
+            <a href={observationSourceHref(item.sourceDocument.contentPath)}>Источник</a>
           </li>
         ))}
       </ol>
@@ -2221,7 +2221,8 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
       </p>
       <h2 id="document-title">{savedDocument.originalFilename}</h2>
       <p className="document-meta">
-        PDF · {formatBytes(savedDocument.byteSize)} · {formatDate(savedDocument.uploadedAt)}
+        {documentKindLabel(savedDocument.contentType)} · {formatBytes(savedDocument.byteSize)} ·{" "}
+        {formatDate(savedDocument.uploadedAt)}
       </p>
 
       {savedDocument.duplicate.possible ? (
@@ -2233,7 +2234,7 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
 
       <div className="document-actions">
         <a className="button button--primary" href={contentUrl} download>
-          Скачать исходный PDF
+          {downloadLabel(savedDocument.contentType)}
         </a>
       </div>
 
@@ -2325,16 +2326,38 @@ function factCountCopy(value: number): string {
   return `${value} ${russianPlural(value, "значение", "значения", "значений")}`;
 }
 
+function documentKindLabel(contentType: DocumentSummary["contentType"]): string {
+  switch (contentType) {
+    case "application/pdf":
+      return "PDF";
+    case "image/png":
+      return "PNG";
+    case "image/jpeg":
+      return "JPEG";
+  }
+}
+
+function downloadLabel(contentType: DocumentSummary["contentType"]): string {
+  switch (contentType) {
+    case "application/pdf":
+      return "Скачать исходный PDF";
+    case "image/png":
+      return "Скачать исходный PNG";
+    case "image/jpeg":
+      return "Скачать исходный JPEG";
+  }
+}
+
 function processingFailureCopy(
   status: Extract<DocumentProcessingStatus, { state: "failed" }>,
 ): string {
   switch (status.category) {
     case "document_unavailable":
-      return "Исходный PDF сейчас недоступен обработчику. Сам файл не менялся.";
+      return "Исходник сейчас недоступен обработчику. Сам файл не менялся.";
     case "invalid_document":
-      return "Документ нельзя обработать безопасно. Исходный PDF сохранён без изменений.";
+      return "Документ нельзя обработать безопасно. Исходник сохранён без изменений.";
     case "unsupported_document":
-      return "Этот вариант PDF пока не поддерживается детерминированным извлечением.";
+      return "Этот вариант исходника пока не поддерживается детерминированным извлечением.";
     case "extraction_failed":
       return "Не удалось надёжно извлечь текст. Никаких значений не интерпретировано.";
     case "validation_failed":
@@ -2349,7 +2372,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "not_started":
       return {
         heading: "Извлечение ещё не поставлено в очередь",
-        copy: "Исходный PDF сохранён без изменений. Статус появится после следующего обновления.",
+        copy: "Исходник сохранён без изменений. Статус появится после следующего обновления.",
         integrityLabel: "Не поставлено в очередь",
         mark: "—",
         tone: "idle",
@@ -2372,7 +2395,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
       };
     case "text_extraction":
       return {
-        heading: "Извлекаем текст из PDF",
+        heading: "Извлекаем текст из исходника",
         copy: "Используем детерминированный локальный обработчик. Медицинские выводы не формируются.",
         integrityLabel: "Извлечение текста",
         mark: "…",
@@ -2389,7 +2412,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "structured_extraction":
       return {
         heading: "Готовим черновые значения",
-        copy: "Связываем каждое значение со страницей и фрагментом исходного PDF.",
+        copy: "Связываем каждое значение со страницей и фрагментом исходника.",
         integrityLabel: "Структурирование",
         mark: "…",
         tone: "active",
@@ -2508,9 +2531,7 @@ function DocumentProcessingPanel({
       retryKey.current = null;
     } catch (error) {
       if (error instanceof ApiError && error.status < 500) retryKey.current = null;
-      setRetryError(
-        "Не удалось запустить повторную обработку. Статус и исходный PDF не изменились.",
-      );
+      setRetryError("Не удалось запустить повторную обработку. Статус и исходник не изменились.");
     } finally {
       setRetryPending(false);
     }
@@ -2540,7 +2561,7 @@ function DocumentProcessingPanel({
           ) : null}
           {refreshFailed ? (
             <p className="processing-state__refresh-note" role="status">
-              Не удалось обновить статус. Исходный PDF не изменён.
+              Не удалось обновить статус. Исходник не изменён.
             </p>
           ) : null}
           {showRetry ? (
@@ -2811,7 +2832,7 @@ function DocumentReviewPanel({
 
       {facts.kind === "error" ? (
         <div className="review-empty" role="status">
-          <p>Черновые значения сейчас не загрузились. Исходный PDF и решения не изменены.</p>
+          <p>Черновые значения сейчас не загрузились. Исходник и решения не изменены.</p>
           <button
             className="button button--secondary"
             type="button"
@@ -2932,7 +2953,7 @@ function ReviewFactCard({
               </div>
             ) : null}
           </dl>
-          <p className="review-fact__provenance">Фрагмент из исходного PDF</p>
+          <p className="review-fact__provenance">Фрагмент из исходника</p>
           <pre className="review-fact__fragment">
             <code>{fact.source.fragment}</code>
           </pre>

@@ -90,9 +90,9 @@ function createTestApp(database: Database, storageRoot: string): FastifyInstance
     app,
     familyService,
     createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxPdfBytes: MAX_SYNTHETIC_PDF_BYTES,
+      maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES,
     }),
-    { allowedMutationOrigins: [webOrigin], maxPdfBytes: MAX_SYNTHETIC_PDF_BYTES },
+    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES },
   );
   return app;
 }

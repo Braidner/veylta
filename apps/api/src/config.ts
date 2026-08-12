@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
-import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
+import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import type { S3ServerSideEncryption } from "./storage/s3-object-storage.js";
 
 function findProjectRoot(start: string): string {
@@ -139,7 +139,7 @@ export interface RuntimeConfig {
   apiPort: number;
   databasePath: string;
   demoRegistrationEnabled: boolean;
-  maxPdfBytes: number;
+  maxDocumentBytes: number;
   objectStorage: ObjectStorageRuntimeConfig;
   processingLeaseDurationMs: number;
   processingPollIntervalMs: number;
@@ -157,9 +157,9 @@ export function loadConfig(): RuntimeConfig {
   if (demoRegistrationEnabled && !isLoopback(apiHost)) {
     throw new Error("DEMO_REGISTRATION_ENABLED requires a loopback API_HOST");
   }
-  const maxPdfBytes = integer("MAX_PDF_BYTES", MAX_SYNTHETIC_PDF_BYTES);
-  if (maxPdfBytes > MAX_SYNTHETIC_PDF_BYTES) {
-    throw new Error(`MAX_PDF_BYTES must not exceed ${MAX_SYNTHETIC_PDF_BYTES}`);
+  const maxDocumentBytes = integer("MAX_DOCUMENT_BYTES", MAX_SYNTHETIC_DOCUMENT_BYTES);
+  if (maxDocumentBytes > MAX_SYNTHETIC_DOCUMENT_BYTES) {
+    throw new Error(`MAX_DOCUMENT_BYTES must not exceed ${MAX_SYNTHETIC_DOCUMENT_BYTES}`);
   }
 
   return {
@@ -167,7 +167,7 @@ export function loadConfig(): RuntimeConfig {
     apiPort: integer("API_PORT", 4301),
     databasePath: databasePath(),
     demoRegistrationEnabled,
-    maxPdfBytes,
+    maxDocumentBytes,
     objectStorage: objectStorage(),
     processingLeaseDurationMs: integer("PROCESSING_LEASE_DURATION_MS", 60_000),
     processingPollIntervalMs: integer("PROCESSING_POLL_INTERVAL_MS", 500),

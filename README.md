@@ -15,7 +15,7 @@ change treatment, or replace a clinician or an electronic health record.
 
 The repository is implementing its first vertical slice. The completed local
 path creates an opaque synthetic demo session, one owner-scoped family,
-adult/dependent profiles, immutable synthetic PDF records, review-ready
+adult/dependent profiles, immutable synthetic PDF/PNG/JPEG records, review-ready
 extracted facts, and explicit review decisions in persistent local storage.
 The full first slice remains deliberately narrow:
 
@@ -69,11 +69,12 @@ real-data readiness claim.
 - Versioned `ObjectStorage/v1` contract, backed by a persistent local filesystem
   directory by default and an explicit S3-compatible encrypted adapter for
   synthetic deployments. Controlled reads take a bounded, checksum-verified
-  snapshot (the current PDF cap is 5 MiB) before returning bytes.
+  snapshot (the current synthetic-document cap is 5 MiB) before returning bytes.
 - Versioned deterministic parser for the first synthetic document format. When
-  a text layer is absent, the worker may run a local, bounded English OCR model
-  on rendered PDF pages; it never calls an OCR/LLM provider or accepts image
-  files directly.
+  a PDF text layer is absent, the worker may run a local, bounded English OCR
+  model on rendered PDF pages; direct PNG/JPEG inputs use that same bounded
+  local path after signature and header-pixel checks. It never calls an
+  OCR/LLM provider.
 
 See [product](docs/product.md), [architecture](docs/architecture.md),
 [threat model](docs/threat-model.md), [API](docs/api.md), [ER model](docs/er-model.md),
@@ -117,14 +118,16 @@ pnpm license:check
 `pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
 The browser flow at <http://127.0.0.1:4300> creates a local demo family and
 keeps the active profile explicit in both the route and heading. It accepts one
-synthetic PDF up to 5 MiB, streams it through signature/size/SHA-256 checks, and
+synthetic PDF, PNG, or JPEG up to 5 MiB, streams it through matching
+MIME/signature, size, and SHA-256 checks, and
 keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
 reported only inside the same family; it creates another logical document but
 not another blob. Source download is authorized again and returned as a safe
 attachment. The worker polls the same SQLite file and processes the checked-in
 synthetic PDF grammar through PDF.js and a strict deterministic parser. For an
-image-only scan with no text layer it renders at most three bounded pages and
-uses a local English OCR model; there is no OCR/LLM network call or provider
+image-only PDF it renders at most three bounded pages; direct PNG/JPEG uses the
+same local English OCR model after a header pixel-cap check. Every OCR output
+still has to satisfy the exact synthetic grammar; there is no OCR/LLM network call or provider
 URL. Extracted facts are proposals
 for review, never confirmed medical observations by themselves. A user
 confirmation or correction creates one immutable review decision and confirmed

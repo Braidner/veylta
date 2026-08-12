@@ -13,7 +13,7 @@ import {
   S3Client,
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
-import { MAX_SYNTHETIC_PDF_BYTES, OBJECT_STORAGE_CONTRACT_VERSION } from "@veylta/contracts";
+import { MAX_SYNTHETIC_DOCUMENT_BYTES, OBJECT_STORAGE_CONTRACT_VERSION } from "@veylta/contracts";
 import {
   assertContentType,
   assertMaxBytes,
@@ -196,7 +196,7 @@ function validateExpected(expected: ExpectedObjectMetadata): void {
   if (
     !Number.isSafeInteger(expected.byteSize) ||
     expected.byteSize < 0 ||
-    expected.byteSize > MAX_SYNTHETIC_PDF_BYTES ||
+    expected.byteSize > MAX_SYNTHETIC_DOCUMENT_BYTES ||
     !/^[a-f0-9]{64}$/.test(expected.sha256)
   ) {
     throw new ObjectStorageIntegrityError("Expected object metadata is invalid");
@@ -234,7 +234,7 @@ function metadataFromHeaders(
     values[metadataState] !== expectedState ||
     !Number.isSafeInteger(byteSize) ||
     byteSize < 0 ||
-    byteSize > MAX_SYNTHETIC_PDF_BYTES ||
+    byteSize > MAX_SYNTHETIC_DOCUMENT_BYTES ||
     typeof sha256 !== "string" ||
     !/^[a-f0-9]{64}$/.test(sha256) ||
     response.ContentLength !== byteSize ||
@@ -480,8 +480,8 @@ export class S3ObjectStorage implements ObjectStorage {
     assertObjectStorageKey(request.key);
     assertContentType(request.contentType);
     assertMaxBytes(request.maxBytes);
-    if (request.maxBytes > MAX_SYNTHETIC_PDF_BYTES) {
-      throw new ObjectStorageSizeLimitError(MAX_SYNTHETIC_PDF_BYTES);
+    if (request.maxBytes > MAX_SYNTHETIC_DOCUMENT_BYTES) {
+      throw new ObjectStorageSizeLimitError(MAX_SYNTHETIC_DOCUMENT_BYTES);
     }
     const digest = createHash("sha256");
     const meteredUpload = uploadMeter(request.maxBytes, (bytes) => digest.update(bytes));
@@ -562,7 +562,7 @@ export class S3ObjectStorage implements ObjectStorage {
         typeof contentLength !== "number" ||
         !Number.isSafeInteger(contentLength) ||
         contentLength < 0 ||
-        contentLength > MAX_SYNTHETIC_PDF_BYTES
+        contentLength > MAX_SYNTHETIC_DOCUMENT_BYTES
       ) {
         throw new ObjectStorageIntegrityError(
           "S3 staging object is not a bounded encrypted upload",

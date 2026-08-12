@@ -13,9 +13,9 @@
 
 ## First vertical slice
 
-The product path is: owner → family/profile → synthetic text-PDF → immutable
-local document → deterministic extracted facts → explicit review → confirmed
-observation → history/source.
+The product path is: owner → family/profile → synthetic PDF/PNG/JPEG →
+immutable local document → deterministic extracted facts → explicit review →
+confirmed observation → history/source.
 
 ### Task 1 — Product, architecture, safety, and license foundation
 
@@ -63,7 +63,7 @@ Commit intent: `feat: create tenant-scoped family profiles`
 Commit intent: `feat: persist immutable documents with sha256 deduplication`
 
 - Reusable `ObjectStorage/v1` contract tests and local adapter.
-- Streamed bounded PDF upload with signature/type validation and SHA-256.
+- Streamed bounded document upload with signature/type validation and SHA-256.
 - Persistent original, safe authorized proxy download, and restart test.
 - Family-scoped possible-duplicate response, no automatic deletion, no second
   blob, and negative cross-family duplicate/disclosure tests.
@@ -245,8 +245,8 @@ Commit intent: `feat: add local synthetic OCR fallback`
   header and fact grammar as a text-layer PDF. It is never treated as a medical
   observation without the existing review flow.
 - Direct JPEG/PNG ingestion, language/model selection, cloud OCR, provider
-  configuration, real-document support, and browser exposure remain out of
-  scope.
+  configuration, real-document support, and browser exposure remained out of
+  scope for this task.
 
 Delivered in `feat: add local synthetic OCR fallback`: unit and integration
 tests prove a bounded image-only synthetic PDF reaches the existing immutable
@@ -254,6 +254,24 @@ page/fact provenance path, that a non-missing text-extraction error cannot call
 OCR, and that local recognition makes no network request. Provenance records
 the local OCR method/version. Exact engine, trained-data, renderer, and install
 script policy are reviewed under the MIT boundary.
+
+## Task 16 — Direct synthetic PNG/JPEG ingestion
+
+Commit intent: `feat: add direct synthetic image ingestion`
+
+- Extends the immutable upload contract from PDF-only to `application/pdf`,
+  `image/png`, and `image/jpeg`, sharing the existing 5 MiB streaming,
+  SHA-256, same-family deduplication, safe-download, and authorization path.
+- Validates exact magic bytes before staging. PNG/JPEG inputs are additionally
+  preflighted with a bounded header parser before decode, then pass through the
+  existing local English OCR and the exact synthetic fact grammar.
+- SQLite migration `0010_direct_image_documents` records the true immutable
+  content type without changing historic PDF rows; rollback refuses to discard
+  image provenance.
+- Integration and browser tests cover direct PNG and JPEG ingestion, MIME
+  mismatch rejection, pixel caps, provenance, no-network OCR, and type-correct
+  source download. This is still a synthetic demo convention, not a technical
+  detector for real medical content.
 
 ## Task 12 — Owner-only payload-free audit log
 
@@ -317,8 +335,8 @@ Commit intent: `feat: add local caregiver read access`
 Each item requires its own design, tests, security review, license check, and
 commit chain:
 
-1. JPEG/PNG ingestion, alternate synthetic fixtures, and any OCR language/model
-   expansion beyond the delivered local English scanned-PDF fallback.
+1. Alternate synthetic fixtures and any OCR language/model expansion beyond the
+   delivered local English PDF/image fallback.
 2. Broader classification/extraction with provider interfaces and strict schemas.
 3. Evidence-backed versioned summary and carefully bounded recommendations.
 4. Broader role/consent UX: additional capability sets, expiry, delegation, and

@@ -30,9 +30,10 @@ implies upload, extraction review, retry, invitations, or audit-log access. This
 is not a production identity or full consent system.
 
 The first vertical slice uses a deterministic, versioned parser for one
-synthetic PDF format. It reads the text layer first and, only when that layer is
-missing, applies a bounded local English OCR model to rendered PDF pages before
-the same strict grammar check. It does not invoke an external OCR provider or
+synthetic report grammar. PDF reads the text layer first and, only when that layer is
+missing, applies bounded local English OCR to rendered PDF pages. Direct PNG/JPEG
+checks the encoded header and pixels before the same local OCR and strict grammar
+check. It does not invoke an external OCR provider or
 an LLM. The optional S3 adapter is a storage boundary, not document egress to
 an OCR/LLM provider; it remains disabled unless explicitly configured.
 
@@ -48,7 +49,7 @@ flowchart LR
   J --> O
   O --> L["Persistent local filesystem (default)"]
   O -. "explicit adapter" .-> S["S3-compatible storage (optional)"]
-  J --> Q["Local bounded synthetic-PDF OCR"]
+  J --> Q["Local bounded synthetic PDF/image OCR"]
   J -. "future, owner opt-in" .-> X["External OCR / LLM providers"]
 ```
 
@@ -155,7 +156,7 @@ sequenceDiagram
   participant D as SQLite
   participant W as Worker
 
-  B->>A: POST synthetic PDF for patient profile
+  B->>A: POST synthetic PDF, PNG, or JPEG for patient profile
   A->>A: Authenticate, authorize, validate limits/signature
   A->>S: putStream(staging key) while calculating SHA-256
   A->>D: BEGIN IMMEDIATE; recheck idempotency/blob

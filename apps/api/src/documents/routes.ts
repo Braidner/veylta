@@ -18,7 +18,7 @@ import {
   type DocumentService,
   IdempotencyConflictError,
   type IndicatorSeriesQuery,
-  InvalidPdfSignatureError,
+  InvalidDocumentSignatureError,
   type ObservationHistoryQuery,
   type StagedDocument,
   UnsupportedDocumentTypeError,
@@ -44,7 +44,7 @@ interface IndicatorParams extends ProfileParams {
 
 export interface DocumentRouteOptions {
   allowedMutationOrigins: readonly string[];
-  maxPdfBytes: number;
+  maxDocumentBytes: number;
 }
 
 class InvalidMultipartUploadError extends Error {}
@@ -168,19 +168,19 @@ function sendDocumentError(error: unknown, request: FastifyRequest, reply: Fasti
       .send(
         errorEnvelope(
           "UNSUPPORTED_DOCUMENT_TYPE",
-          "Only a synthetic PDF is supported.",
+          "Only a synthetic PDF, PNG, or JPEG is supported.",
           request.id,
         ),
       );
     return true;
   }
-  if (error instanceof InvalidPdfSignatureError) {
+  if (error instanceof InvalidDocumentSignatureError) {
     reply
       .code(415)
       .send(
         errorEnvelope(
-          "INVALID_PDF_SIGNATURE",
-          "The file content is not a supported PDF.",
+          "INVALID_DOCUMENT_SIGNATURE",
+          "The file content does not match a supported document type.",
           request.id,
         ),
       );
@@ -189,7 +189,9 @@ function sendDocumentError(error: unknown, request: FastifyRequest, reply: Fasti
   if (error instanceof UploadTooLargeError) {
     reply
       .code(413)
-      .send(errorEnvelope("UPLOAD_TOO_LARGE", "The PDF exceeds the upload limit.", request.id));
+      .send(
+        errorEnvelope("UPLOAD_TOO_LARGE", "The document exceeds the upload limit.", request.id),
+      );
     return true;
   }
   if (error instanceof IdempotencyConflictError) {
@@ -226,7 +228,7 @@ function sendDocumentError(error: unknown, request: FastifyRequest, reply: Fasti
       .send(
         errorEnvelope(
           "INVALID_MULTIPART_UPLOAD",
-          "Exactly one PDF file part is required.",
+          "Exactly one supported document file part is required.",
           request.id,
         ),
       );
@@ -251,7 +253,7 @@ export function registerDocumentRoutes(
         files: 2,
         fields: 1,
         parts: 3,
-        fileSize: options.maxPdfBytes,
+        fileSize: options.maxDocumentBytes,
         fieldNameSize: 32,
         headerPairs: 32,
       },
@@ -309,7 +311,7 @@ export function registerDocumentRoutes(
     scope.post<{ Params: ProfileParams }>(
       "/v1/families/:familyId/profiles/:profileId/documents",
       {
-        bodyLimit: options.maxPdfBytes + 128 * 1024,
+        bodyLimit: options.maxDocumentBytes + 128 * 1024,
         schema: { params: profileParamsSchema },
       },
       async (request, reply) => {
@@ -333,7 +335,7 @@ export function registerDocumentRoutes(
               await drain(part.file);
               continue;
             }
-            staged = await service.stagePdf({
+            staged = await service.stageDocument({
               body: part.file,
               contentType: part.mimetype,
               filename: part.filename,
@@ -383,10 +385,16 @@ export function registerDocumentRoutes(
         if (actor === null) return;
         try {
           const content = await service.getContent(actor, request.params, request.id);
+          const filename =
+            content.contentType === "application/pdf"
+              ? "document.pdf"
+              : content.contentType === "image/png"
+                ? "document.png"
+                : "document.jpg";
           return reply
-            .type("application/pdf")
+            .type(content.contentType)
             .header("content-length", content.byteSize)
-            .header("content-disposition", 'attachment; filename="document.pdf"')
+            .header("content-disposition", `attachment; filename="${filename}"`)
             .header("x-content-type-options", "nosniff")
             .header("cache-control", "private, no-store")
             .header("content-security-policy", "sandbox")

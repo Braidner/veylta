@@ -50,12 +50,12 @@ test("demo registration is disabled unless it is explicitly configured", () => {
   );
 });
 
-test("the configured PDF limit cannot exceed the contract and database boundary", () => {
-  withEnvironment({ MAX_PDF_BYTES: "5242881" }, () => {
-    assert.throws(() => loadConfig(), /MAX_PDF_BYTES must not exceed 5242880/);
+test("the configured document limit cannot exceed the contract and database boundary", () => {
+  withEnvironment({ MAX_DOCUMENT_BYTES: "5242881" }, () => {
+    assert.throws(() => loadConfig(), /MAX_DOCUMENT_BYTES must not exceed 5242880/);
   });
-  withEnvironment({ MAX_PDF_BYTES: undefined }, () => {
-    assert.equal(loadConfig().maxPdfBytes, 5 * 1024 * 1024);
+  withEnvironment({ MAX_DOCUMENT_BYTES: undefined }, () => {
+    assert.equal(loadConfig().maxDocumentBytes, 5 * 1024 * 1024);
   });
 });
 

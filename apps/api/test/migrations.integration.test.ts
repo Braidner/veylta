@@ -494,6 +494,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ]),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0010_direct_image_documents");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     await database.query("DELETE FROM profile_consent_grants WHERE id = $1", [consentGrantId]);
     await database.query("DELETE FROM family_invitations WHERE id = $1", [caregiverInvitationId]);
@@ -566,6 +567,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0007_family_invitations",
       "0008_profile_consent_grants",
       "0009_caregiver_access",
+      "0010_direct_image_documents",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(

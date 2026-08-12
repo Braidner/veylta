@@ -8,7 +8,9 @@ export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
-export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
+export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
+/** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
+export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
@@ -215,6 +217,7 @@ export interface SessionResponse {
 }
 
 export type DocumentStatus = "uploaded";
+export type SyntheticDocumentContentType = "application/pdf" | "image/png" | "image/jpeg";
 export type DocumentProcessingState = (typeof DOCUMENT_PROCESSING_STATES)[number];
 export type DocumentProcessingFailureCategory =
   (typeof DOCUMENT_PROCESSING_FAILURE_CATEGORIES)[number];
@@ -272,7 +275,7 @@ export interface DocumentSummary {
   profileId: string;
   status: DocumentStatus;
   originalFilename: string;
-  contentType: "application/pdf";
+  contentType: SyntheticDocumentContentType;
   byteSize: number;
   sha256: string;
   uploadedAt: string;

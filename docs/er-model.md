@@ -165,6 +165,12 @@ Unique `(family_id, sha256)` means same-family uploads share immutable physical
 bytes while different families never share a blob or a duplicate oracle. A row
 is inserted only after the final object is available and verified.
 
+`DocumentBlobContentType` is the immutable content-type sidecar introduced by
+the direct-image migration. Historic `DocumentBlob` rows retain their
+PDF-only storage constraint; PDF uses that value and direct PNG/JPEG rows use
+the same-family sidecar value. This preserves migration rollback safety without
+rewriting accepted source evidence.
+
 ### DocumentUploadRequest
 
 - `id`, `family_id`, `actor_user_id`, `patient_profile_id`, `document_id`
@@ -173,6 +179,10 @@ is inserted only after the final object is available and verified.
 
 Unique `(family_id, actor_user_id, idempotency_key_hash)` makes equivalent
 replays return the first document and conflicting reuses fail deterministically.
+
+`DocumentUploadRequestContentType` applies the same immutable sidecar pattern
+to a direct PNG/JPEG request, so a replay reconstructs the exact response MIME
+type without treating the display filename as evidence.
 
 ### DocumentPage
 

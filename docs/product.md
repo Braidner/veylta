@@ -54,18 +54,20 @@ actions produce audit events.
 The first slice proves one complete and safe path with synthetic data:
 
 1. An authenticated demo user creates a family and a patient profile.
-2. The user uploads a synthetic Russian-language report with a text layer or an
-   image-only scan using the fixed local-English synthetic fallback grammar.
+2. The user uploads a synthetic Russian-language PDF with a text layer, an
+   image-only PDF scan, or a direct synthetic PNG/JPEG using the fixed local
+   English OCR and synthetic fallback grammar.
 3. The API validates and streams it to the default local `ObjectStorage/v1`,
    calculating SHA-256 without loading the entire file into memory. An optional
    S3-compatible adapter exists for synthetic operator testing only; it is not
    enabled in the demo default.
 4. A repeat SHA-256 within the same family is reported as a possible duplicate;
    no document is automatically deleted.
-5. A durable SQLite-backed background job reads the PDF text layer. Only when
+5. A durable SQLite-backed background job reads a PDF text layer. Only when
    that layer is absent, it renders at most three bounded PDF pages and runs the
-   checked-in local English OCR model; both paths then use the same deterministic
-   parser for one explicitly supported synthetic report format.
+   checked-in local English OCR model; direct PNG/JPEG enters the same bounded
+   local OCR path after image-header preflight. All paths then use the same
+   deterministic parser for one explicitly supported synthetic report format.
 6. Extracted facts retain raw text, value, unit, confidence, page, and fragment.
 7. The parser marks uncertain or ambiguous facts as `needs_review`; all other
    extracted facts remain `extracted`. Both are untrusted and await an explicit
@@ -103,7 +105,7 @@ judgment, health conclusion, or recommendation. A nonnumeric value or another
 unit is a separate source record, not an implicit conversion.
 
 The repository, fixtures, tests, and supported deterministic parser are
-synthetic-only. The local demo's upload boundary validates PDF MIME/signature,
+synthetic-only. The local demo's upload boundary validates PDF/PNG/JPEG MIME/signature,
 size, immutable storage, and authorization; it is not a reliable detector of
 whether a user selected a real medical document. Real medical data remains out
 of scope until the production controls in the threat model are implemented and
@@ -135,7 +137,7 @@ independently reviewed.
 
 ## Full MVP direction
 
-Later slices may add JPEG/PNG ingestion, a broader document classifier and
+Later slices may add a broader document classifier and
 extraction schema, evidence-backed summaries
 and safe recommendations, full role/consent management, export, and backup/restore. The local
 demo now supports one-time adult and caregiver joins. An adult receives one
@@ -162,7 +164,7 @@ OCR, clinical trends, or summaries.
 - Short-lived presigned URLs, S3 lifecycle/retention automation, and a live
   provider deployment runbook. The optional S3 adapter is not a real-data
   readiness claim.
-- JPEG/PNG ingestion and any cloud OCR provider.
+- Any cloud OCR provider.
 - Any LLM extraction, analysis, explanation, nutrition, or training agent.
 - Automated trend summaries, recommendations, and red-flag UI.
 - Full role-management UX, FHIR R4 mapping/import/export, portable export,

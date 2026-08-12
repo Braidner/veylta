@@ -27,6 +27,7 @@ import {
   MAX_AUDIT_LOG_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
+  MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_PDF_BYTES,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
@@ -46,6 +47,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
+  assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
 });
 
 test("family audit log omits internal metadata and exposes explicit pagination", () => {

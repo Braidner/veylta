@@ -22,6 +22,7 @@ import { createDocumentExtractionProcessor } from "../src/processing/document-ex
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
 import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
+import { createSyntheticLabImage } from "./synthetic-lab-image.js";
 
 const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -46,12 +47,21 @@ function cookieFrom(response: LightMyRequestResponse): string {
   return pair;
 }
 
-function multipartFile(bytes: Buffer, filename = "synthetic-lab-report.pdf") {
+function multipartFile(
+  bytes: Buffer,
+  {
+    contentType = "application/pdf",
+    filename = "synthetic-lab-report.pdf",
+  }: {
+    contentType?: string;
+    filename?: string;
+  } = {},
+) {
   const boundary = `veylta-processing-${randomUUID()}`;
   return {
     body: Buffer.concat([
       Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`,
+        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
       ),
       bytes,
       Buffer.from(`\r\n--${boundary}--\r\n`),
@@ -79,9 +89,9 @@ function createTestApp(database: Database, storageRoot: string): FastifyInstance
     app,
     familyService,
     createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxPdfBytes: MAX_SYNTHETIC_PDF_BYTES,
+      maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES,
     }),
-    { allowedMutationOrigins: [webOrigin], maxPdfBytes: MAX_SYNTHETIC_PDF_BYTES },
+    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES },
   );
   return app;
 }
@@ -121,8 +131,9 @@ async function upload(
   identity: Identity,
   bytes: Buffer,
   idempotencyKey: string,
+  options?: { contentType?: string; filename?: string },
 ): Promise<LightMyRequestResponse> {
-  const multipart = multipartFile(bytes);
+  const multipart = multipartFile(bytes, options);
   return app.inject({
     method: "POST",
     url: `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/documents`,
@@ -319,6 +330,75 @@ test("a synthetic image-only PDF uses local OCR and persists its OCR provenance"
     ]);
   });
 });
+
+for (const [format, contentType, filename] of [
+  ["png", "image/png", "synthetic-lab-report.png"],
+  ["jpeg", "image/jpeg", "synthetic-lab-report.jpg"],
+] as const) {
+  test(`a direct synthetic ${format} uses local OCR with immutable image provenance`, async () => {
+    await withTestContext(async ({ app, database, storageRoot }) => {
+      const owner = await registerOwner(app, `Direct ${format}`);
+      const uploaded = await upload(
+        app,
+        owner,
+        createSyntheticLabImage(
+          [
+            "VEYLTA SYNTHETIC LAB REPORT v1",
+            "SYNTHETIC TEST DATA - NOT FOR MEDICAL USE",
+            "FACT|synthetic-analyte-a",
+            "NAME|SYNTHETIC ANALYTE A",
+            "VALUE|7.0",
+            "UNIT|synthetic-unit",
+            "RANGE|synthetic reference",
+            "CONFIDENCE|0.60",
+            "ISSUES|AMBIGUOUS_UNIT",
+            "END",
+          ],
+          format,
+        ),
+        `direct-${format}-upload`,
+        { contentType, filename },
+      );
+      assert.equal(uploaded.statusCode, 202);
+      assert.equal(uploaded.json().document.contentType, contentType);
+      assert.equal(uploaded.json().document.originalFilename, filename);
+      const documentId = uploaded.json().document.id as string;
+
+      const processed = await processOneDocument(database, storageRoot);
+      assert.equal(processed.status, "completed");
+      assert.equal("factCount" in processed ? processed.factCount : undefined, 1);
+
+      const content = await app.inject({
+        method: "GET",
+        url: `${documentUrl(owner, documentId)}/content`,
+        headers: { cookie: owner.cookie },
+      });
+      assert.equal(content.statusCode, 200);
+      assert.equal(content.headers["content-type"], contentType);
+      assert.equal(
+        content.headers["content-disposition"],
+        `attachment; filename="${format === "png" ? "document.png" : "document.jpg"}"`,
+      );
+
+      const provenance = await database.query<{
+        extraction_method: string;
+        extraction_version: string;
+      }>(
+        `SELECT p.extraction_method, p.extraction_version
+           FROM document_pages p
+           JOIN document_versions v ON v.family_id = p.family_id AND v.id = p.document_version_id
+          WHERE v.family_id = $1 AND v.document_id = $2`,
+        [owner.body.family.id, documentId],
+      );
+      assert.deepEqual(provenance.rows, [
+        {
+          extraction_method: "local_synthetic_image_ocr",
+          extraction_version: "napi-rs-canvas/1.0.5+tesseract.js/7.0.0+eng/1.0.0",
+        },
+      ]);
+    });
+  });
+}
 
 test("an image-only PDF outside the synthetic grammar records no facts", async () => {
   await withTestContext(async ({ app, database, storageRoot }) => {
