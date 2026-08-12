@@ -74,6 +74,36 @@ test("an owner can inspect the payload-free family activity log", async ({ page 
   await expect(auditLog).not.toContainText("correlation");
 });
 
+test("an owner can issue a one-time local adult invitation with no access to another profile", async ({
+  page,
+}) => {
+  const names = await registerDemoFamily(page);
+  const ownerProfile = page.url();
+
+  const invitation = page.getByRole("region", { name: "Пригласить взрослого" });
+  await expect(invitation).toBeVisible();
+  await invitation.getByRole("button", { name: "Создать одноразовый код" }).click();
+  const code = await invitation.locator("code").textContent();
+  expect(code).toMatch(/^vi_[A-Za-z0-9_-]{43}$/);
+
+  await page.getByRole("button", { name: "Выйти" }).click();
+  await page.getByRole("button", { name: "У меня есть код приглашения" }).click();
+  await page.getByLabel("Одноразовый код").fill(code ?? "");
+  await page.getByLabel("Ваше имя").fill(`Участник ${crypto.randomUUID().slice(0, 8)}`);
+  const adultProfile = `Личный профиль ${crypto.randomUUID().slice(0, 8)}`;
+  await page.getByLabel("Имя вашего профиля").fill(adultProfile);
+  await page.getByRole("button", { name: "Присоединиться к семье" }).click();
+
+  await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
+  await expect(page.getByText("Участник пространства:", { exact: false })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Пригласить взрослого" })).toHaveCount(0);
+
+  await page.goto(ownerProfile);
+  await expect(page.getByRole("heading", { level: 1, name: "Профиль недоступен" })).toBeVisible();
+  await expect(page.getByText(names.profile, { exact: true })).toHaveCount(0);
+});
+
 test("an unavailable active profile does not disclose profile data", async ({ page }) => {
   const names = await registerDemoFamily(page);
 

@@ -1,6 +1,8 @@
 import {
+  type DemoInvitationAcceptRequest,
   type DemoRegistrationRequest,
   FAMILY_PROFILE_CONTRACT_VERSION,
+  type FamilyInvitationCreateRequest,
   type PatientProfileKind,
 } from "@veylta/contracts";
 import type { FastifyInstance } from "fastify";
@@ -42,6 +44,22 @@ const auditLogQuerySchema = {
     cursor: { type: "string", minLength: 1, maxLength: 500, pattern: "^[A-Za-z0-9_-]+$" },
   },
 } as const;
+const invitationInputSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["role"],
+  properties: { role: { type: "string", const: "adult_member" } },
+} as const;
+const invitationAcceptSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["code", "displayName", "profileName"],
+  properties: {
+    code: { type: "string", minLength: 46, maxLength: 46, pattern: "^vi_[A-Za-z0-9_-]{43}$" },
+    displayName: nameSchema,
+    profileName: nameSchema,
+  },
+} as const;
 
 export function registerFamilyRoutes(
   app: FastifyInstance,
@@ -72,6 +90,39 @@ export function registerFamilyRoutes(
         if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
         try {
           const result = await service.registerDemo(request.body, request.id);
+          reply.header("set-cookie", result.cookie).code(201).send(result.response);
+        } catch (error) {
+          if (!sendDomainError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    app.post<{ Params: FamilyParams; Body: FamilyInvitationCreateRequest }>(
+      "/v1/families/:familyId/invitations",
+      { schema: { params: familyParamsSchema, body: invitationInputSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+        const actor = await requireActor(service, request, reply);
+        if (actor === null) return;
+        try {
+          reply
+            .code(201)
+            .send(await service.createInvitation(actor, request.params.familyId, request.id));
+        } catch (error) {
+          if (!sendDomainError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    app.post<{ Body: DemoInvitationAcceptRequest }>(
+      "/v1/demo/invitations/accept",
+      { schema: { body: invitationAcceptSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+        try {
+          const result = await service.acceptDemoInvitation(request.body, request.id);
           reply.header("set-cookie", result.cookie).code(201).send(result.response);
         } catch (error) {
           if (!sendDomainError(error, request, reply)) throw error;

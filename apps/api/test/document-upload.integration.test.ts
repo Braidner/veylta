@@ -660,3 +660,58 @@ test("a finalized orphan is recovered by retry after a database rollback", async
     });
   });
 });
+
+test("an invited adult can access only the self-linked profile, not the owner document", async () => {
+  await withTestContext(async ({ app }) => {
+    const owner = await registerOwner(app, "Adult Access");
+    const uploaded = await upload(
+      app,
+      owner,
+      syntheticPdf("OWNER_PRIVATE_DOCUMENT"),
+      "owner-private",
+    );
+    assert.equal(uploaded.statusCode, 202);
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.body.family.id}/invitations`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(invitation.statusCode, 201);
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitation.json().invitation.code,
+        displayName: "Invited Adult",
+        profileName: "Invited Adult Profile",
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    const adultCookie = cookieFrom(accepted);
+
+    const ownerDocumentPath = `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${uploaded.json().document.id}`;
+    const randomPath = `/v1/families/${owner.body.family.id}/profiles/${randomUUID()}/documents/${randomUUID()}`;
+    for (const suffix of ["", "/content"] as const) {
+      const foreign = await app.inject({
+        method: "GET",
+        url: `${ownerDocumentPath}${suffix}`,
+        headers: { cookie: adultCookie },
+      });
+      const missing = await app.inject({
+        method: "GET",
+        url: `${randomPath}${suffix}`,
+        headers: { cookie: adultCookie },
+      });
+      assert.deepEqual(
+        { statusCode: foreign.statusCode, code: foreign.json().error.code },
+        { statusCode: missing.statusCode, code: missing.json().error.code },
+      );
+      assert.equal(foreign.statusCode, 404);
+      assert.equal(foreign.rawPayload.includes("OWNER_PRIVATE_DOCUMENT"), false);
+      assert.equal(foreign.rawPayload.includes("synthetic-result.pdf"), false);
+    }
+  });
+});

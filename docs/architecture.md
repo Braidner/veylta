@@ -20,6 +20,12 @@ requires an exact source unit before it returns a comparable series.
 only audit action/result/time/actor/resource selectors and never exposes event
 metadata or medical/document payloads.
 
+The local synthetic demo additionally supports a one-time adult invitation. The
+code is returned only at issuance and stored only as a SHA-256 hash. Its atomic
+acceptance creates a self-linked adult profile; server-side profile checks allow
+that member only to that profile, while caregiver membership remains default
+deny. This is not a production identity or consent system.
+
 The first vertical slice uses a deterministic, versioned parser for one
 synthetic PDF format. It reads the text layer first and, only when that layer is
 missing, applies a bounded local English OCR model to rendered PDF pages before

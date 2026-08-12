@@ -267,8 +267,19 @@ Commit intent: `feat: add owner-only family audit log`
   integration tests.
 - The profile UI places a compact, paginated activity log in the owner rail,
   with loading, empty, error, and mobile layouts.
-- This task creates no consent grants and does not grant medical-data access to
-  adult members or caregivers.
+
+## Task 13 — Local one-time adult invitation
+
+Commit intent: `feat: add local one-time adult invitations`
+
+- An active owner can issue one high-entropy, SHA-256-stored, 24-hour
+  `family-invitation/v1` code in the loopback synthetic demo.
+- Accepting it atomically makes a new `adult_member`, linked adult profile, and
+  HttpOnly session; replay and expiry are non-disclosing.
+- A joined adult can see and use only that personal linked profile. No caregiver
+  capability, family-wide profile access, or consent grant is implied.
+- Integration, migration, and browser tests cover one-time consumption, expiry,
+  CSRF origin gate, owner-only issuance, and the self-profile boundary.
 
 ## Later MVP slices
 
@@ -280,7 +291,9 @@ commit chain:
 2. Broader classification/extraction with provider interfaces and strict schemas.
 3. Evidence-backed versioned summary and carefully bounded recommendations.
 4. Full role/consent UX. The delivered owner-only `audit-log/v1` view remains
-   read-only and does not implement grants, invitations, or caregiver access.
+   read-only. Task 13 adds only a loopback-local one-time adult invitation and
+   the linked adult self-profile; it does not implement caregiver access or
+   profile consent grants.
 5. Portable export, controlled deletion, backup, and verified restore.
 6. FHIR R4 mappings and Bundle import/export at the system edge.
 

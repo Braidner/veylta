@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -675,6 +675,201 @@ test("logout and session expiry fail closed", async () => {
       headers: { cookie: thirdCookie },
     });
     assert.equal(disabled.statusCode, 401);
+  } finally {
+    await context.close();
+  }
+});
+
+test("an owner can issue a one-time local adult invitation without granting another profile", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Invitation Owner",
+      familyName: "Invitation Family",
+      profileName: "Owner Profile",
+    });
+    const unrelatedRegistration = await register(app, {
+      displayName: "Invitation Outsider",
+      familyName: "Other Invitation Family",
+      profileName: "Other Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    assert.equal(unrelatedRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const outsiderCookie = cookieFrom(unrelatedRegistration).pair;
+    const ownerSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(ownerSession.statusCode, 200);
+    const ownerUserId = ownerSession.json().user.id as string;
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(invitation.statusCode, 201);
+    const invitationBody = invitation.json() as {
+      contractVersion: string;
+      invitation: { id: string; familyId: string; role: string; code: string; expiresAt: string };
+    };
+    assert.equal(invitationBody.contractVersion, "family-invitation/v1");
+    assert.equal(invitationBody.invitation.familyId, owner.family.id);
+    assert.equal(invitationBody.invitation.role, "adult_member");
+    assert.match(invitationBody.invitation.code, /^vi_[A-Za-z0-9_-]{43}$/);
+
+    const crossFamilyCreation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: outsiderCookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(crossFamilyCreation.statusCode, 404);
+    assert.equal(crossFamilyCreation.rawPayload.includes("Invitation Owner"), false);
+
+    const noOrigin = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: ownerCookie },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(noOrigin.statusCode, 403);
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitationBody.invitation.code,
+        displayName: "Invited Adult",
+        profileName: "Adult Profile",
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    const joined = accepted.json() as {
+      family: { id: string; role: string };
+      profile: { id: string; familyId: string; kind: string };
+    };
+    assert.equal(joined.family.id, owner.family.id);
+    assert.equal(joined.family.role, "adult_member");
+    assert.equal(joined.profile.familyId, owner.family.id);
+    assert.equal(joined.profile.kind, "adult");
+    const memberCookie = cookieFrom(accepted).pair;
+
+    const memberSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberSession.statusCode, 200);
+    assert.deepEqual(memberSession.json().families, [
+      {
+        ...joined.family,
+        displayName: "Invitation Family",
+        createdAt: owner.family.createdAt,
+        profiles: [joined.profile],
+      },
+    ]);
+
+    const ownProfiles = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(ownProfiles.statusCode, 200);
+    assert.deepEqual(ownProfiles.json().items, [joined.profile]);
+
+    const ownerProfiles = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(ownerProfiles.statusCode, 200);
+    assert.equal(ownerProfiles.json().items.length, 2);
+
+    const reused = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitationBody.invitation.code,
+        displayName: "Second Adult",
+        profileName: "Second Profile",
+      },
+    });
+    assert.equal(reused.statusCode, 404);
+    assert.equal(reused.rawPayload.includes("Invitation Family"), false);
+    await assert.rejects(
+      database.query("UPDATE family_invitations SET accepted_by_user_id = $1 WHERE id = $2", [
+        ownerUserId,
+        invitationBody.invitation.id,
+      ]),
+      (error: unknown) => isSqliteConstraintError(error, "trigger"),
+    );
+
+    const expiredCode = `vi_${"z".repeat(43)}`;
+    const expiredAt = new Date(Date.now() - 1_000);
+    await database.query(
+      `INSERT INTO family_invitations
+         (id, family_id, issued_by_user_id, token_hash, role, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, 'adult_member', $5, $6)`,
+      [
+        randomUUID(),
+        owner.family.id,
+        ownerUserId,
+        createHash("sha256").update(expiredCode).digest("hex"),
+        expiredAt,
+        new Date(expiredAt.getTime() - 1_000),
+      ],
+    );
+    const usersBeforeExpiredAcceptance = await database.query<{ count: number }>(
+      "SELECT count(*) AS count FROM users",
+    );
+    const expired = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: { code: expiredCode, displayName: "Expired Adult", profileName: "Expired Profile" },
+    });
+    assert.equal(expired.statusCode, 404);
+    const usersAfterExpiredAcceptance = await database.query<{ count: number }>(
+      "SELECT count(*) AS count FROM users",
+    );
+    assert.deepEqual(usersAfterExpiredAcceptance.rows, usersBeforeExpiredAcceptance.rows);
+
+    const storedToken = await database.query<{ token_hash: string }>(
+      "SELECT token_hash FROM family_invitations WHERE id = $1",
+      [invitationBody.invitation.id],
+    );
+    assert.match(storedToken.rows[0]?.token_hash ?? "", /^[0-9a-f]{64}$/);
+    assert.equal(storedToken.rows[0]?.token_hash === invitationBody.invitation.code, false);
+
+    const events = await database.query<{ action: string; metadata: string }>(
+      `SELECT action, metadata
+         FROM audit_events
+        WHERE family_id = $1
+          AND action IN ('family.invitation.created', 'family.invitation.accepted')
+        ORDER BY action`,
+      [owner.family.id],
+    );
+    assert.deepEqual(
+      events.rows.map((event) => event.action),
+      ["family.invitation.accepted", "family.invitation.created"],
+    );
+    assert.equal(
+      events.rows.every(
+        (event) =>
+          JSON.parse(event.metadata).contractVersion === "family-invitation/v1" &&
+          !event.metadata.includes(invitationBody.invitation.code),
+      ),
+      true,
+    );
   } finally {
     await context.close();
   }

@@ -39,7 +39,9 @@ The full first slice remains deliberately narrow:
    delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
-exchange, export/backup, and the rest of the full MVP are explicitly deferred. The
+exchange, export/backup, and the rest of the full MVP are explicitly deferred. A
+loopback-local one-time adult invitation creates only a self-linked synthetic
+profile; it is not production identity or consent management. The
 optional S3-compatible storage adapter is implemented only for synthetic
 operator testing and is not a real-data readiness claim.
 

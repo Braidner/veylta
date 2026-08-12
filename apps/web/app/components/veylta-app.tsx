@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  DemoInvitationAcceptResponse,
   DemoRegistrationResponse,
   DocumentFactsResponse,
   DocumentProcessingResponse,
@@ -12,6 +13,7 @@ import type {
   FactReviewCommand,
   FactReviewResponse,
   FamilyAuditLogResponse,
+  FamilyInvitationCreateResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
   ObservationHistoryResponse,
@@ -134,7 +136,9 @@ export function VeyltaApp({
 }: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
-  const [action, setAction] = useState<"register" | "add-profile" | "logout" | null>(null);
+  const [action, setAction] = useState<
+    "register" | "accept-invitation" | "add-profile" | "logout" | null
+  >(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
   const requestedContext =
@@ -192,6 +196,37 @@ export function VeyltaApp({
       router.replace(profilePath(registration.family.id, registration.profile.id));
     } catch {
       setActionError("Не удалось создать пространство. Проверьте поля и попробуйте ещё раз.");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function handleInvitationAcceptance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAction("accept-invitation");
+    setActionError(null);
+
+    const form = new FormData(event.currentTarget);
+    try {
+      const accepted = await apiRequest<DemoInvitationAcceptResponse>(
+        "/v1/demo/invitations/accept",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            code: String(form.get("code") ?? "").trim(),
+            displayName: String(form.get("displayName") ?? "").trim(),
+            profileName: String(form.get("profileName") ?? "").trim(),
+          }),
+        },
+      );
+      const session = await readSession();
+      if (session === null) throw new Error("Session was not created");
+      setScreen({ kind: "authenticated", session });
+      router.replace(profilePath(accepted.family.id, accepted.profile.id));
+    } catch {
+      setActionError(
+        "Не удалось принять приглашение. Проверьте одноразовый код и попробуйте ещё раз.",
+      );
     } finally {
       setAction(null);
     }
@@ -284,8 +319,10 @@ export function VeyltaApp({
         {screen.kind === "error" ? <ErrorScreen onRetry={() => window.location.reload()} /> : null}
         {screen.kind === "unauthenticated" && !hasRequestedProfile ? (
           <OnboardingScreen
-            pending={action === "register"}
+            acceptPending={action === "accept-invitation"}
             error={actionError}
+            pending={action === "register"}
+            onAccept={handleInvitationAcceptance}
             onSubmit={handleRegistration}
           />
         ) : null}
@@ -305,7 +342,7 @@ export function VeyltaApp({
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
             addProfileOpen={addProfileOpen}
-            action={action}
+            action={action === "accept-invitation" ? null : action}
             error={actionError}
             onProfileChange={(familyId, profileId) => {
               setActionError(null);
@@ -378,12 +415,23 @@ function MissingProfileScreen({
 }
 
 interface OnboardingScreenProps {
+  acceptPending: boolean;
   pending: boolean;
   error: string | null;
+  onAccept: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-function OnboardingScreen({ pending, error, onSubmit }: OnboardingScreenProps) {
+function OnboardingScreen({
+  acceptPending,
+  pending,
+  error,
+  onAccept,
+  onSubmit,
+}: OnboardingScreenProps) {
+  const [mode, setMode] = useState<"register" | "accept">("register");
+  const formPending = mode === "register" ? pending : acceptPending;
+
   return (
     <section className="onboarding-shell" aria-labelledby="onboarding-title">
       <div className="onboarding-intro">
@@ -410,56 +458,102 @@ function OnboardingScreen({ pending, error, onSubmit }: OnboardingScreenProps) {
 
       <form
         className="onboarding-form"
-        onSubmit={onSubmit}
-        aria-busy={pending}
+        onSubmit={mode === "register" ? onSubmit : onAccept}
+        aria-busy={formPending}
         aria-describedby="demo-form-note"
       >
         <div className="form-heading">
-          <p>Шаг 1 из 1</p>
-          <h2>Владелец и семья</h2>
+          <p>Локальный demo-доступ</p>
+          <h2>{mode === "register" ? "Владелец и семья" : "Принять приглашение"}</h2>
         </div>
 
-        <label className="field">
-          <span>Имя владельца</span>
-          <input
-            name="displayName"
-            type="text"
-            required
-            minLength={1}
-            maxLength={120}
-            autoComplete="off"
-            placeholder="Например, Владелец 01"
-            disabled={pending}
-          />
-        </label>
+        {mode === "register" ? (
+          <>
+            <label className="field">
+              <span>Имя владельца</span>
+              <input
+                name="displayName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Владелец 01"
+                disabled={formPending}
+              />
+            </label>
 
-        <label className="field">
-          <span>Название семьи</span>
-          <input
-            name="familyName"
-            type="text"
-            required
-            minLength={1}
-            maxLength={120}
-            autoComplete="off"
-            placeholder="Например, Семья 01"
-            disabled={pending}
-          />
-        </label>
+            <label className="field">
+              <span>Название семьи</span>
+              <input
+                name="familyName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Семья 01"
+                disabled={formPending}
+              />
+            </label>
 
-        <label className="field">
-          <span>Имя профиля</span>
-          <input
-            name="profileName"
-            type="text"
-            required
-            minLength={1}
-            maxLength={120}
-            autoComplete="off"
-            placeholder="Например, Профиль 01"
-            disabled={pending}
-          />
-        </label>
+            <label className="field">
+              <span>Имя профиля</span>
+              <input
+                name="profileName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Профиль 01"
+                disabled={formPending}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="field">
+              <span>Одноразовый код</span>
+              <input
+                name="code"
+                type="text"
+                required
+                minLength={46}
+                maxLength={46}
+                autoComplete="off"
+                placeholder="vi_…"
+                disabled={formPending}
+              />
+            </label>
+            <label className="field">
+              <span>Ваше имя</span>
+              <input
+                name="displayName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Участник 01"
+                disabled={formPending}
+              />
+            </label>
+            <label className="field">
+              <span>Имя вашего профиля</span>
+              <input
+                name="profileName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Профиль участника"
+                disabled={formPending}
+              />
+            </label>
+          </>
+        )}
 
         {error !== null ? (
           <p className="form-error" role="alert">
@@ -467,11 +561,32 @@ function OnboardingScreen({ pending, error, onSubmit }: OnboardingScreenProps) {
           </p>
         ) : null}
 
-        <button className="button button--primary button--wide" type="submit" disabled={pending}>
-          {pending ? "Создаём…" : "Создать пространство"}
+        <button
+          className="button button--primary button--wide"
+          type="submit"
+          disabled={formPending}
+        >
+          {formPending
+            ? mode === "register"
+              ? "Создаём…"
+              : "Присоединяем…"
+            : mode === "register"
+              ? "Создать пространство"
+              : "Присоединиться к семье"}
+        </button>
+        <button
+          className="text-button onboarding-form__mode"
+          type="button"
+          disabled={formPending}
+          onClick={() => {
+            setMode((current) => (current === "register" ? "accept" : "register"));
+          }}
+        >
+          {mode === "register" ? "У меня есть код приглашения" : "Создать новое пространство"}
         </button>
         <p id="demo-form-note" className="form-note">
-          Демо-сессия хранится в защищённой HttpOnly cookie. В браузере нет токена доступа.
+          Код действует один раз 24 часа. Demo-сессия хранится в защищённой HttpOnly cookie; в
+          браузере нет токена доступа.
         </p>
       </form>
     </section>
@@ -564,7 +679,10 @@ function ProfileWorkspace({
             <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
           </p>
           <h1 id="profile-title">{profile.displayName}</h1>
-          <p className="profile-owner">Пространство владельца: {session.user.displayName}</p>
+          <p className="profile-owner">
+            {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}:{" "}
+            {session.user.displayName}
+          </p>
         </div>
 
         <label className="profile-switcher">
@@ -680,11 +798,79 @@ function ProfileWorkspace({
               ) : null}
             </div>
           ) : null}
+          {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
           {family.role === "owner" ? (
             <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
           ) : null}
         </aside>
       </div>
+    </section>
+  );
+}
+
+function FamilyInvitationPanel({ familyId }: { familyId: string }) {
+  const [state, setState] = useState<
+    | { kind: "idle" }
+    | { kind: "pending" }
+    | { kind: "ready"; code: string; expiresAt: string }
+    | { kind: "error" }
+  >({ kind: "idle" });
+
+  async function createInvitation(): Promise<void> {
+    setState({ kind: "pending" });
+    try {
+      const response = await apiRequest<FamilyInvitationCreateResponse>(
+        `/v1/families/${encodeURIComponent(familyId)}/invitations`,
+        { method: "POST", body: JSON.stringify({ role: "adult_member" }) },
+      );
+      setState({
+        kind: "ready",
+        code: response.invitation.code,
+        expiresAt: response.invitation.expiresAt,
+      });
+    } catch {
+      setState({ kind: "error" });
+    }
+  }
+
+  return (
+    <section className="family-invitation rail-section" aria-labelledby="family-invitation-title">
+      <p className="context-line">Локальный доступ</p>
+      <h2 id="family-invitation-title">Пригласить взрослого</h2>
+      <p>
+        Одноразовый код создаёт отдельную demo-сессию и только личный взрослый профиль. Он не
+        открывает другие профили и не даёт доступ к ним.
+      </p>
+      {state.kind === "ready" ? (
+        <div className="family-invitation__code" role="status">
+          <strong>Скопируйте код сейчас</strong>
+          <code>{state.code}</code>
+          <span>Действует до {formatDate(state.expiresAt)} и не будет показан снова.</span>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => setState({ kind: "idle" })}
+          >
+            Готово
+          </button>
+        </div>
+      ) : (
+        <>
+          <button
+            className="button button--secondary"
+            type="button"
+            disabled={state.kind === "pending"}
+            onClick={() => void createInvitation()}
+          >
+            {state.kind === "pending" ? "Создаём код…" : "Создать одноразовый код"}
+          </button>
+          {state.kind === "error" ? (
+            <p className="form-error" role="alert">
+              Не удалось создать приглашение. Данные семьи не изменились.
+            </p>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }
@@ -703,6 +889,8 @@ function familyAuditActionCopy(action: string): string {
     "document.uploaded": "Добавлен документ",
     "family.audit_log.opened": "Открыт журнал действий",
     "family.created": "Создана семья",
+    "family.invitation.accepted": "Принято приглашение в семью",
+    "family.invitation.created": "Создано приглашение в семью",
     "indicator.catalog.opened": "Открыт каталог показателей",
     "indicator.series.opened": "Открыта динамика показателя",
     "observation.history.opened": "Открыта история подтверждённых значений",

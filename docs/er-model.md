@@ -97,6 +97,17 @@ rotation, recovery, and deployment controls are intentionally deferred.
 Unique active membership per `(family_id, user_id)`. Membership does not imply
 access to every profile.
 
+### FamilyInvitation
+
+- `id`, `family_id`, `issued_by_user_id`, SHA-256 `token_hash`
+- fixed `adult_member` role, `expires_at`, optional `accepted_by_user_id` /
+  `accepted_at`, `created_at`
+
+The local-demo token is returned only when created, is single-use, and never
+becomes a stored plaintext credential. Database triggers restrict issuance to
+an active owner and make its identity/token/expiry fields immutable. Accepting
+it creates a linked adult profile; it does not create a consent grant.
+
 ### PatientProfile
 
 - `id`, `family_id`, `display_name`

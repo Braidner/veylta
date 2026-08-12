@@ -730,7 +730,10 @@ async function requireProfileAccess(
        AND p.id = $2
        AND p.archived_at IS NULL
        AND m.status = 'active'
-       AND m.role = 'owner'`,
+       AND (
+         m.role = 'owner'
+         OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
+       )`,
     [familyId, profileId, actor.userId],
   );
   if (result.rows[0] === undefined) throw new ResourceNotFoundError();
@@ -792,7 +795,16 @@ async function documentRow(
        ON m.family_id = d.family_id
       AND m.user_id = $4
       AND m.status = 'active'
-      AND m.role = 'owner'
+      AND (
+        m.role = 'owner'
+        OR (m.role = 'adult_member' AND d.patient_profile_id = (
+          SELECT p.id
+            FROM patient_profiles p
+           WHERE p.family_id = d.family_id
+             AND p.id = d.patient_profile_id
+             AND p.linked_user_id = m.user_id
+        ))
+      )
      JOIN document_versions v
        ON v.family_id = d.family_id
       AND v.document_id = d.id

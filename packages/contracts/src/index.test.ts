@@ -12,9 +12,11 @@ import {
   FACT_REVIEW_COMMAND_SCHEMA,
   FACT_REVIEW_DECISIONS,
   FACT_REVIEW_OUTCOMES,
+  FAMILY_INVITATION_CONTRACT_VERSION,
   FAMILY_PROFILE_CONTRACT_VERSION,
   type FactReviewResponse,
   type FamilyAuditLogResponse,
+  type FamilyInvitationCreateResponse,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorSeriesResponse,
@@ -63,6 +65,23 @@ test("family audit log omits internal metadata and exposes explicit pagination",
 
   assert.equal("metadata" in response.items[0], false);
   assert.equal("correlationId" in response.items[0], false);
+});
+
+test("local adult invitation returns its one-time code only in the creation response", () => {
+  assert.equal(FAMILY_INVITATION_CONTRACT_VERSION, "family-invitation/v1");
+  const response = {
+    contractVersion: FAMILY_INVITATION_CONTRACT_VERSION,
+    invitation: {
+      id: "10000000-0000-4000-8000-000000000001",
+      familyId: "10000000-0000-4000-8000-000000000002",
+      role: "adult_member",
+      code: `vi_${"A".repeat(43)}`,
+      expiresAt: "2026-08-13T12:00:00.000Z",
+    },
+  } as const satisfies FamilyInvitationCreateResponse;
+
+  assert.match(response.invitation.code, /^vi_[A-Za-z0-9_-]{43}$/);
+  assert.equal(response.invitation.role, "adult_member");
 });
 
 test("indicator series keeps exact units and its comparison state explicit", () => {

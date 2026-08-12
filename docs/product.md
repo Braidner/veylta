@@ -137,7 +137,9 @@ independently reviewed.
 
 Later slices may add JPEG/PNG ingestion, a broader document classifier and
 extraction schema, evidence-backed summaries
-and safe recommendations, full role/consent management, export, and backup/restore. Provider
+and safe recommendations, full role/consent management, export, and backup/restore. The local
+demo now supports a one-time adult join with one self-linked profile; it is not a production
+account, invitation, or consent-management system. Provider
 boundaries must support local and external OCR/LLM implementations without
 coupling the core domain to one vendor.
 

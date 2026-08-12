@@ -1,10 +1,14 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   AUDIT_LOG_CONTRACT_VERSION,
+  type DemoInvitationAcceptRequest,
+  type DemoInvitationAcceptResponse,
   type DemoRegistrationRequest,
   type DemoRegistrationResponse,
+  FAMILY_INVITATION_CONTRACT_VERSION,
   FAMILY_PROFILE_CONTRACT_VERSION,
   type FamilyAuditLogResponse,
+  type FamilyInvitationCreateResponse,
   type FamilyRole,
   type FamilySummary,
   type PatientProfileKind,
@@ -39,6 +43,11 @@ export interface DemoRegistrationResult {
   cookie: string;
 }
 
+export interface DemoInvitationAcceptResult {
+  response: DemoInvitationAcceptResponse;
+  cookie: string;
+}
+
 export interface FamilyAuditLogQuery {
   limit?: string;
   cursor?: string;
@@ -53,6 +62,15 @@ export interface FamilyService {
     input: { displayName: string; kind: PatientProfileKind },
     correlationId: string,
   ): Promise<PatientProfileSummary>;
+  createInvitation(
+    actor: SessionActor,
+    familyId: string,
+    correlationId: string,
+  ): Promise<FamilyInvitationCreateResponse>;
+  acceptDemoInvitation(
+    input: DemoInvitationAcceptRequest,
+    correlationId: string,
+  ): Promise<DemoInvitationAcceptResult>;
   getSession(actor: SessionActor): Promise<SessionResponse>;
   getAuditLog(
     actor: SessionActor,
@@ -99,6 +117,13 @@ interface AuditLogCursor {
   occurredAt: string;
 }
 
+interface InvitationRow {
+  id: string;
+  family_id: string;
+  role: "adult_member";
+  expires_at: string;
+}
+
 interface Queryable {
   query<T extends object>(queryText: string, values?: readonly unknown[]): Promise<QueryResult<T>>;
 }
@@ -112,6 +137,8 @@ const canonicalUuidPattern =
 const auditCursorPattern = /^[A-Za-z0-9_-]{1,500}$/;
 const auditFieldPattern = /^[A-Za-z][A-Za-z0-9_.-]{0,119}$/;
 const defaultAuditLogPageSize = 50;
+const invitationCodePattern = /^vi_[A-Za-z0-9_-]{43}$/;
+const invitationTtlMs = 24 * 60 * 60 * 1_000;
 
 function auditLogLimit(value: string | undefined): number {
   if (value === undefined) return defaultAuditLogPageSize;
@@ -271,6 +298,21 @@ async function profilesFor(client: Queryable, familyId: string): Promise<Patient
   return result.rows.map(profileSummary);
 }
 
+async function profilesForLinkedUser(
+  client: Queryable,
+  familyId: string,
+  userId: string,
+): Promise<PatientProfileSummary[]> {
+  const result = await client.query<ProfileRow>(
+    `SELECT id, family_id, display_name, kind, created_at
+       FROM patient_profiles
+      WHERE family_id = $1 AND linked_user_id = $2 AND archived_at IS NULL
+      ORDER BY created_at, id`,
+    [familyId, userId],
+  );
+  return result.rows.map(profileSummary);
+}
+
 export function createFamilyService(
   database: Database,
   options: FamilyServiceOptions,
@@ -339,6 +381,152 @@ export function createFamilyService(
       return profileSummary(created);
     },
 
+    async createInvitation(actor, familyId, correlationId) {
+      const normalizedFamilyId = familyId.toLowerCase();
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + invitationTtlMs);
+      const code = `vi_${randomBytes(32).toString("base64url")}`;
+      const invitation = {
+        id: randomUUID(),
+        familyId: normalizedFamilyId,
+        role: "adult_member" as const,
+        expiresAt: expiresAt.toISOString(),
+      };
+      await inTransaction(database, async (client) => {
+        await requireOwner(client, actor, normalizedFamilyId);
+        await client.query(
+          `INSERT INTO family_invitations
+             (id, family_id, issued_by_user_id, token_hash, role, expires_at, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            invitation.id,
+            invitation.familyId,
+            actor.userId,
+            sha256(code),
+            invitation.role,
+            invitation.expiresAt,
+            now,
+          ],
+        );
+        await audit(client, {
+          familyId: invitation.familyId,
+          actorUserId: actor.userId,
+          action: "family.invitation.created",
+          resourceType: "FamilyInvitation",
+          resourceId: invitation.id,
+          correlationId,
+          createdAt: now,
+          contractVersion: FAMILY_INVITATION_CONTRACT_VERSION,
+        });
+      });
+      return {
+        contractVersion: FAMILY_INVITATION_CONTRACT_VERSION,
+        invitation: { ...invitation, code },
+      };
+    },
+
+    async acceptDemoInvitation(input, correlationId) {
+      const code = input.code.trim();
+      const displayName = input.displayName.trim();
+      const profileName = input.profileName.trim();
+      if (
+        !invitationCodePattern.test(code) ||
+        [displayName, profileName].some((value) => value.length === 0)
+      ) {
+        throw new DomainValidationError();
+      }
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + options.sessionTtlSeconds * 1_000);
+      const token = randomBytes(32).toString("base64url");
+      const ids = {
+        user: randomUUID(),
+        membership: randomUUID(),
+        profile: randomUUID(),
+        session: randomUUID(),
+      };
+      const result = await inTransaction(database, async (client) => {
+        const invitation = (
+          await client.query<InvitationRow>(
+            `SELECT id, family_id, role, expires_at
+               FROM family_invitations
+              WHERE token_hash = $1
+                AND accepted_at IS NULL
+                AND expires_at > $2`,
+            [sha256(code), now],
+          )
+        ).rows[0];
+        if (invitation === undefined) throw new ResourceNotFoundError();
+
+        await client.query("INSERT INTO users (id, display_name, created_at) VALUES ($1, $2, $3)", [
+          ids.user,
+          displayName,
+          now,
+        ]);
+        await client.query(
+          `INSERT INTO family_memberships
+             (id, family_id, user_id, role, status, created_at)
+           VALUES ($1, $2, $3, $4, 'active', $5)`,
+          [ids.membership, invitation.family_id, ids.user, invitation.role, now],
+        );
+        await client.query(
+          `INSERT INTO patient_profiles
+             (id, family_id, display_name, kind, linked_user_id, created_by_user_id, created_at)
+           VALUES ($1, $2, $3, 'adult', $4, $4, $5)`,
+          [ids.profile, invitation.family_id, profileName, ids.user, now],
+        );
+        const consumed = await client.query(
+          `UPDATE family_invitations
+              SET accepted_by_user_id = $1, accepted_at = $2
+            WHERE id = $3
+              AND accepted_at IS NULL`,
+          [ids.user, now, invitation.id],
+        );
+        if (consumed.rowCount !== 1) throw new ResourceNotFoundError();
+        await client.query(
+          `INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+          [ids.session, ids.user, sha256(token), expiresAt, now],
+        );
+        await audit(client, {
+          familyId: invitation.family_id,
+          actorUserId: ids.user,
+          action: "family.invitation.accepted",
+          resourceType: "FamilyInvitation",
+          resourceId: invitation.id,
+          correlationId,
+          createdAt: now,
+          contractVersion: FAMILY_INVITATION_CONTRACT_VERSION,
+        });
+        const family = (
+          await client.query<{ id: string; display_name: string; created_at: string }>(
+            `SELECT id, display_name, created_at
+               FROM families
+              WHERE id = $1`,
+            [invitation.family_id],
+          )
+        ).rows[0];
+        if (family === undefined) throw new ResourceNotFoundError();
+        return family;
+      });
+      const family: FamilySummary = {
+        id: result.id,
+        displayName: result.display_name,
+        role: "adult_member",
+        createdAt: new Date(result.created_at).toISOString(),
+      };
+      const profile: PatientProfileSummary = {
+        id: ids.profile,
+        familyId: result.id,
+        displayName: profileName,
+        kind: "adult",
+        createdAt: now.toISOString(),
+      };
+      return {
+        response: { contractVersion: FAMILY_INVITATION_CONTRACT_VERSION, family, profile },
+        cookie: sessionCookie(token, expiresAt),
+      };
+    },
+
     async getSession(actor) {
       return inTransaction(database, async (client) => {
         const memberships = await client.query<MembershipRow>(
@@ -356,7 +544,12 @@ export function createFamilyService(
             displayName: row.display_name,
             role: row.role,
             createdAt: new Date(row.created_at).toISOString(),
-            profiles: row.role === "owner" ? await profilesFor(client, row.id) : [],
+            profiles:
+              row.role === "owner"
+                ? await profilesFor(client, row.id)
+                : row.role === "adult_member"
+                  ? await profilesForLinkedUser(client, row.id, actor.userId)
+                  : [],
           });
         }
         return {
@@ -414,8 +607,16 @@ export function createFamilyService(
 
     async listProfiles(actor, familyId) {
       return inTransaction(database, async (client) => {
-        await requireOwner(client, actor, familyId);
-        return profilesFor(client, familyId);
+        const memberships = await client.query<{ role: FamilyRole }>(
+          `SELECT role
+             FROM family_memberships
+            WHERE family_id = $1 AND user_id = $2 AND status = 'active'`,
+          [familyId, actor.userId],
+        );
+        const role = memberships.rows[0]?.role;
+        if (role === "owner") return profilesFor(client, familyId);
+        if (role === "adult_member") return profilesForLinkedUser(client, familyId, actor.userId);
+        throw new ResourceNotFoundError();
       });
     },
 

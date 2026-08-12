@@ -1,0 +1,5 @@
+DROP TRIGGER family_invitations_consumption_immutable;
+DROP TRIGGER family_invitations_immutable_fields;
+DROP TRIGGER family_invitations_owner_issuer;
+DROP INDEX family_invitations_pending_token;
+DROP TABLE family_invitations;

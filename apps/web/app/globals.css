@@ -283,6 +283,12 @@ h3 {
   border-radius: 14px;
 }
 
+.onboarding-form__mode {
+  align-self: flex-start;
+  min-height: 28px;
+  color: var(--color-primary);
+}
+
 .form-heading {
   padding-bottom: 4px;
 }
@@ -1117,6 +1123,50 @@ h3 {
 
 .family-audit-log {
   padding-top: 32px;
+}
+
+.family-invitation {
+  padding-top: 32px;
+}
+
+.family-invitation .context-line {
+  margin-bottom: 10px;
+  font-size: 0.8125rem;
+}
+
+.family-invitation .form-error {
+  margin-top: 14px;
+}
+
+.family-invitation__code {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.family-invitation__code code {
+  display: block;
+  overflow-x: auto;
+  padding: 11px 12px;
+  color: var(--color-primary);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  font-weight: 750;
+  line-height: 1.45;
+  white-space: nowrap;
+}
+
+.family-invitation__code span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.family-invitation__code .button {
+  justify-self: start;
 }
 
 .family-audit-log .context-line {

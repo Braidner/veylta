@@ -97,8 +97,11 @@ session token.
 ### `GET /v1/session`
 
 Resolves the cookie server-side and returns the current demo user plus active
-families and owner-accessible profiles. It returns `401` for an absent, expired,
-revoked, or disabled session and is always `Cache-Control: no-store`.
+families and profiles that actor may access. An owner receives all active
+profiles in their family; an adult that joined with the local invitation receives
+only their linked adult profile; a caregiver receives no profile list until a
+later consent grant exists. It returns `401` for an absent, expired, revoked,
+or disabled session and is always `Cache-Control: no-store`.
 
 ### `DELETE /v1/session`
 
@@ -123,9 +126,28 @@ profiles are not implicitly linked to the owner identity.
 ### `GET /v1/families/{familyId}/profiles`
 
 Returns only profiles the actor may access. It is not an inventory of all
-profiles merely because the actor is a family member. Task 3 intentionally
-implements only the active owner capability. Adult/caregiver grants remain
-default-deny until their explicit consent lifecycle is implemented.
+profiles merely because the actor is a family member. The owner receives all
+active family profiles; the invited adult receives only their linked profile;
+caregivers remain default-deny until their explicit consent lifecycle is
+implemented.
+
+### `POST /v1/families/{familyId}/invitations`
+
+Local-demo only; requires the active owner session plus a trusted `Origin` and
+the exact JSON body `{ "role": "adult_member" }`. It returns a
+`family-invitation/v1` one-time code exactly once. The server stores only its
+SHA-256 hash, the invitation expires after 24 hours, and a database trigger
+requires the issuer to be an active owner at issuance. The code is neither a family
+credential nor a profile grant.
+
+### `POST /v1/demo/invitations/accept`
+
+Local-demo only; requires a trusted `Origin` and `{ code, displayName,
+profileName }`. A valid, unexpired, unconsumed code atomically creates a new
+synthetic user, one active `adult_member` membership, one linked adult profile,
+and an opaque HttpOnly session. It never reveals whether an invalid code was
+unknown, expired, or already used. That adult can read only this linked profile;
+it does not gain family-wide or caregiver access.
 
 ### `GET /v1/families/{familyId}/audit-events`
 
@@ -628,7 +650,8 @@ stack traces.
 ## Deferred APIs
 
 No first-slice endpoint is defined for production authentication/account
-recovery, adult/caregiver consent management, S3 configuration or presigned
+recovery, caregiver invitations, adult/caregiver consent grants beyond the
+linked adult self-profile, S3 configuration or presigned
 URLs, JPEG/PNG ingestion, cloud OCR, LLM providers, summaries,
 recommendations, FHIR, exports, backups, or account deletion. Those contracts
 follow their own product, threat-model, and license review.

@@ -365,9 +365,74 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "review_requests"), true);
     assert.equal(await tableExists(database, "observations"), true);
     assert.equal(await tableExists(database, "observation_reference_ranges"), true);
+    assert.equal(await tableExists(database, "family_invitations"), true);
     await assert.doesNotReject(() => database.check());
 
     const document = await createDocumentFixture(database, "Synthetic populated rollback");
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO family_invitations
+             (id, family_id, issued_by_user_id, token_hash, role, expires_at)
+           VALUES ($1, $2, $3, $4, 'caregiver', $5)`,
+          [
+            randomUUID(),
+            document.familyId,
+            document.userId,
+            "e".repeat(64),
+            "2027-01-01T00:00:00.000Z",
+          ],
+        ),
+      "check",
+    );
+    const nonOwnerUserId = randomUUID();
+    await database.query(
+      "INSERT INTO users (id, display_name) VALUES ($1, 'Synthetic non-owner')",
+      [nonOwnerUserId],
+    );
+    await database.query(
+      `INSERT INTO family_memberships (id, family_id, user_id, role, status)
+       VALUES ($1, $2, $3, 'adult_member', 'active')`,
+      [randomUUID(), document.familyId, nonOwnerUserId],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO family_invitations
+             (id, family_id, issued_by_user_id, token_hash, role, expires_at)
+           VALUES ($1, $2, $3, $4, 'adult_member', $5)`,
+          [
+            randomUUID(),
+            document.familyId,
+            nonOwnerUserId,
+            "f".repeat(64),
+            "2027-01-01T00:00:00.000Z",
+          ],
+        ),
+      "trigger",
+    );
+    const invitationId = randomUUID();
+    const invitationTokenHash = "a".repeat(64);
+    await database.query(
+      `INSERT INTO family_invitations
+         (id, family_id, issued_by_user_id, token_hash, role, expires_at)
+       VALUES ($1, $2, $3, $4, 'adult_member', $5)`,
+      [
+        invitationId,
+        document.familyId,
+        document.userId,
+        invitationTokenHash,
+        "2027-01-01T00:00:00.000Z",
+      ],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query("UPDATE family_invitations SET expires_at = $1 WHERE id = $2", [
+          "2027-01-02T00:00:00.000Z",
+          invitationId,
+        ]),
+      "trigger",
+    );
     const processing = await insertProcessingGraph(database, document, "populated-rollback");
     await insertConfirmedReviewGraph(database, document, processing, "populated-rollback");
     const retryJobId = await createDeadLetterJob(database, document, "populated-rollback");
@@ -378,6 +443,9 @@ test("all migrations apply, populated processing data rolls back, and migrations
       processingJobId: retryJobId,
       idempotencyKeyHash: "d".repeat(64),
     });
+
+    assert.equal(await migrateDown(database), "0007_family_invitations");
+    assert.equal(await tableExists(database, "family_invitations"), false);
 
     assert.equal(await migrateDown(database), "0006_audit_log_integrity");
     assert.equal(await tableExists(database, "audit_events"), true);
@@ -423,6 +491,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0004_processing",
       "0005_review_observations",
       "0006_audit_log_integrity",
+      "0007_family_invitations",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
