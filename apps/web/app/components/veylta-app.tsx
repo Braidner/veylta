@@ -11,6 +11,7 @@ import type {
   ExtractedFactReviewStatus,
   FactReviewCommand,
   FactReviewResponse,
+  ObservationHistoryResponse,
   PatientProfileSummary,
   ProfileCreateResponse,
   SessionFamily,
@@ -103,6 +104,10 @@ function documentProcessingPath(familyId: string, profileId: string, documentId:
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
   return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
+}
+
+function observationHistoryPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/observations`;
 }
 
 interface VeyltaAppProps {
@@ -576,15 +581,24 @@ function ProfileWorkspace({
       ) : null}
 
       <div className="profile-workspace">
-        {requestedDocumentId === undefined ? (
-          <DocumentInbox
-            pending={uploadPending}
-            error={documentError}
-            onSubmit={handleDocumentUpload}
-          />
-        ) : (
-          <DocumentView family={family} profile={profile} documentId={requestedDocumentId} />
-        )}
+        <div className="profile-workspace__main">
+          {requestedDocumentId === undefined ? (
+            <>
+              <DocumentInbox
+                pending={uploadPending}
+                error={documentError}
+                onSubmit={handleDocumentUpload}
+              />
+              <ObservationHistoryPanel
+                key={`${family.id}:${profile.id}`}
+                familyId={family.id}
+                profileId={profile.id}
+              />
+            </>
+          ) : (
+            <DocumentView family={family} profile={profile} documentId={requestedDocumentId} />
+          )}
+        </div>
 
         <aside className="workspace-rail" aria-label="Действия с профилем">
           {requestedDocumentId !== undefined ? (
@@ -732,6 +746,345 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
         ) : null}
       </form>
     </section>
+  );
+}
+
+type ObservationHistoryItem = ObservationHistoryResponse["items"][number];
+
+type ObservationHistoryState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      items: readonly ObservationHistoryItem[];
+      nextCursor: string | null;
+    }
+  | { kind: "error"; copy: string };
+
+interface ObservationHistoryPanelProps {
+  familyId: string;
+  profileId: string;
+}
+
+interface ObservationDate {
+  label: string;
+  value: string;
+}
+
+function timelineDate(item: ObservationHistoryItem): ObservationDate {
+  if (item.dates.sampledAt !== null) {
+    return { label: "Дата биоматериала", value: item.dates.sampledAt };
+  }
+  if (item.dates.resultedAt !== null) {
+    return { label: "Дата результата", value: item.dates.resultedAt };
+  }
+  return { label: "Дата загрузки", value: item.dates.uploadedAt };
+}
+
+function knownObservationDates(item: ObservationHistoryItem): readonly ObservationDate[] {
+  return [
+    item.dates.sampledAt === null
+      ? null
+      : { label: "Дата биоматериала", value: item.dates.sampledAt },
+    item.dates.resultedAt === null
+      ? null
+      : { label: "Дата результата", value: item.dates.resultedAt },
+    { label: "Дата загрузки", value: item.dates.uploadedAt },
+  ].filter((date): date is ObservationDate => date !== null);
+}
+
+function observationHistoryErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "История этого профиля недоступна. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось загрузить историю. Подтверждённые значения и исходные документы не изменены.";
+}
+
+function observationSourceHref(contentPath: string): string {
+  return `${apiPrefix}${contentPath}`;
+}
+
+function referenceRangeCopy(
+  referenceRange: NonNullable<ObservationHistoryItem["referenceRange"]>,
+): string {
+  if (referenceRange.sourceText !== null) return referenceRange.sourceText;
+  if (referenceRange.sourceLow === null && referenceRange.sourceHigh === null) return "Не указан";
+  const bounds = `${referenceRange.sourceLow ?? "…"} — ${referenceRange.sourceHigh ?? "…"}`;
+  return referenceRange.sourceUnit === null ? bounds : `${bounds} ${referenceRange.sourceUnit}`;
+}
+
+function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPanelProps) {
+  const [history, setHistory] = useState<ObservationHistoryState>({ kind: "loading" });
+  const [loadMorePending, setLoadMorePending] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const loadMoreController = useRef<AbortController | null>(null);
+
+  const loadFirstPage = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setHistory({ kind: "loading" });
+      setLoadMoreError(null);
+      try {
+        const response = await apiRequest<ObservationHistoryResponse>(
+          observationHistoryPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (signal?.aborted) return;
+        setHistory({
+          kind: "ready",
+          items: response.items,
+          nextCursor: response.nextCursor,
+        });
+      } catch (error) {
+        if (!signal?.aborted)
+          setHistory({ kind: "error", copy: observationHistoryErrorCopy(error) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadFirstPage(controller.signal);
+
+    return () => {
+      controller.abort();
+      loadMoreController.current?.abort();
+      loadMoreController.current = null;
+    };
+  }, [loadFirstPage]);
+
+  async function loadNextPage(): Promise<void> {
+    if (history.kind !== "ready" || history.nextCursor === null || loadMorePending) return;
+    const controller = new AbortController();
+    loadMoreController.current = controller;
+    setLoadMorePending(true);
+    setLoadMoreError(null);
+    try {
+      const response = await apiRequest<ObservationHistoryResponse>(
+        `${observationHistoryPath(familyId, profileId)}?cursor=${encodeURIComponent(history.nextCursor)}`,
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted) return;
+      setHistory((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              kind: "ready",
+              items: [...current.items, ...response.items],
+              nextCursor: response.nextCursor,
+            },
+      );
+    } catch (error) {
+      if (!controller.signal.aborted) setLoadMoreError(observationHistoryErrorCopy(error));
+    } finally {
+      if (loadMoreController.current === controller) {
+        loadMoreController.current = null;
+        setLoadMorePending(false);
+      }
+    }
+  }
+
+  return (
+    <section
+      id="observation-history"
+      className="observation-history"
+      aria-labelledby="observation-history-title"
+      aria-busy={history.kind === "loading" || loadMorePending}
+    >
+      <div className="observation-history__heading">
+        <p className="context-line">Подтверждённые наблюдения</p>
+        <h2 id="observation-history-title">История подтверждённых значений</h2>
+        <p>
+          Здесь показаны только значения, которые пользователь явно подтвердил или исправил.
+          Исходный фрагмент и ссылка на PDF остаются рядом с каждым значением. Тенденции и
+          медицинские выводы не формируются.
+        </p>
+      </div>
+
+      {history.kind === "loading" ? (
+        <div className="observation-history__loading" aria-live="polite">
+          <div className="skeleton skeleton--history-heading" aria-hidden="true" />
+          <div className="skeleton skeleton--history-row" aria-hidden="true" />
+          <p>Загружаем подтверждённые значения и их источники…</p>
+        </div>
+      ) : null}
+
+      {history.kind === "error" ? (
+        <div className="observation-history__empty" role="status">
+          <p>{history.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadFirstPage()}
+          >
+            Обновить историю
+          </button>
+        </div>
+      ) : null}
+
+      {history.kind === "ready" && history.items.length === 0 ? (
+        <div className="observation-history__empty" role="status">
+          <p>
+            Пока нет подтверждённых значений. Откройте синтетический документ, сверьте его источник
+            и явно подтвердите или исправьте нужный факт.
+          </p>
+        </div>
+      ) : null}
+
+      {history.kind === "ready" && history.items.length > 0 ? (
+        <>
+          <div className="observation-history__table-wrap">
+            <table>
+              <caption>Подтверждённые значения профиля в порядке даты источника</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Показатель</th>
+                  <th scope="col">Значение как подтверждено</th>
+                  <th scope="col">Дата</th>
+                  <th scope="col">Источник</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.items.map((item) => (
+                  <ObservationHistoryRow key={item.id} item={item} />
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {history.nextCursor !== null ? (
+            <div className="observation-history__more">
+              <button
+                className="button button--secondary"
+                type="button"
+                disabled={loadMorePending}
+                onClick={() => void loadNextPage()}
+              >
+                {loadMorePending ? "Загружаем…" : "Показать следующие значения"}
+              </button>
+              {loadMoreError !== null ? (
+                <p className="form-error" role="alert">
+                  {loadMoreError}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {
+  const date = timelineDate(item);
+  const knownDates = knownObservationDates(item);
+  const normalizedValue =
+    item.normalized.value === null
+      ? null
+      : `${item.normalized.value}${item.normalized.unit === null ? "" : ` ${item.normalized.unit}`}`;
+  const confidence = new Intl.NumberFormat("ru-RU", {
+    style: "percent",
+    maximumFractionDigits: 0,
+  }).format(item.extractionConfidence);
+
+  return (
+    <tr>
+      <th scope="row">
+        <span className="observation-history__name">{item.source.name}</span>
+        {item.canonicalCode !== null ? (
+          <span className="observation-history__code">{item.canonicalCode}</span>
+        ) : null}
+      </th>
+      <td>
+        <strong className="observation-history__value">
+          {item.source.value} {item.source.unit}
+        </strong>
+        {normalizedValue !== null ? (
+          <span className="observation-history__normalized">
+            Нормализовано: {normalizedValue}
+            {item.normalized.conversionVersion === null
+              ? ""
+              : ` · ${item.normalized.conversionVersion}`}
+          </span>
+        ) : null}
+      </td>
+      <td>
+        <span className="observation-history__date-label">{date.label}</span>
+        <time dateTime={date.value}>{formatDate(date.value)}</time>
+      </td>
+      <td>
+        <details className="observation-history__provenance">
+          <summary>Документ · страница {item.sourceDocument.pageNumber}</summary>
+          <div className="observation-history__provenance-content">
+            <dl>
+              <div>
+                <dt>Подтверждено</dt>
+                <dd>
+                  <time dateTime={item.confirmed.at}>{formatDate(item.confirmed.at)}</time>
+                  {` · ${item.confirmed.by.displayName}`}
+                </dd>
+              </div>
+              <div>
+                <dt>Уверенность извлечения</dt>
+                <dd>{confidence}</dd>
+              </div>
+              <div>
+                <dt>Нормализованное значение</dt>
+                <dd>{normalizedValue ?? "Не рассчитано"}</dd>
+              </div>
+              {knownDates.map((knownDate) => (
+                <div key={knownDate.label}>
+                  <dt>{knownDate.label}</dt>
+                  <dd>
+                    <time dateTime={knownDate.value}>{formatDate(knownDate.value)}</time>
+                  </dd>
+                </div>
+              ))}
+              {item.specimenType !== null ? (
+                <div>
+                  <dt>Материал</dt>
+                  <dd>{item.specimenType}</dd>
+                </div>
+              ) : null}
+              {item.laboratory !== null ? (
+                <div>
+                  <dt>Лаборатория</dt>
+                  <dd>{item.laboratory}</dd>
+                </div>
+              ) : null}
+              {item.referenceRange !== null ? (
+                <>
+                  <div>
+                    <dt>Диапазон в документе</dt>
+                    <dd>{referenceRangeCopy(item.referenceRange)}</dd>
+                  </div>
+                  {item.referenceRange.laboratoryOutOfRange !== null ? (
+                    <div>
+                      <dt>Отметка лаборатории</dt>
+                      <dd>
+                        {item.referenceRange.laboratoryOutOfRange
+                          ? "Отмечено в исходном документе"
+                          : "Не отмечено в исходном документе"}
+                      </dd>
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+            </dl>
+            <p className="observation-history__fragment-label">Фрагмент из исходного PDF</p>
+            <pre className="observation-history__fragment">
+              <code>{item.sourceDocument.fragment}</code>
+            </pre>
+            <a
+              className="observation-history__source-link"
+              href={observationSourceHref(item.sourceDocument.contentPath)}
+              download
+            >
+              Открыть исходный PDF
+            </a>
+          </div>
+        </details>
+      </td>
+    </tr>
   );
 }
 
@@ -1405,6 +1758,12 @@ function DocumentReviewPanel({
           Автоматическое извлечение остаётся черновиком, пока вы не сверите его со страницей и не
           выберете действие. Здесь нет медицинской интерпретации.
         </p>
+        <Link
+          className="document-review__history-link"
+          href={`${profilePath(familyId, profileId)}#observation-history`}
+        >
+          Открыть историю подтверждённых значений
+        </Link>
       </div>
 
       {facts.kind === "loading" ? (

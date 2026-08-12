@@ -457,11 +457,15 @@ h3 {
   border-bottom: 1px solid var(--color-line);
 }
 
+.profile-workspace__main {
+  min-width: 0;
+  border-right: 1px solid var(--color-line);
+}
+
 .document-inbox,
 .document-view {
   min-width: 0;
   padding: 48px 56px 56px 0;
-  border-right: 1px solid var(--color-line);
 }
 
 .source-mark {
@@ -552,6 +556,250 @@ h3 {
 
 .upload-form .button {
   align-self: flex-start;
+}
+
+.observation-history {
+  scroll-margin-top: 24px;
+  padding: 44px 56px 56px 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.observation-history__heading {
+  max-width: 66ch;
+}
+
+.observation-history__heading .context-line {
+  margin-bottom: 10px;
+}
+
+.observation-history__heading h2 {
+  font-size: 1.375rem;
+}
+
+.observation-history__heading > p:last-child {
+  margin: 10px 0 0;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  line-height: 1.65;
+}
+
+.observation-history__loading,
+.observation-history__empty {
+  padding: 24px 0 8px;
+}
+
+.observation-history__loading {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.observation-history__loading p,
+.observation-history__empty p {
+  max-width: 58ch;
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+  line-height: 1.6;
+}
+
+.observation-history__empty .button {
+  margin-top: 16px;
+}
+
+.skeleton--history-heading {
+  width: min(300px, 74vw);
+  height: 22px;
+}
+
+.skeleton--history-row {
+  width: 100%;
+  height: 144px;
+}
+
+.observation-history__table-wrap {
+  max-width: 100%;
+  margin-top: 28px;
+  overflow-x: auto;
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.observation-history__table-wrap:focus-visible {
+  border-radius: 8px;
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.observation-history table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.observation-history caption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.observation-history th,
+.observation-history td {
+  min-width: 0;
+  padding: 16px 14px;
+  vertical-align: top;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.observation-history thead th {
+  color: var(--color-muted);
+  background: var(--color-surface);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.observation-history tbody tr:last-child th,
+.observation-history tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.observation-history tbody th {
+  width: 24%;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.observation-history__name,
+.observation-history__code,
+.observation-history__normalized,
+.observation-history__date-label {
+  display: block;
+}
+
+.observation-history__code,
+.observation-history__normalized,
+.observation-history__date-label {
+  margin-top: 4px;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.observation-history__value {
+  display: block;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.observation-history time {
+  display: block;
+  margin-top: 4px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.observation-history__provenance summary {
+  width: fit-content;
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.observation-history__provenance summary:focus-visible {
+  border-radius: 6px;
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.observation-history__provenance-content {
+  width: min(480px, 68vw);
+  margin-top: 14px;
+}
+
+.observation-history__provenance dl {
+  margin: 0;
+}
+
+.observation-history__provenance dl > div {
+  display: grid;
+  grid-template-columns: minmax(110px, 0.72fr) minmax(0, 1.28fr);
+  gap: 10px;
+  padding: 8px 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.observation-history__provenance dt {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 650;
+}
+
+.observation-history__provenance dd {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.observation-history__provenance dd time {
+  margin: 0;
+}
+
+.observation-history__fragment-label {
+  margin: 16px 0 8px;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.observation-history__fragment {
+  max-height: 180px;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border-radius: 8px;
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  text-wrap: wrap;
+  white-space: pre-wrap;
+}
+
+.observation-history__source-link {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  margin-top: 14px;
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 750;
+}
+
+.observation-history__source-link:hover {
+  color: var(--color-primary-hover);
+}
+
+.observation-history__more {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: start;
+  margin-top: 20px;
+}
+
+.observation-history__more .form-error {
+  max-width: 58ch;
 }
 
 .workspace-rail {
@@ -754,6 +1002,20 @@ h3 {
   color: var(--color-muted);
   font-size: 0.875rem;
   line-height: 1.65;
+}
+
+.document-review__history-link {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  margin-top: 16px;
+  color: var(--color-primary);
+  font-size: 0.875rem;
+  font-weight: 750;
+}
+
+.document-review__history-link:hover {
+  color: var(--color-primary-hover);
 }
 
 .review-skeleton,
@@ -1129,8 +1391,26 @@ h3 {
   .document-inbox,
   .document-view {
     padding: 40px 0;
+  }
+
+  .profile-workspace__main {
     border-right: 0;
+  }
+
+  .document-view {
     border-bottom: 1px solid var(--color-line);
+  }
+
+  .observation-history {
+    padding: 40px 0 48px;
+  }
+
+  .observation-history table {
+    min-width: 680px;
+  }
+
+  .observation-history__provenance-content {
+    width: min(460px, 76vw);
   }
 
   .workspace-rail {
@@ -1176,6 +1456,24 @@ h3 {
 
   .document-review {
     margin-top: 40px;
+  }
+
+  .observation-history table {
+    min-width: 600px;
+  }
+
+  .observation-history th,
+  .observation-history td {
+    padding: 14px 12px;
+  }
+
+  .observation-history__provenance-content {
+    width: min(440px, 82vw);
+  }
+
+  .observation-history__provenance dl > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 
   .review-fact__summary {

@@ -70,9 +70,9 @@ The first slice proves one complete and safe path with synthetic data:
    altering the raw extracted fact; rejection creates no observation (Task 6,
    delivered).
 9. Indicator history displays the confirmed value, unit/reference, and an
-   authorized link to its source (Task 7, pending).
+   authorized link to its source (Task 7, delivered).
 
-The implementation currently reaches step 8. A document is uploaded as
+The implementation currently reaches step 9. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
 `validation`. Successful synthetic extraction ends at `awaiting_review`; a
@@ -80,8 +80,10 @@ sanitized terminal failure is visible and may be retried. A fact decision is
 always explicit: `confirm`, `correct`, or `reject`. The immutable decision,
 optional confirmed observation, optional source-specific reference range, and
 payload-free audit event commit together. Once every fact in the run has its
-one final decision, that extraction run becomes `completed`. Task 7 history is
-not implemented yet.
+one final decision, that extraction run becomes `completed`. The profile-wide
+history reads only immutable `confirmed` observations: it preserves corrected
+source fields, distinguishes optional normalized fields, and re-authorizes the
+original document when a user follows its source link.
 
 The repository, fixtures, tests, and supported deterministic parser are
 synthetic-only. The local demo's upload boundary validates PDF MIME/signature,
@@ -101,6 +103,8 @@ independently reviewed.
 - Provenance reaches the document version, page number, and source fragment.
 - Review is mandatory for uncertain data, and corrections preserve the raw
   extraction.
+- Confirmed observations appear in a source-first profile history; the original
+  document is authorized again when a user follows its source link.
 - A failed confirmation produces no partial medical record.
 - Job retry produces no duplicate facts or observations.
 - All access and state-changing actions are audited without logging medical
@@ -124,8 +128,9 @@ The planned complete processing state machine is:
 
 Only states backed by implemented behavior may be used. Task 5 implements the
 queue through `awaiting_review`; Task 6 completes a run only after every fact
-has one final review decision. The implementation does not fake OCR, trends,
-summaries, or Task 7 history.
+has one final review decision; Task 7 exposes those confirmed observations as a
+source-first history. The implementation does not fake OCR, trends, or
+summaries.
 
 ## Explicitly deferred
 

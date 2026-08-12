@@ -18,8 +18,11 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
   LAB_FACT_VALIDATION_ISSUES,
   type LabExtractionResult,
+  MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_PDF_BYTES,
   OBJECT_STORAGE_CONTRACT_VERSION,
+  OBSERVATION_HISTORY_CONTRACT_VERSION,
+  type ObservationHistoryResponse,
 } from "./index.js";
 
 test("public contracts carry explicit versions", () => {
@@ -27,8 +30,62 @@ test("public contracts carry explicit versions", () => {
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v1");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
+  assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
+});
+
+test("observation history keeps confirmed source evidence and pagination explicit", () => {
+  assert.equal(MAX_OBSERVATION_HISTORY_PAGE_SIZE, 100);
+
+  const response = {
+    contractVersion: OBSERVATION_HISTORY_CONTRACT_VERSION,
+    items: [
+      {
+        id: "10000000-0000-4000-8000-000000000001",
+        canonicalCode: null,
+        source: { name: "SYNTHETIC_ANALYTE_A", value: "7.0", unit: "synthetic-unit" },
+        normalized: { value: null, unit: null, conversionVersion: null },
+        referenceRange: {
+          sourceText: "5.0–8.0 synthetic-unit",
+          sourceLow: null,
+          sourceHigh: null,
+          sourceUnit: "synthetic-unit",
+          laboratoryOutOfRange: null,
+          normalizedLow: null,
+          normalizedHigh: null,
+          normalizedUnit: null,
+          conversionVersion: null,
+        },
+        dates: {
+          sampledAt: null,
+          resultedAt: null,
+          uploadedAt: "2026-08-12T12:00:00.000Z",
+        },
+        timelineAt: "2026-08-12T12:00:00.000Z",
+        specimenType: null,
+        laboratory: null,
+        extractionConfidence: 0.6,
+        confirmed: {
+          at: "2026-08-12T12:01:00.000Z",
+          by: { id: "10000000-0000-4000-8000-000000000002", displayName: "Reviewer" },
+        },
+        sourceDocument: {
+          id: "10000000-0000-4000-8000-000000000003",
+          versionId: "10000000-0000-4000-8000-000000000004",
+          pageNumber: 1,
+          fragment: "FACT|synthetic-analyte-a",
+          contentPath:
+            "/v1/families/10000000-0000-4000-8000-000000000005/profiles/10000000-0000-4000-8000-000000000006/documents/10000000-0000-4000-8000-000000000003/content",
+        },
+      },
+    ],
+    nextCursor: "eyJ2IjoxfQ",
+  } as const satisfies ObservationHistoryResponse;
+
+  assert.equal(response.items[0].source.value, "7.0");
+  assert.equal(response.items[0].timelineAt, response.items[0].dates.uploadedAt);
+  assert.match(response.items[0].sourceDocument.contentPath, /^\/v1\/families\//);
 });
 
 test("fact review contract makes an explicit, versioned human decision", () => {

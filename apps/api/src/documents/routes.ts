@@ -18,6 +18,7 @@ import {
   type DocumentService,
   IdempotencyConflictError,
   InvalidPdfSignatureError,
+  type ObservationHistoryQuery,
   type StagedDocument,
   UnsupportedDocumentTypeError,
   UploadTooLargeError,
@@ -74,6 +75,21 @@ const factParamsSchema = {
     profileId: canonicalUuidSchema,
     documentId: canonicalUuidSchema,
     factId: { type: "string", pattern: "^fact_[a-f0-9]{40}$" },
+  },
+} as const;
+
+const observationHistoryQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    canonicalCode: {
+      type: "string",
+      minLength: 1,
+      maxLength: 100,
+      pattern: "^[a-z0-9][a-z0-9._-]{0,99}$",
+    },
+    limit: { type: "string", pattern: "^(?:[1-9][0-9]?|100)$" },
+    cursor: { type: "string", minLength: 1, maxLength: 500, pattern: "^[A-Za-z0-9_-]+$" },
   },
 } as const;
 
@@ -208,6 +224,23 @@ export function registerDocumentRoutes(
         headerPairs: 32,
       },
     });
+
+    scope.get<{ Params: ProfileParams; Querystring: ObservationHistoryQuery }>(
+      "/v1/families/:familyId/profiles/:profileId/observations",
+      { schema: { params: profileParamsSchema, querystring: observationHistoryQuerySchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(
+            await service.getObservationHistory(actor, request.params, request.query, request.id),
+          );
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
 
     scope.post<{ Params: ProfileParams }>(
       "/v1/families/:familyId/profiles/:profileId/documents",

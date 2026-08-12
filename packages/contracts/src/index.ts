@@ -3,7 +3,9 @@ export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v1" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
+export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
+export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 
 export const DOCUMENT_PROCESSING_STATES = [
   "not_started",
@@ -280,6 +282,71 @@ export interface FactReviewSummary {
 export interface FactReviewResponse {
   readonly contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
   readonly review: FactReviewSummary;
+}
+
+/**
+ * A source-specific range attached to one immutable confirmed observation.
+ * It is intentionally distinct from a universal or canonical reference range.
+ */
+export interface ObservationHistoryReferenceRange {
+  readonly sourceText: string | null;
+  readonly sourceLow: string | null;
+  readonly sourceHigh: string | null;
+  readonly sourceUnit: string | null;
+  readonly laboratoryOutOfRange: boolean | null;
+  readonly normalizedLow: string | null;
+  readonly normalizedHigh: string | null;
+  readonly normalizedUnit: string | null;
+  readonly conversionVersion: string | null;
+}
+
+/** A source-first, immutable view of one explicitly confirmed observation. */
+export interface ObservationHistoryItem {
+  readonly id: string;
+  readonly canonicalCode: string | null;
+  readonly source: {
+    readonly name: string;
+    readonly value: string;
+    readonly unit: string;
+  };
+  readonly normalized: {
+    readonly value: string | null;
+    readonly unit: string | null;
+    readonly conversionVersion: string | null;
+  };
+  readonly referenceRange: ObservationHistoryReferenceRange | null;
+  readonly dates: {
+    readonly sampledAt: string | null;
+    readonly resultedAt: string | null;
+    readonly uploadedAt: string;
+  };
+  /** The deterministic history sort date: sampled, then resulted, then uploaded. */
+  readonly timelineAt: string;
+  readonly specimenType: string | null;
+  readonly laboratory: string | null;
+  readonly extractionConfidence: number;
+  readonly confirmed: {
+    readonly at: string;
+    readonly by: {
+      readonly id: string;
+      readonly displayName: string;
+    };
+  };
+  readonly sourceDocument: {
+    readonly id: string;
+    readonly versionId: string;
+    readonly pageNumber: number;
+    readonly fragment: string;
+    /** Relative, re-authorized endpoint for the immutable original document. */
+    readonly contentPath: string;
+  };
+}
+
+export interface ObservationHistoryResponse {
+  readonly contractVersion: typeof OBSERVATION_HISTORY_CONTRACT_VERSION;
+  readonly items: readonly ObservationHistoryItem[];
+  /** Opaque cursor for the next page, or null when this is the final page. */
+  readonly nextCursor: string | null;
 }
 
 const nullableShortStringSchema = {

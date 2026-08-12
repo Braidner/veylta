@@ -90,8 +90,8 @@ stores page/run/fact provenance atomically, and presents `awaiting_review` or a
 sanitized retryable terminal failure. The fixture is a checked-in synthetic
 text-PDF, parsed by PDF.js plus a narrow `lab-extraction/v1` grammar. The public
 processing/facts reads and failed-job retry are tenant-scoped. Task 6 delivers
-review decisions and their optional observations; Task 7 history remains
-pending.
+review decisions and their optional observations; Task 7 presents those
+confirmed observations as profile-wide history.
 
 ### Task 6 — Review and atomic observation confirmation
 
@@ -115,7 +115,7 @@ source-specific range. Rejection creates no observation; raw facts are never
 edited. The public facts read derives confirmed/rejected status, and the run
 becomes `completed` only after every fact has its final decision.
 
-### Task 7 — Indicator history and authorized source (pending)
+### Task 7 — Indicator history and authorized source
 
 Commit intent: `feat: show observation history with its source`
 
@@ -129,6 +129,17 @@ Commit intent: `feat: show observation history with its source`
 
 A table is sufficient for the first point. A chart becomes meaningful with a
 later comparable-observation task and must not imply analysis from one result.
+
+Delivered in `feat: show observation history with its source`:
+`observation-history/v1` reads only tenant- and profile-authorized immutable
+confirmed observations. It preserves a correction's confirmed source
+name/value/unit without changing the raw extracted fact, keeps optional
+normalized data distinct, and carries document-specific range, date, reviewer,
+confidence, page, fragment, and a relative source-document path. The API uses a
+strict optional canonical-code filter and opaque pagination cursor; every
+successful history read is payload-free audited. The profile UI is source-first
+and re-authorizes the original PDF on download. Integration and browser tests
+cover pagination, correction, rejection absence, and cross-family denial.
 
 ### Task 8 — Acceptance evidence
 
@@ -156,7 +167,7 @@ evidence commit.
 | Page-level provenance | Extraction schema/DB/API assertions |
 | Uncertain fact requires review | Domain + UI tests |
 | Correction preserves raw extraction | Database/API assertion |
-| Confirmed value appears in history | Task 7 pending: history API + browser E2E |
+| Confirmed value appears in history | `observation-history/v1` integration + browser E2E |
 | Source is authorized | Download and cross-family negative tests |
 | Failure makes no partial observation | Transaction fault-injection test |
 | Retry creates no duplicates | Concurrent/replay job test |

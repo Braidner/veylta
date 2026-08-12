@@ -329,7 +329,10 @@ behavior:
 
 Task 5 adds `DocumentPage`, `ExtractionRun`, `ExtractedFact`, `ProcessingJob`,
 and `ProcessingRetryRequest`. Task 6 adds `ReviewDecision`, `ReviewRequest`,
-`Observation`, and `ObservationReferenceRange`. Add `ConsentGrant`, extended
+`Observation`, and `ObservationReferenceRange`. Task 7 adds no speculative
+tables: `observation-history/v1` is an authorized profile-scoped read over
+confirmed `Observation` rows, their optional source range, reviewer, and
+document/page provenance. Add `ConsentGrant`, extended
 clinical entities, summaries, recommendations, and agent runs only with the
 slice that uses and tests them.
 

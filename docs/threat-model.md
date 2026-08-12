@@ -132,8 +132,9 @@ without a separate scoped audit.
 ## Security verification
 
 - Integration tests use two families and attempt implemented document, fact,
-  review, derived-observation, and download operations across the boundary.
-  Task 7 history remains pending.
+  review, derived-observation, profile history, and download operations across
+  the boundary. History returns only confirmed observations and the returned
+  document selector is authorized again on download.
 - Contract tests attempt traversal keys, mismatched MIME/signatures, oversized
   streams, interrupted writes, and checksum mismatch.
 - Concurrency tests replay uploads, job claims, and fact-review commands.

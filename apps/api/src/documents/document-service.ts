@@ -13,7 +13,10 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
   type LabFactReferenceRange,
   type LabFactValidationIssue,
+  MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   OBJECT_STORAGE_CONTRACT_VERSION,
+  OBSERVATION_HISTORY_CONTRACT_VERSION,
+  type ObservationHistoryResponse,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
@@ -49,6 +52,12 @@ export interface DocumentContent {
   byteSize: number;
 }
 
+export interface ObservationHistoryQuery {
+  canonicalCode?: string;
+  limit?: string;
+  cursor?: string;
+}
+
 export interface DocumentService {
   acceptUpload(
     actor: SessionActor,
@@ -78,6 +87,12 @@ export interface DocumentService {
     scope: { familyId: string; profileId: string; documentId: string },
     correlationId: string,
   ): Promise<DocumentFactsResponse>;
+  getObservationHistory(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    query: ObservationHistoryQuery,
+    correlationId: string,
+  ): Promise<ObservationHistoryResponse>;
   reviewFact(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string; factId: string },
@@ -213,6 +228,46 @@ interface ExtractionRunForFactsRow {
   status: string;
 }
 
+interface ObservationHistoryRow {
+  id: string;
+  canonical_code: string | null;
+  source_name: string;
+  source_value: string;
+  source_unit: string;
+  normalized_value: string | null;
+  normalized_unit: string | null;
+  conversion_version: string | null;
+  sampled_at: string | null;
+  resulted_at: string | null;
+  uploaded_at: string;
+  specimen_type: string | null;
+  laboratory: string | null;
+  source_fragment: string;
+  extraction_confidence: number;
+  confirmed_at: string;
+  confirmed_by_user_id: string;
+  confirmed_by_display_name: string;
+  document_id: string;
+  document_version_id: string;
+  page_number: number;
+  timeline_at: string;
+  reference_source_text: string | null;
+  reference_source_low: string | null;
+  reference_source_high: string | null;
+  reference_source_unit: string | null;
+  reference_laboratory_out_of_range: number | null;
+  reference_normalized_low: string | null;
+  reference_normalized_high: string | null;
+  reference_normalized_unit: string | null;
+  reference_conversion_version: string | null;
+}
+
+interface ObservationHistoryCursor {
+  canonicalCode: string | null;
+  id: string;
+  timelineAt: string;
+}
+
 interface RetryRequestRow {
   document_version_id: string;
   created_at: string;
@@ -276,6 +331,73 @@ function canonicalFactScope(scope: {
     ...canonicalDocumentScope(scope),
     factId: scope.factId.toLowerCase(),
   };
+}
+
+const canonicalCodePattern = /^[a-z0-9][a-z0-9._-]{0,99}$/;
+const canonicalUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+const historyCursorPattern = /^[A-Za-z0-9_-]{1,500}$/;
+const defaultObservationHistoryPageSize = 50;
+
+function historyCanonicalCode(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  if (!canonicalCodePattern.test(value)) throw new DomainValidationError();
+  return value;
+}
+
+function observationHistoryLimit(value: string | undefined): number {
+  if (value === undefined) return defaultObservationHistoryPageSize;
+  if (!/^(?:[1-9][0-9]?|100)$/.test(value)) throw new DomainValidationError();
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_OBSERVATION_HISTORY_PAGE_SIZE) {
+    throw new DomainValidationError();
+  }
+  return limit;
+}
+
+function cursorTimestamp(value: unknown): string {
+  if (typeof value !== "string") throw new DomainValidationError();
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new DomainValidationError();
+  }
+  return value;
+}
+
+function decodeObservationHistoryCursor(
+  value: string | undefined,
+  canonicalCode: string | null,
+): ObservationHistoryCursor | null {
+  if (value === undefined) return null;
+  if (!historyCursorPattern.test(value)) throw new DomainValidationError();
+  try {
+    const decoded = Buffer.from(value, "base64url");
+    if (decoded.toString("base64url") !== value) throw new Error("Non-canonical cursor");
+    const parsed: unknown = JSON.parse(decoded.toString("utf8"));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid cursor object");
+    }
+    const record = parsed as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    if (keys.join(",") !== "c,id,t,v" || record.v !== 1) {
+      throw new Error("Invalid cursor shape");
+    }
+    if (record.c !== canonicalCode || typeof record.id !== "string") {
+      throw new Error("Cursor query mismatch");
+    }
+    if (!canonicalUuidPattern.test(record.id)) throw new Error("Invalid cursor id");
+    return { canonicalCode, id: record.id, timelineAt: cursorTimestamp(record.t) };
+  } catch (error) {
+    if (error instanceof DomainValidationError) throw error;
+    throw new DomainValidationError();
+  }
+}
+
+function encodeObservationHistoryCursor(cursor: ObservationHistoryCursor): string {
+  return Buffer.from(
+    JSON.stringify({ v: 1, t: cursor.timelineAt, id: cursor.id, c: cursor.canonicalCode }),
+    "utf8",
+  ).toString("base64url");
 }
 
 function safeFilename(value: string | undefined): string {
@@ -477,6 +599,7 @@ async function audit(
     resourceId: string;
     correlationId: string;
     createdAt: Date;
+    contractVersion?: string;
   },
 ): Promise<void> {
   await client.query(
@@ -492,7 +615,7 @@ async function audit(
       event.resourceType ?? "Document",
       event.resourceId,
       event.correlationId,
-      { contractVersion: DOCUMENT_CONTRACT_VERSION },
+      { contractVersion: event.contractVersion ?? DOCUMENT_CONTRACT_VERSION },
       event.createdAt,
     ],
   );
@@ -927,6 +1050,209 @@ function factResponse(
   };
 }
 
+function nullableStoredText(value: unknown, maximum: number, label: string): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string" || value.length === 0 || value.length > maximum) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return value;
+}
+
+function requiredStoredText(value: unknown, maximum: number, label: string): string {
+  const parsed = nullableStoredText(value, maximum, label);
+  if (parsed === null) throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  return parsed;
+}
+
+function requiredCanonicalUuid(value: unknown, label: string): string {
+  const parsed = requiredBoundedString(value, 200, label);
+  if (!canonicalUuidPattern.test(parsed)) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return parsed;
+}
+
+function observationReferenceRange(
+  row: ObservationHistoryRow,
+): ObservationHistoryResponse["items"][number]["referenceRange"] {
+  const sourceText = nullableStoredText(
+    row.reference_source_text,
+    1_000,
+    "observation reference source text",
+  );
+  const sourceLow = nullableBoundedString(
+    row.reference_source_low,
+    100,
+    "observation reference source low",
+  );
+  const sourceHigh = nullableBoundedString(
+    row.reference_source_high,
+    100,
+    "observation reference source high",
+  );
+  const sourceUnit = nullableBoundedString(
+    row.reference_source_unit,
+    100,
+    "observation reference source unit",
+  );
+  const laboratoryOutOfRange =
+    row.reference_laboratory_out_of_range === null
+      ? null
+      : row.reference_laboratory_out_of_range === 0
+        ? false
+        : row.reference_laboratory_out_of_range === 1
+          ? true
+          : (() => {
+              throw new ObjectStorageIntegrityError(
+                "Stored observation reference laboratory flag is invalid",
+              );
+            })();
+  const normalizedLow = nullableBoundedString(
+    row.reference_normalized_low,
+    100,
+    "observation reference normalized low",
+  );
+  const normalizedHigh = nullableBoundedString(
+    row.reference_normalized_high,
+    100,
+    "observation reference normalized high",
+  );
+  const normalizedUnit = nullableBoundedString(
+    row.reference_normalized_unit,
+    100,
+    "observation reference normalized unit",
+  );
+  const conversionVersion = nullableBoundedString(
+    row.reference_conversion_version,
+    100,
+    "observation reference conversion version",
+  );
+  const sourceValues = [sourceText, sourceLow, sourceHigh, sourceUnit, laboratoryOutOfRange];
+  const normalizedValues = [normalizedLow, normalizedHigh, normalizedUnit, conversionVersion];
+  if (sourceValues.every((value) => value === null)) {
+    if (normalizedValues.some((value) => value !== null)) {
+      throw new ObjectStorageIntegrityError("Stored observation reference range is invalid");
+    }
+    return null;
+  }
+  if (
+    !(
+      normalizedValues.every((value) => value === null) ||
+      ((normalizedLow !== null || normalizedHigh !== null) &&
+        normalizedUnit !== null &&
+        conversionVersion !== null)
+    )
+  ) {
+    throw new ObjectStorageIntegrityError("Stored observation reference normalization is invalid");
+  }
+  return {
+    sourceText,
+    sourceLow,
+    sourceHigh,
+    sourceUnit,
+    laboratoryOutOfRange,
+    normalizedLow,
+    normalizedHigh,
+    normalizedUnit,
+    conversionVersion,
+  };
+}
+
+function observationHistoryItem(
+  row: ObservationHistoryRow,
+  scope: { familyId: string; profileId: string },
+): ObservationHistoryResponse["items"][number] {
+  const canonicalCode = nullableBoundedString(
+    row.canonical_code,
+    100,
+    "observation canonical code",
+  );
+  if (canonicalCode !== null && !canonicalCodePattern.test(canonicalCode)) {
+    throw new ObjectStorageIntegrityError("Stored observation canonical code is invalid");
+  }
+  const normalizedValue = nullableBoundedString(
+    row.normalized_value,
+    100,
+    "observation normalized value",
+  );
+  const normalizedUnit = nullableBoundedString(
+    row.normalized_unit,
+    100,
+    "observation normalized unit",
+  );
+  const conversionVersion = nullableBoundedString(
+    row.conversion_version,
+    100,
+    "observation conversion version",
+  );
+  const normalizedValues = [normalizedValue, normalizedUnit, conversionVersion];
+  if (!(normalizedValues.every((value) => value === null) || normalizedValues.every(Boolean))) {
+    throw new ObjectStorageIntegrityError("Stored observation normalization is invalid");
+  }
+  const sampledAt = nullableCanonicalTimestamp(row.sampled_at, "observation sampled time");
+  const resultedAt = nullableCanonicalTimestamp(row.resulted_at, "observation result time");
+  const uploadedAt = canonicalTimestamp(row.uploaded_at);
+  const timelineAt = canonicalTimestamp(row.timeline_at);
+  if (timelineAt !== (sampledAt ?? resultedAt ?? uploadedAt)) {
+    throw new ObjectStorageIntegrityError("Stored observation timeline is invalid");
+  }
+  const pageNumber = asCount(row.page_number, "observation page number");
+  if (pageNumber < 1)
+    throw new ObjectStorageIntegrityError("Stored observation page number is invalid");
+  const extractionConfidence = Number(row.extraction_confidence);
+  if (
+    !Number.isFinite(extractionConfidence) ||
+    extractionConfidence < 0 ||
+    extractionConfidence > 1
+  ) {
+    throw new ObjectStorageIntegrityError("Stored observation confidence is invalid");
+  }
+  const id = requiredCanonicalUuid(row.id, "observation id");
+  const documentId = requiredCanonicalUuid(row.document_id, "observation document");
+  const documentVersionId = requiredCanonicalUuid(
+    row.document_version_id,
+    "observation document version",
+  );
+  return {
+    id,
+    canonicalCode,
+    source: {
+      name: requiredBoundedString(row.source_name, 200, "observation source name"),
+      value: requiredBoundedString(row.source_value, 100, "observation source value"),
+      unit: requiredBoundedString(row.source_unit, 100, "observation source unit"),
+    },
+    normalized: {
+      value: normalizedValue,
+      unit: normalizedUnit,
+      conversionVersion,
+    },
+    referenceRange: observationReferenceRange(row),
+    dates: { sampledAt, resultedAt, uploadedAt },
+    timelineAt,
+    specimenType: nullableBoundedString(row.specimen_type, 200, "observation specimen"),
+    laboratory: nullableBoundedString(row.laboratory, 200, "observation laboratory"),
+    extractionConfidence,
+    confirmed: {
+      at: canonicalTimestamp(row.confirmed_at),
+      by: {
+        id: requiredCanonicalUuid(row.confirmed_by_user_id, "observation reviewer"),
+        displayName: requiredBoundedString(
+          row.confirmed_by_display_name,
+          200,
+          "observation reviewer name",
+        ),
+      },
+    },
+    sourceDocument: {
+      id: documentId,
+      versionId: documentVersionId,
+      pageNumber,
+      fragment: requiredStoredText(row.source_fragment, 4_000, "observation source fragment"),
+      contentPath: `/v1/families/${scope.familyId}/profiles/${scope.profileId}/documents/${documentId}/content`,
+    },
+  };
+}
+
 async function resetDeadLetterJob(
   client: DatabaseClient,
   scope: { familyId: string; documentVersionId: string; jobId: string },
@@ -1253,6 +1579,92 @@ export function createDocumentService(
           resourceId: scope.documentId,
           correlationId,
           createdAt: new Date(),
+        });
+        return response;
+      });
+    },
+
+    async getObservationHistory(actor, requestedScope, requestedQuery, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const canonicalCode = historyCanonicalCode(requestedQuery.canonicalCode);
+      const limit = observationHistoryLimit(requestedQuery.limit);
+      return database.transaction(async (client) => {
+        await requireProfileAccess(client, actor, scope.familyId, scope.profileId);
+        const cursor = decodeObservationHistoryCursor(requestedQuery.cursor, canonicalCode);
+        const observations = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND ($3 IS NULL OR o.canonical_code = $3)
+              AND (
+                $4 IS NULL
+                OR COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) < $4
+                OR (
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) = $4
+                  AND o.id < $5
+                )
+              )
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+            LIMIT $6`,
+          [
+            scope.familyId,
+            scope.profileId,
+            canonicalCode,
+            cursor?.timelineAt ?? null,
+            cursor?.id ?? null,
+            limit + 1,
+          ],
+        );
+        const pageRows = observations.rows.slice(0, limit);
+        const items = pageRows.map((row) => observationHistoryItem(row, scope));
+        const lastItem = items.at(-1);
+        const nextCursor =
+          observations.rows.length > limit && lastItem !== undefined
+            ? encodeObservationHistoryCursor({
+                canonicalCode,
+                id: lastItem.id,
+                timelineAt: lastItem.timelineAt,
+              })
+            : null;
+        const response: ObservationHistoryResponse = {
+          contractVersion: OBSERVATION_HISTORY_CONTRACT_VERSION,
+          items,
+          nextCursor,
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "observation.history.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: OBSERVATION_HISTORY_CONTRACT_VERSION,
         });
         return response;
       });

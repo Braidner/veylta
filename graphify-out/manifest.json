@@ -115,13 +115,13 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/index.test.ts": {
-    "mtime": 1786534230.7125754,
-    "ast_hash": "cb7fd0be27b66a30ddd1e2fcf7f0a326",
+    "mtime": 1786536172.0103495,
+    "ast_hash": "0f2715b49f4c5802414b5e82df88b0f9",
     "semantic_hash": ""
   },
   "packages/contracts/src/index.ts": {
-    "mtime": 1786533338.3306172,
-    "ast_hash": "f8a60cc314df119331df2bf178fd762d",
+    "mtime": 1786535636.9630957,
+    "ast_hash": "a923fe02d01525aa0b3b454d22809b09",
     "semantic_hash": ""
   },
   "packages/contracts/tsconfig.json": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786533496.1795576,
-    "ast_hash": "3087733e62a641e045a6a0cafdb05374",
+    "mtime": 1786536348.7319927,
+    "ast_hash": "7d9c35091c9eb0c70174557298baa15a",
     "semantic_hash": ""
   },
   "THIRD_PARTY_NOTICES.md": {
@@ -195,18 +195,18 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1786533768.4975023,
-    "ast_hash": "30562ddc78e60afe67837e18c66d6dd7",
+    "mtime": 1786536409.4049187,
+    "ast_hash": "aecc764377e8b4acab2addabfdd9d583",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1786532907.2234557,
-    "ast_hash": "b1cd5e94cb53783ac952df6ea2544a2a",
+    "mtime": 1786536348.8470824,
+    "ast_hash": "c1eb1ce173e2294f0c0f6cc74005c112",
     "semantic_hash": ""
   },
   "docs/er-model.md": {
-    "mtime": 1786532958.0546415,
-    "ast_hash": "0261bdf12e4ba01ee6fdbee1b35806f7",
+    "mtime": 1786536348.884491,
+    "ast_hash": "d0d16910f8b9e29fb98fd09f535b8b54",
     "semantic_hash": ""
   },
   "docs/license-policy.md": {
@@ -215,18 +215,18 @@
     "semantic_hash": ""
   },
   "docs/product.md": {
-    "mtime": 1786533496.2174537,
-    "ast_hash": "3abf3cd776370b42d82dd6d35ea30579",
+    "mtime": 1786536409.4426177,
+    "ast_hash": "4a057b6a6b9541d13787aea77754907a",
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786533496.2923534,
-    "ast_hash": "69a70438ccdbb9a23b308a3f5d671c85",
+    "mtime": 1786536348.809143,
+    "ast_hash": "2f2d55187d059b2cf57bc5247889b7cb",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
-    "mtime": 1786532922.7591095,
-    "ast_hash": "d3fe99791b36071d35c85e63b0e5ebd3",
+    "mtime": 1786536348.9213161,
+    "ast_hash": "53e1f76609d3c2415ed98a5a54de6992",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -275,13 +275,13 @@
     "semantic_hash": ""
   },
   "apps/api/src/documents/document-service.ts": {
-    "mtime": 1786533641.2167947,
-    "ast_hash": "b106871bcce8aec13f4f4b686ba7ab56",
+    "mtime": 1786536171.9715302,
+    "ast_hash": "c2897818a8c1224c74c000ad6f70d629",
     "semantic_hash": ""
   },
   "apps/api/src/documents/routes.ts": {
-    "mtime": 1786532423.3324788,
-    "ast_hash": "4fec032ed5e84bc61aa824710cbd3cfd",
+    "mtime": 1786535989.602593,
+    "ast_hash": "0e934de9922aa0dc79e8882b8220c848",
     "semantic_hash": ""
   },
   "apps/api/src/http/route-helpers.ts": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786533644.2830358,
-    "ast_hash": "b7dff5587e00bd191c79de4756c9a419",
+    "mtime": 1786536432.2974167,
+    "ast_hash": "2e7cfd8f922af1eeeeb49738c7c268d5",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -432,6 +432,16 @@
   "e2e/document-review.spec.ts": {
     "mtime": 1786534148.843809,
     "ast_hash": "420250def411276e54da23ccb806e365",
+    "semantic_hash": ""
+  },
+  "apps/api/test/observation-history.integration.test.ts": {
+    "mtime": 1786536100.1485858,
+    "ast_hash": "b4515d755e6df7a5cd33481126fb5481",
+    "semantic_hash": ""
+  },
+  "e2e/observation-history.spec.ts": {
+    "mtime": 1786536232.3866923,
+    "ast_hash": "e3e03c6039ffed9a324c7bfeb335a280",
     "semantic_hash": ""
   }
 }

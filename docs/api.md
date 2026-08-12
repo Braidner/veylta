@@ -2,8 +2,8 @@
 
 ## Status and conventions
 
-This document defines the implemented `v1` surface for the first vertical slice
-and identifies the still-deferred Task 7 history surface separately.
+This document defines the implemented `v1` surface for the first vertical slice,
+including the `observation-history/v1` read boundary.
 
 - Base path: `/v1`
 - JSON for structured requests/responses; `multipart/form-data` only for upload.
@@ -378,26 +378,106 @@ have only one final decision. Review never mutates the extracted fact, and the
 latest extraction run becomes `completed` only when every fact has such a
 decision.
 
-## Observation history and provenance (Task 7, pending)
+## Observation history and provenance (Task 7)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/observations`
 
-This endpoint and its browser history view are pending Task 7. The intended
-query is `canonicalCode=<code>`; its response will contain confirmed items only,
-ordered by sample/result/upload dates with missing-date semantics explicit.
+Returns a source-first, profile-wide page of immutable confirmed observations.
+It requires the authenticated actor to have access to both the family and
+profile. Inaccessible and cross-family paths return the same non-disclosing
+`404` as other family resources. The route is a safe `GET` and therefore does
+not require `Origin` or an idempotency key.
 
-Each item includes:
+All query parameters are optional and strict; unknown parameters fail request
+validation:
 
-- canonical code and source name;
-- source value/unit and optional normalized value/unit plus conversion version;
-- source-specific reference range and laboratory flag;
-- separate sample, result, and upload dates;
-- specimen/laboratory when known;
-- reviewer/time and extraction confidence;
-- document version, page number, source fragment, and authorized source URL.
+- `canonicalCode`: lower-case `^[a-z0-9][a-z0-9._-]{0,99}$`; only observations
+  with that exact stored code are returned.
+- `limit`: an ASCII decimal integer from `1` through `100`; the default is `50`.
+- `cursor`: a 1–500 character URL-safe opaque cursor returned by the prior
+  page. The server validates its canonical shape and binds it to the same
+  `canonicalCode` filter, so it cannot be reused with a different filter.
 
-Task 7 may render a history table. It will not claim longitudinal
-comparability, trend analysis, or a meaningful graph from one point.
+Items are ordered newest first by `sampledAt`, then `resultedAt`, then
+`uploadedAt`, with the observation ID as the stable tie-breaker. `timelineAt`
+returns the exact date selected by that precedence. `nextCursor` is `null` on
+the final page.
+
+```json
+{
+  "contractVersion": "observation-history/v1",
+  "items": [
+    {
+      "id": "observation_placeholder",
+      "canonicalCode": null,
+      "source": {
+        "name": "SYNTHETIC_ANALYTE_A",
+        "value": "7.0",
+        "unit": "synthetic-unit"
+      },
+      "normalized": {
+        "value": null,
+        "unit": null,
+        "conversionVersion": null
+      },
+      "referenceRange": {
+        "sourceText": "synthetic reference",
+        "sourceLow": null,
+        "sourceHigh": null,
+        "sourceUnit": null,
+        "laboratoryOutOfRange": null,
+        "normalizedLow": null,
+        "normalizedHigh": null,
+        "normalizedUnit": null,
+        "conversionVersion": null
+      },
+      "dates": {
+        "sampledAt": null,
+        "resultedAt": null,
+        "uploadedAt": "2026-08-12T00:00:00.000Z"
+      },
+      "timelineAt": "2026-08-12T00:00:00.000Z",
+      "specimenType": null,
+      "laboratory": null,
+      "extractionConfidence": 0.6,
+      "confirmed": {
+        "at": "2026-08-12T00:01:00.000Z",
+        "by": {
+          "id": "user_placeholder",
+          "displayName": "Synthetic owner"
+        }
+      },
+      "sourceDocument": {
+        "id": "document_placeholder",
+        "versionId": "version_placeholder",
+        "pageNumber": 1,
+        "fragment": "SYNTHETIC SOURCE FRAGMENT",
+        "contentPath": "/v1/families/family_placeholder/profiles/profile_placeholder/documents/document_placeholder/content"
+      }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+An item represents the `Observation` created by a final `confirm` or `correct`
+decision; a rejected fact has no observation and cannot appear. Correction
+therefore exposes the confirmed source name/value/unit while the raw extracted
+fact remains unchanged. `source` and optional `normalized` data are deliberately
+separate. The optional `referenceRange` is document-specific; it is not a
+universal range and its laboratory flag only reports the source document.
+
+`sourceDocument.contentPath` is a relative convenience path, not a bearer URL.
+Following it reaches the immutable-document content endpoint, which authorizes
+the actor again and returns a safe attachment. The history response itself and
+the source path do not expose a storage key or local path.
+
+Each successful history read records a payload-free
+`observation.history.opened` audit event against the profile with only the
+`observation-history/v1` contract metadata. It never records values, units,
+fragments, document text, filenames, or cursor data. The browser presents the
+same data as a table and does not claim longitudinal comparability, trend
+analysis, or a meaningful graph from one point.
 
 ## Processing jobs
 

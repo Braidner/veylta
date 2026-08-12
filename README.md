@@ -29,7 +29,7 @@ The full first slice remains deliberately narrow:
    correction creates a source-linked observation without changing the raw
    extraction (Task 6, delivered);
 7. show confirmed observations as indicator history with provenance back to
-   the document and page (Task 7, pending).
+   the document and page (Task 7, delivered).
 
 S3-compatible storage, OCR, LLM processing, trend summaries, recommendations,
 FHIR exchange, export/backup, and the rest of the full MVP are explicitly
@@ -110,8 +110,10 @@ does not call OCR, an LLM, or a network provider. Extracted facts are proposals
 for review, never confirmed medical observations by themselves. A user
 confirmation or correction creates one immutable review decision and confirmed
 observation in the same transaction; a rejection creates no observation. The
-raw extracted fact is never edited, and Task 7 indicator-history UI/API remains
-pending.
+raw extracted fact is never edited. The profile page then lists confirmed
+observations source-first, with their document-specific provenance and an
+authorized link back to the immutable original; it is a history table, not a
+trend or clinical interpretation.
 
 The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
