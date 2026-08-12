@@ -20,7 +20,8 @@ extracted facts, and explicit review decisions in persistent local storage.
 The full first slice remains deliberately narrow:
 
 1. create a family and a patient profile;
-2. upload a fully synthetic Russian-language PDF with a text layer;
+2. upload a fully synthetic Russian-language text-layer report or a bounded
+   image-only scan using the fixed local-English synthetic fallback grammar;
 3. persist the immutable original and calculate its SHA-256 while streaming;
 4. detect a possible duplicate within that family;
 5. deterministically extract a small, versioned set of laboratory facts with
@@ -34,8 +35,8 @@ The full first slice remains deliberately narrow:
    unit, with an accessible chart and no clinical assessment (Task 9,
    delivered).
 
-OCR, LLM processing, clinical trend summaries, recommendations, FHIR exchange,
-export/backup, and the rest of the full MVP are explicitly deferred. The
+Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
+exchange, export/backup, and the rest of the full MVP are explicitly deferred. The
 optional S3-compatible storage adapter is implemented only for synthetic
 operator testing and is not a real-data readiness claim.
 
@@ -60,8 +61,10 @@ operator testing and is not a real-data readiness claim.
   directory by default and an explicit S3-compatible encrypted adapter for
   synthetic deployments. Controlled reads take a bounded, checksum-verified
   snapshot (the current PDF cap is 5 MiB) before returning bytes.
-- Versioned deterministic parser for the first synthetic document format; no
-  LLM or OCR is used in the first slice.
+- Versioned deterministic parser for the first synthetic document format. When
+  a text layer is absent, the worker may run a local, bounded English OCR model
+  on rendered PDF pages; it never calls an OCR/LLM provider or accepts image
+  files directly.
 
 See [product](docs/product.md), [architecture](docs/architecture.md),
 [threat model](docs/threat-model.md), [API](docs/api.md), [ER model](docs/er-model.md),
@@ -110,8 +113,10 @@ keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
 reported only inside the same family; it creates another logical document but
 not another blob. Source download is authorized again and returned as a safe
 attachment. The worker polls the same SQLite file and processes the checked-in
-synthetic text-PDF format through PDF.js and a strict deterministic parser. It
-does not call OCR, an LLM, or a network provider. Extracted facts are proposals
+synthetic PDF grammar through PDF.js and a strict deterministic parser. For an
+image-only scan with no text layer it renders at most three bounded pages and
+uses a local English OCR model; there is no OCR/LLM network call or provider
+URL. Extracted facts are proposals
 for review, never confirmed medical observations by themselves. A user
 confirmation or correction creates one immutable review decision and confirmed
 observation in the same transaction; a rejection creates no observation. The

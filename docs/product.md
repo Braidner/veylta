@@ -54,15 +54,18 @@ actions produce audit events.
 The first slice proves one complete and safe path with synthetic data:
 
 1. An authenticated demo user creates a family and a patient profile.
-2. The user uploads a synthetic Russian-language PDF with a text layer.
+2. The user uploads a synthetic Russian-language report with a text layer or an
+   image-only scan using the fixed local-English synthetic fallback grammar.
 3. The API validates and streams it to the default local `ObjectStorage/v1`,
    calculating SHA-256 without loading the entire file into memory. An optional
    S3-compatible adapter exists for synthetic operator testing only; it is not
    enabled in the demo default.
 4. A repeat SHA-256 within the same family is reported as a possible duplicate;
    no document is automatically deleted.
-5. A durable SQLite-backed background job runs a deterministic parser for one
-   explicitly supported synthetic report format.
+5. A durable SQLite-backed background job reads the PDF text layer. Only when
+   that layer is absent, it renders at most three bounded PDF pages and runs the
+   checked-in local English OCR model; both paths then use the same deterministic
+   parser for one explicitly supported synthetic report format.
 6. Extracted facts retain raw text, value, unit, confidence, page, and fragment.
 7. The parser marks uncertain or ambiguous facts as `needs_review`; all other
    extracted facts remain `extracted`. Both are untrusted and await an explicit
@@ -127,8 +130,8 @@ independently reviewed.
 
 ## Full MVP direction
 
-Later slices may add scanned-document OCR fallback, a broader document
-classifier and extraction schema, evidence-backed summaries
+Later slices may add JPEG/PNG ingestion, a broader document classifier and
+extraction schema, evidence-backed summaries
 and safe recommendations, audit views, export, and backup/restore. Provider
 boundaries must support local and external OCR/LLM implementations without
 coupling the core domain to one vendor.
@@ -149,7 +152,7 @@ OCR, clinical trends, or summaries.
 - Short-lived presigned URLs, S3 lifecycle/retention automation, and a live
   provider deployment runbook. The optional S3 adapter is not a real-data
   readiness claim.
-- OCR for scanned PDF/JPEG/PNG and any cloud OCR provider.
+- JPEG/PNG ingestion and any cloud OCR provider.
 - Any LLM extraction, analysis, explanation, nutrition, or training agent.
 - Automated trend summaries, recommendations, and red-flag UI.
 - Full role-management UX, FHIR R4 mapping/import/export, portable export,

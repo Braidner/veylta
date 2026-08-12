@@ -570,8 +570,10 @@ polls SQLite for the single known `document_extraction` kind and versioned
 identifier-only payloads, claims a bounded lease, and persists an attempt with
 one of the implemented stages. It reads the authorized version through
 `ObjectStorage/v1`, bounds and verifies its bytes, extracts its PDF text layer,
-and accepts only the versioned synthetic grammar. There is no OCR, LLM, provider
-SDK, arbitrary URL, or worker HTTP command surface.
+and only when that layer is absent renders at most three bounded pages for the
+checked-in local English OCR model. Both paths accept only the versioned
+synthetic grammar. There is no external OCR/LLM provider SDK, arbitrary URL, or
+worker HTTP command surface.
 
 User-visible retry is the authorized endpoint above. It can requeue only the
 stable failed job and cannot inject a job kind, storage key, URL, or
@@ -597,6 +599,6 @@ stack traces.
 
 No first-slice endpoint is defined for production authentication/account
 recovery, adult/caregiver consent management, S3 configuration or presigned
-URLs, OCR, LLM providers, summaries, recommendations, FHIR, exports, backups,
-or account deletion. Those contracts follow their own product, threat-model,
-and license review.
+URLs, JPEG/PNG ingestion, cloud OCR, LLM providers, summaries,
+recommendations, FHIR, exports, backups, or account deletion. Those contracts
+follow their own product, threat-model, and license review.

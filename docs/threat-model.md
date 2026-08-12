@@ -57,7 +57,7 @@ the family's trust boundary merely because it exposes an API.
 | Stale/revoked consent | Continued access after permission changes | Check grant on every request; expiry/revocation; invalidate affected sessions/cache; audit denial | Before real data |
 | Session theft/CSRF | Account takeover or state-changing request | Secure, HttpOnly, SameSite session cookies or equivalent bearer protections; CSRF defense where cookies are used; rotation and logout | Before real data |
 | MIME/extension spoofing | Unsafe parser input | Allowlist PDF/JPEG/PNG, inspect magic bytes, reject mismatch, set bounded size/page/count limits | PDF subset in first slice |
-| Malformed PDF/parser exploit | Code execution, crash, or data disclosure | Bounded PDF.js text-layer extraction, strict synthetic grammar, controlled byte snapshot, security updates, adversarial tests; process isolation remains required before real data | Bounded subset in first slice; isolation hardening before real data |
+| Malformed PDF/parser/OCR exploit | Code execution, crash, or data disclosure | Bounded PDF.js text-layer extraction; for text-layer-missing PDFs only, a local rendered-page OCR path with a 5 MiB PDF cap, at most 3 pages, 2 million pixels/page, 4 million pixels total, 8 MiB PNG/page, timeout, strict synthetic grammar, controlled byte snapshot, security updates, and adversarial tests; process isolation remains required before real data | Bounded subset in first slice; isolation hardening before real data |
 | Path traversal/symlink race | Read/write outside storage root | Ignore user filename for keys; canonical root containment; safe permissions; atomic creation; reject links | First slice |
 | Upload memory/disk exhaustion | Denial of service | Stream with byte limit; quotas/rate limits; staging cleanup; disk monitoring; reject early | Stream/size in first slice; quotas before real data |
 | Malware in accepted document | Harm when viewed/exported | Quarantine/security-check state, safe content disposition/viewer, production malware strategy isolated behind reviewed boundary | Strategy and implementation before real data |
@@ -68,7 +68,7 @@ the family's trust boundary merely because it exposes an API.
 | Poisoned extraction | Incorrect value presented as truth | `ExtractedFact` is untrusted and separate from `Observation`; strict schema; confidence/review gate; preserve raw value | First slice |
 | Prompt injection | Future LLM follows document instructions | Treat text as quoted data; fixed system policy; tool allowlist; strict schema; deterministic pre/post safety layer | Before any LLM |
 | Unsafe medical output | Diagnosis/treatment harm or missed urgency | Role-limited agents; confirmed data only for longitudinal use; rule-based red flags; evidence/confidence/missing-data labels; clinician escalation | Before recommendation features |
-| Provider egress without consent | Sensitive document sent externally | External OCR/LLM disabled by default; owner configuration and clear provider warning; minimize payload; audit egress | Before any external provider |
+| Provider egress without consent | Sensitive document sent externally | Local OCR reads only the checked-in English model and has no provider URL; external OCR/LLM remains disabled by default and later needs owner configuration, a clear provider warning, minimum-data handling, and egress audit | Before any external provider |
 | SSRF through URL/provider config | Access to internal network or cloud metadata | No arbitrary URL ingest in first slice; allowlisted endpoints; URL parsing, DNS/IP checks, redirect limits, egress policy | Before URL/provider features |
 | Signed-link leakage | Temporary public access to a document | API still proxies authorized reads; later presigned URLs are single-purpose, short-lived, non-logged, and tenant-bound | Before presigned URLs |
 | Sensitive logs/traces | Persistent secondary disclosure | Never log bodies, text, medical values, raw filenames, tokens, or signed URLs; redact errors; no patient labels in metrics | First slice |
@@ -90,16 +90,19 @@ the family's trust boundary merely because it exposes an API.
   opaque trusted key.
 - Original bytes are immutable. Duplicate detection never crosses tenant
   boundaries and never automatically deletes content.
-- Deterministic parsing has no network egress. OCR and LLM adapters are absent or
-  disabled, not mocked as successful stages.
+- Deterministic parsing has no network egress. The only OCR path is local,
+  invoked only after a missing text layer, bounded before rendering/recognition,
+  and still accepted only through the same fixed synthetic grammar. LLM and
+  external OCR adapters are absent or disabled, not mocked as successful stages.
 - The repository, fixtures, tests, and supported parser format are
   synthetic-only. PDF signature/type/size checks are not content classification
   and cannot prevent a local user from selecting a real medical PDF; therefore
   this demo is explicitly unsuitable for real data.
 - The worker accepts only the bounded, checksum-verified PDF stored for its
-  tenant-scoped document version. It extracts the text layer with PDF.js and
-  accepts only the checked-in synthetic report grammar; scanned or unsupported
-  documents become a sanitized failure category.
+  tenant-scoped document version. It extracts the text layer with PDF.js; only a
+  missing layer can activate the bounded local OCR fallback. Both paths accept
+  only the checked-in synthetic report grammar; unsupported documents become a
+  sanitized failure category.
 - A `dead_letter` result exposes only a safe category and retry eligibility.
   The retry command is origin-checked and idempotent; it cannot choose a parser,
   job kind, storage key, URL, OCR provider, or LLM provider.

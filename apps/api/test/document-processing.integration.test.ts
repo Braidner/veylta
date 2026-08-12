@@ -21,6 +21,7 @@ import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
+import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
 
 const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -263,6 +264,88 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
     assert.equal(auditText.includes("СИНТЕТИЧЕСКИЙ АНАЛИТ"), false);
     assert.equal(auditText.includes("AMBIGUOUS_UNIT"), false);
     assert.equal(auditText.includes("synthetic-lab-report.pdf"), false);
+  });
+});
+
+test("a synthetic image-only PDF uses local OCR and persists its OCR provenance", async () => {
+  await withTestContext(async ({ app, database, storageRoot }) => {
+    const owner = await registerOwner(app, "Scanned processing");
+    const uploaded = await upload(
+      app,
+      owner,
+      createSyntheticImageOnlyPdf([
+        "VEYLTA SYNTHETIC LAB REPORT v1",
+        "SYNTHETIC TEST DATA - NOT FOR MEDICAL USE",
+        "FACT|synthetic-analyte-a",
+        "NAME|SYNTHETIC ANALYTE A",
+        "VALUE|7.0",
+        "UNIT|synthetic-unit",
+        "RANGE|synthetic reference",
+        "CONFIDENCE|0.60",
+        "ISSUES|AMBIGUOUS_UNIT",
+        "END",
+      ]),
+      "scanned-synthetic-upload",
+    );
+    assert.equal(uploaded.statusCode, 202);
+    const documentId = uploaded.json().document.id as string;
+
+    const processed = await processOneDocument(database, storageRoot);
+    assert.equal(processed.status, "completed");
+    assert.equal("factCount" in processed ? processed.factCount : undefined, 1);
+
+    const facts = await app.inject({
+      method: "GET",
+      url: `${documentUrl(owner, documentId)}/facts`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(facts.statusCode, 200);
+    assert.equal(facts.json().items.length, 1);
+    const provenance = await database.query<{
+      extraction_method: string;
+      extraction_version: string;
+    }>(
+      `SELECT p.extraction_method, p.extraction_version
+         FROM document_pages p
+         JOIN document_versions v ON v.family_id = p.family_id AND v.id = p.document_version_id
+        WHERE v.family_id = $1 AND v.document_id = $2`,
+      [owner.body.family.id, documentId],
+    );
+    assert.deepEqual(provenance.rows, [
+      {
+        extraction_method: "local_synthetic_ocr",
+        extraction_version: "pdfjs-dist/6.2.108+tesseract.js/7.0.0+eng/1.0.0",
+      },
+    ]);
+  });
+});
+
+test("an image-only PDF outside the synthetic grammar records no facts", async () => {
+  await withTestContext(async ({ app, database, storageRoot }) => {
+    const owner = await registerOwner(app, "Unsupported scanned processing");
+    const uploaded = await upload(
+      app,
+      owner,
+      createSyntheticImageOnlyPdf(["UNSUPPORTED EXAMPLE", "THIS IS NOT A VEYLTA SYNTHETIC REPORT"]),
+      "unsupported-scanned-upload",
+    );
+    assert.equal(uploaded.statusCode, 202);
+    const documentId = uploaded.json().document.id as string;
+
+    const processed = await processOneDocument(database, storageRoot);
+    assert.equal(processed.status, "retry_wait");
+    assert.equal(
+      "errorCode" in processed ? processed.errorCode : undefined,
+      "UNSUPPORTED_DOCUMENT",
+    );
+    const facts = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM extracted_facts f
+         JOIN document_versions v ON v.family_id = f.family_id AND v.id = f.document_version_id
+        WHERE v.family_id = $1 AND v.document_id = $2`,
+      [owner.body.family.id, documentId],
+    );
+    assert.equal(Number(facts.rows[0]?.count), 0);
   });
 });
 

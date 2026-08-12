@@ -13,6 +13,7 @@ import {
   createDocumentExtractionProcessor,
   type DocumentExtractionJobCoordinator,
 } from "./document-extraction-processor.js";
+import { PdfOcrExtractionError } from "./pdf-ocr-extractor.js";
 import { PdfTextExtractionError, type PdfTextExtractionOptions } from "./pdf-text-extractor.js";
 import type {
   LeasedProcessingJob,
@@ -243,6 +244,9 @@ test("maps a missing text layer to a sanitized retry outcome", async () => {
     extractText: async () => {
       throw new PdfTextExtractionError("TEXT_LAYER_MISSING");
     },
+    extractScannedPdf: async () => {
+      throw new PdfOcrExtractionError("OCR_FAILED");
+    },
   });
 
   const result = await processor.processNext({
@@ -258,6 +262,66 @@ test("maps a missing text layer to a sanitized retry outcome", async () => {
   });
   assert.deepEqual(harness.failures, ["UNSUPPORTED_DOCUMENT"]);
   assert.equal(JSON.stringify(result).includes("TEXT_LAYER_MISSING"), false);
+});
+
+test("uses the local scanned-PDF fallback only for a missing text layer", async () => {
+  const harness = coordinatorHarness();
+  let fallbackCalls = 0;
+  const processor = createDocumentExtractionProcessor({
+    database: new SourceDatabase(),
+    storage: storageFor(),
+    jobs: harness.coordinator,
+    now: () => now,
+    extractText: async () => {
+      throw new PdfTextExtractionError("TEXT_LAYER_MISSING");
+    },
+    extractScannedPdf: async (bytes) => {
+      fallbackCalls += 1;
+      assert.deepEqual(Buffer.from(bytes), pdfBytes);
+      return [syntheticPage()];
+    },
+  });
+
+  const result = await processor.processNext({
+    workerId: "worker-a",
+    leaseDurationMs: 60_000,
+    retryDelayMs: 1_000,
+  });
+
+  assert.equal(result.status, "completed");
+  assert.equal(fallbackCalls, 1);
+  assert.equal(harness.failures.length, 0);
+});
+
+test("does not invoke scanned-PDF OCR after another text-extraction failure", async () => {
+  const harness = coordinatorHarness();
+  let fallbackCalls = 0;
+  const processor = createDocumentExtractionProcessor({
+    database: new SourceDatabase(),
+    storage: storageFor(),
+    jobs: harness.coordinator,
+    now: () => now,
+    extractText: async () => {
+      throw new PdfTextExtractionError("PDF_LIMIT_EXCEEDED");
+    },
+    extractScannedPdf: async () => {
+      fallbackCalls += 1;
+      return [syntheticPage()];
+    },
+  });
+
+  const result = await processor.processNext({
+    workerId: "worker-a",
+    leaseDurationMs: 60_000,
+    retryDelayMs: 1_000,
+  });
+
+  assert.deepEqual(result, {
+    status: "retry_wait",
+    jobId,
+    errorCode: "UNSUPPORTED_DOCUMENT",
+  });
+  assert.equal(fallbackCalls, 0);
 });
 
 test("rejects a storage body larger than immutable database metadata", async () => {

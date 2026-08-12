@@ -9,6 +9,7 @@ import {
   ObjectStorageSecurityError,
   ObjectStorageValidationError,
 } from "../storage/object-storage.js";
+import { extractPdfTextWithLocalSyntheticOcr, PdfOcrExtractionError } from "./pdf-ocr-extractor.js";
 import {
   extractPdfTextLayer,
   PdfTextExtractionError,
@@ -47,6 +48,7 @@ export interface DocumentExtractionProcessorDependencies {
     bytes: Uint8Array,
     options?: PdfTextExtractionOptions,
   ) => Promise<ExtractedPageText[]>;
+  extractScannedPdf?: (bytes: Uint8Array) => Promise<ExtractedPageText[]>;
   parse?: (pages: readonly ExtractedPageText[]) => ParsedLabExtraction;
   now?: () => Date;
 }
@@ -213,6 +215,12 @@ function failureCode(error: unknown): ProcessingErrorCode {
       return "UNSUPPORTED_DOCUMENT";
     }
   }
+  if (error instanceof PdfOcrExtractionError) {
+    if (error.code === "INVALID_PDF") return "INVALID_DOCUMENT";
+    if (error.code === "PDF_LIMIT_EXCEEDED" || error.code === "OCR_FAILED") {
+      return "UNSUPPORTED_DOCUMENT";
+    }
+  }
   if (error instanceof SyntheticLabParseError) {
     return error.code === "UNSUPPORTED_SYNTHETIC_FORMAT"
       ? "UNSUPPORTED_DOCUMENT"
@@ -260,6 +268,7 @@ export function createDocumentExtractionProcessor(
   const jobs =
     dependencies.jobs ?? createProcessingJobService(transactionalDatabase(dependencies.database));
   const extractText = dependencies.extractText ?? extractPdfTextLayer;
+  const extractScannedPdf = dependencies.extractScannedPdf ?? extractPdfTextWithLocalSyntheticOcr;
   const parse = dependencies.parse ?? parseSyntheticLabPages;
   const now = dependencies.now ?? (() => new Date());
 
@@ -276,7 +285,15 @@ export function createDocumentExtractionProcessor(
         const source = await sourceForClaim(dependencies.database, claim);
         const bytes = await loadDocumentBytes(dependencies.storage, source);
         await advance(jobs, claim, "text_extraction", now);
-        const pages = await extractText(bytes, { maxPdfBytes: source.byteSize });
+        let pages: ExtractedPageText[];
+        try {
+          pages = await extractText(bytes, { maxPdfBytes: source.byteSize });
+        } catch (error) {
+          if (!(error instanceof PdfTextExtractionError) || error.code !== "TEXT_LAYER_MISSING") {
+            throw error;
+          }
+          pages = await extractScannedPdf(bytes);
+        }
         await advance(jobs, claim, "document_classification", now);
         requireSyntheticLabFixture(pages);
         await advance(jobs, claim, "structured_extraction", now);

@@ -12,7 +12,7 @@ const maxTotalTextCharacters = 1_000_000;
 const maxFactCount = 100;
 const reviewConfidenceThreshold = 0.85;
 const factKeyPattern = /^synthetic-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const versionPattern = /^[a-z0-9][a-z0-9._/-]{0,99}$/;
+const versionPattern = /^[a-z0-9][a-z0-9._/+:-]{0,99}$/;
 const syntheticIndicatorCodes: ReadonlySet<string> = new Set(
   SYNTHETIC_INDICATOR_CATALOG.map((indicator) => indicator.canonicalCode),
 );

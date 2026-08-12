@@ -230,13 +230,38 @@ cover staging, restart, concurrency, cleanup, size cap, opaque keys, encryption
 attestation, and altered-byte rejection. The provider network remains opt-in
 and credentials are left to the SDK's external server-side provider chain.
 
+## Task 11 — Local synthetic scanned-PDF OCR fallback
+
+Commit intent: `feat: add local synthetic OCR fallback`
+
+- Text-layer extraction remains the first path. Only its explicit
+  `TEXT_LAYER_MISSING` result may enter this fallback; malformed, oversized, or
+  otherwise unsupported PDFs never do.
+- The worker renders at most three PDF pages, caps each page at two million
+  pixels and the job at four million pixels, and limits rendered PNG and OCR
+  output sizes. It then invokes the exact local English Tesseract package with
+  no provider URL, no cache write, and a bounded timeout.
+- OCR output is accepted only if it satisfies the same strict synthetic fixture
+  header and fact grammar as a text-layer PDF. It is never treated as a medical
+  observation without the existing review flow.
+- Direct JPEG/PNG ingestion, language/model selection, cloud OCR, provider
+  configuration, real-document support, and browser exposure remain out of
+  scope.
+
+Delivered in `feat: add local synthetic OCR fallback`: unit and integration
+tests prove a bounded image-only synthetic PDF reaches the existing immutable
+page/fact provenance path, that a non-missing text-extraction error cannot call
+OCR, and that local recognition makes no network request. Provenance records
+the local OCR method/version. Exact engine, trained-data, renderer, and install
+script policy are reviewed under the MIT boundary.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
 commit chain:
 
-1. JPEG/PNG and scanned-PDF OCR fallback, beginning with a reviewed local
-   permissive engine and trained-data license inventory.
+1. JPEG/PNG ingestion, alternate synthetic fixtures, and any OCR language/model
+   expansion beyond the delivered local English scanned-PDF fallback.
 2. Broader classification/extraction with provider interfaces and strict schemas.
 3. Evidence-backed versioned summary and carefully bounded recommendations.
 4. Full role/consent UX and audit-log view.

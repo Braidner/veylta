@@ -18,9 +18,11 @@ read boundary that groups only the deterministic synthetic canonical codes and
 requires an exact source unit before it returns a comparable series.
 
 The first vertical slice uses a deterministic, versioned parser for one
-synthetic PDF format with a text layer. It does not invoke OCR or an LLM. The
-optional S3 adapter is a storage boundary, not document egress to an OCR/LLM
-provider; it remains disabled unless explicitly configured.
+synthetic PDF format. It reads the text layer first and, only when that layer is
+missing, applies a bounded local English OCR model to rendered PDF pages before
+the same strict grammar check. It does not invoke an external OCR provider or
+an LLM. The optional S3 adapter is a storage boundary, not document egress to
+an OCR/LLM provider; it remains disabled unless explicitly configured.
 
 ## System context
 
@@ -34,7 +36,8 @@ flowchart LR
   J --> O
   O --> L["Persistent local filesystem (default)"]
   O -. "explicit adapter" .-> S["S3-compatible storage (optional)"]
-  J -. "future, owner opt-in" .-> X["OCR / LLM providers"]
+  J --> Q["Local bounded synthetic-PDF OCR"]
+  J -. "future, owner opt-in" .-> X["External OCR / LLM providers"]
 ```
 
 The browser never accesses the database or a storage path directly. The API
