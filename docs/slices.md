@@ -208,20 +208,40 @@ remain immutable source-first observations; a second unit creates a distinct
 row rather than a mixed comparison. Tests cover the two-value path, pagination,
 separate units, unknown codes, audit events, tenant denial, and browser flow.
 
+## Task 10 — Optional S3-compatible immutable storage
+
+Commit intent: `feat: add encrypted S3-compatible object storage`
+
+- Adds an exact-version Apache-2.0 AWS SDK v3 S3 client behind existing
+  `ObjectStorage/v1`; domain and HTTP APIs remain provider-agnostic.
+- `OBJECT_STORAGE_DRIVER=s3` is an explicit opt-in. It requires bucket, region,
+  opaque prefix, and SSE-S3 or SSE-KMS configuration; local storage remains the
+  default.
+- Object paths use a digest of the trusted port key. Staging, metadata sealing,
+  conditional immutable finalize, and controlled bounded checksum reads uphold
+  the same contract as the local adapter.
+- The API continues to proxy a freshly authorized download. No presigned URL,
+  provider credential endpoint, retention worker, cloud account test, or
+  real-data approval is claimed.
+
+Delivered in `feat: add encrypted S3-compatible object storage`: reusable
+contract tests run the S3 adapter against a deterministic protocol fake and
+cover staging, restart, concurrency, cleanup, size cap, opaque keys, encryption
+attestation, and altered-byte rejection. The provider network remains opt-in
+and credentials are left to the SDK's external server-side provider chain.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
 commit chain:
 
-1. S3-compatible `ObjectStorage/v1` adapter, encryption configuration, and
-   short-lived authorized delivery.
-2. JPEG/PNG and scanned-PDF OCR fallback, beginning with a reviewed local
+1. JPEG/PNG and scanned-PDF OCR fallback, beginning with a reviewed local
    permissive engine and trained-data license inventory.
-3. Broader classification/extraction with provider interfaces and strict schemas.
-4. Evidence-backed versioned summary and carefully bounded recommendations.
-5. Full role/consent UX and audit-log view.
-6. Portable export, controlled deletion, backup, and verified restore.
-7. FHIR R4 mappings and Bundle import/export at the system edge.
+2. Broader classification/extraction with provider interfaces and strict schemas.
+3. Evidence-backed versioned summary and carefully bounded recommendations.
+4. Full role/consent UX and audit-log view.
+5. Portable export, controlled deletion, backup, and verified restore.
+6. FHIR R4 mappings and Bundle import/export at the system edge.
 
 The complete MVP is not part of the first vertical slice. External OCR/LLM,
 clinical advice, and real-data readiness remain off until their production gates

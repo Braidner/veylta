@@ -247,11 +247,13 @@ select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content`
 
-After fresh authorization, proxies the original PDF stream from local storage.
-Uses `Content-Disposition: attachment`, `nosniff`, a sandbox policy, and
-`private, no-store`. Range behavior is not implemented in Task 4. The response
-never exposes the local path. Authorized access produces a payload-free audit
-event.
+After fresh authorization, proxies the original PDF stream from the configured
+`ObjectStorage/v1` adapter. The default is local storage; the optional
+S3-compatible adapter does not change this HTTP surface or turn the path into a
+provider bearer URL. Uses `Content-Disposition: attachment`, `nosniff`, a
+sandbox policy, and `private, no-store`. Range behavior is not implemented in
+Task 4. The response never exposes a local or provider path. Authorized access
+produces a payload-free audit event.
 
 ## Extracted facts and review (Tasks 5–6)
 
@@ -594,7 +596,7 @@ stack traces.
 ## Deferred APIs
 
 No first-slice endpoint is defined for production authentication/account
-recovery, adult/caregiver consent management, S3 configuration, OCR, LLM
-providers, summaries, recommendations, FHIR, exports, backups, or account
-deletion. Those contracts follow their own product, threat-model, and license
-review.
+recovery, adult/caregiver consent management, S3 configuration or presigned
+URLs, OCR, LLM providers, summaries, recommendations, FHIR, exports, backups,
+or account deletion. Those contracts follow their own product, threat-model,
+and license review.

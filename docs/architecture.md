@@ -5,9 +5,10 @@
 Veylta uses a small TypeScript monorepo with three deployable processes:
 a Next.js web application, a Fastify API, and a worker. Embedded SQLite through
 Node.js `node:sqlite` stores domain state, explicit schema migrations, audit
-events, and durable idempotent jobs. Original documents
-live behind versioned `ObjectStorage/v1`; the first adapter uses a persistent
-local filesystem directory.
+events, and durable idempotent jobs. Original documents live behind versioned
+`ObjectStorage/v1`; the default adapter uses a persistent local filesystem
+directory, and an optional S3-compatible adapter preserves the same contract
+for synthetic deployments.
 
 The public document surface is `document/v3`: immutable extracted facts remain
 separate from explicit, idempotent fact-review decisions. The separate read-only
@@ -17,8 +18,9 @@ read boundary that groups only the deterministic synthetic canonical codes and
 requires an exact source unit before it returns a comparable series.
 
 The first vertical slice uses a deterministic, versioned parser for one
-synthetic PDF format with a text layer. It does not invoke OCR, an LLM, or a
-cloud service. S3, OCR, and LLM providers remain adapter-level future work.
+synthetic PDF format with a text layer. It does not invoke OCR or an LLM. The
+optional S3 adapter is a storage boundary, not document egress to an OCR/LLM
+provider; it remains disabled unless explicitly configured.
 
 ## System context
 
@@ -30,8 +32,8 @@ flowchart LR
   A --> O["ObjectStorage/v1"]
   J["Worker"] --> P
   J --> O
-  O --> L["Persistent local filesystem"]
-  A -. "future adapter" .-> S["S3-compatible storage"]
+  O --> L["Persistent local filesystem (default)"]
+  O -. "explicit adapter" .-> S["S3-compatible storage (optional)"]
   J -. "future, owner opt-in" .-> X["OCR / LLM providers"]
 ```
 
@@ -201,9 +203,12 @@ Original `DocumentVersion` content is immutable after finalization.
 
 The local adapter stores opaque keys derived from trusted identifiers/checksum,
 not user filenames, under a configured persistent root. Reads cannot escape
-that root. The API proxies downloads for the first slice. S3-compatible storage,
-provider-side encryption, and short-lived presigned URLs are deferred to the
-next storage slice and must satisfy the same contract tests.
+that root. The API proxies downloads. The optional S3-compatible adapter maps
+each opaque key to a provider-side digest (including key-binding metadata),
+stages before finalizing with a
+conditional create, and requires/attests SSE-S3 or SSE-KMS on every stored
+object. Its controlled reads pin ETag and checksum-verify a bounded snapshot
+against database metadata. Short-lived presigned URLs remain deferred.
 
 ## Medical data boundary
 

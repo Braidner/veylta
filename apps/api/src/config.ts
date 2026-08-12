@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
 import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
+import type { S3ServerSideEncryption } from "./storage/s3-object-storage.js";
 
 function findProjectRoot(start: string): string {
   let candidate = start;
@@ -39,6 +40,12 @@ function boolean(name: string, fallback: boolean): boolean {
   throw new Error(`${name} must be true or false`);
 }
 
+function optionalBoolean(name: string): boolean | undefined {
+  const value = process.env[name];
+  if (value === undefined) return undefined;
+  return boolean(name, false);
+}
+
 function origin(name: string, fallback: string): string {
   const value = process.env[name] ?? fallback;
   const parsed = new URL(value);
@@ -60,13 +67,80 @@ function databasePath(): string {
   return resolve(projectRoot, configured);
 }
 
+export type ObjectStorageRuntimeConfig =
+  | { mode: "local"; rootPath: string }
+  | {
+      mode: "s3";
+      bucket: string;
+      encryption: S3ServerSideEncryption;
+      endpoint?: string;
+      forcePathStyle?: boolean;
+      prefix: string;
+      region: string;
+    };
+
+function requiredS3Value(name: string): string {
+  const value = process.env[name];
+  if (value === undefined || value.trim().length === 0) {
+    throw new Error(`${name} is required when OBJECT_STORAGE_DRIVER=s3`);
+  }
+  return value;
+}
+
+function s3Encryption(): S3ServerSideEncryption {
+  const mode = requiredS3Value("S3_SERVER_SIDE_ENCRYPTION");
+  if (mode === "AES256") {
+    if (process.env.S3_KMS_KEY_ID !== undefined) {
+      throw new Error("S3_KMS_KEY_ID requires S3_SERVER_SIDE_ENCRYPTION=aws:kms");
+    }
+    return { mode: "AES256" };
+  }
+  if (mode === "aws:kms") return { mode, keyId: requiredS3Value("S3_KMS_KEY_ID") };
+  throw new Error("S3_SERVER_SIDE_ENCRYPTION must be AES256 or aws:kms");
+}
+
+function objectStorage(): ObjectStorageRuntimeConfig {
+  const driver = process.env.OBJECT_STORAGE_DRIVER ?? "local";
+  if (driver === "local") {
+    return {
+      mode: "local",
+      rootPath: resolve(projectRoot, process.env.OBJECT_STORAGE_ROOT ?? ".local/storage"),
+    };
+  }
+  if (driver !== "s3") {
+    throw new Error("OBJECT_STORAGE_DRIVER must be local or s3");
+  }
+  const endpoint = process.env.S3_ENDPOINT;
+  if (endpoint !== undefined) {
+    let parsed: URL;
+    try {
+      parsed = new URL(endpoint);
+    } catch {
+      throw new Error("S3_ENDPOINT must be an HTTPS origin without a path");
+    }
+    if (parsed.protocol !== "https:" || parsed.origin !== endpoint) {
+      throw new Error("S3_ENDPOINT must be an HTTPS origin without a path");
+    }
+  }
+  const forcePathStyle = optionalBoolean("S3_FORCE_PATH_STYLE");
+  return {
+    mode: "s3",
+    bucket: requiredS3Value("S3_BUCKET"),
+    encryption: s3Encryption(),
+    ...(endpoint === undefined ? {} : { endpoint }),
+    ...(forcePathStyle === undefined ? {} : { forcePathStyle }),
+    prefix: requiredS3Value("S3_PREFIX"),
+    region: requiredS3Value("S3_REGION"),
+  };
+}
+
 export interface RuntimeConfig {
   apiHost: string;
   apiPort: number;
   databasePath: string;
   demoRegistrationEnabled: boolean;
   maxPdfBytes: number;
-  objectStorageRoot: string;
+  objectStorage: ObjectStorageRuntimeConfig;
   processingLeaseDurationMs: number;
   processingPollIntervalMs: number;
   processingRetryDelayMs: number;
@@ -94,7 +168,7 @@ export function loadConfig(): RuntimeConfig {
     databasePath: databasePath(),
     demoRegistrationEnabled,
     maxPdfBytes,
-    objectStorageRoot: resolve(projectRoot, process.env.OBJECT_STORAGE_ROOT ?? ".local/storage"),
+    objectStorage: objectStorage(),
     processingLeaseDurationMs: integer("PROCESSING_LEASE_DURATION_MS", 60_000),
     processingPollIntervalMs: integer("PROCESSING_POLL_INTERVAL_MS", 500),
     processingRetryDelayMs: integer("PROCESSING_RETRY_DELAY_MS", 1_000),

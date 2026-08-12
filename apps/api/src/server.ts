@@ -5,7 +5,7 @@ import { createDocumentService } from "./documents/document-service.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
 import { registerFamilyRoutes } from "./family/routes.js";
-import { createLocalObjectStorage } from "./storage/local-object-storage.js";
+import { createObjectStorage } from "./storage/create-object-storage.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databasePath);
@@ -22,7 +22,7 @@ registerFamilyRoutes(app, familyService, {
 registerDocumentRoutes(
   app,
   familyService,
-  createDocumentService(database, createLocalObjectStorage(config.objectStorageRoot), {
+  createDocumentService(database, createObjectStorage(config.objectStorage), {
     maxPdfBytes: config.maxPdfBytes,
   }),
   {

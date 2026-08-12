@@ -20,6 +20,10 @@ dataset.
   extraction in the synthetic first slice.
 - `typescript` 5.9.3 — Apache-2.0.
 - `@biomejs/biome` 2.5.8 and its platform CLI packages — MIT OR Apache-2.0.
+- `@aws-sdk/client-s3` 3.1098.0 and its modular AWS SDK v3 dependencies —
+  Apache-2.0; used only by the optional server-side S3-compatible
+  `ObjectStorage/v1` adapter. It is not bundled into the browser and introduces
+  no provider credentials, bucket, or medical fixture into the repository.
 
 Their complete license and NOTICE material is retained in the installed package
 distribution. No third-party source is copied into the Veylta codebase.

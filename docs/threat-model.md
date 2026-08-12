@@ -25,7 +25,8 @@ processing state, or fact that a document exists can itself be sensitive.
 
 1. Browser to Fastify API over an authenticated transport.
 2. API/worker to the configured local SQLite database file.
-3. API/worker to `ObjectStorage/v1` and the configured local storage root.
+3. API/worker to `ObjectStorage/v1` and the configured local storage root or,
+   only when explicitly selected, an S3-compatible TLS endpoint.
 4. Untrusted document bytes/text to security checks and deterministic parsing.
 5. Future deployment to S3, OCR, or LLM provider networks.
 6. Operators, logs, metrics, traces, backups, and exported files.
@@ -60,15 +61,16 @@ the family's trust boundary merely because it exposes an API.
 | Path traversal/symlink race | Read/write outside storage root | Ignore user filename for keys; canonical root containment; safe permissions; atomic creation; reject links | First slice |
 | Upload memory/disk exhaustion | Denial of service | Stream with byte limit; quotas/rate limits; staging cleanup; disk monitoring; reject early | Stream/size in first slice; quotas before real data |
 | Malware in accepted document | Harm when viewed/exported | Quarantine/security-check state, safe content disposition/viewer, production malware strategy isolated behind reviewed boundary | Strategy and implementation before real data |
-| Partial upload/database failure | Orphaned blob or document that cannot be read | Stage and atomically finalize before metadata commit; deterministic retry recovery; never claim success early; add bounded orphan cleanup before real data | Retry-safe path in first slice; cleanup before real data |
+| Partial upload/database failure | Orphaned blob or document that cannot be read | Stage and atomically finalize before metadata commit; deterministic retry recovery; never claim success early; add bounded orphan cleanup before real data | Retry-safe local and S3-compatible path; cleanup before real data |
 | Original mutation | Loss of evidence/provenance | Immutable version keys; stored SHA-256 and size; verify checksum on controlled reads/backup restore | First slice |
+| Storage overwrite/tampering | Original evidence silently changes or is read inconsistently | Opaque key digest; S3 conditional create; required/attested SSE-S3 or SSE-KMS; ETag-pinned controlled read; bounded SHA-256 snapshot checked against database metadata | Adapter contract tests; provider IAM/bucket/key policies before any real data |
 | Job retry/race | Duplicate or contradictory medical records | Stable job dedupe key; leased claims; compare-and-set transitions; immutable retry/review requests; DB uniqueness; transactional fact persistence and final review | Extraction and Task 6 review controls in first slice |
 | Poisoned extraction | Incorrect value presented as truth | `ExtractedFact` is untrusted and separate from `Observation`; strict schema; confidence/review gate; preserve raw value | First slice |
 | Prompt injection | Future LLM follows document instructions | Treat text as quoted data; fixed system policy; tool allowlist; strict schema; deterministic pre/post safety layer | Before any LLM |
 | Unsafe medical output | Diagnosis/treatment harm or missed urgency | Role-limited agents; confirmed data only for longitudinal use; rule-based red flags; evidence/confidence/missing-data labels; clinician escalation | Before recommendation features |
 | Provider egress without consent | Sensitive document sent externally | External OCR/LLM disabled by default; owner configuration and clear provider warning; minimize payload; audit egress | Before any external provider |
 | SSRF through URL/provider config | Access to internal network or cloud metadata | No arbitrary URL ingest in first slice; allowlisted endpoints; URL parsing, DNS/IP checks, redirect limits, egress policy | Before URL/provider features |
-| Signed-link leakage | Temporary public access to a document | First slice proxies authorized reads; later presigned URLs are single-purpose, short-lived, non-logged, and tenant-bound | Before S3 |
+| Signed-link leakage | Temporary public access to a document | API still proxies authorized reads; later presigned URLs are single-purpose, short-lived, non-logged, and tenant-bound | Before presigned URLs |
 | Sensitive logs/traces | Persistent secondary disclosure | Never log bodies, text, medical values, raw filenames, tokens, or signed URLs; redact errors; no patient labels in metrics | First slice |
 | Secret exposure | Provider/database compromise | Environment/secret manager, least privilege, rotation, no secret in repo/log/client image | Before real data |
 | Dependency/license compromise | Code execution or prohibited distribution | Lockfile, minimal dependencies, license allowlist, vulnerability review, reproducible CI, update policy | From scaffold onward |

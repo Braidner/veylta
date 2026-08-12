@@ -67,8 +67,11 @@ not included in the default local runtime or core distribution.
 
 ## Provider and data boundary
 
-LLM, OCR, and cloud storage integrations use independent adapters. Before adding
-one, review separately:
+LLM, OCR, and cloud storage integrations use independent adapters. The optional
+S3-compatible adapter uses exact `@aws-sdk/client-s3` 3.1098.0 (Apache-2.0),
+reviewed through the lockfile gate and third-party notice. It uses the SDK only
+on the API/worker server and never exposes its client or provider credentials to
+the browser. Before adding or changing a provider integration, review separately:
 
 - client SDK and transitive dependencies;
 - hosted service terms and data-use/privacy terms;

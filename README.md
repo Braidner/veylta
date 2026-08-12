@@ -34,10 +34,10 @@ The full first slice remains deliberately narrow:
    unit, with an accessible chart and no clinical assessment (Task 9,
    delivered).
 
-S3-compatible storage, OCR, LLM processing, clinical trend summaries,
-recommendations, FHIR exchange, export/backup, and the rest of the full MVP
-are explicitly deferred. They must not be represented as implemented until
-their own slices are complete.
+OCR, LLM processing, clinical trend summaries, recommendations, FHIR exchange,
+export/backup, and the rest of the full MVP are explicitly deferred. The
+optional S3-compatible storage adapter is implemented only for synthetic
+operator testing and is not a real-data readiness claim.
 
 ## Product principles
 
@@ -56,8 +56,9 @@ their own slices are complete.
 - Fastify API and worker process.
 - Embedded SQLite through Node.js `node:sqlite` for domain state, audit events,
   explicit migrations, and—beginning with Task 5—durable idempotent jobs.
-- Versioned `ObjectStorage/v1` contract, initially backed by a persistent local
-  filesystem directory. Controlled reads take a bounded, checksum-verified
+- Versioned `ObjectStorage/v1` contract, backed by a persistent local filesystem
+  directory by default and an explicit S3-compatible encrypted adapter for
+  synthetic deployments. Controlled reads take a bounded, checksum-verified
   snapshot (the current PDF cap is 5 MiB) before returning bytes.
 - Versioned deterministic parser for the first synthetic document format; no
   LLM or OCR is used in the first slice.

@@ -85,13 +85,73 @@ test("processing worker timings have safe defaults and reject non-positive value
   });
 });
 
-test("a relative object storage override stays rooted in the workspace", () => {
-  withEnvironment({ OBJECT_STORAGE_ROOT: ".local/test-storage" }, () => {
-    const root = loadConfig().objectStorageRoot;
-    assert.equal(root.endsWith("/.local/test-storage"), true);
-    assert.notEqual(root, ".local/test-storage");
-    assert.equal(root.startsWith("/"), true);
+test("the default local object storage stays rooted in the workspace", () => {
+  withEnvironment(
+    { OBJECT_STORAGE_DRIVER: undefined, OBJECT_STORAGE_ROOT: ".local/test-storage" },
+    () => {
+      const storage = loadConfig().objectStorage;
+      assert.equal(storage.mode, "local");
+      if (storage.mode !== "local") throw new Error("Expected local storage");
+      const root = storage.rootPath;
+      assert.equal(root.endsWith("/.local/test-storage"), true);
+      assert.notEqual(root, ".local/test-storage");
+      assert.equal(root.startsWith("/"), true);
+    },
+  );
+});
+
+test("S3 storage is explicit, encrypted, and configured without application credentials", () => {
+  withEnvironment(
+    {
+      OBJECT_STORAGE_DRIVER: "s3",
+      S3_BUCKET: "veylta-synthetic-bucket",
+      S3_REGION: "eu-west-1",
+      S3_PREFIX: "veylta",
+      S3_SERVER_SIDE_ENCRYPTION: "aws:kms",
+      S3_KMS_KEY_ID: "arn:aws:kms:eu-west-1:000000000000:key/test",
+      S3_ENDPOINT: "https://objects.example.test",
+      S3_FORCE_PATH_STYLE: "true",
+    },
+    () => {
+      const storage = loadConfig().objectStorage;
+      assert.deepEqual(storage, {
+        mode: "s3",
+        bucket: "veylta-synthetic-bucket",
+        region: "eu-west-1",
+        prefix: "veylta",
+        endpoint: "https://objects.example.test",
+        forcePathStyle: true,
+        encryption: { mode: "aws:kms", keyId: "arn:aws:kms:eu-west-1:000000000000:key/test" },
+      });
+    },
+  );
+});
+
+test("S3 storage fails closed for missing encryption, invalid KMS options, or non-HTTPS endpoint", () => {
+  const base = {
+    OBJECT_STORAGE_DRIVER: "s3",
+    S3_BUCKET: "veylta-synthetic-bucket",
+    S3_REGION: "eu-west-1",
+    S3_PREFIX: "veylta",
+  };
+  withEnvironment(base, () => {
+    assert.throws(() => loadConfig(), /S3_SERVER_SIDE_ENCRYPTION is required/);
   });
+  withEnvironment({ ...base, S3_SERVER_SIDE_ENCRYPTION: "AES256", S3_KMS_KEY_ID: "key" }, () => {
+    assert.throws(() => loadConfig(), /S3_KMS_KEY_ID requires/);
+  });
+  withEnvironment(
+    { ...base, S3_SERVER_SIDE_ENCRYPTION: "AES256", S3_ENDPOINT: "http://objects.example.test" },
+    () => {
+      assert.throws(() => loadConfig(), /S3_ENDPOINT must be an HTTPS origin/);
+    },
+  );
+  withEnvironment(
+    { ...base, S3_SERVER_SIDE_ENCRYPTION: "AES256", S3_ENDPOINT: "not a url" },
+    () => {
+      assert.throws(() => loadConfig(), /S3_ENDPOINT must be an HTTPS origin/);
+    },
+  );
 });
 
 test("runtime configuration rejects an in-memory database", () => {
