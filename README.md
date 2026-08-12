@@ -15,15 +15,17 @@ change treatment, or replace a clinician or an electronic health record.
 
 The repository is implementing its first vertical slice. The completed local
 path creates an opaque synthetic demo session, one owner-scoped family,
-adult/dependent profiles, and immutable synthetic PDF records in persistent
-local storage. The full first slice remains deliberately narrow:
+adult/dependent profiles, immutable synthetic PDF records, and review-ready
+extracted facts in persistent local storage. The full first slice remains
+deliberately narrow:
 
 1. create a family and a patient profile;
 2. upload a fully synthetic Russian-language PDF with a text layer;
 3. persist the immutable original and calculate its SHA-256 while streaming;
 4. detect a possible duplicate within that family;
-5. deterministically extract a small, versioned set of laboratory facts;
-6. review and confirm or correct those facts;
+5. deterministically extract a small, versioned set of laboratory facts with
+   provenance and a durable local job;
+6. review and confirm or correct those facts (Task 6);
 7. show confirmed observations with provenance back to the document and page.
 
 S3-compatible storage, OCR, LLM processing, trend summaries, recommendations,
@@ -99,7 +101,10 @@ synthetic PDF up to 5 MiB, streams it through signature/size/SHA-256 checks, and
 keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
 reported only inside the same family; it creates another logical document but
 not another blob. Source download is authorized again and returned as a safe
-attachment. Extraction is not started until Task 5.
+attachment. The worker polls the same SQLite file and processes the checked-in
+synthetic text-PDF format through PDF.js and a strict deterministic parser. It
+does not call OCR, an LLM, or a network provider. Extracted facts are proposals
+for review, never confirmed medical observations.
 
 The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
@@ -111,8 +116,11 @@ state-changing requests require the exact configured `WEB_ORIGIN`.
 This demo session has no login or account recovery and is not production
 authentication. Integration tests create isolated temporary SQLite databases;
 they do not reset the default development file. The upload path is also
-synthetic-only: real medical data remains out of scope until all production
-gates in the threat model are complete and independently reviewed.
+limited to PDF signature, MIME, size, immutable-storage, and authorization
+controls. The checked-in fixture, tests, and supported deterministic parser are
+synthetic-only; the demo is not a technical detector for real medical content.
+Do not upload real medical data until all production gates in the threat model
+are complete and independently reviewed.
 
 ## Safety and data policy
 

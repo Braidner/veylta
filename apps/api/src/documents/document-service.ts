@@ -2,11 +2,23 @@ import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import {
   DOCUMENT_CONTRACT_VERSION,
+  type DocumentFactsResponse,
+  type DocumentProcessingResponse,
+  type DocumentProcessingRetryResponse,
+  type DocumentProcessingStatus,
   type DocumentSummary,
+  LAB_EXTRACTION_SCHEMA_VERSION,
+  type LabFactReferenceRange,
+  type LabFactValidationIssue,
   OBJECT_STORAGE_CONTRACT_VERSION,
 } from "@veylta/contracts";
-import type { Database, QueryResult } from "../database/pool.js";
-import { ResourceNotFoundError, type SessionActor } from "../family/family-service.js";
+import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
+import {
+  DomainConflictError,
+  ResourceNotFoundError,
+  type SessionActor,
+} from "../family/family-service.js";
+import { enqueueDocumentExtractionInTransaction } from "../processing/processing-job-service.js";
 import {
   createObjectStorageKey,
   type ObjectMetadata,
@@ -21,6 +33,7 @@ export class UnsupportedDocumentTypeError extends Error {}
 export class InvalidPdfSignatureError extends Error {}
 export class UploadTooLargeError extends Error {}
 export class IdempotencyConflictError extends Error {}
+export class ProcessingNotAvailableError extends DomainConflictError {}
 
 export interface StagedDocument {
   metadata: StagedObjectMetadata;
@@ -51,6 +64,22 @@ export interface DocumentService {
     scope: { familyId: string; profileId: string; documentId: string },
     correlationId: string,
   ): Promise<DocumentSummary>;
+  getProcessing(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; documentId: string },
+    correlationId: string,
+  ): Promise<DocumentProcessingResponse>;
+  getFacts(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; documentId: string },
+    correlationId: string,
+  ): Promise<DocumentFactsResponse>;
+  retryProcessing(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; documentId: string },
+    idempotencyKey: string,
+    correlationId: string,
+  ): Promise<DocumentProcessingRetryResponse>;
   requireProfileAccess(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -83,6 +112,55 @@ interface DocumentRow {
   byte_size: number;
   sha256: string;
   storage_key: string;
+  document_version_id: string;
+}
+
+interface ProcessingJobRow {
+  id: string;
+  state: string;
+  current_stage: string | null;
+  last_error_code: string | null;
+  updated_at: string;
+}
+
+interface ProcessingCountsRow {
+  status: string;
+  extraction_run_id: string;
+  fact_count: number;
+  needs_review_count: number;
+}
+
+interface FactRow {
+  id: string;
+  document_version_id: string;
+  page_number: number;
+  fact_key: string;
+  source_fragment: string;
+  source_name: string;
+  source_value: string;
+  source_unit: string;
+  proposed_canonical_code: string | null;
+  proposed_normalized_value: string | null;
+  proposed_normalized_unit: string | null;
+  proposed_reference_range: string | null;
+  proposed_specimen: string | null;
+  proposed_sampled_at: string | null;
+  proposed_resulted_at: string | null;
+  proposed_laboratory: string | null;
+  confidence: number;
+  validation_issues: string;
+  review_status: string;
+}
+
+interface ExtractionRunForFactsRow {
+  id: string;
+  extractor_version: string;
+  status: string;
+}
+
+interface RetryRequestRow {
+  document_version_id: string;
+  created_at: string;
 }
 
 interface UploadRequestRow {
@@ -154,7 +232,96 @@ function byteSize(value: number): number {
   return parsed;
 }
 
-function summary(row: DocumentRow): DocumentSummary {
+function canonicalTimestamp(value: string): string {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
+    throw new ObjectStorageIntegrityError("Stored processing timestamp is invalid");
+  }
+  return value;
+}
+
+function asCount(value: number, label: string): number {
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < 0) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return parsed;
+}
+
+function processingFailureCategory(
+  code: string | null,
+): Extract<DocumentProcessingStatus, { state: "failed" }>["category"] {
+  switch (code) {
+    case "DOCUMENT_UNAVAILABLE":
+      return "document_unavailable";
+    case "INVALID_DOCUMENT":
+      return "invalid_document";
+    case "UNSUPPORTED_DOCUMENT":
+      return "unsupported_document";
+    case "EXTRACTION_FAILED":
+      return "extraction_failed";
+    case "VALIDATION_FAILED":
+      return "validation_failed";
+    case "ATTEMPT_LIMIT":
+      return "attempts_exhausted";
+    default:
+      return "extraction_failed";
+  }
+}
+
+function processingStatus(
+  job: ProcessingJobRow | undefined,
+  counts: ProcessingCountsRow | undefined,
+): DocumentProcessingStatus {
+  if (job === undefined) return { state: "not_started" };
+  const updatedAt = canonicalTimestamp(job.updated_at);
+  switch (job.state) {
+    case "pending":
+    case "retry_wait":
+      return { state: "queued", updatedAt };
+    case "leased":
+      if (
+        job.current_stage !== "security_check" &&
+        job.current_stage !== "text_extraction" &&
+        job.current_stage !== "document_classification" &&
+        job.current_stage !== "structured_extraction" &&
+        job.current_stage !== "validation"
+      ) {
+        throw new ObjectStorageIntegrityError("Stored processing stage is invalid");
+      }
+      return { state: job.current_stage, updatedAt };
+    case "succeeded": {
+      if (
+        counts === undefined ||
+        (counts.status !== "awaiting_review" && counts.status !== "completed")
+      ) {
+        throw new ObjectStorageIntegrityError("Stored extraction result is unavailable");
+      }
+      const factCount = asCount(counts.fact_count, "fact count");
+      const needsReviewCount = asCount(counts.needs_review_count, "review count");
+      if (needsReviewCount > factCount) {
+        throw new ObjectStorageIntegrityError("Stored extraction review count is invalid");
+      }
+      return counts.status === "awaiting_review"
+        ? { state: "awaiting_review", updatedAt, factCount, needsReviewCount }
+        : { state: "completed", updatedAt, factCount };
+    }
+    case "dead_letter":
+      return {
+        state: "failed",
+        updatedAt,
+        category: processingFailureCategory(job.last_error_code),
+        retryAllowed: true,
+      };
+    default:
+      throw new ObjectStorageIntegrityError("Stored processing state is invalid");
+  }
+}
+
+function summary(
+  row: DocumentRow,
+  processing: DocumentProcessingStatus = { state: "not_started" },
+): DocumentSummary {
   return {
     id: row.id,
     familyId: row.family_id,
@@ -170,7 +337,7 @@ function summary(row: DocumentRow): DocumentSummary {
       documentId: row.duplicate_of_document_id,
       profileId: row.duplicate_profile_id,
     },
-    processing: { state: "not_started" },
+    processing,
   };
 }
 
@@ -189,6 +356,7 @@ function metadataMatches(
 async function* verifiedPdfBytes(body: Readable): AsyncGenerator<Buffer> {
   let prefix = Buffer.alloc(0);
   let verified = false;
+
   for await (const chunk of body) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     if (verified) {
@@ -198,7 +366,10 @@ async function* verifiedPdfBytes(body: Readable): AsyncGenerator<Buffer> {
     const needed = pdfSignature.byteLength - prefix.byteLength;
     prefix = Buffer.concat([prefix, bytes.subarray(0, needed)]);
     if (prefix.byteLength < pdfSignature.byteLength) continue;
-    if (!prefix.equals(pdfSignature)) throw new InvalidPdfSignatureError();
+    if (!prefix.equals(pdfSignature)) {
+      body.resume();
+      throw new InvalidPdfSignatureError();
+    }
     verified = true;
     yield prefix;
     const remainder = bytes.subarray(needed);
@@ -275,7 +446,8 @@ async function documentRow(
             b.content_type,
             b.byte_size,
             b.sha256,
-            b.storage_key
+            b.storage_key,
+            v.id AS document_version_id
      FROM documents d
      JOIN family_memberships m
        ON m.family_id = d.family_id
@@ -300,6 +472,213 @@ async function documentRow(
   const row = result.rows[0];
   if (row === undefined) throw new ResourceNotFoundError();
   return row;
+}
+
+async function processingForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<DocumentProcessingStatus> {
+  const jobs = await client.query<ProcessingJobRow>(
+    `SELECT id, state, current_stage, last_error_code, updated_at
+       FROM processing_jobs
+      WHERE family_id = $1 AND document_version_id = $2
+      ORDER BY created_at DESC, id DESC
+      LIMIT 1`,
+    [row.family_id, row.document_version_id],
+  );
+  const results = await client.query<ProcessingCountsRow>(
+    `SELECT r.status,
+            r.id AS extraction_run_id,
+            count(f.id) AS fact_count,
+            sum(CASE WHEN f.review_status = 'needs_review' THEN 1 ELSE 0 END)
+              AS needs_review_count
+       FROM extraction_runs r
+       LEFT JOIN extracted_facts f
+         ON f.family_id = r.family_id
+        AND f.extraction_run_id = r.id
+      WHERE r.family_id = $1 AND r.document_version_id = $2
+      GROUP BY r.id, r.status
+      ORDER BY r.created_at DESC, r.id DESC
+      LIMIT 1`,
+    [row.family_id, row.document_version_id],
+  );
+  return processingStatus(jobs.rows[0], results.rows[0]);
+}
+
+function parseStoredObject<T>(value: string, label: string): T {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (parsed === null || typeof parsed !== "object") {
+      throw new Error("not an object");
+    }
+    return parsed as T;
+  } catch {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+}
+
+function stringArray(value: string, label: string): LabFactValidationIssue[] {
+  const parsed: unknown = parseStoredObject<unknown>(value, label);
+  const allowed = new Set<LabFactValidationIssue>([
+    "LOW_CONFIDENCE",
+    "AMBIGUOUS_UNIT",
+    "MISSING_UNIT",
+    "INVALID_VALUE",
+    "INVALID_DATE",
+    "INVALID_REFERENCE_RANGE",
+    "UNSUPPORTED_ANALYTE",
+  ]);
+  if (
+    !Array.isArray(parsed) ||
+    new Set(parsed).size !== parsed.length ||
+    parsed.some((entry) => !allowed.has(entry as LabFactValidationIssue))
+  ) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return parsed as LabFactValidationIssue[];
+}
+
+function nullableBoundedString(value: unknown, maximum: number, label: string): string | null {
+  if (value === null) return null;
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximum ||
+    value !== value.trim()
+  ) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return value;
+}
+
+function requiredBoundedString(value: unknown, maximum: number, label: string): string {
+  const parsed = nullableBoundedString(value, maximum, label);
+  if (parsed === null) throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  return parsed;
+}
+
+function nullableCanonicalTimestamp(value: unknown, label: string): string | null {
+  if (value === null) return null;
+  if (typeof value !== "string") {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return canonicalTimestamp(value);
+}
+
+function referenceRange(value: string): LabFactReferenceRange {
+  const parsed = parseStoredObject<Record<string, unknown>>(value, "reference range");
+  const keys = Object.keys(parsed).sort();
+  const expectedKeys = [
+    "laboratoryOutOfRange",
+    "sourceHigh",
+    "sourceLow",
+    "sourceText",
+    "sourceUnit",
+  ];
+  if (
+    keys.length !== expectedKeys.length ||
+    keys.some((key, index) => key !== expectedKeys[index])
+  ) {
+    throw new ObjectStorageIntegrityError("Stored reference range is invalid");
+  }
+  const laboratoryOutOfRange = parsed.laboratoryOutOfRange;
+  if (laboratoryOutOfRange !== null && typeof laboratoryOutOfRange !== "boolean") {
+    throw new ObjectStorageIntegrityError("Stored reference range is invalid");
+  }
+  return {
+    sourceText: nullableBoundedString(parsed.sourceText, 200, "reference range"),
+    sourceLow: nullableBoundedString(parsed.sourceLow, 100, "reference range"),
+    sourceHigh: nullableBoundedString(parsed.sourceHigh, 100, "reference range"),
+    sourceUnit: nullableBoundedString(parsed.sourceUnit, 100, "reference range"),
+    laboratoryOutOfRange,
+  };
+}
+
+function factResponse(
+  run: { id: string; extractor_version: string },
+  rows: readonly FactRow[],
+): DocumentFactsResponse {
+  return {
+    schemaVersion: LAB_EXTRACTION_SCHEMA_VERSION,
+    extractionRunId: run.id,
+    extractorVersion: run.extractor_version,
+    items: rows.map((row) => ({
+      id: row.id,
+      factVersion: 1,
+      factKey: requiredBoundedString(row.fact_key, 100, "fact key"),
+      sourceName: requiredBoundedString(row.source_name, 200, "fact source name"),
+      sourceValue: requiredBoundedString(row.source_value, 100, "fact source value"),
+      sourceUnit: requiredBoundedString(row.source_unit, 100, "fact source unit"),
+      proposedCanonicalCode: nullableBoundedString(
+        row.proposed_canonical_code,
+        100,
+        "fact canonical code",
+      ),
+      proposedNormalizedValue: nullableBoundedString(
+        row.proposed_normalized_value,
+        100,
+        "fact normalized value",
+      ),
+      proposedNormalizedUnit: nullableBoundedString(
+        row.proposed_normalized_unit,
+        100,
+        "fact normalized unit",
+      ),
+      proposedSampledAt: nullableCanonicalTimestamp(row.proposed_sampled_at, "fact sampled time"),
+      proposedResultedAt: nullableCanonicalTimestamp(row.proposed_resulted_at, "fact result time"),
+      proposedSpecimenType: nullableBoundedString(row.proposed_specimen, 200, "fact specimen"),
+      proposedLaboratory: nullableBoundedString(row.proposed_laboratory, 200, "fact laboratory"),
+      referenceRange:
+        row.proposed_reference_range === null ? null : referenceRange(row.proposed_reference_range),
+      confidence: (() => {
+        const confidence = Number(row.confidence);
+        if (!Number.isFinite(confidence) || confidence < 0 || confidence > 1) {
+          throw new ObjectStorageIntegrityError("Stored fact confidence is invalid");
+        }
+        return confidence;
+      })(),
+      validationIssues: stringArray(row.validation_issues, "validation issues"),
+      reviewStatus:
+        row.review_status === "extracted" || row.review_status === "needs_review"
+          ? row.review_status
+          : (() => {
+              throw new ObjectStorageIntegrityError("Stored fact review status is invalid");
+            })(),
+      source: {
+        documentVersionId: requiredBoundedString(
+          row.document_version_id,
+          200,
+          "fact document version",
+        ),
+        pageNumber: (() => {
+          const pageNumber = asCount(row.page_number, "page number");
+          if (pageNumber < 1) {
+            throw new ObjectStorageIntegrityError("Stored page number is invalid");
+          }
+          return pageNumber;
+        })(),
+        fragment: requiredBoundedString(row.source_fragment, 2_000, "fact source fragment"),
+      },
+    })),
+  };
+}
+
+async function resetDeadLetterJob(
+  client: DatabaseClient,
+  scope: { familyId: string; documentVersionId: string; jobId: string },
+  now: Date,
+): Promise<void> {
+  const timestamp = now.toISOString();
+  const updated = await client.query(
+    `UPDATE processing_jobs
+        SET state = 'pending', current_stage = NULL, attempt_count = 0,
+            lease_owner = NULL, lease_expires_at = NULL,
+            last_error_code = NULL, last_error_message = NULL,
+            available_at = $1, completed_at = NULL, updated_at = $1
+      WHERE family_id = $2 AND document_version_id = $3 AND id = $4 AND state = 'dead_letter'`,
+    [timestamp, scope.familyId, scope.documentVersionId, scope.jobId],
+  );
+  if (updated.rowCount !== 1) throw new ProcessingNotAvailableError();
 }
 
 export function createDocumentService(
@@ -468,12 +847,18 @@ export function createDocumentService(
                 duplicateRow?.id ?? null,
               ],
             );
+            const documentVersionId = randomUUID();
             await client.query(
               `INSERT INTO document_versions
                (id, family_id, document_id, blob_id, version_number, created_at)
              VALUES ($1, $2, $3, $4, 1, $5)`,
-              [randomUUID(), scope.familyId, documentId, blob.id, uploadedAt],
+              [documentVersionId, scope.familyId, documentId, blob.id, uploadedAt],
             );
+            await enqueueDocumentExtractionInTransaction(client, {
+              familyId: scope.familyId,
+              documentVersionId,
+              now,
+            });
             await client.query(
               `INSERT INTO document_upload_requests
                (id, family_id, actor_user_id, patient_profile_id, idempotency_key_hash,
@@ -513,9 +898,10 @@ export function createDocumentService(
               byte_size: blob.byte_size,
               sha256: blob.sha256,
               storage_key: blob.storage_key,
+              document_version_id: documentVersionId,
             } satisfies DocumentRow;
           })
-          .then(summary);
+          .then((row) => summary(row, { state: "queued", updatedAt: row.uploaded_at }));
       } finally {
         await storage.deleteStaging(staged.metadata.key).catch(() => undefined);
       }
@@ -533,7 +919,150 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
         });
-        return summary(row);
+        return summary(row, await processingForDocument(client, row));
+      });
+    },
+
+    async getProcessing(actor, requestedScope, correlationId) {
+      const scope = canonicalDocumentScope(requestedScope);
+      return database.transaction(async (client) => {
+        const row = await documentRow(client, actor, scope);
+        const processing = await processingForDocument(client, row);
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "document.processing.opened",
+          resourceId: scope.documentId,
+          correlationId,
+          createdAt: new Date(),
+        });
+        return {
+          contractVersion: DOCUMENT_CONTRACT_VERSION,
+          documentId: row.id,
+          processing,
+        };
+      });
+    },
+
+    async getFacts(actor, requestedScope, correlationId) {
+      const scope = canonicalDocumentScope(requestedScope);
+      return database.transaction(async (client) => {
+        const row = await documentRow(client, actor, scope);
+        const run = (
+          await client.query<ExtractionRunForFactsRow>(
+            `SELECT id, extractor_version, status
+               FROM extraction_runs
+              WHERE family_id = $1 AND document_version_id = $2
+                AND status IN ('awaiting_review', 'completed')
+              ORDER BY created_at DESC, id DESC
+              LIMIT 1`,
+            [scope.familyId, row.document_version_id],
+          )
+        ).rows[0];
+        if (run === undefined) throw new ResourceNotFoundError();
+        const facts = await client.query<FactRow>(
+          `SELECT f.id, f.document_version_id, p.page_number, f.fact_key,
+                  f.source_fragment, f.source_name, f.source_value, f.source_unit,
+                  f.proposed_canonical_code, f.proposed_normalized_value,
+                  f.proposed_normalized_unit, f.proposed_reference_range,
+                  f.proposed_specimen, f.proposed_sampled_at, f.proposed_resulted_at,
+                  f.proposed_laboratory, f.confidence, f.validation_issues, f.review_status
+             FROM extracted_facts f
+             JOIN document_pages p
+               ON p.family_id = f.family_id AND p.id = f.document_page_id
+            WHERE f.family_id = $1 AND f.extraction_run_id = $2
+            ORDER BY p.page_number, f.fact_key`,
+          [scope.familyId, run.id],
+        );
+        const response = factResponse(run, facts.rows);
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "document.facts.opened",
+          resourceId: scope.documentId,
+          correlationId,
+          createdAt: new Date(),
+        });
+        return response;
+      });
+    },
+
+    async retryProcessing(actor, requestedScope, idempotencyKey, correlationId) {
+      const scope = canonicalDocumentScope(requestedScope);
+      const keyHash = sha256(idempotencyKey);
+      return database.transaction(async (client) => {
+        const row = await documentRow(client, actor, scope);
+        const replay = await client.query<RetryRequestRow>(
+          `SELECT document_version_id, created_at
+             FROM processing_retry_requests
+            WHERE family_id = $1 AND actor_user_id = $2 AND idempotency_key_hash = $3`,
+          [scope.familyId, actor.userId, keyHash],
+        );
+        const previous = replay.rows[0];
+        if (previous !== undefined) {
+          if (previous.document_version_id !== row.document_version_id) {
+            throw new IdempotencyConflictError();
+          }
+          return {
+            contractVersion: DOCUMENT_CONTRACT_VERSION,
+            documentId: row.id,
+            processing: { state: "queued", updatedAt: canonicalTimestamp(previous.created_at) },
+          };
+        }
+
+        const job = (
+          await client.query<ProcessingJobRow>(
+            `SELECT id, state, current_stage, last_error_code, updated_at
+               FROM processing_jobs
+              WHERE family_id = $1 AND document_version_id = $2
+              ORDER BY created_at DESC, id DESC
+              LIMIT 1`,
+            [scope.familyId, row.document_version_id],
+          )
+        ).rows[0];
+        if (job === undefined || job.state !== "dead_letter") {
+          throw new ProcessingNotAvailableError();
+        }
+        const now = new Date();
+        await client.query(
+          `INSERT INTO processing_retry_requests
+             (id, family_id, actor_user_id, document_version_id, processing_job_id,
+              idempotency_key_hash, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            randomUUID(),
+            scope.familyId,
+            actor.userId,
+            row.document_version_id,
+            job.id,
+            keyHash,
+            now,
+          ],
+        );
+        await resetDeadLetterJob(
+          client,
+          {
+            familyId: scope.familyId,
+            documentVersionId: row.document_version_id,
+            jobId: job.id,
+          },
+          now,
+        );
+        const processing = await processingForDocument(client, row);
+        if (processing.state !== "queued") throw new ProcessingNotAvailableError();
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "document.processing.requeued",
+          resourceId: scope.documentId,
+          correlationId,
+          createdAt: now,
+        });
+        return {
+          contractVersion: DOCUMENT_CONTRACT_VERSION,
+          documentId: row.id,
+          processing,
+        };
       });
     },
 

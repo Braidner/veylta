@@ -34,7 +34,7 @@
     "pretest:e2e": "pnpm --filter @veylta/contracts build",
     "pretypecheck": "pnpm --filter @veylta/contracts build",
     "test": "pnpm -r test",
-    "test:e2e": "pnpm db:migrate && playwright test",
+    "test:e2e": "node scripts/run-e2e.mjs",
     "test:integration": "pnpm --filter @veylta/api test:integration",
     "typecheck": "pnpm -r typecheck"
   },

@@ -11,7 +11,8 @@ does not claim that the endpoints exist before their implementation task lands.
 - Path identifiers use the canonical lower-case UUIDv4 form; alternate textual
   forms fail request validation before domain or storage access.
 - RFC 3339 timestamps and explicit medically distinct date fields.
-- `Idempotency-Key` is required for upload and review/confirmation commands.
+- `Idempotency-Key` is required for upload and the retry command. Review and
+  confirmation commands are introduced by Task 6.
 - Browser identity is resolved server-side. A caller-supplied user ID is never
   accepted as authentication.
 - Cookie-authenticated mutations require an exact `Origin` match with the
@@ -147,6 +148,7 @@ Response `202`:
 
 ```json
 {
+  "contractVersion": "document/v2",
   "document": {
     "id": "document_placeholder",
     "familyId": "family_placeholder",
@@ -163,7 +165,8 @@ Response `202`:
       "profileId": null
     },
     "processing": {
-      "state": "not_started"
+      "state": "queued",
+      "updatedAt": "2026-08-12T00:00:00.000Z"
     }
   }
 }
@@ -172,8 +175,9 @@ Response `202`:
 On a same-family matching checksum, `possible` is true and the document/profile
 IDs may refer to the authorized match. The server does not create another blob
 or delete either logical record automatically. A match in another family is
-never exposed. `not_started` is intentional: Task 4 has no processing job and
-does not claim that extraction was queued.
+never exposed. The upload transaction also creates one idempotent deterministic
+extraction job, so a newly accepted document reports `queued` rather than a
+fictional completed result.
 
 Replaying the same key and equivalent request returns the original outcome and
 records a separate payload-free replay audit event rather than another upload
@@ -185,23 +189,60 @@ Reusing it for another profile or different bytes returns
 The local adapter first stages and validates the stream. The service then enters
 an SQLite `BEGIN IMMEDIATE` transaction, rechecks idempotency/blob state,
 atomically finalizes the deterministic tenant/checksum key, verifies storage,
-and inserts the document/version/idempotency/audit rows before commit. A rollback
-can therefore leave an inaccessible final orphan but never a document pointing
-to missing bytes; the same upload safely reuses that immutable object on retry.
-Automated orphan retention/cleanup remains deferred.
+and inserts the document/version/idempotency/audit rows and extraction job before
+commit. A rollback can therefore leave an inaccessible final orphan but never a
+document pointing to missing bytes; the same upload safely reuses that immutable
+object on retry. Automated orphan retention/cleanup remains deferred.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
 
 Returns immutable version metadata, possible same-family duplicate information,
-and real processing state. Task 4 exposes only `uploaded` with
-`processing.state = not_started`. Later tasks must migrate the database and
-public contract before exposing another state; the API must not report an OCR,
-extraction, review, summary, or failure stage that did not run. A future failed
-state includes a sanitized category and whether a safe retry is available,
-never a raw parser/database exception.
+and real processing state. Its `document.status` remains `uploaded`; the nested
+processing state is one of `queued`, `security_check`, `text_extraction`,
+`document_classification`, `structured_extraction`, `validation`,
+`awaiting_review`, or sanitized `failed`. `awaiting_review` includes fact and
+needs-review counts. A failed state includes a safe category and retry
+eligibility, never a raw parser/database exception.
 
 Every successful metadata read records a payload-free audit event with actor,
 tenant, document, correlation ID, and time.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/processing`
+
+Returns a compact status response and records a payload-free access audit event:
+
+```json
+{
+  "contractVersion": "document/v2",
+  "documentId": "document_placeholder",
+  "processing": {
+    "state": "awaiting_review",
+    "updatedAt": "2026-08-12T00:00:00.000Z",
+    "factCount": 2,
+    "needsReviewCount": 1
+  }
+}
+```
+
+`failed` contains only one of `document_unavailable`, `invalid_document`,
+`unsupported_document`, `extraction_failed`, `validation_failed`, or
+`attempts_exhausted`, plus `retryAllowed`. Neither processing status nor errors
+contain document text, a filename, a storage key, parser diagnostics, or values.
+
+The checked-in fixture deliberately contains an ambiguous-unit fact, so its
+implemented successful terminal result is `awaiting_review`. `completed` stays
+in the versioned response contract for a future safe path; the browser never
+fabricates it.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/processing/retry`
+
+Requires the exact configured `Origin` and an `Idempotency-Key`. It accepts no
+body and is available only for the authorized document's `dead_letter` job. The
+server records an immutable retry request, resets that existing job to `queued`,
+and returns `202` with the same `document/v2` processing response shape.
+Replaying the same family/actor/key returns the original accepted retry; a key
+used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
+select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content`
 
@@ -211,18 +252,24 @@ Uses `Content-Disposition: attachment`, `nosniff`, a sandbox policy, and
 never exposes the local path. Authorized access produces a payload-free audit
 event.
 
-## Review
+## Extracted facts (Task 5)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/facts`
 
-Returns facts from the latest selected extraction run:
+Returns immutable facts from the latest `awaiting_review` or `completed`
+extraction run. It records a payload-free access audit event. Task 5 emits only
+`extracted` and `needs_review`; it does not make a review decision or create an
+observation.
 
 ```json
 {
   "schemaVersion": "lab-extraction/v1",
+  "extractionRunId": "run_placeholder",
+  "extractorVersion": "synthetic-lab-parser/v1",
   "items": [
     {
       "id": "fact_placeholder",
+      "factVersion": 1,
       "factKey": "synthetic-analyte-a",
       "sourceName": "SYNTHETIC_ANALYTE_A",
       "sourceValue": "7.0",
@@ -230,8 +277,16 @@ Returns facts from the latest selected extraction run:
       "proposedCanonicalCode": null,
       "proposedNormalizedValue": null,
       "proposedNormalizedUnit": null,
+      "proposedSampledAt": null,
+      "proposedResultedAt": null,
+      "proposedSpecimenType": null,
+      "proposedLaboratory": null,
       "referenceRange": {
-        "sourceText": "synthetic reference"
+        "sourceText": "synthetic reference",
+        "sourceLow": null,
+        "sourceHigh": null,
+        "sourceUnit": null,
+        "laboratoryOutOfRange": null
       },
       "confidence": 0.6,
       "validationIssues": ["AMBIGUOUS_UNIT"],
@@ -247,44 +302,10 @@ Returns facts from the latest selected extraction run:
 ```
 
 The UI must display source and proposed fields distinctly. A low-confidence or
-ambiguous fact cannot be silently confirmed.
+ambiguous fact cannot be silently confirmed. `POST` review decisions, corrections,
+and `Observation` creation are deliberately deferred to Task 6.
 
-### `POST /v1/families/{familyId}/profiles/{profileId}/facts/{factId}/review-decisions`
-
-Requires `Idempotency-Key`. `factVersion` provides optimistic concurrency.
-
-Confirmation without correction:
-
-```json
-{
-  "factVersion": 1,
-  "decision": "confirm"
-}
-```
-
-Correction explicitly supplies reviewed source-facing data while the immutable
-extracted fact remains unchanged:
-
-```json
-{
-  "factVersion": 1,
-  "decision": "correct_and_confirm",
-  "correction": {
-    "sourceValue": "7.1",
-    "sourceUnit": "synthetic-unit"
-  }
-}
-```
-
-Rejection uses `{ "factVersion": 1, "decision": "reject" }`.
-
-For confirmation, the server validates profile/document ownership and current
-state, then atomically persists the decision, observation/reference rows, and
-audit event. Response `201` identifies the decision and observation. Replaying
-the same command does not create another observation. A different command for
-the same idempotency key or a stale fact version returns `409`.
-
-## Observation history and provenance
+## Observation history and provenance (Task 7)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/observations`
 
@@ -306,20 +327,32 @@ comparability, trend analysis, or a meaningful graph from one point.
 
 ## Processing jobs
 
-Jobs are internal and not accepted from arbitrary browser payloads. Through
-Task 4 the worker entry in `apps/api` performs SQLite readiness checks only.
-Task 5 adds polling of SQLite for known job kinds and versioned identifier-only
-payloads. User-visible retry, when added, is an authorized command against a
-failed document and creates/requeues the stable job key; it cannot inject a job
-kind, storage key, URL, or parser/provider configuration.
+Jobs are internal and not accepted from arbitrary browser payloads. The worker
+polls SQLite for the single known `document_extraction` kind and versioned
+identifier-only payloads, claims a bounded lease, and persists an attempt with
+one of the implemented stages. It reads the authorized version through
+`ObjectStorage/v1`, bounds and verifies its bytes, extracts its PDF text layer,
+and accepts only the versioned synthetic grammar. There is no OCR, LLM, provider
+SDK, arbitrary URL, or worker HTTP command surface.
+
+User-visible retry is the authorized endpoint above. It can requeue only the
+stable failed job and cannot inject a job kind, storage key, URL, or
+parser/provider configuration.
 
 ## Audit behavior
 
 Create audit events for authentication-relevant changes, family/profile changes,
-upload, source download, extraction transitions, review, confirmation/rejection,
-and future agent/provider egress. Event metadata includes actor, family, action,
-resource ID, result, correlation ID, and time—not filenames, file content, page
-text, source fragments, medical values, credentials, or signed URLs.
+upload, source download, processing/fact reads, retry requests, and terminal
+worker outcomes. The worker commits its successful fact graph or
+retry/dead-letter transition with exactly one payload-free event in the same
+SQLite transaction. It is attributed to the uploader, correlated as the bounded
+`worker:<jobId>`, and contains only `contractVersion`, `automated`, `outcome`,
+and (for failure) a sanitized error code. Review, confirmation/rejection, and
+future agent/provider egress add their own events in later tasks. Event metadata
+never includes filenames, file content, page text, source fragments, medical
+values, credentials, or signed URLs. Worker stdout carries only a processing
+outcome and safe error code; it does not carry identifiers, document text, or
+stack traces.
 
 ## Deferred APIs
 

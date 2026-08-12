@@ -59,17 +59,28 @@ The first slice proves one complete and safe path with synthetic data:
    SHA-256 without loading the entire file into memory.
 4. A repeat SHA-256 within the same family is reported as a possible duplicate;
    no document is automatically deleted.
-5. A durable background job runs a deterministic parser for one explicitly
-   supported synthetic report format.
+5. A durable SQLite-backed background job runs a deterministic parser for one
+   explicitly supported synthetic report format.
 6. Extracted facts retain raw text, value, unit, confidence, page, and fragment.
-7. At least one low-confidence or ambiguous fact requires an explicit review.
+7. The parser routes uncertain or ambiguous facts to `needs_review`.
 8. Confirmation or correction atomically creates an `Observation` and audit
-   event without altering the raw extracted fact.
+   event without altering the raw extracted fact (Task 6).
 9. Indicator history displays the confirmed value, unit/reference, and an
-   authorized link to its source.
+   authorized link to its source (Task 7).
 
-The implementation currently reaches step 4. Document processing remains
-explicitly `not_started`; deterministic extraction begins in Task 5.
+The implementation currently reaches step 7. A document is uploaded as
+`queued`, then the worker exposes the real stages `security_check`,
+`text_extraction`, `document_classification`, `structured_extraction`, and
+`validation`. Successful synthetic extraction ends at `awaiting_review`; a
+sanitized terminal failure is visible and may be retried. Human fact decisions,
+observations, and history are not implemented yet.
+
+The repository, fixtures, tests, and supported deterministic parser are
+synthetic-only. The local demo's upload boundary validates PDF MIME/signature,
+size, immutable storage, and authorization; it is not a reliable detector of
+whether a user selected a real medical document. Real medical data remains out
+of scope until the production controls in the threat model are implemented and
+independently reviewed.
 
 ### Acceptance outcomes
 
@@ -86,6 +97,8 @@ explicitly `not_started`; deterministic extraction begins in Task 5.
 - Job retry produces no duplicate facts or observations.
 - All access and state-changing actions are audited without logging medical
   values.
+- Worker completion, retry scheduling, and terminal failure are audit events
+  committed with their corresponding SQLite state transition.
 - Lint, typecheck, unit, integration, end-to-end, migration, and license checks
   pass using synthetic fixtures only.
 
@@ -97,13 +110,13 @@ comparisons, evidence-backed summaries and safe recommendations, audit views,
 export, and backup/restore. Provider boundaries must support local and external
 OCR/LLM implementations without coupling the core domain to one vendor.
 
-The complete processing state machine is:
+The planned complete processing state machine is:
 
 `uploaded → security_check → text_extraction → document_classification → structured_extraction → validation → awaiting_review → persisting → trend_recalculation → summary_generation → completed|failed`
 
-Only states backed by implemented behavior may be used. The first slice stops
-at review/confirmation and indicator history; it must not fake OCR, trend, or
-summary stages.
+Only states backed by implemented behavior may be used. Task 5 implements the
+queue through `awaiting_review`; it does not fake OCR, trend, summary, fact
+decisions, or observations.
 
 ## Explicitly deferred
 

@@ -21,7 +21,10 @@ if (existsSync(envFile)) loadEnvFile(envFile);
 function integer(name: string, fallback: number): number {
   const value = process.env[name];
   if (value === undefined) return fallback;
-  const parsed = Number.parseInt(value, 10);
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error(`${name} must be a positive integer`);
+  }
+  const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed <= 0) {
     throw new Error(`${name} must be a positive integer`);
   }
@@ -64,6 +67,9 @@ export interface RuntimeConfig {
   demoRegistrationEnabled: boolean;
   maxPdfBytes: number;
   objectStorageRoot: string;
+  processingLeaseDurationMs: number;
+  processingPollIntervalMs: number;
+  processingRetryDelayMs: number;
   secureSessionCookie: boolean;
   sessionTtlSeconds: number;
   webOrigin: string;
@@ -89,6 +95,9 @@ export function loadConfig(): RuntimeConfig {
     demoRegistrationEnabled,
     maxPdfBytes,
     objectStorageRoot: resolve(projectRoot, process.env.OBJECT_STORAGE_ROOT ?? ".local/storage"),
+    processingLeaseDurationMs: integer("PROCESSING_LEASE_DURATION_MS", 60_000),
+    processingPollIntervalMs: integer("PROCESSING_POLL_INTERVAL_MS", 500),
+    processingRetryDelayMs: integer("PROCESSING_RETRY_DELAY_MS", 1_000),
     secureSessionCookie: boolean("SESSION_COOKIE_SECURE", false),
     sessionTtlSeconds: integer("SESSION_TTL_SECONDS", 2_592_000),
     webOrigin: origin("WEB_ORIGIN", "http://127.0.0.1:4300"),

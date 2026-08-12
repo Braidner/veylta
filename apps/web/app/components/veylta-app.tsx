@@ -2,6 +2,9 @@
 
 import type {
   DemoRegistrationResponse,
+  DocumentProcessingResponse,
+  DocumentProcessingRetryResponse,
+  DocumentProcessingStatus,
   DocumentResponse,
   DocumentSummary,
   PatientProfileSummary,
@@ -16,6 +19,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { SystemStatus } from "./system-status";
 
 const apiPrefix = "/health-api";
+const processingPollIntervalMs = 2_000;
 
 type ScreenState =
   | { kind: "loading" }
@@ -87,6 +91,10 @@ function profilePath(familyId: string, profileId: string): string {
 
 function documentPath(familyId: string, profileId: string, documentId: string): string {
   return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
+}
+
+function documentProcessingPath(familyId: string, profileId: string, documentId: string): string {
+  return `${documentPath(familyId, profileId, documentId)}/processing`;
 }
 
 interface VeyltaAppProps {
@@ -677,8 +685,8 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
       <p className="context-line">Исходные документы</p>
       <h2 id="document-inbox-title">Добавьте синтетический PDF</h2>
       <p className="document-intro">
-        Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Извлечение медицинских
-        значений на этом шаге не запускается.
+        Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Затем локальная
+        детерминированная обработка поставит в очередь черновое извлечение значений для проверки.
       </p>
 
       <div className="synthetic-reminder" role="note">
@@ -837,16 +845,321 @@ function DocumentView({ family, profile, documentId }: DocumentViewProps) {
         </a>
       </div>
 
-      <section className="processing-state" aria-labelledby="processing-title">
+      <DocumentProcessingPanel
+        familyId={family.id}
+        profileId={profile.id}
+        document={savedDocument}
+      />
+    </section>
+  );
+}
+
+interface DocumentProcessingPanelProps {
+  familyId: string;
+  profileId: string;
+  document: DocumentSummary;
+}
+
+interface ProcessingPresentation {
+  heading: string;
+  copy: string;
+  integrityLabel: string;
+  mark: "—" | "…" | "!" | "✓";
+  tone: "idle" | "active" | "attention" | "complete" | "failed";
+}
+
+function isProcessingActive(status: DocumentProcessingStatus): boolean {
+  return (
+    status.state === "queued" ||
+    status.state === "security_check" ||
+    status.state === "text_extraction" ||
+    status.state === "document_classification" ||
+    status.state === "structured_extraction" ||
+    status.state === "validation"
+  );
+}
+
+function processingStatusesEqual(
+  current: DocumentProcessingStatus,
+  next: DocumentProcessingStatus,
+): boolean {
+  if (current.state !== next.state) return false;
+
+  switch (current.state) {
+    case "not_started":
+      return true;
+    case "queued":
+    case "security_check":
+    case "text_extraction":
+    case "document_classification":
+    case "structured_extraction":
+    case "validation":
+      return "updatedAt" in next && current.updatedAt === next.updatedAt;
+    case "awaiting_review":
+      return (
+        next.state === "awaiting_review" &&
+        current.updatedAt === next.updatedAt &&
+        current.factCount === next.factCount &&
+        current.needsReviewCount === next.needsReviewCount
+      );
+    case "completed":
+      return (
+        next.state === "completed" &&
+        current.updatedAt === next.updatedAt &&
+        current.factCount === next.factCount
+      );
+    case "failed":
+      return (
+        next.state === "failed" &&
+        current.updatedAt === next.updatedAt &&
+        current.category === next.category &&
+        current.retryAllowed === next.retryAllowed
+      );
+  }
+}
+
+function russianPlural(value: number, singular: string, few: string, many: string): string {
+  const remainder = value % 100;
+  if (remainder >= 11 && remainder <= 14) return many;
+  const last = value % 10;
+  if (last === 1) return singular;
+  if (last >= 2 && last <= 4) return few;
+  return many;
+}
+
+function factCountCopy(value: number): string {
+  return `${value} ${russianPlural(value, "значение", "значения", "значений")}`;
+}
+
+function processingFailureCopy(
+  status: Extract<DocumentProcessingStatus, { state: "failed" }>,
+): string {
+  switch (status.category) {
+    case "document_unavailable":
+      return "Исходный PDF сейчас недоступен обработчику. Сам файл не менялся.";
+    case "invalid_document":
+      return "Документ нельзя обработать безопасно. Исходный PDF сохранён без изменений.";
+    case "unsupported_document":
+      return "Этот вариант PDF пока не поддерживается детерминированным извлечением.";
+    case "extraction_failed":
+      return "Не удалось надёжно извлечь текст. Никаких значений не интерпретировано.";
+    case "validation_failed":
+      return "Черновой результат не прошёл проверку источника и структуры.";
+    case "attempts_exhausted":
+      return "Автоматические попытки закончились. Никаких значений не подтверждено.";
+  }
+}
+
+function processingPresentation(status: DocumentProcessingStatus): ProcessingPresentation {
+  switch (status.state) {
+    case "not_started":
+      return {
+        heading: "Извлечение ещё не поставлено в очередь",
+        copy: "Исходный PDF сохранён без изменений. Статус появится после следующего обновления.",
+        integrityLabel: "Не поставлено в очередь",
+        mark: "—",
+        tone: "idle",
+      };
+    case "queued":
+      return {
+        heading: "Документ ожидает обработки",
+        copy: "Локальная очередь приняла задачу. Обновляем статус автоматически.",
+        integrityLabel: "В очереди",
+        mark: "…",
+        tone: "active",
+      };
+    case "security_check":
+      return {
+        heading: "Проверяем документ",
+        copy: "Проверяем доступность и целостность сохранённого исходника.",
+        integrityLabel: "Проверка документа",
+        mark: "…",
+        tone: "active",
+      };
+    case "text_extraction":
+      return {
+        heading: "Извлекаем текст из PDF",
+        copy: "Используем детерминированный локальный обработчик. Медицинские выводы не формируются.",
+        integrityLabel: "Извлечение текста",
+        mark: "…",
+        tone: "active",
+      };
+    case "document_classification":
+      return {
+        heading: "Проверяем тип документа",
+        copy: "Сверяем документ с ограниченным синтетическим форматом этого контура.",
+        integrityLabel: "Проверка типа",
+        mark: "…",
+        tone: "active",
+      };
+    case "structured_extraction":
+      return {
+        heading: "Готовим черновые значения",
+        copy: "Связываем каждое значение со страницей и фрагментом исходного PDF.",
+        integrityLabel: "Структурирование",
+        mark: "…",
+        tone: "active",
+      };
+    case "validation":
+      return {
+        heading: "Проверяем черновой результат",
+        copy: "Проверяем формат, источник и ограничения перед тем, как показать значения для проверки.",
+        integrityLabel: "Проверка результата",
+        mark: "…",
+        tone: "active",
+      };
+    case "awaiting_review":
+      return {
+        heading: "Черновые значения ждут проверки",
+        copy: `Найдено ${factCountCopy(status.factCount)}; ${factCountCopy(status.needsReviewCount)} требуют дополнительного внимания. Ничего не подтверждено автоматически.`,
+        integrityLabel: "Ожидает проверки",
+        mark: "!",
+        tone: "attention",
+      };
+    case "completed":
+      return {
+        heading: "Извлечение завершено",
+        copy: `Сохранено ${factCountCopy(status.factCount)} для последующей проверки вместе с источником. Ничего не интерпретировано автоматически.`,
+        integrityLabel: "Завершено",
+        mark: "✓",
+        tone: "complete",
+      };
+    case "failed":
+      return {
+        heading: "Извлечение не завершилось",
+        copy: processingFailureCopy(status),
+        integrityLabel: "Не завершено",
+        mark: "!",
+        tone: "failed",
+      };
+  }
+}
+
+function DocumentProcessingPanel({
+  familyId,
+  profileId,
+  document: savedDocument,
+}: DocumentProcessingPanelProps) {
+  const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
+  const [refreshFailed, setRefreshFailed] = useState(false);
+  const [retryPending, setRetryPending] = useState(false);
+  const [retryError, setRetryError] = useState<string | null>(null);
+  const retryKey = useRef<string | null>(null);
+
+  useEffect(() => {
+    setProcessing(savedDocument.processing);
+    setRefreshFailed(false);
+    setRetryError(null);
+    retryKey.current = null;
+  }, [savedDocument.processing]);
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const path = documentProcessingPath(familyId, profileId, savedDocument.id);
+
+    async function refreshProcessing(): Promise<void> {
+      try {
+        const response = await apiRequest<DocumentProcessingResponse>(path, {
+          signal: controller.signal,
+        });
+        if (!active) return;
+        setRefreshFailed(false);
+        setProcessing((current) =>
+          processingStatusesEqual(current, response.processing) ? current : response.processing,
+        );
+      } catch {
+        if (active) setRefreshFailed(true);
+      }
+    }
+
+    void refreshProcessing();
+    if (!isProcessingActive(processing)) {
+      return () => {
+        active = false;
+        controller.abort();
+      };
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshProcessing();
+    }, processingPollIntervalMs);
+
+    return () => {
+      active = false;
+      controller.abort();
+      window.clearInterval(interval);
+    };
+  }, [familyId, processing, profileId, savedDocument.id]);
+
+  async function handleRetry(): Promise<void> {
+    setRetryPending(true);
+    setRetryError(null);
+    const commandKey = retryKey.current ?? crypto.randomUUID();
+    retryKey.current = commandKey;
+    try {
+      const response = await apiRequest<DocumentProcessingRetryResponse>(
+        `${documentProcessingPath(familyId, profileId, savedDocument.id)}/retry`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": commandKey },
+        },
+      );
+      setRefreshFailed(false);
+      setProcessing(response.processing);
+      retryKey.current = null;
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) retryKey.current = null;
+      setRetryError(
+        "Не удалось запустить повторную обработку. Статус и исходный PDF не изменились.",
+      );
+    } finally {
+      setRetryPending(false);
+    }
+  }
+
+  const presentation = processingPresentation(processing);
+  const showRetry = processing.state === "failed" && processing.retryAllowed;
+
+  return (
+    <>
+      <section
+        className={`processing-state processing-state--${presentation.tone}`}
+        aria-labelledby="processing-title"
+        aria-busy={isProcessingActive(processing) || retryPending}
+      >
         <div className="processing-state__mark" aria-hidden="true">
-          —
+          {presentation.mark}
         </div>
-        <div>
-          <h3 id="processing-title">Извлечение не запущено</h3>
-          <p>
-            Сейчас доступен только неизменный исходник. Значения для проверки появятся в следующем
-            вертикальном шаге.
-          </p>
+        <div className="processing-state__content">
+          <h3 id="processing-title">{presentation.heading}</h3>
+          <p role="status">{presentation.copy}</p>
+          {"updatedAt" in processing ? (
+            <p className="processing-state__updated">
+              Статус обновлён{" "}
+              <time dateTime={processing.updatedAt}>{formatDate(processing.updatedAt)}</time>
+            </p>
+          ) : null}
+          {refreshFailed ? (
+            <p className="processing-state__refresh-note" role="status">
+              Не удалось обновить статус. Исходный PDF не изменён.
+            </p>
+          ) : null}
+          {showRetry ? (
+            <button
+              className="button button--secondary processing-state__retry"
+              type="button"
+              onClick={handleRetry}
+              disabled={retryPending}
+            >
+              {retryPending ? "Запускаем повтор…" : "Повторить обработку"}
+            </button>
+          ) : null}
+          {retryError !== null ? (
+            <p className="form-error processing-state__error" role="alert">
+              {retryError}
+            </p>
+          ) : null}
         </div>
       </section>
 
@@ -861,11 +1174,11 @@ function DocumentView({ family, profile, documentId }: DocumentViewProps) {
           </div>
           <div>
             <dt>Статус обработки</dt>
-            <dd>Не запущена</dd>
+            <dd>{presentation.integrityLabel}</dd>
           </div>
         </dl>
       </details>
-    </section>
+    </>
   );
 }
 

@@ -1,4 +1,8 @@
+import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
+
+const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
+const syntheticLabBytes = await readFile(syntheticLabFixture);
 
 function syntheticNames() {
   const suffix = crypto.randomUUID().slice(0, 8);
@@ -39,12 +43,12 @@ async function uploadPdf(
   await page.getByRole("button", { name: "Загрузить PDF" }).click();
 }
 
-test("a synthetic PDF survives reload, downloads, and reports a family duplicate", async ({
+test("a synthetic report is extracted, survives reload, downloads, and reports a family duplicate", async ({
   page,
 }) => {
   const { profileUrl } = await registerDemoFamily(page);
   const filename = `synthetic-lab-${crypto.randomUUID().slice(0, 8)}.pdf`;
-  const bytes = syntheticPdf("same-family-deduplication");
+  const bytes = syntheticLabBytes;
 
   await uploadPdf(page, filename, bytes);
 
@@ -54,7 +58,9 @@ test("a synthetic PDF survives reload, downloads, and reports a family duplicate
   const firstDocumentUrl = page.url();
   await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
   await expect(page.getByText("Исходник сохранён без изменений")).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Извлечение не запущено" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
+  ).toBeVisible();
 
   await page.reload();
   await expect(page).toHaveURL(firstDocumentUrl);
@@ -75,6 +81,84 @@ test("a synthetic PDF survives reload, downloads, and reports a family duplicate
   await expect(
     page.getByText("SHA-256 совпадает с ранее загруженным документом этой семьи."),
   ).toBeVisible();
+});
+
+test("a retry command reuses its idempotency key after a transient browser failure", async ({
+  page,
+}) => {
+  await registerDemoFamily(page);
+  await uploadPdf(page, "retry-ui.pdf", syntheticLabBytes);
+  await expect(page).toHaveURL(
+    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
+  );
+  const documentId = page.url().match(/\/documents\/([0-9a-f-]{36})$/)?.[1];
+  if (documentId === undefined) throw new Error("Expected a document URL");
+
+  const idempotencyKeys: string[] = [];
+  let retryAttempts = 0;
+  await page.route("**/health-api/**", async (route) => {
+    const request = route.request();
+    const pathname = new URL(request.url()).pathname;
+
+    if (request.method() === "GET" && pathname.endsWith("/processing")) {
+      const processing =
+        retryAttempts >= 2
+          ? { state: "queued", updatedAt: "2026-08-12T12:00:01.000Z" }
+          : {
+              state: "failed",
+              updatedAt: "2026-08-12T12:00:00.000Z",
+              category: "extraction_failed",
+              retryAllowed: true,
+            };
+      await route.fulfill({
+        contentType: "application/json",
+        body: JSON.stringify({
+          contractVersion: "document/v2",
+          documentId,
+          processing,
+        }),
+      });
+      return;
+    }
+
+    if (request.method() === "POST" && pathname.endsWith("/processing/retry")) {
+      const key = request.headers()["idempotency-key"];
+      if (key !== undefined) idempotencyKeys.push(key);
+      retryAttempts += 1;
+      if (retryAttempts === 1) {
+        await route.abort("failed");
+        return;
+      }
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({
+          contractVersion: "document/v2",
+          documentId,
+          processing: { state: "queued", updatedAt: "2026-08-12T12:00:01.000Z" },
+        }),
+      });
+      return;
+    }
+
+    await route.continue();
+  });
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Извлечение не завершилось" })).toBeVisible();
+
+  const retry = page.getByRole("button", { name: "Повторить обработку" });
+  await retry.click();
+  await expect(
+    page.getByText(
+      "Не удалось запустить повторную обработку. Статус и исходный PDF не изменились.",
+    ),
+  ).toBeVisible();
+  await retry.click();
+
+  await expect.poll(() => idempotencyKeys.length).toBe(2);
+  expect(idempotencyKeys[0]).toEqual(idempotencyKeys[1]);
+  await expect(page.getByRole("heading", { name: "Документ ожидает обработки" })).toBeVisible();
 });
 
 test("an invalid synthetic upload stays on the profile and explains the safe correction", async ({

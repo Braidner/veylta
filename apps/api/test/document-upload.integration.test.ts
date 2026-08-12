@@ -254,7 +254,8 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
     assert.equal(first.json().document.originalFilename, "synthetic-result.pdf");
     assert.equal(first.json().document.byteSize, pdf.byteLength);
     assert.match(first.json().document.sha256, /^[0-9a-f]{64}$/);
-    assert.deepEqual(first.json().document.processing, { state: "not_started" });
+    assert.equal(first.json().document.processing.state, "queued");
+    assert.match(first.json().document.processing.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
 
     const replay = await upload(app, owner, pdf, "upload-first");
     assert.equal(replay.statusCode, 202);

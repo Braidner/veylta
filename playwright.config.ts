@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const reuseExistingServer = process.env.CI !== "true";
+const reuseExistingServer = false;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -25,7 +25,9 @@ export default defineConfig({
     {
       command: "pnpm --filter @veylta/api dev:api",
       url: "http://127.0.0.1:4301/healthz",
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       env: {
+        ...process.env,
         DEMO_REGISTRATION_ENABLED: "true",
         WEB_ORIGIN: "http://127.0.0.1:4300",
       },
@@ -35,12 +37,16 @@ export default defineConfig({
     {
       command: "pnpm --filter @veylta/api dev:worker",
       url: "http://127.0.0.1:4302/healthz",
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
+      env: process.env,
       reuseExistingServer,
       timeout: 30_000,
     },
     {
       command: "pnpm --filter @veylta/web dev",
       url: "http://127.0.0.1:4300",
+      gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
+      env: process.env,
       reuseExistingServer,
       timeout: 60_000,
     },

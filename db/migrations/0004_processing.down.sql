@@ -1,0 +1,25 @@
+DROP TRIGGER processing_retry_requests_delete_forbidden;
+DROP TRIGGER processing_retry_requests_update_forbidden;
+DROP TRIGGER processing_retry_requests_dead_letter_only;
+DROP INDEX processing_retry_requests_document;
+DROP TABLE processing_retry_requests;
+
+DROP TRIGGER extracted_facts_delete_forbidden;
+DROP TRIGGER extracted_facts_update_forbidden;
+DROP INDEX extracted_facts_review_queue;
+DROP TABLE extracted_facts;
+
+DROP TRIGGER document_pages_delete_forbidden;
+DROP TRIGGER document_pages_update_forbidden;
+DROP INDEX document_pages_document;
+DROP TABLE document_pages;
+
+DROP TRIGGER extraction_runs_delete_forbidden;
+DROP TRIGGER extraction_runs_provenance_immutable;
+DROP INDEX extraction_runs_document;
+DROP TABLE extraction_runs;
+
+DROP INDEX processing_jobs_document;
+DROP INDEX processing_jobs_expired_leases;
+DROP INDEX processing_jobs_claimable;
+DROP TABLE processing_jobs;

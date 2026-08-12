@@ -9,6 +9,14 @@ The MIT license for this repository does not automatically make dependencies,
 container images, model weights, OCR trained data, fixtures, fonts, or external
 services MIT-licensed. Each is reviewed under its own terms before use.
 
+The checked-in synthetic PDF fixture is the one approved asset exception in the
+current slice: `fixtures/veylta-synthetic-lab-report.pdf` embeds a subset of
+Liberation Sans Regular under SIL OFL 1.1. Its full license, source/version,
+SHA-256, distribution scope, owner, and review date are recorded in
+[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). It is a synthetic
+document created using the font, not a bundled general-purpose font file, and
+does not broaden the software-dependency allowlist.
+
 ## Dependency allowlist
 
 Runtime, development, direct, optional, and transitive software dependencies

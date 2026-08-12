@@ -16,11 +16,28 @@ dataset.
 ## Apache-2.0 and dual-licensed tooling
 
 - `@playwright/test` 1.62.1 — Apache-2.0.
+- `pdfjs-dist` 6.2.108 — Apache-2.0; used only for local bounded PDF text-layer
+  extraction in the synthetic first slice.
 - `typescript` 5.9.3 — Apache-2.0.
 - `@biomejs/biome` 2.5.8 and its platform CLI packages — MIT OR Apache-2.0.
 
 Their complete license and NOTICE material is retained in the installed package
 distribution. No third-party source is copied into the Veylta codebase.
+
+## Synthetic PDF fixture font notice
+
+`fixtures/veylta-synthetic-lab-report.pdf` is a synthetic-only test fixture,
+not a real medical document. It embeds a subset of Liberation Sans Regular.
+Liberation Sans is licensed under SIL Open Font License 1.1. The complete font
+license and its copyright notices are retained at
+[`fixtures/licenses/liberation-sans-license.txt`](fixtures/licenses/liberation-sans-license.txt).
+
+This is a reviewed, artifact-specific asset notice rather than a general
+dependency allowlist change: the PDF is a document created using the font, the
+font binary is not distributed separately, and the fixture's SHA-256 is
+`8c6147e28880f3d9fe0161a3affd586604627c561bb519da0155e4e3914c88cb`.
+Review owner: Veylta maintainers. Re-review on fixture/font replacement or by
+2027-08-12, whichever comes first.
 
 ## Exact permissive ISC reviews
 

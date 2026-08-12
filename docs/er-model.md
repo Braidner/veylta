@@ -50,6 +50,7 @@ erDiagram
   ExtractionRun ||--o{ AgentRun : may_use
   Family ||--o{ AuditEvent : records
   Family ||--o{ ProcessingJob : queues
+  ProcessingJob ||--o{ ProcessingRetryRequest : requeued_by
 ```
 
 `ConsentGrant`, the extended clinical resources, `HealthSummary`,
@@ -122,9 +123,10 @@ joining a family.
 - `status`, `uploaded_by_user_id`, `uploaded_at`
 - optional `duplicate_of_document_id`, scoped to the same family
 
-`Document` is the stable logical record. It does not contain blob bytes.
-Task 4 constrains `status` to `uploaded`; later tasks must migrate the constraint
-and public contract only when another processing state is actually implemented.
+`Document` is the stable logical record. It does not contain blob bytes. Its
+immutable document status remains `uploaded`; Task 5 processing state belongs to
+the linked `ProcessingJob` and selected `ExtractionRun`, so the document itself
+does not pretend that an unreviewed extraction is a confirmed medical result.
 
 ### DocumentVersion
 
@@ -173,6 +175,10 @@ and must not enter general logs.
 A stable idempotency key prevents the same extractor/version from creating a
 second active result for one document version.
 
+Task 5 creates an `awaiting_review` run only after page and fact provenance has
+been stored in the same transaction. `completed` is reserved for a later review
+workflow; it is not emitted merely because parsing succeeded.
+
 ### ExtractedFact
 
 - `id`, `family_id`, `extraction_run_id`, `document_page_id`
@@ -181,7 +187,8 @@ second active result for one document version.
 - proposed canonical code/value/unit and reference-range fields
 - proposed specimen/sample/result/laboratory fields
 - `confidence`, validation issues
-- `review_status`: `extracted | needs_review | confirmed | rejected`
+- `review_status`: `extracted | needs_review` in Task 5; `confirmed | rejected`
+  are added with the Task 6 review-decision model
 - `created_at`
 
 Raw parser output is immutable. Review decisions refer to the fact rather than
@@ -191,12 +198,24 @@ editing it.
 
 - `id`, `family_id`, `kind`, `dedupe_key`, `payload_version`
 - `state`: `pending | leased | retry_wait | succeeded | dead_letter`
+- `current_stage`: `security_check | text_extraction | document_classification |
+  structured_extraction | validation` while leased
 - `attempt_count`, `max_attempts`, `available_at`
 - `lease_owner`, `lease_expires_at`, sanitized last-error fields
 - `created_at`, `updated_at`
 
 Unique `(kind, dedupe_key)`. Payload contains identifiers, not document bytes or
 medical text.
+
+### ProcessingRetryRequest
+
+- `id`, `family_id`, `actor_user_id`, `document_version_id`, `processing_job_id`
+- SHA-256 digest of the retry `Idempotency-Key`, `created_at`
+
+It is append-only and accepts an insert only while its tenant-scoped job is in
+`dead_letter`. More than one terminal cycle may have a distinct manual requeue;
+the actor/key uniqueness makes an equivalent browser replay return the original
+accepted retry rather than creating new work.
 
 ## Confirmed medical record
 
@@ -279,8 +298,8 @@ behavior:
 - `Document`, `DocumentBlob`, `DocumentVersion`, `DocumentUploadRequest`;
 - `AuditEvent`.
 
-Task 5 adds `DocumentPage`, `ExtractionRun`, `ExtractedFact`, and
-`ProcessingJob`. Task 6 adds `Observation`, `ObservationReferenceRange`, and any
+Task 5 adds `DocumentPage`, `ExtractionRun`, `ExtractedFact`, `ProcessingJob`,
+and `ProcessingRetryRequest`. Task 6 adds `Observation`, `ObservationReferenceRange`, and any
 report/review rows its tested transaction needs. Add `ConsentGrant`, extended
 clinical entities, summaries, recommendations, and agent runs only with the
 slice that uses and tests them.

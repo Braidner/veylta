@@ -84,6 +84,14 @@ Commit intent: `feat: extract synthetic lab facts idempotently`
 - Fault/retry tests prove no duplicate page, run, or fact rows and no network
   call to OCR/LLM.
 
+Delivered in `feat: extract synthetic lab facts idempotently`: the upload
+transaction queues the SQLite job; the separate worker claims it with a lease,
+stores page/run/fact provenance atomically, and presents `awaiting_review` or a
+sanitized retryable terminal failure. The fixture is a checked-in synthetic
+text-PDF, parsed by PDF.js plus a narrow `lab-extraction/v1` grammar. The public
+processing/facts reads and failed-job retry are tenant-scoped; review decisions,
+observations, and history remain in Tasks 6–7.
+
 ### Task 6 — Review and atomic observation confirmation
 
 Commit intent: `feat: review and confirm extracted observations`

@@ -279,5 +279,58 @@ export function registerDocumentRoutes(
         }
       },
     );
+
+    scope.get<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/processing",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(await service.getProcessing(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/facts",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(await service.getFacts(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.post<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/processing/retry",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        try {
+          if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+          const actor = await requireActor(familyService, request, reply);
+          if (actor === null) return;
+          const commandKey = idempotencyKey(request);
+          const processing = await service.retryProcessing(
+            actor,
+            request.params,
+            commandKey,
+            request.id,
+          );
+          reply.code(202).send(processing);
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
   });
 }

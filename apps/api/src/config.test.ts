@@ -59,6 +59,32 @@ test("the configured PDF limit cannot exceed the contract and database boundary"
   });
 });
 
+test("processing worker timings have safe defaults and reject non-positive values", () => {
+  withEnvironment(
+    {
+      PROCESSING_LEASE_DURATION_MS: undefined,
+      PROCESSING_POLL_INTERVAL_MS: undefined,
+      PROCESSING_RETRY_DELAY_MS: undefined,
+    },
+    () => {
+      const config = loadConfig();
+      assert.equal(config.processingLeaseDurationMs, 60_000);
+      assert.equal(config.processingPollIntervalMs, 500);
+      assert.equal(config.processingRetryDelayMs, 1_000);
+    },
+  );
+
+  withEnvironment({ PROCESSING_POLL_INTERVAL_MS: "0" }, () => {
+    assert.throws(() => loadConfig(), /PROCESSING_POLL_INTERVAL_MS must be a positive integer/);
+  });
+  withEnvironment({ PROCESSING_LEASE_DURATION_MS: "-1" }, () => {
+    assert.throws(() => loadConfig(), /PROCESSING_LEASE_DURATION_MS must be a positive integer/);
+  });
+  withEnvironment({ PROCESSING_RETRY_DELAY_MS: "100ms" }, () => {
+    assert.throws(() => loadConfig(), /PROCESSING_RETRY_DELAY_MS must be a positive integer/);
+  });
+});
+
 test("a relative object storage override stays rooted in the workspace", () => {
   withEnvironment({ OBJECT_STORAGE_ROOT: ".local/test-storage" }, () => {
     const root = loadConfig().objectStorageRoot;

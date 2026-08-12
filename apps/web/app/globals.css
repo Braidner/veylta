@@ -679,12 +679,54 @@ h3 {
   font-weight: 800;
 }
 
+.processing-state--active .processing-state__mark {
+  color: var(--color-primary);
+  background: oklch(0.95 0.018 250);
+}
+
+.processing-state--attention .processing-state__mark {
+  color: oklch(0.43 0.1 75);
+  background: oklch(0.965 0.027 75);
+}
+
+.processing-state--complete .processing-state__mark {
+  color: var(--color-success);
+  background: oklch(0.95 0.022 155);
+}
+
+.processing-state--failed .processing-state__mark {
+  color: var(--color-danger);
+  background: oklch(0.96 0.025 25);
+}
+
+.processing-state__content {
+  min-width: 0;
+}
+
 .processing-state p {
   max-width: 58ch;
   margin: 6px 0 0;
   color: var(--color-muted);
   font-size: 0.875rem;
   line-height: 1.6;
+}
+
+.processing-state p.processing-state__updated,
+.processing-state p.processing-state__refresh-note {
+  font-size: 0.8125rem;
+}
+
+.processing-state p.processing-state__refresh-note {
+  color: oklch(0.43 0.1 75);
+}
+
+.processing-state__retry {
+  margin-top: 16px;
+}
+
+.processing-state p.processing-state__error {
+  max-width: 58ch;
+  margin-top: 16px;
 }
 
 .integrity-details {

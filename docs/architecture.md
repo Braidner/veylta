@@ -5,7 +5,7 @@
 Veylta uses a small TypeScript monorepo with three deployable processes:
 a Next.js web application, a Fastify API, and a worker. Embedded SQLite through
 Node.js `node:sqlite` stores domain state, explicit schema migrations, audit
-events, and—beginning with Task 5—durable idempotent jobs. Original documents
+events, and durable idempotent jobs. Original documents
 live behind versioned `ObjectStorage/v1`; the first adapter uses a persistent
 local filesystem directory.
 
@@ -57,10 +57,11 @@ required. Shared code is extracted only when two real consumers need it.
 ### Web
 
 - Makes the active family member/profile unmistakable.
-- Through Task 4, supports family/profile creation, document upload, immutable
-  metadata, duplicate disclosure, and authorized source download.
-- Later tasks add real processing state, review, correction/confirmation, and
-  indicator history rather than simulating those stages in the client.
+- Supports family/profile creation, document upload, immutable metadata,
+  duplicate disclosure, authorized source download, and real processing status.
+- Polls the processing endpoint while work is active and presents only a
+  sanitized failure category plus an authorized retry action.
+- Task 6 adds fact decisions and correction/confirmation; Task 7 adds history.
 - Treats API errors and authorization failures as data, with no domain state
   transitions hidden in React components.
 
@@ -69,17 +70,22 @@ required. Shared code is extracted only when two real consumers need it.
 - Authenticates the actor and enforces tenant/profile authorization per request.
 - Validates request schemas, MIME/type, size, state transitions, and ownership.
 - Streams uploads through hashing and storage; never buffers a whole document.
-- Through Task 4, creates document/idempotency rows and audit events
-  transactionally. Task 5 adds durable jobs.
+- The checked-in fixture, tests, and parser format are synthetic-only. MIME,
+  signature, and size checks are not a detector for real medical content, so
+  local demo use remains explicitly unsuitable for real data.
+- Creates document/idempotency rows and audit events transactionally, then
+  creates a durable extraction job in the same upload transaction.
+- Exposes tenant-scoped processing status and extracted facts, and accepts a
+  retry only for a terminal failed job with `Origin` and `Idempotency-Key`.
 - Proxies local document reads after authorization.
 
 ### Worker
 
-- Through Task 4, exposes liveness/readiness and verifies SQLite access only.
-- Task 5 adds polling and claims for SQLite-backed jobs with bounded leases and
-  retry counters.
-- It then executes idempotent processing steps, records each attempt/error, and
+- Polls and claims SQLite-backed jobs with bounded leases and retry counters.
+- Executes idempotent processing steps, records each attempt/error, and
   extracts text and facts for the supported deterministic format.
+- Commits one payload-free audit outcome atomically with successful facts or a
+  retry/dead-letter transition; stdout contains only a sanitized outcome.
 - It does not create a confirmed `Observation`; only a user review can do that
   in the first slice.
 - Exhausted Task 5 work moves to a visible dead-letter state.
@@ -118,21 +124,19 @@ sequenceDiagram
   A->>S: putStream(staging key) while calculating SHA-256
   A->>D: BEGIN IMMEDIATE; recheck idempotency/blob
   A->>S: Finalize deterministic immutable tenant-scoped blob
-  A->>D: Insert document/version + audit + idempotency; COMMIT
-  A-->>B: 202 uploaded / processing not_started / possible duplicate
-  Note over W,D: Task 5 begins here
-  A->>D: Create idempotent extraction job
+  A->>D: Insert document/version + audit + idempotency + extraction job; COMMIT
+  A-->>B: 202 uploaded / processing queued / possible duplicate
   W->>D: Claim durable job lease
   W->>S: getStream(document version)
   W->>W: Extract text + deterministic lab-extraction/v1 parse
-  W->>D: Transaction: pages + extraction run + extracted facts
-  B->>A: Confirm or correct fact with idempotency key
-  A->>D: Transaction: observation + reference + review + audit
-  B->>A: GET indicator history and authorized source
+  W->>D: Transaction: pages + extraction run + immutable extracted facts
+  W-->>D: job succeeded; run awaiting_review
+  B->>A: GET processing / facts
+  Note over B,D: Fact decisions, observations, and history begin in Tasks 6–7
 ```
 
 The storage/database boundary cannot provide a single distributed transaction.
-Task 4 therefore stages and validates the stream, enters an SQLite
+The upload path therefore stages and validates the stream, enters an SQLite
 `BEGIN IMMEDIATE` write transaction, rechecks request/blob state, finalizes the
 stream under a deterministic tenant/checksum key, verifies immutable metadata,
 and only then inserts the document/version/idempotency/audit rows and commits. A
@@ -146,13 +150,16 @@ separate confirmed workflows and remain deferred.
 - Upload request idempotency is scoped by family and actor.
 - Duplicate detection uses `(family_id, sha256)` so one tenant cannot learn that
   another tenant already has identical bytes.
-- Each job has a stable deduplication key, step name, attempt count, lease,
-  retry schedule, and terminal `dead_letter` state.
+- Each job has a stable deduplication key, attempt count, bounded lease, retry
+  schedule, and terminal `dead_letter` state. A retry request is itself
+  immutable and idempotency-scoped to the family and actor.
 - Extraction output is unique by extraction run, parser version, source
   location, and fact key.
 - Observation creation is unique per reviewed extracted fact. A repeated
   confirmation returns the existing result or a deterministic conflict.
 - Medical rows and their audit event commit in one database transaction.
+- A terminal worker outcome is committed with its fact graph or failure
+  transition and is not duplicated by acknowledgement replay.
 - State transitions are compare-and-set operations; retries cannot move a newer
   state backward.
 
@@ -160,7 +167,7 @@ separate confirmed workflows and remain deferred.
 
 `ObjectStorage/v1` provides streaming writes, bounded verified reads, existence,
 metadata, size, content type, checksum, and an explicit deletion primitive
-reachable only from a separate confirmed deletion workflow. Task 4 streams
+reachable only from a separate confirmed deletion workflow. The upload path streams
 uploads, but a controlled read takes a checksum-verified in-memory snapshot of
 at most 5 MiB so the returned bytes are exactly the bytes that were verified.
 Original `DocumentVersion` content is immutable after finalization.
@@ -192,7 +199,9 @@ server-side `actorUserId`. Authorization then checks:
 Queries include the authorized family boundary at their root. Cross-family and
 otherwise inaccessible resource IDs return `404` to avoid existence disclosure.
 Audit records contain actor, tenant, action, resource identifier, result, and
-time, but not document bodies or medical values.
+time, but not document bodies or medical values. The worker's structured logs
+contain only its processing outcome and a sanitized error category; they omit
+job identifiers, filenames, text, values, and stack traces.
 
 ## Observability
 
