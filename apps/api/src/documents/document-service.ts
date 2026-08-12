@@ -19,14 +19,17 @@ import {
   type LabFactValidationIssue,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
+  MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
   type PatientProfileSummary,
   PROFILE_OVERVIEW_CONTRACT_VERSION,
   type ProfileOverviewResponse,
+  SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
   type SyntheticDocumentContentType,
+  type SyntheticEvidenceBundleManifest,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
@@ -45,6 +48,7 @@ import {
   ObjectStorageSizeLimitError,
   type StagedObjectMetadata,
 } from "../storage/object-storage.js";
+import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
 
 export class UnsupportedDocumentTypeError extends Error {}
 export class InvalidDocumentSignatureError extends Error {}
@@ -61,6 +65,11 @@ export interface DocumentContent {
   body: Readable;
   byteSize: number;
   contentType: SyntheticDocumentContentType;
+}
+
+export interface EvidenceBundleContent {
+  body: Readable;
+  byteSize: number;
 }
 
 export interface ObservationHistoryQuery {
@@ -89,6 +98,11 @@ export interface DocumentService {
     scope: { familyId: string; profileId: string; documentId: string },
     correlationId: string,
   ): Promise<DocumentContent>;
+  getEvidenceBundle(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<EvidenceBundleContent>;
   getDocument(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string },
@@ -343,6 +357,16 @@ interface ProfileOverviewQueueRow {
   pending_fact_count: number;
   needs_attention_fact_count: number;
 }
+
+interface EvidenceBundleProfileRow {
+  id: string;
+  family_id: string;
+  display_name: string;
+  kind: string;
+  created_at: string;
+}
+
+interface EvidenceBundleDocumentRow extends DocumentRow {}
 
 interface RetryRequestRow {
   document_version_id: string;
@@ -790,6 +814,48 @@ function profileOverviewReviewDocument(
   };
 }
 
+function evidenceBundleProfile(
+  row: EvidenceBundleProfileRow,
+): SyntheticEvidenceBundleManifest["profile"] {
+  if (row.kind !== "adult" && row.kind !== "dependent") {
+    throw new ObjectStorageIntegrityError("Stored export profile kind is invalid");
+  }
+  return {
+    id: requiredCanonicalUuid(row.id, "export profile"),
+    familyId: requiredCanonicalUuid(row.family_id, "export family"),
+    displayName: requiredBoundedString(row.display_name, 120, "export profile name"),
+    kind: row.kind,
+    createdAt: canonicalTimestamp(row.created_at),
+  };
+}
+
+function evidenceBundleExtension(contentType: SyntheticDocumentContentType): "pdf" | "png" | "jpg" {
+  switch (contentType) {
+    case "application/pdf":
+      return "pdf";
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+  }
+}
+
+function evidenceBundleDocument(
+  row: EvidenceBundleDocumentRow,
+): SyntheticEvidenceBundleManifest["documents"][number] {
+  const id = requiredCanonicalUuid(row.id, "export document");
+  return {
+    id,
+    versionId: requiredCanonicalUuid(row.document_version_id, "export document version"),
+    originalFilename: requiredBoundedString(row.original_filename, 255, "export filename"),
+    contentType: row.content_type,
+    byteSize: byteSize(row.byte_size),
+    sha256: canonicalChecksum(row.sha256, "export checksum"),
+    uploadedAt: canonicalTimestamp(row.uploaded_at),
+    archivePath: `documents/${id}.${evidenceBundleExtension(row.content_type)}`,
+  };
+}
+
 function summary(
   row: DocumentRow,
   processing: DocumentProcessingStatus = { state: "not_started" },
@@ -1126,6 +1192,14 @@ function requiredBoundedString(value: unknown, maximum: number, label: string): 
   const parsed = nullableBoundedString(value, maximum, label);
   if (parsed === null) throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
   return parsed;
+}
+
+function canonicalChecksum(value: unknown, label: string): string {
+  const checksum = requiredBoundedString(value, 64, label);
+  if (!/^[a-f0-9]{64}$/.test(checksum)) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return checksum;
 }
 
 function nullableCanonicalTimestamp(value: unknown, label: string): string | null {
@@ -2937,6 +3011,145 @@ export function createDocumentService(
           byteSize: stored.metadata.byteSize,
           contentType: row.content_type,
         };
+      });
+    },
+
+    async getEvidenceBundle(actor, requestedScope, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      return database.transaction(async (client) => {
+        await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
+        const profile = (
+          await client.query<EvidenceBundleProfileRow>(
+            `SELECT id, family_id, display_name, kind, created_at
+               FROM patient_profiles
+              WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
+            [scope.familyId, scope.profileId],
+          )
+        ).rows[0];
+        if (profile === undefined) throw new ResourceNotFoundError();
+        const documentRows = await client.query<EvidenceBundleDocumentRow>(
+          `SELECT d.id,
+                  d.family_id,
+                  d.patient_profile_id,
+                  d.status,
+                  d.original_filename,
+                  d.uploaded_at,
+                  d.duplicate_of_document_id,
+                  duplicate.patient_profile_id AS duplicate_profile_id,
+                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
+                  b.byte_size,
+                  b.sha256,
+                  b.storage_key,
+                  v.id AS document_version_id
+             FROM documents d
+             JOIN document_versions v
+               ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+             JOIN document_blobs b ON b.family_id = v.family_id AND b.id = v.blob_id
+             LEFT JOIN document_blob_content_types blob_type
+               ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
+             LEFT JOIN documents duplicate
+               ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            ORDER BY d.uploaded_at DESC, d.id DESC
+            LIMIT $3`,
+          [scope.familyId, scope.profileId, MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS],
+        );
+        const documents = documentRows.rows.map(evidenceBundleDocument);
+        const documentByVersion = new Map(
+          documents.map((document) => [document.versionId, document]),
+        );
+        const selectedVersionIds = documents.map((document) => document.versionId);
+        const observations: SyntheticEvidenceBundleManifest["observations"][number][] = [];
+        if (selectedVersionIds.length > 0) {
+          const selectedVersionPlaceholders = selectedVersionIds
+            .map((_, index) => `$${index + 3}`)
+            .join(", ");
+          const observationRows = await client.query<ObservationHistoryRow>(
+            `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.document_version_id IN (${selectedVersionPlaceholders})
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) ASC, o.id ASC`,
+            [scope.familyId, scope.profileId, ...selectedVersionIds],
+          );
+          for (const row of observationRows.rows) {
+            const item = observationHistoryItem(row, scope);
+            const document = documentByVersion.get(item.sourceDocument.versionId);
+            if (document === undefined) {
+              throw new ObjectStorageIntegrityError("Export observation source is inconsistent");
+            }
+            const { contentPath: _contentPath, ...sourceDocument } = item.sourceDocument;
+            observations.push({
+              ...item,
+              sourceDocument: { ...sourceDocument, archivePath: document.archivePath },
+            });
+          }
+        }
+        const manifest: SyntheticEvidenceBundleManifest = {
+          contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+          exportedAt: new Date().toISOString(),
+          profile: evidenceBundleProfile(profile),
+          documents,
+          observations,
+        };
+        const sources = await Promise.all(
+          documentRows.rows.map(async (row, index) => {
+            const document = documents[index];
+            if (document === undefined)
+              throw new ObjectStorageIntegrityError("Export document missing");
+            const expected = {
+              contentType: row.content_type,
+              byteSize: byteSize(row.byte_size),
+              sha256: canonicalChecksum(row.sha256, "export checksum"),
+            };
+            const stored = await storage.get(createObjectStorageKey(row.storage_key), expected);
+            if (!metadataMatches(stored.metadata, expected)) {
+              throw new ObjectStorageIntegrityError("Export storage metadata is inconsistent");
+            }
+            const chunks: Buffer[] = [];
+            for await (const chunk of stored.body) {
+              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            }
+            return { path: document.archivePath, bytes: Buffer.concat(chunks) };
+          }),
+        );
+        const archive = createSyntheticEvidenceBundle({ manifest, sources });
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.evidence_bundle.exported",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+        });
+        return { body: Readable.from([archive]), byteSize: archive.length };
       });
     },
   };

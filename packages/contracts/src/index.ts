@@ -9,6 +9,8 @@ export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
 export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
+export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
+export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
 export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
 /** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
 export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
@@ -341,6 +343,36 @@ export interface ProfileOverviewResponse {
   };
   /** Newest first; bounded to three explicitly confirmed source values. */
   readonly recentObservations: readonly ObservationHistoryItem[];
+}
+
+/**
+ * A local, owner/self-authorized portable bundle. It is deliberately limited
+ * to the checked-in synthetic demo boundary and is not a backup format.
+ */
+export interface SyntheticEvidenceBundleDocument {
+  readonly id: string;
+  readonly versionId: string;
+  readonly originalFilename: string;
+  readonly contentType: SyntheticDocumentContentType;
+  readonly byteSize: number;
+  readonly sha256: string;
+  readonly uploadedAt: string;
+  /** Safe bundle-relative path; never a storage key or a user filename. */
+  readonly archivePath: string;
+}
+
+export type SyntheticEvidenceBundleObservation = Omit<ObservationHistoryItem, "sourceDocument"> & {
+  readonly sourceDocument: Omit<ObservationHistoryItem["sourceDocument"], "contentPath"> & {
+    readonly archivePath: string;
+  };
+};
+
+export interface SyntheticEvidenceBundleManifest {
+  readonly contractVersion: typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION;
+  readonly exportedAt: string;
+  readonly profile: Omit<PatientProfileSummary, "access">;
+  readonly documents: readonly SyntheticEvidenceBundleDocument[];
+  readonly observations: readonly SyntheticEvidenceBundleObservation[];
 }
 
 export type LabFactValidationIssue = (typeof LAB_FACT_VALIDATION_ISSUES)[number];

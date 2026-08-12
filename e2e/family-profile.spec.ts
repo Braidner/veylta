@@ -26,6 +26,9 @@ async function registerDemoFamily(page: Page) {
   await expect(overview).toBeVisible();
   await expect(overview.getByText("Ничего не ожидает проверки.")).toBeVisible();
   await expect(overview.getByText("Исходников пока нет.")).toBeVisible();
+  await expect(
+    overview.getByRole("link", { name: "Скачать локальный пакет источников" }),
+  ).toBeVisible();
 
   return names;
 }

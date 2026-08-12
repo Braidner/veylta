@@ -89,6 +89,10 @@ The first slice proves one complete and safe path with synthetic data:
     recent immutable documents, sources awaiting explicit review, and explicitly
     confirmed values. It does not calculate a health score, clinical state,
     diagnosis, trend, or recommendation (Task 17, delivered).
+13. An owner or self-linked adult can download a bounded local TAR snapshot of
+    up to five latest synthetic source files and an immutable manifest. This is
+    deliberately not a backup, restore format, or production portability claim
+    (Task 18, delivered).
 
 The implemented synthetic record path reaches step 10, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
@@ -146,7 +150,7 @@ independently reviewed.
 
 Later slices may add a broader document classifier and
 extraction schema, evidence-backed summaries
-and safe recommendations, full role/consent management, export, and backup/restore. The local
+and safe recommendations, full role/consent management, production export, and backup/restore. The local
 demo now supports one-time adult and caregiver joins. An adult receives one
 self-linked profile; a caregiver receives no profile until an owner explicitly
 issues the one revocable `profile.read` grant. That grant is read-only and does
@@ -174,7 +178,7 @@ OCR, clinical trends, or summaries.
 - Any cloud OCR provider.
 - Any LLM extraction, analysis, explanation, nutrition, or training agent.
 - Automated trend summaries, recommendations, and red-flag UI.
-- Full role-management UX, FHIR R4 mapping/import/export, portable export,
+- Full role-management UX, FHIR R4 mapping/import/export, production portable export,
   controlled account deletion, and backup/restore workflows.
 - Broad laboratory integration, clinical diagnosis, prescriptions, treatment
   changes, clinic billing/scheduling, and native mobile apps.

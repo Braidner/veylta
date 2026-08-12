@@ -200,6 +200,23 @@ Commit intent: `feat: add source-first profile overview`
   documents and confirmed values linked to their source. It deliberately does
   not show a health score, clinical state, diagnosis, or recommendation.
 
+## Task 18 — Local synthetic evidence snapshot
+
+Commit intent: `feat: export local synthetic evidence bundle`
+
+- `synthetic-evidence-bundle/v1` produces a local TAR with a
+  manifest and no more than five latest immutable sources. Archive paths are
+  generated from document IDs; user filenames remain authorized manifest data,
+  never filesystem selectors or storage keys.
+- Each archive entry is rechecked against its stored SHA-256, byte size, and
+  content type. An inconsistency fails closed before a bundle is returned.
+- Only an owner or self-linked adult can read the route. A `profile.read` grant
+  is intentionally insufficient; inaccessible selectors remain non-disclosing.
+- The download is `private, no-store`, attachment-only, and payload-free
+  audited as `profile.evidence_bundle.exported` with the contract marker only.
+- This is a synthetic, bounded local snapshot — not a backup, restore format,
+  account export, or production portability feature.
+
 ## Task 9 — Comparable indicator catalog and chart
 
 Commit intent: `feat: compare compatible confirmed indicators`

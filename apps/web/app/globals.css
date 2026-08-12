@@ -528,11 +528,25 @@ h3 {
   font-size: clamp(1.6rem, 2.6vw, 2.25rem);
 }
 
-.profile-overview__heading > p:last-child {
+.profile-overview__description {
   margin: 12px 0 0;
   color: var(--color-muted);
   font-size: 0.9375rem;
   line-height: 1.65;
+}
+
+.profile-overview__export {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: baseline;
+  margin: 18px 0 0;
+  font-size: 0.8125rem;
+}
+
+.profile-overview__export span {
+  color: var(--color-muted);
+  line-height: 1.5;
 }
 
 .profile-overview__sections {

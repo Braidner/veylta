@@ -539,6 +539,34 @@ recommendation. Each successful read writes a payload-free
 `profile-overview/v1` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
+## Local synthetic evidence snapshot (Task 18)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/evidence-bundle`
+
+Returns an attachment-only `application/x-tar` archive named
+`veylta-synthetic-evidence.tar`. It is a safe `GET`, does not require `Origin`
+or an idempotency key, and returns `Cache-Control: private, no-store`,
+`X-Content-Type-Options: nosniff`, and a sandbox CSP.
+
+This route deliberately uses the stricter owner/self profile boundary. A
+read-only `profile.read` grant can open source history but cannot download a
+portable artifact. Inaccessible and cross-family selectors produce the same
+non-disclosing `404`.
+
+The TAR contains `manifest.json` and no more than five newest immutable source
+entries under generated `documents/{documentId}.{pdf|png|jpg}` paths. The
+manifest is `synthetic-evidence-bundle/v1`, records each source's immutable
+checksum and byte size, and replaces API source URLs with that archive path.
+Only confirmed observations whose source is among those selected five are
+included. The service verifies every bundled byte sequence against its expected
+checksum/size/content type before writing the archive. It never exposes a
+storage key or makes user filenames into archive paths.
+
+It is intentionally a local synthetic snapshot, not a backup, restore format,
+account export, or real-data portability claim. A successful request writes
+`profile.evidence_bundle.exported` with only
+`synthetic-evidence-bundle/v1` as payload-free audit metadata.
+
 ## Observation history and provenance (Task 7)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/observations`
@@ -761,5 +789,5 @@ No first-slice endpoint is defined for production authentication/account
 recovery, caregiver invitations, broader adult/caregiver consent capabilities
 beyond the delivered local `profile.read` grant, S3 configuration or presigned
 URLs, cloud OCR, LLM providers, summaries,
-recommendations, FHIR, exports, backups, or account deletion. Those contracts
+recommendations, FHIR, production exports, backups, or account deletion. Those contracts
 follow their own product, threat-model, and license review.

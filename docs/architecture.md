@@ -91,6 +91,9 @@ required. Shared code is extracted only when two real consumers need it.
 - Reads `profile-overview/v1` after the same profile authorization and presents
   only bounded source/document/review state; it does not synthesize a clinical
   profile, score, diagnosis, or recommendation.
+- Offers owner/self profile actors a direct local TAR download of no more than
+  five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
+  not a backup, restore, or production export workflow.
 - Presents an authorized catalog of known synthetic indicators and, only for an
   exact code/unit series, a compact numeric chart and deterministic source-value
   difference. The timeline and source links remain available beside the chart.
@@ -118,6 +121,10 @@ required. Shared code is extracted only when two real consumers need it.
   only bounded recent document, unresolved-review, and confirmed-observation
   projections. The `profile.overview.opened` audit event stores only the
   versioned contract marker, never a filename, value, fragment, or cursor.
+- Builds `synthetic-evidence-bundle/v1` only after the stricter owner/self
+  profile boundary. It reads at most five current immutable sources through the
+  expected checksum/size/content-type storage boundary, writes generated-safe
+  archive paths, and records only the versioned payload-free export audit event.
 - Reads `audit-log/v1` only after an active owner check on the requested family;
   it uses opaque keyset pagination, adds one payload-free access event per
   successful page, and does not expose audit metadata or correlation IDs.

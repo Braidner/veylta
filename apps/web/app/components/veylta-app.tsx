@@ -121,6 +121,10 @@ function profileOverviewPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/overview`;
 }
 
+function evidenceBundlePath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/evidence-bundle`;
+}
+
 function observationHistoryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/observations`;
 }
@@ -1134,6 +1138,7 @@ function familyAuditActionCopy(action: string): string {
     "document.facts.opened": "Открыты извлечённые значения",
     "document.processing.opened": "Открыт статус обработки",
     "document.uploaded": "Добавлен документ",
+    "profile.evidence_bundle.exported": "Скачан локальный пакет источников",
     "family.audit_log.opened": "Открыт журнал действий",
     "family.created": "Создана семья",
     "family.invitation.accepted": "Принято приглашение в семью",
@@ -1409,10 +1414,22 @@ function ProfileOverviewPanel({
       <div className="profile-overview__heading">
         <p className="context-line">Профиль · источники и решения</p>
         <h2 id="profile-overview-title">Обзор профиля</h2>
-        <p>
+        <p className="profile-overview__description">
           Здесь только состояние исходников, явные решения и подтверждённые значения. Медицинские
           выводы, оценки и рекомендации не формируются.
         </p>
+        {canWriteProfile ? (
+          <p className="profile-overview__export">
+            <a
+              className="text-link"
+              href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+              download
+            >
+              Скачать локальный пакет источников
+            </a>
+            <span>До 5 последних synthetic-источников; это не резервная копия.</span>
+          </p>
+        ) : null}
       </div>
 
       {state.kind === "loading" ? (

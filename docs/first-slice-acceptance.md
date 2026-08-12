@@ -1,7 +1,7 @@
 # First-slice acceptance evidence
 
 **Recorded:** 2026-08-12
-**Code baseline:** local Task 17 worktree atop `46de15e feat: add direct synthetic image ingestion`
+**Code baseline:** local Task 18 worktree atop `0f7642e feat: add source-first profile overview`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
@@ -41,6 +41,7 @@ fact and represents the user-confirmed source value separately.
 | Task 15 worktree | Local caregiver invitation with default-deny, explicit read-only profile sharing. |
 | `46de15e` | Direct synthetic PNG/JPEG ingestion, bounded local OCR, and immutable content-type provenance. |
 | Task 17 worktree | Authorized source-first profile overview with bounded document/review/observation projections. |
+| Task 18 worktree | Owner/self-only local synthetic evidence TAR with bounded, checksummed source bytes. |
 
 ## Fresh local verification
 
@@ -51,13 +52,13 @@ its output.
 | Command | Result |
 | --- | --- |
 | `pnpm license:check` | Passed: 8 license groups and 5 exact reviewed exceptions. |
-| `pnpm lint` | Passed: Biome checked 74 files; no fixes applied. |
+| `pnpm lint` | Passed: Biome checked 77 files; no fixes applied. |
 | `pnpm typecheck` | Passed: contracts, API, and web typechecks completed. |
-| `pnpm test` | Passed: 79 unit/contract tests (10 contracts, 69 API), 0 failed. |
+| `pnpm test` | Passed: 81 unit/contract tests (10 contracts, 71 API), 0 failed. |
 | `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0010_direct_image_documents`. |
-| `pnpm test:integration` | Passed: 37 isolated SQLite integration tests, 0 failed. |
+| `pnpm test:integration` | Passed: 41 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
-| `pnpm test:e2e` | Passed: 18 Chromium browser tests, 0 failed, including direct synthetic PNG upload/OCR/download. |
+| `pnpm test:e2e` | Passed: 18 Chromium browser tests, 0 failed, including direct synthetic PNG upload/OCR/download and owner/self evidence-bundle download. |
 | `git diff --check` | Passed after this evidence documentation was prepared. |
 
 `tsx` needs a local IPC socket on this host, so its test and migration commands
@@ -95,6 +96,7 @@ gates on every push and pull request.
 | A correction preserves raw extraction | Integration test `a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation`; browser review and history scenarios verify the displayed source distinction. |
 | Confirmed data appears in history with its source | Integration test `observation history is source-first, paginated, re-authorized, and audited without payloads`; browser test `profile history shows confirmed and corrected observations with their authorized sources only`. |
 | Profile landing view stays source-first | Integration tests cover bounded overview projections, payload-free audit, non-disclosing denial, and revocable read access; browser upload flow shows the review queue after returning to the profile. |
+| Local synthetic evidence snapshot is bounded and non-disclosing | Integration tests cover checksum-verified archive bytes, owner/self-only authorization, `profile.read` denial, five-source cap, cross-family denial, and payload-free audit; the browser flow downloads the TAR attachment. |
 | Caregiver remains default-deny until profile consent | Integration and browser tests `a caregiver joins without an implicit profile and reads only an explicitly shared profile` / `a caregiver starts without a profile and sees only a profile explicitly shared by the owner`; SQLite trigger regression prevents caregiver linkage to a personal profile. |
 | Failed writes leave no partial medical record | Integration test `an audit failure rolls back review decision, observation, reference range, and idempotency record together`; processing tests cover invalid-output rollback. |
 | Retry is idempotent and terminal failure remains visible | Job-service tests cover stable dedupe, exclusive lease/reclaim, replay-safe completion, retry schedule, and dead-letter exhaustion; processing integration covers a replay-safe terminal retry command. |
@@ -131,7 +133,7 @@ medical data. In particular, it does **not** deliver:
 - real-user onboarding, account recovery, production authentication, full
   adult/caregiver consent management, a public deployment, or a compliance
   certification;
-- multi-host/high-availability persistence, backup/restore, export, controlled
+- multi-host/high-availability persistence, backup/restore, production export, controlled
   deletion, or a production migration/operations plan for real records;
 - presigned delivery, cloud OCR, LLM extraction, LLM analysis, provider egress,
   or training on user data;

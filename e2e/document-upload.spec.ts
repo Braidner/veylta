@@ -82,6 +82,9 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
   ).toBeVisible();
   await expect(overview.getByText("2 значения ждут решения")).toBeVisible();
   await expect(overview.getByRole("link", { name: "Открыть проверку" })).toBeVisible();
+  const evidenceBundleDownload = page.waitForEvent("download");
+  await overview.getByRole("link", { name: "Скачать локальный пакет источников" }).click();
+  expect((await evidenceBundleDownload).suggestedFilename()).toBe("veylta-synthetic-evidence.tar");
   await uploadPdf(page, filename, bytes);
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);

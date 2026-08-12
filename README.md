@@ -40,9 +40,12 @@ The full first slice remains deliberately narrow:
 10. open a compact profile overview of bounded recent source documents, pending
     explicit reviews, and confirmed values, without a health score, diagnosis,
     or recommendation (Task 17, delivered).
+11. download a local TAR snapshot of at most five latest synthetic source files
+    plus their checksummed manifest, only as the owner/self profile actor (Task 18,
+    delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
-exchange, export/backup, and the rest of the full MVP are explicitly deferred.
+exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
 In the loopback-local synthetic demo, an owner can issue a one-time invitation
 to an adult or caregiver. An adult receives only a personal linked profile;
 a caregiver receives no profile at all until the owner explicitly grants the
@@ -146,7 +149,9 @@ The profile landing view is an authorized `profile-overview/v1` read: it shows
 at most three recent immutable sources, three pending-review sources, and three
 explicitly confirmed values with links back to the original document. It is an
 operational overview, never a clinical summary, and its successful read is
-payload-free audited. The demo never asks for a real email. The opaque session token exists only in
+payload-free audited. Its owner/self-only `synthetic-evidence-bundle/v1` download
+is a bounded TAR snapshot of five latest synthetic sources and their checksummed
+manifest, never a backup, restore format, or production portability claim. The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
 disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.
