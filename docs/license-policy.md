@@ -18,6 +18,7 @@ must resolve to one of these SPDX licenses:
 - `BSD-2-Clause`
 - `BSD-3-Clause`
 - `Apache-2.0`
+- `0BSD`
 
 Apache-2.0 and other permitted packages retain all required copyright,
 attribution, and NOTICE material. Required notices are recorded in a generated
@@ -29,17 +30,17 @@ documented review before merge. A transitive package is not exempt.
 
 The runnable scaffold records narrow exact-version reviews in
 `config/license-policy.json` and `THIRD_PARTY_NOTICES.md`. These currently cover
-permissive ISC utilities required transitively by Fastify, PostgreSQL, and
-Next.js, plus the CC-BY-4.0 `caniuse-lite` browser-compatibility dataset required
-by Next.js. They are not global allowlist additions; removal or a version change
-invalidates the exception. Optional `sharp`/libvips and `lightningcss` are
-explicitly excluded because their LGPL/MPL licenses cross the core boundary.
+permissive ISC utilities required transitively by Fastify and Next.js, plus the
+CC-BY-4.0 `caniuse-lite` browser-compatibility dataset required by Next.js. They
+are not global allowlist additions; removal or a version change invalidates the
+exception. Optional `sharp`/libvips and `lightningcss` are explicitly excluded
+because their LGPL/MPL licenses cross the core boundary.
 
-PostgreSQL is explicitly selected external infrastructure and is distributed
-under the permissive PostgreSQL License, not as copied project source. Its
-runtime/container provenance and attribution still belong in the third-party
-inventory. This narrow infrastructure decision is not a general license-list
-exception for packages.
+Local persistence uses the SQLite runtime bundled with Node.js through
+`node:sqlite`; it adds no npm dependency, container image, or vendored database
+source to the repository. Node.js and its bundled components retain their own
+upstream licenses and must be inventoried with the distributed runtime. They do
+not become MIT-licensed merely because the project source is MIT-licensed.
 
 ## Prohibited core inclusion
 
@@ -54,7 +55,7 @@ exception for packages.
 
 A copyleft system may be considered later only as a separately deployed external
 service through an API, after a specific legal and architectural review. It is
-not included in the default Compose stack or core distribution.
+not included in the default local runtime or core distribution.
 
 ## Provider and data boundary
 

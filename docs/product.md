@@ -68,10 +68,13 @@ The first slice proves one complete and safe path with synthetic data:
 9. Indicator history displays the confirmed value, unit/reference, and an
    authorized link to its source.
 
+The implementation currently reaches step 4. Document processing remains
+explicitly `not_started`; deterministic extraction begins in Task 5.
+
 ### Acceptance outcomes
 
-- One documented command sequence starts web, API, worker, PostgreSQL, and
-  persistent local document storage.
+- One documented command sequence starts web, API, worker, embedded SQLite, and
+  persistent local document storage without a database container.
 - Original bytes and SHA-256 remain stable across process restarts.
 - Same-family duplicate detection is visible and does not create another blob.
 - A different family cannot discover or retrieve the document, facts, or

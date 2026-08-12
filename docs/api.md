@@ -8,6 +8,8 @@ does not claim that the endpoints exist before their implementation task lands.
 - Base path: `/v1`
 - JSON for structured requests/responses; `multipart/form-data` only for upload.
 - Opaque identifiers; examples use placeholders, not real medical data.
+- Path identifiers use the canonical lower-case UUIDv4 form; alternate textual
+  forms fail request validation before domain or storage access.
 - RFC 3339 timestamps and explicit medically distinct date fields.
 - `Idempotency-Key` is required for upload and review/confirmation commands.
 - Browser identity is resolved server-side. A caller-supplied user ID is never
@@ -134,6 +136,10 @@ Headers:
 - multipart part `file`; the first slice accepts only a bounded PDF whose magic
   bytes and validated type agree.
 
+The idempotency key is 16–200 printable ASCII characters and only its SHA-256
+digest is stored. The current PDF limit is 5 MiB. The request must contain
+exactly one file part and no fields.
+
 The server streams the body through size/signature checks, SHA-256 hashing, and
 `ObjectStorage/v1`. A display filename is never used as a storage path.
 
@@ -143,45 +149,67 @@ Response `202`:
 {
   "document": {
     "id": "document_placeholder",
+    "familyId": "family_placeholder",
     "profileId": "profile_placeholder",
     "status": "uploaded",
+    "originalFilename": "synthetic-result.pdf",
     "contentType": "application/pdf",
     "byteSize": 1234,
     "sha256": "sha256_placeholder",
+    "uploadedAt": "2026-08-11T00:00:00Z",
     "duplicate": {
       "possible": false,
-      "documentId": null
+      "documentId": null,
+      "profileId": null
     },
     "processing": {
-      "state": "queued"
+      "state": "not_started"
     }
   }
 }
 ```
 
-On a same-family matching checksum, `possible` is true and `documentId` may
-refer to the authorized match. The server does not create another blob or delete
-either logical record automatically. A match in another family is never exposed.
+On a same-family matching checksum, `possible` is true and the document/profile
+IDs may refer to the authorized match. The server does not create another blob
+or delete either logical record automatically. A match in another family is
+never exposed. `not_started` is intentional: Task 4 has no processing job and
+does not claim that extraction was queued.
 
-Replaying the same key and equivalent request returns the original outcome.
-Reusing it for different bytes returns `409`.
+Replaying the same key and equivalent request returns the original outcome and
+records a separate payload-free replay audit event rather than another upload
+event.
+
+Reusing it for another profile or different bytes returns
+`409 IDEMPOTENCY_CONFLICT`.
+
+The local adapter first stages and validates the stream. The service then enters
+an SQLite `BEGIN IMMEDIATE` transaction, rechecks idempotency/blob state,
+atomically finalizes the deterministic tenant/checksum key, verifies storage,
+and inserts the document/version/idempotency/audit rows before commit. A rollback
+can therefore leave an inaccessible final orphan but never a document pointing
+to missing bytes; the same upload safely reuses that immutable object on retry.
+Automated orphan retention/cleanup remains deferred.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
 
 Returns immutable version metadata, possible same-family duplicate information,
-and real processing state. First-slice states cover implemented work only, for
-example `uploaded`, `security_check`, `text_extraction`,
-`structured_extraction`, `validation`, `awaiting_review`, `completed`, or
-`failed`. The API must not report OCR/summary stages that did not run.
+and real processing state. Task 4 exposes only `uploaded` with
+`processing.state = not_started`. Later tasks must migrate the database and
+public contract before exposing another state; the API must not report an OCR,
+extraction, review, summary, or failure stage that did not run. A future failed
+state includes a sanitized category and whether a safe retry is available,
+never a raw parser/database exception.
 
-A failed state includes a sanitized category and whether a safe retry is
-available, never a raw parser/database exception.
+Every successful metadata read records a payload-free audit event with actor,
+tenant, document, correlation ID, and time.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content`
 
 After fresh authorization, proxies the original PDF stream from local storage.
-Uses safe content headers and supports only bounded range behavior implemented by
-the adapter. It never exposes the local path. Access produces an audit event.
+Uses `Content-Disposition: attachment`, `nosniff`, a sandbox policy, and
+`private, no-store`. Range behavior is not implemented in Task 4. The response
+never exposes the local path. Authorized access produces a payload-free audit
+event.
 
 ## Review
 
@@ -278,9 +306,10 @@ comparability, trend analysis, or a meaningful graph from one point.
 
 ## Processing jobs
 
-Jobs are internal and not accepted from arbitrary browser payloads. The worker
-entry in `apps/api` polls PostgreSQL for known job kinds and versioned identifier-
-only payloads. User-visible retry, when added, is an authorized command against a
+Jobs are internal and not accepted from arbitrary browser payloads. Through
+Task 4 the worker entry in `apps/api` performs SQLite readiness checks only.
+Task 5 adds polling of SQLite for known job kinds and versioned identifier-only
+payloads. User-visible retry, when added, is an authorized command against a
 failed document and creates/requeues the stable job key; it cannot inject a job
 kind, storage key, URL, or parser/provider configuration.
 

@@ -2,14 +2,17 @@
 
 import type {
   DemoRegistrationResponse,
+  DocumentResponse,
+  DocumentSummary,
   PatientProfileSummary,
   ProfileCreateResponse,
   SessionFamily,
   SessionResponse,
 } from "@family-health/contracts";
+import { MAX_SYNTHETIC_PDF_BYTES } from "@family-health/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { SystemStatus } from "./system-status";
 
 const apiPrefix = "/health-api";
@@ -29,7 +32,11 @@ class ApiError extends Error {
 
 async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
-  if (init?.body !== undefined && !headers.has("content-type")) {
+  if (
+    init?.body !== undefined &&
+    !(init.body instanceof FormData) &&
+    !headers.has("content-type")
+  ) {
     headers.set("content-type", "application/json");
   }
   const response = await fetch(`${apiPrefix}${path}`, {
@@ -78,12 +85,21 @@ function profilePath(familyId: string, profileId: string): string {
   return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;
 }
 
+function documentPath(familyId: string, profileId: string, documentId: string): string {
+  return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
+}
+
 interface FamilyHealthAppProps {
   requestedFamilyId?: string;
   requestedProfileId?: string;
+  requestedDocumentId?: string;
 }
 
-export function FamilyHealthApp({ requestedFamilyId, requestedProfileId }: FamilyHealthAppProps) {
+export function FamilyHealthApp({
+  requestedFamilyId,
+  requestedProfileId,
+  requestedDocumentId,
+}: FamilyHealthAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
   const [action, setAction] = useState<"register" | "add-profile" | "logout" | null>(null);
@@ -256,6 +272,7 @@ export function FamilyHealthApp({ requestedFamilyId, requestedProfileId }: Famil
             session={session}
             family={context.family}
             profile={context.profile}
+            requestedDocumentId={requestedDocumentId}
             addProfileOpen={addProfileOpen}
             action={action}
             error={actionError}
@@ -434,6 +451,7 @@ interface ProfileWorkspaceProps {
   session: SessionResponse;
   family: SessionFamily;
   profile: PatientProfileSummary;
+  requestedDocumentId: string | undefined;
   addProfileOpen: boolean;
   action: "register" | "add-profile" | "logout" | null;
   error: string | null;
@@ -446,6 +464,7 @@ function ProfileWorkspace({
   session,
   family,
   profile,
+  requestedDocumentId,
   addProfileOpen,
   action,
   error,
@@ -453,8 +472,56 @@ function ProfileWorkspace({
   onAddProfileToggle,
   onAddProfile,
 }: ProfileWorkspaceProps) {
+  const router = useRouter();
   const profiles = session.families.flatMap((sessionFamily) => sessionFamily.profiles);
   const ownerCanAddProfile = family.role === "owner";
+  const [uploadPending, setUploadPending] = useState(false);
+  const [documentError, setDocumentError] = useState<string | null>(null);
+  const uploadAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+
+  async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setDocumentError(null);
+
+    const form = new FormData(event.currentTarget);
+    const file = form.get("file");
+    if (!(file instanceof File) || file.size === 0) {
+      setDocumentError("Выберите один синтетический PDF-файл.");
+      return;
+    }
+    if (file.size > MAX_SYNTHETIC_PDF_BYTES) {
+      setDocumentError("Файл больше 5 МБ. Выберите синтетический PDF меньшего размера.");
+      return;
+    }
+
+    const fingerprint = `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
+    if (uploadAttempt.current?.fingerprint !== fingerprint) {
+      uploadAttempt.current = { fingerprint, key: crypto.randomUUID() };
+    }
+
+    setUploadPending(true);
+    try {
+      const body = new FormData();
+      body.append("file", file, file.name);
+      const response = await apiRequest<DocumentResponse>(
+        `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": uploadAttempt.current.key },
+          body,
+        },
+      );
+      uploadAttempt.current = null;
+      router.push(documentPath(family.id, profile.id, response.document.id));
+    } catch (error) {
+      if (error instanceof ApiError && [400, 409, 413, 415].includes(error.status)) {
+        uploadAttempt.current = null;
+      }
+      setDocumentError(uploadErrorCopy(error));
+    } finally {
+      setUploadPending(false);
+    }
+  }
 
   return (
     <section className="profile-shell" aria-labelledby="profile-title">
@@ -493,75 +560,324 @@ function ProfileWorkspace({
         </p>
       ) : null}
 
-      <div className="empty-history">
-        <div className="empty-history__content">
-          <span className="source-mark" aria-hidden="true">
-            01
-          </span>
-          <p className="eyebrow">Профиль готов</p>
-          <h2>История пока пуста</h2>
-          <p>
-            Здесь появятся только подтверждённые значения со ссылкой на исходный документ. Загрузка
-            откроется в следующем узком шаге.
-          </p>
-          <p className="synthetic-reminder">
-            <strong>Не загружайте реальные данные.</strong> Текущий контур предназначен только для
-            синтетической проверки.
-          </p>
-        </div>
+      <div className="profile-workspace">
+        {requestedDocumentId === undefined ? (
+          <DocumentInbox
+            pending={uploadPending}
+            error={documentError}
+            onSubmit={handleDocumentUpload}
+          />
+        ) : (
+          <DocumentView family={family} profile={profile} documentId={requestedDocumentId} />
+        )}
 
-        {ownerCanAddProfile ? (
-          <div className="profile-addition">
-            <button
-              className="button button--secondary"
-              type="button"
-              aria-expanded={addProfileOpen}
-              aria-controls="add-profile-form"
-              onClick={onAddProfileToggle}
-            >
-              {addProfileOpen ? "Закрыть форму" : "Добавить профиль"}
-            </button>
+        <aside className="workspace-rail" aria-label="Действия с профилем">
+          {requestedDocumentId !== undefined ? (
+            <div className="rail-section">
+              <h2>Другой документ</h2>
+              <p>Вернитесь в профиль, чтобы загрузить следующий синтетический PDF.</p>
+              <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
+                Загрузить ещё документ
+              </Link>
+            </div>
+          ) : null}
 
-            {addProfileOpen ? (
-              <form
-                id="add-profile-form"
-                className="inline-form"
-                onSubmit={(event) => onAddProfile(event, family)}
+          {ownerCanAddProfile ? (
+            <div className="profile-addition">
+              <h2>Семейные профили</h2>
+              <p>Добавьте человека без отдельного входа, если это нужно для проверки сценария.</p>
+              <button
+                className="button button--secondary"
+                type="button"
+                aria-expanded={addProfileOpen}
+                aria-controls="add-profile-form"
+                onClick={onAddProfileToggle}
               >
-                <div>
-                  <h3>Зависимый профиль</h3>
-                  <p>Для ребёнка или другого человека без отдельного входа.</p>
-                </div>
-                <label className="field">
-                  <span>Имя нового профиля</span>
-                  <input
-                    name="profileName"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={120}
-                    autoComplete="off"
-                    placeholder="Например, Подопечный 01"
-                    disabled={action === "add-profile"}
-                  />
-                </label>
-                {error !== null ? (
-                  <p className="form-error" role="alert">
-                    {error}
-                  </p>
-                ) : null}
-                <button
-                  className="button button--primary"
-                  type="submit"
-                  disabled={action === "add-profile"}
+                {addProfileOpen ? "Закрыть форму" : "Добавить профиль"}
+              </button>
+
+              {addProfileOpen ? (
+                <form
+                  id="add-profile-form"
+                  className="inline-form"
+                  onSubmit={(event) => onAddProfile(event, family)}
                 >
-                  {action === "add-profile" ? "Создаём…" : "Создать профиль"}
-                </button>
-              </form>
-            ) : null}
-          </div>
-        ) : null}
+                  <div>
+                    <h3>Зависимый профиль</h3>
+                    <p>Для ребёнка или другого человека без отдельного входа.</p>
+                  </div>
+                  <label className="field">
+                    <span>Имя нового профиля</span>
+                    <input
+                      name="profileName"
+                      type="text"
+                      required
+                      minLength={1}
+                      maxLength={120}
+                      autoComplete="off"
+                      placeholder="Например, Подопечный 01"
+                      disabled={action === "add-profile"}
+                    />
+                  </label>
+                  {error !== null ? (
+                    <p className="form-error" role="alert">
+                      {error}
+                    </p>
+                  ) : null}
+                  <button
+                    className="button button--primary"
+                    type="submit"
+                    disabled={action === "add-profile"}
+                  >
+                    {action === "add-profile" ? "Создаём…" : "Создать профиль"}
+                  </button>
+                </form>
+              ) : null}
+            </div>
+          ) : null}
+        </aside>
       </div>
     </section>
   );
+}
+
+function uploadErrorCopy(error: unknown): string {
+  if (!(error instanceof ApiError)) {
+    return "Не удалось загрузить документ. Проверьте соединение и повторите попытку.";
+  }
+  if (error.status === 415) {
+    return "Файл не похож на поддерживаемый PDF. Проверьте его формат и содержимое.";
+  }
+  if (error.status === 413) {
+    return "Файл больше 5 МБ. Выберите синтетический PDF меньшего размера.";
+  }
+  if (error.status === 409) {
+    return "Эта попытка загрузки уже относится к другому файлу. Выберите файл заново.";
+  }
+  if (error.status === 400) {
+    return "Нужен ровно один синтетический PDF-файл.";
+  }
+  if (error.status === 401 || error.status === 404) {
+    return "Профиль недоступен. Обновите страницу и проверьте активный профиль.";
+  }
+  return "Не удалось загрузить документ. Данные не изменились; попробуйте ещё раз.";
+}
+
+interface DocumentInboxProps {
+  pending: boolean;
+  error: string | null;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}
+
+function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
+  return (
+    <section className="document-inbox" aria-labelledby="document-inbox-title">
+      <span className="source-mark" aria-hidden="true">
+        PDF
+      </span>
+      <p className="context-line">Исходные документы</p>
+      <h2 id="document-inbox-title">Добавьте синтетический PDF</h2>
+      <p className="document-intro">
+        Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Извлечение медицинских
+        значений на этом шаге не запускается.
+      </p>
+
+      <div className="synthetic-reminder" role="note">
+        <strong>Не загружайте реальные медицинские данные.</strong>
+        <span> Контур принимает только вымышленные PDF до 5 МБ.</span>
+      </div>
+
+      <form className="upload-form" onSubmit={onSubmit} aria-busy={pending}>
+        <label className="file-field">
+          <span>Синтетический PDF</span>
+          <input
+            name="file"
+            type="file"
+            accept="application/pdf,.pdf"
+            required
+            disabled={pending}
+            aria-describedby="pdf-requirements"
+          />
+        </label>
+        <p id="pdf-requirements" className="form-note">
+          Один PDF, не больше 5 МБ. Имя файла используется только для отображения.
+        </p>
+        {error !== null ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+        <button className="button button--primary" type="submit" disabled={pending}>
+          {pending ? "Сохраняем исходник…" : "Загрузить PDF"}
+        </button>
+        {pending ? (
+          <p className="form-note" role="status">
+            Загружаем и проверяем PDF…
+          </p>
+        ) : null}
+      </form>
+    </section>
+  );
+}
+
+type DocumentViewState =
+  | { kind: "loading" }
+  | { kind: "ready"; document: DocumentSummary }
+  | { kind: "missing" }
+  | { kind: "error" };
+
+interface DocumentViewProps {
+  family: SessionFamily;
+  profile: PatientProfileSummary;
+  documentId: string;
+}
+
+function DocumentView({ family, profile, documentId }: DocumentViewProps) {
+  const [state, setState] = useState<DocumentViewState>({ kind: "loading" });
+
+  useEffect(() => {
+    let active = true;
+    setState({ kind: "loading" });
+    apiRequest<DocumentResponse>(
+      `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(documentId)}`,
+    )
+      .then((response) => {
+        if (active) setState({ kind: "ready", document: response.document });
+      })
+      .catch((error) => {
+        if (!active) return;
+        setState(
+          error instanceof ApiError && error.status === 404
+            ? { kind: "missing" }
+            : { kind: "error" },
+        );
+      });
+    return () => {
+      active = false;
+    };
+  }, [documentId, family.id, profile.id]);
+
+  const title =
+    state.kind === "ready"
+      ? `${state.document.originalFilename} — ${profile.displayName} — Family Health`
+      : `${profile.displayName} — Family Health`;
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
+
+  if (state.kind === "loading") {
+    return (
+      <section className="document-view" aria-live="polite" aria-busy="true">
+        <p className="context-line">Открываем документ</p>
+        <div className="skeleton skeleton--document-title" aria-hidden="true" />
+        <div className="skeleton skeleton--copy" aria-hidden="true" />
+      </section>
+    );
+  }
+
+  if (state.kind === "missing") {
+    return (
+      <section className="document-view" aria-labelledby="missing-document-title">
+        <p className="context-line">Доступ ограничен</p>
+        <h2 id="missing-document-title">Документ недоступен</h2>
+        <p className="document-intro">
+          Документа нет или у этой сессии нет к нему доступа. Дополнительные сведения не
+          раскрываются.
+        </p>
+        <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
+          Вернуться в профиль
+        </Link>
+      </section>
+    );
+  }
+
+  if (state.kind === "error") {
+    return (
+      <section className="document-view" aria-labelledby="document-error-title">
+        <p className="context-line">Соединение прервано</p>
+        <h2 id="document-error-title">Статус документа не загрузился</h2>
+        <p className="document-intro">Исходник не изменился. Обновите страницу, чтобы повторить.</p>
+        <button
+          className="button button--secondary"
+          type="button"
+          onClick={() => location.reload()}
+        >
+          Обновить страницу
+        </button>
+      </section>
+    );
+  }
+
+  const { document: savedDocument } = state;
+  const contentUrl = `${apiPrefix}/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(savedDocument.id)}/content`;
+
+  return (
+    <section className="document-view" aria-labelledby="document-title">
+      <Link className="back-link" href={profilePath(family.id, profile.id)}>
+        ← {profile.displayName}
+      </Link>
+      <p className="document-state">
+        <span aria-hidden="true" />
+        Исходник сохранён без изменений
+      </p>
+      <h2 id="document-title">{savedDocument.originalFilename}</h2>
+      <p className="document-meta">
+        PDF · {formatBytes(savedDocument.byteSize)} · {formatDate(savedDocument.uploadedAt)}
+      </p>
+
+      {savedDocument.duplicate.possible ? (
+        <div className="duplicate-note" role="status">
+          <strong>Возможный дубликат</strong>
+          <p>SHA-256 совпадает с ранее загруженным документом этой семьи.</p>
+        </div>
+      ) : null}
+
+      <div className="document-actions">
+        <a className="button button--primary" href={contentUrl} download>
+          Скачать исходный PDF
+        </a>
+      </div>
+
+      <section className="processing-state" aria-labelledby="processing-title">
+        <div className="processing-state__mark" aria-hidden="true">
+          —
+        </div>
+        <div>
+          <h3 id="processing-title">Извлечение не запущено</h3>
+          <p>
+            Сейчас доступен только неизменный исходник. Значения для проверки появятся в следующем
+            вертикальном шаге.
+          </p>
+        </div>
+      </section>
+
+      <details className="integrity-details">
+        <summary>Проверить целостность</summary>
+        <dl>
+          <div>
+            <dt>SHA-256</dt>
+            <dd>
+              <code>{savedDocument.sha256}</code>
+            </dd>
+          </div>
+          <div>
+            <dt>Статус обработки</dt>
+            <dd>Не запущена</dd>
+          </div>
+        </dl>
+      </details>
+    </section>
+  );
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(bytes / 1024)} КБ`;
+}
+
+function formatDate(value: string): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    dateStyle: "long",
+    timeStyle: "short",
+  }).format(new Date(value));
 }

@@ -11,9 +11,9 @@ change treatment, or replace a clinician or an electronic health record.
 ## Project status
 
 The repository is implementing its first vertical slice. The completed local
-path currently creates an opaque synthetic demo session, one owner-scoped
-family, and multiple adult/dependent profiles. The full first slice remains
-deliberately narrow:
+path creates an opaque synthetic demo session, one owner-scoped family,
+adult/dependent profiles, and immutable synthetic PDF records in persistent
+local storage. The full first slice remains deliberately narrow:
 
 1. create a family and a patient profile;
 2. upload a fully synthetic Russian-language PDF with a text layer;
@@ -43,10 +43,11 @@ are complete.
 - TypeScript monorepo without an orchestration framework.
 - Next.js web application.
 - Fastify API and worker process.
-- PostgreSQL for domain state, audit events, explicit migrations, and durable
-  idempotent background jobs.
+- Embedded SQLite through Node.js `node:sqlite` for domain state, audit events,
+  explicit migrations, and—beginning with Task 5—durable idempotent jobs.
 - Versioned `ObjectStorage/v1` contract, initially backed by a persistent local
-  filesystem directory.
+  filesystem directory. Controlled reads take a bounded, checksum-verified
+  snapshot (the current PDF cap is 5 MiB) before returning bytes.
 - Versioned deterministic parser for the first synthetic document format; no
   LLM or OCR is used in the first slice.
 
@@ -56,22 +57,23 @@ and [slice plan](docs/slices.md).
 
 ## Local development
 
-Node.js 22.13+ and Docker are required. Start the current runnable foundation
-from the repository root:
+Node.js 22.16+ is required. No database server or container runtime is needed.
+Start the current runnable foundation from the repository root:
 
 ```sh
 corepack enable
 pnpm install --frozen-lockfile
-docker compose up -d postgres
 pnpm db:migrate
 pnpm dev
 ```
 
 The web app is available at <http://127.0.0.1:4300>, the API at
 <http://127.0.0.1:4301>, and worker health at <http://127.0.0.1:4302>. `pnpm dev`
-starts all three application processes; PostgreSQL data and `.local/storage`
-remain persistent across process restarts. Defaults match `docker-compose.yml`;
-copy `.env.example` only when a local override is needed.
+starts all three application processes. Structured state remains in
+`.local/family-health.sqlite` and document bytes remain below `.local/storage`
+across process restarts. The SQLite connection enables foreign keys, a bounded
+busy timeout, and WAL mode. Defaults match `.env.example`; copy it to `.env`
+only when a local override is needed.
 
 Install Chromium once before the browser test, then run the complete scaffold
 checks:
@@ -89,18 +91,25 @@ pnpm license:check
 
 `pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
 The browser flow at <http://127.0.0.1:4300> creates a local demo family and
-keeps the active profile explicit in both the route and heading. It never asks
-for a real email. The opaque session token exists only in an HttpOnly cookie;
-PostgreSQL stores its SHA-256 digest. Demo registration is disabled by default;
-the root `pnpm dev` and E2E runner enable it explicitly while both web and API
-bind only to loopback. `DEMO_REGISTRATION_ENABLED=true` is rejected with a
-non-loopback `API_HOST`, and state-changing requests require the exact configured
-`WEB_ORIGIN`.
+keeps the active profile explicit in both the route and heading. It accepts one
+synthetic PDF up to 5 MiB, streams it through signature/size/SHA-256 checks, and
+keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
+reported only inside the same family; it creates another logical document but
+not another blob. Source download is authorized again and returned as a safe
+attachment. Extraction is not started until Task 5.
+
+The demo never asks for a real email. The opaque session token exists only in
+an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
+disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
+while both web and API bind only to loopback.
+`DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
+state-changing requests require the exact configured `WEB_ORIGIN`.
 
 This demo session has no login or account recovery and is not production
-authentication. Integration tests reset the local synthetic family tables, so
-run them only against the documented development database. Document upload and
-all real medical data remain disabled until their later tested tasks land.
+authentication. Integration tests create isolated temporary SQLite databases;
+they do not reset the default development file. The upload path is also
+synthetic-only: real medical data remains out of scope until all production
+gates in the threat model are complete and independently reviewed.
 
 ## Safety and data policy
 

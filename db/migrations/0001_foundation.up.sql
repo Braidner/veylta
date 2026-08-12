@@ -1,7 +1,7 @@
 CREATE TABLE service_metadata (
-  key text PRIMARY KEY,
-  value text NOT NULL,
-  updated_at timestamptz NOT NULL DEFAULT now()
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
 INSERT INTO service_metadata (key, value)

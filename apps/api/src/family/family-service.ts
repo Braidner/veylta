@@ -9,7 +9,12 @@ import {
   type PatientProfileSummary,
   type SessionResponse,
 } from "@family-health/contracts";
-import type { Pool, PoolClient, QueryResult } from "pg";
+import {
+  type Database,
+  type DatabaseClient,
+  isSqliteConstraintError,
+  type QueryResult,
+} from "../database/pool.js";
 
 export class ResourceNotFoundError extends Error {}
 export class DomainConflictError extends Error {}
@@ -54,7 +59,7 @@ interface MembershipRow {
   id: string;
   display_name: string;
   role: FamilyRole;
-  created_at: Date;
+  created_at: string;
 }
 
 interface ProfileRow {
@@ -62,24 +67,15 @@ interface ProfileRow {
   family_id: string;
   display_name: string;
   kind: PatientProfileKind;
-  created_at: Date;
+  created_at: string;
 }
 
 interface Queryable {
-  query<T extends object>(queryText: string, values?: unknown[]): Promise<QueryResult<T>>;
+  query<T extends object>(queryText: string, values?: readonly unknown[]): Promise<QueryResult<T>>;
 }
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function isPostgresError(error: unknown, code: string): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === code
-  );
 }
 
 function profileSummary(row: ProfileRow): PatientProfileSummary {
@@ -88,26 +84,15 @@ function profileSummary(row: ProfileRow): PatientProfileSummary {
     familyId: row.family_id,
     displayName: row.display_name,
     kind: row.kind,
-    createdAt: row.created_at.toISOString(),
+    createdAt: new Date(row.created_at).toISOString(),
   };
 }
 
 async function inTransaction<T>(
-  pool: Pool,
-  operation: (client: PoolClient) => Promise<T>,
+  database: Database,
+  operation: (client: DatabaseClient) => Promise<T>,
 ): Promise<T> {
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-    const result = await operation(client);
-    await client.query("COMMIT");
-    return result;
-  } catch (error) {
-    await client.query("ROLLBACK");
-    throw error;
-  } finally {
-    client.release();
-  }
+  return database.transaction(operation);
 }
 
 function cookieValue(header: string | undefined, name: string): string | null {
@@ -163,8 +148,7 @@ async function requireOwner(
      FROM family_memberships
      WHERE family_id = $1
        AND user_id = $2
-       AND status = 'active'
-     FOR SHARE`,
+       AND status = 'active'`,
     [familyId, actor.userId],
   );
   if (access.rows[0]?.role !== "owner") throw new ResourceNotFoundError();
@@ -181,7 +165,10 @@ async function profilesFor(client: Queryable, familyId: string): Promise<Patient
   return result.rows.map(profileSummary);
 }
 
-export function createFamilyService(pool: Pool, options: FamilyServiceOptions): FamilyService {
+export function createFamilyService(
+  database: Database,
+  options: FamilyServiceOptions,
+): FamilyService {
   function sessionCookie(token: string, expiresAt: Date): string {
     const secure = options.secureCookie ? "; Secure" : "";
     return `${options.cookieName}=${token}; Path=/; HttpOnly; SameSite=Strict; Max-Age=${options.sessionTtlSeconds}; Expires=${expiresAt.toUTCString()}${secure}`;
@@ -192,15 +179,15 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
       const token = cookieValue(cookieHeader, options.cookieName);
       if (token === null || token.length < 32 || token.length > 128) return null;
       const tokenHash = sha256(token);
-      const result = await pool.query<{ user_id: string; display_name: string }>(
+      const result = await database.query<{ user_id: string; display_name: string }>(
         `SELECT s.user_id, u.display_name
          FROM sessions s
          JOIN users u ON u.id = s.user_id
          WHERE s.token_hash = $1
            AND s.revoked_at IS NULL
-           AND s.expires_at > now()
+           AND s.expires_at > $2
            AND u.disabled_at IS NULL`,
-        [tokenHash],
+        [tokenHash, new Date()],
       );
       const row = result.rows[0];
       return row === undefined
@@ -217,14 +204,14 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
       const displayName = input.displayName.trim();
       if (displayName.length === 0) throw new DomainValidationError();
       const now = new Date();
-      const created = await inTransaction(pool, async (client) => {
+      const created = await inTransaction(database, async (client) => {
         await requireOwner(client, actor, familyId);
         const row: ProfileRow = {
           id: randomUUID(),
           family_id: familyId,
           display_name: displayName,
           kind: input.kind,
-          created_at: now,
+          created_at: now.toISOString(),
         };
         await client.query(
           `INSERT INTO patient_profiles
@@ -247,14 +234,13 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
     },
 
     async getSession(actor) {
-      return inTransaction(pool, async (client) => {
+      return inTransaction(database, async (client) => {
         const memberships = await client.query<MembershipRow>(
           `SELECT f.id, f.display_name, m.role, f.created_at
            FROM family_memberships m
            JOIN families f ON f.id = m.family_id
            WHERE m.user_id = $1 AND m.status = 'active'
-           ORDER BY f.created_at, f.id
-           FOR SHARE OF m`,
+           ORDER BY f.created_at, f.id`,
           [actor.userId],
         );
         const families = [];
@@ -263,7 +249,7 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
             id: row.id,
             displayName: row.display_name,
             role: row.role,
-            createdAt: row.created_at.toISOString(),
+            createdAt: new Date(row.created_at).toISOString(),
             profiles: row.role === "owner" ? await profilesFor(client, row.id) : [],
           });
         }
@@ -276,20 +262,21 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
     },
 
     async listProfiles(actor, familyId) {
-      return inTransaction(pool, async (client) => {
+      return inTransaction(database, async (client) => {
         await requireOwner(client, actor, familyId);
         return profilesFor(client, familyId);
       });
     },
 
     async logout(actor, correlationId) {
-      await inTransaction(pool, async (client) => {
+      await inTransaction(database, async (client) => {
+        const revokedAt = new Date();
         const revoked = await client.query<{ user_id: string }>(
           `UPDATE sessions
-           SET revoked_at = now()
-           WHERE token_hash = $1 AND revoked_at IS NULL
+           SET revoked_at = $1
+           WHERE token_hash = $2 AND revoked_at IS NULL
            RETURNING user_id`,
-          [actor.tokenHash],
+          [revokedAt, actor.tokenHash],
         );
         if (revoked.rows[0] === undefined) return;
         await audit(client, {
@@ -299,7 +286,7 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
           resourceType: "User",
           resourceId: actor.userId,
           correlationId,
-          createdAt: new Date(),
+          createdAt: revokedAt,
         });
       });
     },
@@ -324,7 +311,7 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
       };
 
       try {
-        await inTransaction(pool, async (client) => {
+        await inTransaction(database, async (client) => {
           await client.query(
             "INSERT INTO users (id, display_name, created_at) VALUES ($1, $2, $3)",
             [ids.user, displayName, now],
@@ -380,7 +367,7 @@ export function createFamilyService(pool: Pool, options: FamilyServiceOptions): 
           });
         });
       } catch (error) {
-        if (isPostgresError(error, "23505")) {
+        if (isSqliteConstraintError(error, "unique")) {
           throw new DomainConflictError("Demo registration collided with an existing resource");
         }
         throw error;

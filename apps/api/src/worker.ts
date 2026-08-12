@@ -1,16 +1,16 @@
 import { createServer } from "node:http";
 import { type HealthStatus, HTTP_API_VERSION } from "@family-health/contracts";
 import { loadConfig } from "./config.js";
-import { createPool } from "./database/pool.js";
+import { createDatabase } from "./database/pool.js";
 
 const config = loadConfig();
-const pool = createPool(config.databaseUrl);
+const database = createDatabase(config.databasePath);
 let ready = false;
 let stopping = false;
 
 async function probe(): Promise<void> {
   try {
-    await pool.query("SELECT 1");
+    await database.check();
     ready = true;
   } catch {
     ready = false;
@@ -40,7 +40,7 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(timer);
   console.log(JSON.stringify({ service: "worker", signal, status: "stopping" }));
   server.close();
-  await pool.end();
+  await database.close();
 }
 
 process.once("SIGINT", () => void shutdown("SIGINT"));

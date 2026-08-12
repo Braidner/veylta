@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
+import { MAX_SYNTHETIC_PDF_BYTES } from "@family-health/contracts";
 
 function findProjectRoot(start: string): string {
   let candidate = start;
@@ -48,11 +49,20 @@ function isLoopback(host: string): boolean {
   return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
+function databasePath(): string {
+  const configured = process.env.DATABASE_PATH ?? ".local/family-health.sqlite";
+  if (configured === ":memory:") {
+    throw new Error("DATABASE_PATH must point to a persistent SQLite file");
+  }
+  return resolve(projectRoot, configured);
+}
+
 export interface RuntimeConfig {
   apiHost: string;
   apiPort: number;
-  databaseUrl: string;
+  databasePath: string;
   demoRegistrationEnabled: boolean;
+  maxPdfBytes: number;
   objectStorageRoot: string;
   secureSessionCookie: boolean;
   sessionTtlSeconds: number;
@@ -67,15 +77,18 @@ export function loadConfig(): RuntimeConfig {
   if (demoRegistrationEnabled && !isLoopback(apiHost)) {
     throw new Error("DEMO_REGISTRATION_ENABLED requires a loopback API_HOST");
   }
+  const maxPdfBytes = integer("MAX_PDF_BYTES", MAX_SYNTHETIC_PDF_BYTES);
+  if (maxPdfBytes > MAX_SYNTHETIC_PDF_BYTES) {
+    throw new Error(`MAX_PDF_BYTES must not exceed ${MAX_SYNTHETIC_PDF_BYTES}`);
+  }
 
   return {
     apiHost,
     apiPort: integer("API_PORT", 4301),
-    databaseUrl:
-      process.env.DATABASE_URL ??
-      "postgresql://family_health:family_health@127.0.0.1:5432/family_health",
+    databasePath: databasePath(),
     demoRegistrationEnabled,
-    objectStorageRoot: process.env.OBJECT_STORAGE_ROOT ?? resolve(projectRoot, ".local/storage"),
+    maxPdfBytes,
+    objectStorageRoot: resolve(projectRoot, process.env.OBJECT_STORAGE_ROOT ?? ".local/storage"),
     secureSessionCookie: boolean("SESSION_COOKIE_SECURE", false),
     sessionTtlSeconds: integer("SESSION_TTL_SECONDS", 2_592_000),
     webOrigin: origin("WEB_ORIGIN", "http://127.0.0.1:4300"),

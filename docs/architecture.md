@@ -3,10 +3,11 @@
 ## Decision summary
 
 Family Health uses a small TypeScript monorepo with three deployable processes:
-a Next.js web application, a Fastify API, and a worker. PostgreSQL stores domain
-state, explicit schema migrations, audit events, and durable idempotent jobs.
-Original documents live behind versioned `ObjectStorage/v1`; the first adapter
-uses a persistent local filesystem directory.
+a Next.js web application, a Fastify API, and a worker. Embedded SQLite through
+Node.js `node:sqlite` stores domain state, explicit schema migrations, audit
+events, and—beginning with Task 5—durable idempotent jobs. Original documents
+live behind versioned `ObjectStorage/v1`; the first adapter uses a persistent
+local filesystem directory.
 
 The first vertical slice uses a deterministic, versioned parser for one
 synthetic PDF format with a text layer. It does not invoke OCR, an LLM, or a
@@ -18,7 +19,7 @@ cloud service. S3, OCR, and LLM providers remain adapter-level future work.
 flowchart LR
   U["Authenticated user"] --> W["Next.js web"]
   W -->|"tenant-scoped /v1 API"| A["Fastify API"]
-  A --> P[("PostgreSQL")]
+  A --> P[("SQLite file")]
   A --> O["ObjectStorage/v1"]
   J["Worker"] --> P
   J --> O
@@ -43,7 +44,7 @@ apps/
 packages/
   contracts/ # versioned HTTP and extraction schemas
 db/
-  migrations/ # ordered, explicit PostgreSQL migrations and rollback notes
+  migrations/ # ordered, explicit SQLite migrations and rollback files
 docs/
 ```
 
@@ -56,8 +57,10 @@ required. Shared code is extracted only when two real consumers need it.
 ### Web
 
 - Makes the active family member/profile unmistakable.
-- Supports family/profile creation, document upload, processing state, review,
-  correction/confirmation, indicator history, and source inspection.
+- Through Task 4, supports family/profile creation, document upload, immutable
+  metadata, duplicate disclosure, and authorized source download.
+- Later tasks add real processing state, review, correction/confirmation, and
+  indicator history rather than simulating those stages in the client.
 - Treats API errors and authorization failures as data, with no domain state
   transitions hidden in React components.
 
@@ -66,25 +69,39 @@ required. Shared code is extracted only when two real consumers need it.
 - Authenticates the actor and enforces tenant/profile authorization per request.
 - Validates request schemas, MIME/type, size, state transitions, and ownership.
 - Streams uploads through hashing and storage; never buffers a whole document.
-- Creates domain rows, durable jobs, and audit events transactionally.
+- Through Task 4, creates document/idempotency rows and audit events
+  transactionally. Task 5 adds durable jobs.
 - Proxies local document reads after authorization.
 
 ### Worker
 
-- Claims Postgres-backed jobs with bounded leases and retry counters.
-- Executes idempotent processing steps and records each attempt and error.
-- Extracts text and facts for the supported deterministic format.
-- Does not create a confirmed `Observation`; only a user review can do that in
-  the first slice.
-- Moves exhausted work to a visible dead-letter state.
+- Through Task 4, exposes liveness/readiness and verifies SQLite access only.
+- Task 5 adds polling and claims for SQLite-backed jobs with bounded leases and
+  retry counters.
+- It then executes idempotent processing steps, records each attempt/error, and
+  extracts text and facts for the supported deterministic format.
+- It does not create a confirmed `Observation`; only a user review can do that
+  in the first slice.
+- Exhausted Task 5 work moves to a visible dead-letter state.
 
-### PostgreSQL
+### SQLite
 
-- Is the source of truth for structured state and job coordination.
+- Is the source of truth for structured state and, from Task 5, local job
+  coordination. The default file is `.local/family-health.sqlite`.
+- Uses the SQLite runtime built into Node.js; no database server, container, ORM,
+  or additional runtime package is required.
+- Enables foreign keys, a 5-second busy timeout, WAL journaling, and
+  `synchronous=NORMAL` on every application connection.
+- Serializes operations inside each process and starts write transactions with
+  `BEGIN IMMEDIATE`, so concurrent writers resolve before domain work proceeds.
 - Uses ordered SQL migrations checked into source control. Every migration is
   reversible or includes an explicit, tested rollback procedure.
 - Enforces tenant keys, foreign keys, uniqueness/idempotency keys, and valid
   status values in addition to application validation.
+
+This is a local, single-host boundary. Multi-host API/worker replicas and high
+write concurrency require a separate persistence ADR rather than placing the
+SQLite file on a shared network filesystem.
 
 ## Upload and extraction flow
 
@@ -93,15 +110,18 @@ sequenceDiagram
   participant B as Browser
   participant A as API
   participant S as ObjectStorage/v1 local
-  participant D as PostgreSQL
+  participant D as SQLite
   participant W as Worker
 
   B->>A: POST synthetic PDF for patient profile
   A->>A: Authenticate, authorize, validate limits/signature
   A->>S: putStream(staging key) while calculating SHA-256
-  A->>D: Transaction: document/version + audit + idempotent job
-  A->>S: Finalize immutable tenant-scoped blob
-  A-->>B: 202 document state / possible same-family duplicate
+  A->>D: BEGIN IMMEDIATE; recheck idempotency/blob
+  A->>S: Finalize deterministic immutable tenant-scoped blob
+  A->>D: Insert document/version + audit + idempotency; COMMIT
+  A-->>B: 202 uploaded / processing not_started / possible duplicate
+  Note over W,D: Task 5 begins here
+  A->>D: Create idempotent extraction job
   W->>D: Claim durable job lease
   W->>S: getStream(document version)
   W->>W: Extract text + deterministic lab-extraction/v1 parse
@@ -112,10 +132,14 @@ sequenceDiagram
 ```
 
 The storage/database boundary cannot provide a single distributed transaction.
-The implementation therefore uses staging/finalization and explicit recovery:
-an unreferenced staged blob is safe to garbage-collect after a retention window;
-a committed version whose finalization failed is visibly failed/retryable, not
-silently accepted. Automatic permanent deletion is not part of this workflow.
+Task 4 therefore stages and validates the stream, enters an SQLite
+`BEGIN IMMEDIATE` write transaction, rechecks request/blob state, finalizes the
+stream under a deterministic tenant/checksum key, verifies immutable metadata,
+and only then inserts the document/version/idempotency/audit rows and commits. A
+rollback can leave an inaccessible final orphan, but cannot leave committed
+metadata pointing to unavailable bytes. Retrying the same content safely reuses
+the final object. Automated orphan retention and permanent deletion are
+separate confirmed workflows and remain deferred.
 
 ## Idempotency and consistency
 
@@ -134,10 +158,12 @@ silently accepted. Automatic permanent deletion is not part of this workflow.
 
 ## Document storage boundary
 
-`ObjectStorage/v1` provides streaming write/read, existence, metadata, size,
-content type, checksum, and an explicit deletion primitive reachable only from
-a separate confirmed deletion workflow. Original `DocumentVersion` content is
-immutable after finalization.
+`ObjectStorage/v1` provides streaming writes, bounded verified reads, existence,
+metadata, size, content type, checksum, and an explicit deletion primitive
+reachable only from a separate confirmed deletion workflow. Task 4 streams
+uploads, but a controlled read takes a checksum-verified in-memory snapshot of
+at most 5 MiB so the returned bytes are exactly the bytes that were verified.
+Original `DocumentVersion` content is immutable after finalization.
 
 The local adapter stores opaque keys derived from trusted identifiers/checksum,
 not user filenames, under a configured persistent root. Reads cannot escape

@@ -49,3 +49,35 @@ test("demo registration is disabled unless it is explicitly configured", () => {
     },
   );
 });
+
+test("the configured PDF limit cannot exceed the contract and database boundary", () => {
+  withEnvironment({ MAX_PDF_BYTES: "5242881" }, () => {
+    assert.throws(() => loadConfig(), /MAX_PDF_BYTES must not exceed 5242880/);
+  });
+  withEnvironment({ MAX_PDF_BYTES: undefined }, () => {
+    assert.equal(loadConfig().maxPdfBytes, 5 * 1024 * 1024);
+  });
+});
+
+test("a relative object storage override stays rooted in the workspace", () => {
+  withEnvironment({ OBJECT_STORAGE_ROOT: ".local/test-storage" }, () => {
+    const root = loadConfig().objectStorageRoot;
+    assert.equal(root.endsWith("/.local/test-storage"), true);
+    assert.notEqual(root, ".local/test-storage");
+    assert.equal(root.startsWith("/"), true);
+  });
+});
+
+test("runtime configuration rejects an in-memory database", () => {
+  withEnvironment({ DATABASE_PATH: ":memory:" }, () => {
+    assert.throws(() => loadConfig(), /DATABASE_PATH must point to a persistent SQLite file/);
+  });
+});
+
+test("a relative database path stays rooted in the workspace", () => {
+  withEnvironment({ DATABASE_PATH: ".local/test.sqlite" }, () => {
+    const path = loadConfig().databasePath;
+    assert.equal(path.endsWith("/.local/test.sqlite"), true);
+    assert.equal(path.startsWith("/"), true);
+  });
+});

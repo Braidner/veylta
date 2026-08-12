@@ -29,6 +29,9 @@ erDiagram
   Family ||--o{ Document : owns
   PatientProfile ||--o{ Document : concerns
   Document ||--o{ DocumentVersion : versions
+  Family ||--o{ DocumentBlob : isolates
+  DocumentBlob ||--o{ DocumentVersion : stores
+  Document ||--|| DocumentUploadRequest : created_by
   DocumentVersion ||--o{ DocumentPage : pages
   DocumentVersion ||--o{ ExtractionRun : processed_by
   ExtractionRun ||--o{ ExtractedFact : emits
@@ -120,17 +123,35 @@ joining a family.
 - optional `duplicate_of_document_id`, scoped to the same family
 
 `Document` is the stable logical record. It does not contain blob bytes.
+Task 4 constrains `status` to `uploaded`; later tasks must migrate the constraint
+and public contract only when another processing state is actually implemented.
 
 ### DocumentVersion
 
 - `id`, `family_id`, `document_id`, `version_number`
-- `storage_contract_version`, `storage_key`
-- trusted `content_type`, `byte_size`, `sha256`
-- `storage_state`: `staging | available | failed`
 - `created_at`
 
-Unique `(document_id, version_number)`; original content is immutable after
-`available`. Same-family checksum lookup is indexed, not globally disclosed.
+Unique `(document_id, version_number)`; it references one tenant-matched
+`DocumentBlob` and never duplicates physical metadata.
+
+### DocumentBlob
+
+- `id`, `family_id`
+- `storage_contract_version`, opaque `storage_key`
+- trusted `content_type`, `byte_size`, `sha256`, `created_at`
+
+Unique `(family_id, sha256)` means same-family uploads share immutable physical
+bytes while different families never share a blob or a duplicate oracle. A row
+is inserted only after the final object is available and verified.
+
+### DocumentUploadRequest
+
+- `id`, `family_id`, `actor_user_id`, `patient_profile_id`, `document_id`
+- SHA-256 digest of the 16–200 character idempotency key
+- request checksum, content type, byte size, and `created_at`
+
+Unique `(family_id, actor_user_id, idempotency_key_hash)` makes equivalent
+replays return the first document and conflicting reuses fail deterministically.
 
 ### DocumentPage
 
@@ -251,15 +272,18 @@ units, secrets, session tokens, or signed URLs.
 
 ## First-slice physical subset
 
-Migrations should initially create only rows required by executable behavior:
+SQLite migrations through Task 4 create only rows required by executable
+behavior:
 
 - `User`, `Session`, `Family`, `FamilyMembership`, `PatientProfile`;
-- `Document`, `DocumentVersion`, `DocumentPage`;
-- `ExtractionRun`, `ExtractedFact`, `ProcessingJob`;
-- `Observation`, `ObservationReferenceRange`, `AuditEvent`.
+- `Document`, `DocumentBlob`, `DocumentVersion`, `DocumentUploadRequest`;
+- `AuditEvent`.
 
-Add `ConsentGrant`, `DiagnosticReport`, extended clinical entities, summaries,
-recommendations, and agent runs only with the slice that uses and tests them.
+Task 5 adds `DocumentPage`, `ExtractionRun`, `ExtractedFact`, and
+`ProcessingJob`. Task 6 adds `Observation`, `ObservationReferenceRange`, and any
+report/review rows its tested transaction needs. Add `ConsentGrant`, extended
+clinical entities, summaries, recommendations, and agent runs only with the
+slice that uses and tests them.
 
 ## Database invariants to test
 

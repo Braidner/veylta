@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildApp } from "./app.js";
 
-test("liveness does not depend on PostgreSQL", async () => {
+test("liveness does not depend on SQLite", async () => {
   const app = buildApp({
     logger: false,
     readiness: { check: async () => Promise.reject(new Error("database unavailable")) },
@@ -15,7 +15,7 @@ test("liveness does not depend on PostgreSQL", async () => {
   await app.close();
 });
 
-test("readiness fails closed when PostgreSQL is unavailable", async () => {
+test("readiness fails closed when SQLite is unavailable", async () => {
   const app = buildApp({
     logger: false,
     readiness: { check: async () => Promise.reject(new Error("database unavailable")) },

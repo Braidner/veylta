@@ -1,0 +1,283 @@
+import { DOCUMENT_CONTRACT_VERSION } from "@family-health/contracts";
+import multipart from "@fastify/multipart";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import type { FamilyService } from "../family/family-service.js";
+import {
+  canonicalUuidSchema,
+  errorEnvelope,
+  privateResponse,
+  requireActor,
+  requireTrustedOrigin,
+  sendDomainError,
+} from "../http/route-helpers.js";
+import {
+  type DocumentService,
+  IdempotencyConflictError,
+  InvalidPdfSignatureError,
+  type StagedDocument,
+  UnsupportedDocumentTypeError,
+  UploadTooLargeError,
+} from "./document-service.js";
+
+interface ProfileParams {
+  familyId: string;
+  profileId: string;
+}
+
+interface DocumentParams extends ProfileParams {
+  documentId: string;
+}
+
+export interface DocumentRouteOptions {
+  allowedMutationOrigins: readonly string[];
+  maxPdfBytes: number;
+}
+
+class InvalidMultipartUploadError extends Error {}
+class InvalidIdempotencyKeyError extends Error {}
+
+const profileParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["familyId", "profileId"],
+  properties: {
+    familyId: canonicalUuidSchema,
+    profileId: canonicalUuidSchema,
+  },
+} as const;
+
+const documentParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["familyId", "profileId", "documentId"],
+  properties: {
+    familyId: canonicalUuidSchema,
+    profileId: canonicalUuidSchema,
+    documentId: canonicalUuidSchema,
+  },
+} as const;
+
+function idempotencyKey(request: FastifyRequest): string {
+  const value = request.headers["idempotency-key"];
+  if (typeof value !== "string" || !/^[\x21-\x7e]{16,200}$/.test(value)) {
+    throw new InvalidIdempotencyKeyError();
+  }
+  return value;
+}
+
+async function drain(stream: NodeJS.ReadableStream): Promise<void> {
+  for await (const _chunk of stream) {
+    // Deliberately discard invalid multipart content without buffering it.
+  }
+}
+
+function isMultipartLimitError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    ["FST_FILES_LIMIT", "FST_FIELDS_LIMIT", "FST_PARTS_LIMIT"].includes(
+      String((error as { code: unknown }).code),
+    )
+  );
+}
+
+function isMultipartParseError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (("code" in error &&
+      ["FST_INVALID_MULTIPART_CONTENT_TYPE", "FST_MULTIPART_INVALID_MEDIA_TYPE"].includes(
+        String((error as { code: unknown }).code),
+      )) ||
+      error.name === "MultipartError" ||
+      /^Unexpected end of (form|multipart data)$/.test(error.message))
+  );
+}
+
+function sendDocumentError(error: unknown, request: FastifyRequest, reply: FastifyReply): boolean {
+  if (error instanceof UnsupportedDocumentTypeError) {
+    reply
+      .code(415)
+      .send(
+        errorEnvelope(
+          "UNSUPPORTED_DOCUMENT_TYPE",
+          "Only a synthetic PDF is supported.",
+          request.id,
+        ),
+      );
+    return true;
+  }
+  if (error instanceof InvalidPdfSignatureError) {
+    reply
+      .code(415)
+      .send(
+        errorEnvelope(
+          "INVALID_PDF_SIGNATURE",
+          "The file content is not a supported PDF.",
+          request.id,
+        ),
+      );
+    return true;
+  }
+  if (error instanceof UploadTooLargeError) {
+    reply
+      .code(413)
+      .send(errorEnvelope("UPLOAD_TOO_LARGE", "The PDF exceeds the upload limit.", request.id));
+    return true;
+  }
+  if (error instanceof IdempotencyConflictError) {
+    reply
+      .code(409)
+      .send(
+        errorEnvelope(
+          "IDEMPOTENCY_CONFLICT",
+          "The idempotency key was already used for another upload.",
+          request.id,
+        ),
+      );
+    return true;
+  }
+  if (error instanceof InvalidIdempotencyKeyError) {
+    reply
+      .code(400)
+      .send(
+        errorEnvelope(
+          "INVALID_IDEMPOTENCY_KEY",
+          "A valid Idempotency-Key header is required.",
+          request.id,
+        ),
+      );
+    return true;
+  }
+  if (
+    error instanceof InvalidMultipartUploadError ||
+    isMultipartLimitError(error) ||
+    isMultipartParseError(error)
+  ) {
+    reply
+      .code(400)
+      .send(
+        errorEnvelope(
+          "INVALID_MULTIPART_UPLOAD",
+          "Exactly one PDF file part is required.",
+          request.id,
+        ),
+      );
+    return true;
+  }
+  return sendDomainError(error, request, reply);
+}
+
+export function registerDocumentRoutes(
+  app: FastifyInstance,
+  familyService: FamilyService,
+  service: DocumentService,
+  options: DocumentRouteOptions,
+): void {
+  const allowedOrigins = new Set(options.allowedMutationOrigins);
+
+  app.register(async (scope) => {
+    await scope.register(multipart, {
+      attachFieldsToBody: false,
+      throwFileSizeLimit: false,
+      limits: {
+        files: 2,
+        fields: 1,
+        parts: 3,
+        fileSize: options.maxPdfBytes,
+        fieldNameSize: 32,
+        headerPairs: 32,
+      },
+    });
+
+    scope.post<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents",
+      {
+        bodyLimit: options.maxPdfBytes + 128 * 1024,
+        schema: { params: profileParamsSchema },
+      },
+      async (request, reply) => {
+        privateResponse(reply);
+        let staged: StagedDocument | null = null;
+        try {
+          if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+          const actor = await requireActor(familyService, request, reply);
+          if (actor === null) return;
+          const commandKey = idempotencyKey(request);
+          await service.requireProfileAccess(actor, request.params);
+
+          let invalidShape = false;
+          for await (const part of request.parts()) {
+            if (part.type !== "file") {
+              invalidShape = true;
+              continue;
+            }
+            if (invalidShape || staged !== null || part.fieldname !== "file") {
+              invalidShape = true;
+              await drain(part.file);
+              continue;
+            }
+            staged = await service.stagePdf({
+              body: part.file,
+              contentType: part.mimetype,
+              filename: part.filename,
+            });
+            if (part.file.truncated) throw new UploadTooLargeError();
+          }
+          if (staged === null || invalidShape) throw new InvalidMultipartUploadError();
+
+          const document = await service.acceptUpload(
+            actor,
+            request.params,
+            staged,
+            commandKey,
+            request.id,
+          );
+          reply.code(202).send({ contractVersion: DOCUMENT_CONTRACT_VERSION, document });
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        } finally {
+          if (staged !== null) await service.discardStaged(staged).catch(() => undefined);
+        }
+      },
+    );
+
+    scope.get<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          const document = await service.getDocument(actor, request.params, request.id);
+          reply.send({ contractVersion: DOCUMENT_CONTRACT_VERSION, document });
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/content",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          const content = await service.getContent(actor, request.params, request.id);
+          return reply
+            .type("application/pdf")
+            .header("content-length", content.byteSize)
+            .header("content-disposition", 'attachment; filename="document.pdf"')
+            .header("x-content-type-options", "nosniff")
+            .header("cache-control", "private, no-store")
+            .header("content-security-policy", "sandbox")
+            .send(content.body);
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+  });
+}

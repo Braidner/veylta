@@ -15,7 +15,8 @@ not claims about current implementation or regulatory compliance.
 - Authentication credentials, sessions, provider credentials, and encryption
   keys.
 - Audit history, processing/job history, backups, and exports.
-- Availability and integrity of the API, worker, PostgreSQL, and object storage.
+- Availability and integrity of the API, worker, local SQLite database, and
+  object storage.
 
 Medical data is highly sensitive. A resource identifier, checksum, filename,
 processing state, or fact that a document exists can itself be sensitive.
@@ -23,7 +24,7 @@ processing state, or fact that a document exists can itself be sensitive.
 ## Trust boundaries
 
 1. Browser to Fastify API over an authenticated transport.
-2. API/worker to PostgreSQL.
+2. API/worker to the configured local SQLite database file.
 3. API/worker to `ObjectStorage/v1` and the configured local storage root.
 4. Untrusted document bytes/text to security checks and deterministic parsing.
 5. Future deployment to S3, OCR, or LLM provider networks.
@@ -59,7 +60,7 @@ the family's trust boundary merely because it exposes an API.
 | Path traversal/symlink race | Read/write outside storage root | Ignore user filename for keys; canonical root containment; safe permissions; atomic creation; reject links | First slice |
 | Upload memory/disk exhaustion | Denial of service | Stream with byte limit; quotas/rate limits; staging cleanup; disk monitoring; reject early | Stream/size in first slice; quotas before real data |
 | Malware in accepted document | Harm when viewed/exported | Quarantine/security-check state, safe content disposition/viewer, production malware strategy isolated behind reviewed boundary | Strategy and implementation before real data |
-| Partial upload/database failure | Orphaned blob or document that cannot be read | Staging/finalization protocol; visible failed state; bounded orphan cleanup; never claim success early | First slice |
+| Partial upload/database failure | Orphaned blob or document that cannot be read | Stage and atomically finalize before metadata commit; deterministic retry recovery; never claim success early; add bounded orphan cleanup before real data | Retry-safe path in first slice; cleanup before real data |
 | Original mutation | Loss of evidence/provenance | Immutable version keys; stored SHA-256 and size; verify checksum on controlled reads/backup restore | First slice |
 | Job retry/race | Duplicate or contradictory medical records | Stable job dedupe key; leased claims; compare-and-set transitions; DB uniqueness; transactional confirmation | First slice |
 | Poisoned extraction | Incorrect value presented as truth | `ExtractedFact` is untrusted and separate from `Observation`; strict schema; confidence/review gate; preserve raw value | First slice |

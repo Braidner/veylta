@@ -11,23 +11,9 @@ jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 25
-    services:
-      postgres:
-        image: postgres:17-alpine
-        env:
-          POSTGRES_DB: family_health
-          POSTGRES_USER: family_health
-          POSTGRES_PASSWORD: family_health
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U family_health -d family_health"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
     env:
       CI: true
-      DATABASE_URL: postgresql://family_health:family_health@127.0.0.1:5432/family_health
+      DATABASE_PATH: .local/ci.sqlite
       OBJECT_STORAGE_ROOT: .local/storage
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

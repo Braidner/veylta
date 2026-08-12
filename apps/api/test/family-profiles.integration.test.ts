@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { FastifyInstance } from "fastify";
-import type { Pool } from "pg";
 import { buildApp } from "../src/app.js";
-import { loadConfig } from "../src/config.js";
 import { migrateUp } from "../src/database/migrations.js";
-import { createPool } from "../src/database/pool.js";
+import { createDatabase, type Database, isSqliteConstraintError } from "../src/database/pool.js";
 import { createFamilyService } from "../src/family/family-service.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
 
@@ -35,15 +36,11 @@ function errorShape(response: { json(): unknown; statusCode: number }): unknown 
   };
 }
 
-function isPostgresCode(error: unknown, code: string): boolean {
-  return typeof error === "object" && error !== null && "code" in error && error.code === code;
-}
-
-function createTestApp(pool: Pool, demoRegistrationEnabled = true): FastifyInstance {
+function createTestApp(database: Database, demoRegistrationEnabled = true): FastifyInstance {
   const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
   registerFamilyRoutes(
     app,
-    createFamilyService(pool, {
+    createFamilyService(database, {
       cookieName: "fh_session",
       secureCookie: false,
       sessionTtlSeconds: 3_600,
@@ -51,6 +48,32 @@ function createTestApp(pool: Pool, demoRegistrationEnabled = true): FastifyInsta
     { allowedMutationOrigins: [webOrigin], demoRegistrationEnabled },
   );
   return app;
+}
+
+async function createTestContext(demoRegistrationEnabled = true): Promise<{
+  app: FastifyInstance;
+  close(): Promise<void>;
+  database: Database;
+}> {
+  const root = await mkdtemp(join(tmpdir(), "family-health-family-test-"));
+  const database = createDatabase(join(root, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const app = createTestApp(database, demoRegistrationEnabled);
+    return {
+      app,
+      database,
+      async close() {
+        await app.close();
+        await database.close();
+        await rm(root, { force: true, recursive: true });
+      },
+    };
+  } catch (error) {
+    await database.close();
+    await rm(root, { force: true, recursive: true });
+    throw error;
+  }
 }
 
 async function register(
@@ -66,10 +89,8 @@ async function register(
 }
 
 test("demo registration is atomic, strict, and stores only a session hash", async () => {
-  const pool = createPool(loadConfig().databaseUrl);
-  await migrateUp(pool);
-  await pool.query("TRUNCATE users CASCADE");
-  const app = createTestApp(pool);
+  const context = await createTestContext();
+  const { app, database } = context;
 
   try {
     const response = await register(app, {
@@ -91,17 +112,17 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
     assert.match(cookie.header, /; Expires=/);
     assert.doesNotMatch(cookie.header, /; Secure/);
 
-    const stored = await pool.query<{ token_hash: string }>("SELECT token_hash FROM sessions");
+    const stored = await database.query<{ token_hash: string }>("SELECT token_hash FROM sessions");
     assert.match(stored.rows[0]?.token_hash ?? "", /^[0-9a-f]{64}$/);
     assert.equal(cookie.header.includes(stored.rows[0]?.token_hash ?? ""), false);
 
-    const counts = await pool.query<{
-      audits: string;
-      families: string;
-      memberships: string;
-      profiles: string;
-      sessions: string;
-      users: string;
+    const counts = await database.query<{
+      audits: number;
+      families: number;
+      memberships: number;
+      profiles: number;
+      sessions: number;
+      users: number;
     }>(`SELECT
          (SELECT count(*) FROM users) AS users,
          (SELECT count(*) FROM sessions) AS sessions,
@@ -109,25 +130,33 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
          (SELECT count(*) FROM family_memberships) AS memberships,
          (SELECT count(*) FROM patient_profiles) AS profiles,
          (SELECT count(*) FROM audit_events) AS audits`);
-    assert.deepEqual(counts.rows[0], {
-      audits: "3",
-      families: "1",
-      memberships: "1",
-      profiles: "1",
-      sessions: "1",
-      users: "1",
-    });
+    assert.deepEqual(
+      { ...counts.rows[0] },
+      {
+        audits: 3,
+        families: 1,
+        memberships: 1,
+        profiles: 1,
+        sessions: 1,
+        users: 1,
+      },
+    );
 
-    const audit = await pool.query<{ action: string; metadata: Record<string, unknown> }>(
+    const audit = await database.query<{ action: string; metadata: string }>(
       "SELECT action, metadata FROM audit_events ORDER BY action",
     );
     assert.deepEqual(
       audit.rows.map(({ action }) => action),
       ["demo.session.created", "family.created", "profile.created"],
     );
+    const metadata = audit.rows.map((row) => JSON.parse(row.metadata));
     assert.equal(
-      audit.rows.some(({ metadata }) => JSON.stringify(metadata).includes("Synthetic")),
+      metadata.some((value) => JSON.stringify(value).includes("Synthetic")),
       false,
+    );
+    assert.equal(
+      metadata.every((value) => value.contractVersion === "family-profile/v1"),
+      true,
     );
 
     const unknownField = await app.inject({
@@ -169,7 +198,7 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
     assert.equal(missingOrigin.statusCode, 403);
     assert.equal(missingOrigin.json().error.code, "ORIGIN_NOT_ALLOWED");
 
-    const disabledApp = createTestApp(pool, false);
+    const disabledApp = createTestApp(database, false);
     const disabledDemo = await disabledApp.inject({
       method: "POST",
       url: "/v1/demo/registrations",
@@ -191,27 +220,23 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
     });
     assert.equal(spoofedActor.statusCode, 401);
 
-    const unchanged = await pool.query<{ count: string }>("SELECT count(*) FROM users");
-    assert.equal(unchanged.rows[0]?.count, "1");
+    const unchanged = await database.query<{ count: number }>(
+      "SELECT count(*) AS count FROM users",
+    );
+    assert.equal(unchanged.rows[0]?.count, 1);
   } finally {
-    await app.close();
-    await pool.end();
+    await context.close();
   }
 });
 
 test("registration failure rolls back user, tenant, profile, session, and audit", async () => {
-  const pool = createPool(loadConfig().databaseUrl);
-  await migrateUp(pool);
-  await pool.query("TRUNCATE users CASCADE");
-  const app = createTestApp(pool);
-  await pool.query(`CREATE FUNCTION reject_test_profile() RETURNS trigger AS $$
-    BEGIN
-      RAISE EXCEPTION 'synthetic transaction failure';
-    END;
-  $$ LANGUAGE plpgsql`);
-  await pool.query(`CREATE TRIGGER reject_test_profile
+  const context = await createTestContext();
+  const { app, database } = context;
+  await database.exec(`CREATE TRIGGER reject_test_profile
     BEFORE INSERT ON patient_profiles
-    FOR EACH ROW EXECUTE FUNCTION reject_test_profile()`);
+    BEGIN
+      SELECT RAISE(ABORT, 'synthetic transaction failure');
+    END`);
 
   try {
     const response = await register(app, {
@@ -226,38 +251,37 @@ test("registration failure rolls back user, tenant, profile, session, and audit"
       message: "The request could not be completed.",
       details: [],
     });
-    const counts = await pool.query<{
-      audits: string;
-      families: string;
-      profiles: string;
-      sessions: string;
-      users: string;
+    const counts = await database.query<{
+      audits: number;
+      families: number;
+      profiles: number;
+      sessions: number;
+      users: number;
     }>(`SELECT
          (SELECT count(*) FROM users) AS users,
          (SELECT count(*) FROM sessions) AS sessions,
          (SELECT count(*) FROM families) AS families,
          (SELECT count(*) FROM patient_profiles) AS profiles,
          (SELECT count(*) FROM audit_events) AS audits`);
-    assert.deepEqual(counts.rows[0], {
-      audits: "0",
-      families: "0",
-      profiles: "0",
-      sessions: "0",
-      users: "0",
-    });
+    assert.deepEqual(
+      { ...counts.rows[0] },
+      {
+        audits: 0,
+        families: 0,
+        profiles: 0,
+        sessions: 0,
+        users: 0,
+      },
+    );
   } finally {
-    await pool.query("DROP TRIGGER reject_test_profile ON patient_profiles");
-    await pool.query("DROP FUNCTION reject_test_profile()");
-    await app.close();
-    await pool.end();
+    await database.exec("DROP TRIGGER reject_test_profile");
+    await context.close();
   }
 });
 
 test("profile reads and writes are owner-only and cross-family requests do not disclose", async () => {
-  const pool = createPool(loadConfig().databaseUrl);
-  await migrateUp(pool);
-  await pool.query("TRUNCATE users CASCADE");
-  const app = createTestApp(pool);
+  const context = await createTestContext();
+  const { app, database } = context;
 
   try {
     const first = await register(app, {
@@ -301,8 +325,8 @@ test("profile reads and writes are owner-only and cross-family requests do not d
     assert.equal(foreignRead.body.includes("Synthetic Family Two"), false);
     assert.equal(foreignRead.body.includes("Synthetic Profile Two"), false);
 
-    const profileCountBefore = await pool.query<{ count: string }>(
-      "SELECT count(*) FROM patient_profiles WHERE family_id = $1",
+    const profileCountBefore = await database.query<{ count: number }>(
+      "SELECT count(*) AS count FROM patient_profiles WHERE family_id = $1",
       [secondBody.family.id],
     );
     const foreignWrite = await app.inject({
@@ -318,8 +342,8 @@ test("profile reads and writes are owner-only and cross-family requests do not d
       payload: { displayName: "Invisible Profile", kind: "dependent" },
     });
     assert.deepEqual(errorShape(foreignWrite), errorShape(missingWrite));
-    const profileCountAfter = await pool.query<{ count: string }>(
-      "SELECT count(*) FROM patient_profiles WHERE family_id = $1",
+    const profileCountAfter = await database.query<{ count: number }>(
+      "SELECT count(*) AS count FROM patient_profiles WHERE family_id = $1",
       [secondBody.family.id],
     );
     assert.deepEqual(profileCountAfter.rows[0], profileCountBefore.rows[0]);
@@ -338,12 +362,12 @@ test("profile reads and writes are owner-only and cross-family requests do not d
       assert.equal(created.json().profile.kind, kind);
     }
 
-    const additionalAdult = await pool.query<{ linked_user_id: string | null }>(
+    const additionalAdult = await database.query<{ linked_user_id: string | null }>(
       "SELECT linked_user_id FROM patient_profiles WHERE display_name = 'Synthetic Adult'",
     );
     assert.equal(additionalAdult.rows[0]?.linked_user_id, null);
 
-    const ownerIds = await pool.query<{ family_id: string; user_id: string }>(
+    const ownerIds = await database.query<{ family_id: string; user_id: string }>(
       `SELECT family_id, user_id
        FROM family_memberships
        WHERE role = 'owner'
@@ -354,63 +378,64 @@ test("profile reads and writes are owner-only and cross-family requests do not d
     assert.ok(firstOwner);
     assert.ok(secondOwner);
     await assert.rejects(
-      pool.query(
+      database.query(
         `INSERT INTO patient_profiles
            (id, family_id, display_name, kind, created_by_user_id)
          VALUES ($1, $2, 'Cross tenant creator', 'dependent', $3)`,
         [randomUUID(), firstBody.family.id, secondOwner.user_id],
       ),
-      (error: unknown) => isPostgresCode(error, "23503"),
+      (error: unknown) => isSqliteConstraintError(error, "foreign-key"),
     );
     await assert.rejects(
-      pool.query(
+      database.query(
         `INSERT INTO patient_profiles
            (id, family_id, display_name, kind, linked_user_id, created_by_user_id)
          VALUES ($1, $2, 'Cross tenant link', 'adult', $3, $4)`,
         [randomUUID(), firstBody.family.id, secondOwner.user_id, firstOwner.user_id],
       ),
-      (error: unknown) => isPostgresCode(error, "23503"),
+      (error: unknown) => isSqliteConstraintError(error, "foreign-key"),
     );
     const unlinkedUserId = randomUUID();
-    await pool.query("INSERT INTO users (id, display_name) VALUES ($1, 'Unlinked test member')", [
-      unlinkedUserId,
-    ]);
-    await pool.query(
+    await database.query(
+      "INSERT INTO users (id, display_name) VALUES ($1, 'Unlinked test member')",
+      [unlinkedUserId],
+    );
+    await database.query(
       `INSERT INTO family_memberships (id, family_id, user_id, role, status)
        VALUES ($1, $2, $3, 'adult_member', 'active')`,
       [randomUUID(), firstBody.family.id, unlinkedUserId],
     );
     await assert.rejects(
-      pool.query(
+      database.query(
         `INSERT INTO patient_profiles
            (id, family_id, display_name, kind, linked_user_id, created_by_user_id)
          VALUES ($1, $2, 'Linked dependent', 'dependent', $3, $4)`,
         [randomUUID(), firstBody.family.id, unlinkedUserId, firstOwner.user_id],
       ),
-      (error: unknown) => isPostgresCode(error, "23514"),
+      (error: unknown) => isSqliteConstraintError(error, "check"),
     );
     await assert.rejects(
-      pool.query("UPDATE families SET created_by_user_id = $1 WHERE id = $2", [
+      database.query("UPDATE families SET created_by_user_id = $1 WHERE id = $2", [
         secondOwner.user_id,
         firstBody.family.id,
       ]),
-      (error: unknown) => isPostgresCode(error, "23503"),
+      (error: unknown) => isSqliteConstraintError(error, "foreign-key"),
     );
     await assert.rejects(
-      pool.query(
+      database.query(
         `INSERT INTO audit_events
            (id, family_id, actor_user_id, action, resource_type, resource_id, result, correlation_id)
          VALUES ($1, $2, $3, 'cross.tenant', 'Family', $2, 'denied', 'synthetic-test')`,
         [randomUUID(), firstBody.family.id, secondOwner.user_id],
       ),
-      (error: unknown) => isPostgresCode(error, "23503"),
+      (error: unknown) => isSqliteConstraintError(error, "foreign-key"),
     );
 
-    await pool.query(
+    await database.query(
       `UPDATE family_memberships
-       SET status = 'revoked', revoked_at = now()
+       SET status = 'revoked', revoked_at = $3
        WHERE family_id = $1 AND user_id = $2`,
-      [firstBody.family.id, firstOwner.user_id],
+      [firstBody.family.id, firstOwner.user_id, new Date()],
     );
     const revokedAccess = await app.inject({
       method: "GET",
@@ -419,16 +444,13 @@ test("profile reads and writes are owner-only and cross-family requests do not d
     });
     assert.equal(revokedAccess.statusCode, 404);
   } finally {
-    await app.close();
-    await pool.end();
+    await context.close();
   }
 });
 
 test("logout and session expiry fail closed", async () => {
-  const pool = createPool(loadConfig().databaseUrl);
-  await migrateUp(pool);
-  await pool.query("TRUNCATE users CASCADE");
-  const app = createTestApp(pool);
+  const context = await createTestContext();
+  const { app, database } = context;
 
   try {
     const first = await register(app, {
@@ -457,9 +479,15 @@ test("logout and session expiry fail closed", async () => {
       profileName: "Expired Profile",
     });
     const secondCookie = cookieFrom(second).pair;
-    await pool.query(
-      "UPDATE sessions SET expires_at = created_at + interval '1 microsecond' WHERE revoked_at IS NULL",
+    const activeSession = await database.query<{ id: string }>(
+      "SELECT id FROM sessions WHERE revoked_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1",
     );
+    const expiredAt = new Date(Date.now() - 1_000);
+    await database.query("UPDATE sessions SET created_at = $1, expires_at = $2 WHERE id = $3", [
+      new Date(expiredAt.getTime() - 1_000),
+      expiredAt,
+      activeSession.rows[0]?.id,
+    ]);
     const expired = await app.inject({
       method: "GET",
       url: "/v1/session",
@@ -473,15 +501,16 @@ test("logout and session expiry fail closed", async () => {
       profileName: "Disabled Profile",
     });
     const thirdCookie = cookieFrom(third).pair;
-    await pool.query(
+    await database.query(
       `UPDATE users
-       SET disabled_at = now()
+       SET disabled_at = $1
        WHERE id = (
          SELECT user_id FROM sessions
-         WHERE expires_at > now() AND revoked_at IS NULL
+         WHERE expires_at > $2 AND revoked_at IS NULL
          ORDER BY created_at DESC, id DESC
          LIMIT 1
        )`,
+      [new Date(), new Date()],
     );
     const disabled = await app.inject({
       method: "GET",
@@ -490,7 +519,6 @@ test("logout and session expiry fail closed", async () => {
     });
     assert.equal(disabled.statusCode, 401);
   } finally {
-    await app.close();
-    await pool.end();
+    await context.close();
   }
 });

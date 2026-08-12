@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("the runnable foundation exposes web, API, worker, and PostgreSQL readiness", async ({
+test("the runnable foundation exposes web, API, worker, and SQLite readiness", async ({
   page,
   request,
 }) => {

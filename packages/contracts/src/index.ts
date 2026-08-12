@@ -2,6 +2,8 @@ export const HTTP_API_VERSION = "v1" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v1" as const;
+export const DOCUMENT_CONTRACT_VERSION = "document/v1" as const;
+export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
 
 export interface HealthStatus {
   status: "ok" | "unavailable";
@@ -60,4 +62,31 @@ export interface SessionResponse {
     displayName: string;
   };
   families: SessionFamily[];
+}
+
+export type DocumentStatus = "uploaded";
+
+export interface DocumentSummary {
+  id: string;
+  familyId: string;
+  profileId: string;
+  status: DocumentStatus;
+  originalFilename: string;
+  contentType: "application/pdf";
+  byteSize: number;
+  sha256: string;
+  uploadedAt: string;
+  duplicate: {
+    possible: boolean;
+    documentId: string | null;
+    profileId: string | null;
+  };
+  processing: {
+    state: "not_started";
+  };
+}
+
+export interface DocumentResponse {
+  contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
+  document: DocumentSummary;
 }

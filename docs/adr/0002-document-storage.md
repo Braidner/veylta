@@ -16,7 +16,7 @@ vendor.
 Define a versioned `ObjectStorage/v1` port with operations for:
 
 - streaming upload to a staging object and atomic finalization;
-- streaming download;
+- controlled, bounded download with metadata bound to the verified bytes;
 - existence and metadata lookup;
 - trusted content type, size, SHA-256, and provider metadata;
 - deletion as a low-level capability callable only by a separate, confirmed
@@ -27,11 +27,26 @@ tenant-scoped trusted identifiers/checksums and never use a user-supplied path o
 filename. The adapter enforces containment under its configured root and the API
 proxies downloads after authorization.
 
-Each accepted upload creates an immutable `DocumentVersion`. SHA-256 is computed
-while streaming. Possible duplicates are detected only inside the same family,
-shown to the user, and never automatically deleted. Database and storage cannot
-share a transaction, so staging/finalization state and repairable failures are
-explicit.
+The Task 4 local adapter bounds accepted PDFs to 5 MiB and returns controlled
+reads from a checksum-verified byte snapshot. This deliberately spends at most
+the upload cap in memory on download so a local same-inode write cannot change
+the bytes between verification and response. A future large-object adapter must
+provide an equivalent integrity guarantee without relying on this bounded
+snapshot.
+
+Each accepted upload creates an immutable `DocumentVersion` that references a
+family-scoped physical blob. SHA-256 is computed while streaming. Possible
+duplicates are detected only inside the same family, shown to the user, and
+never automatically deleted.
+
+Database and storage cannot share a transaction. Task 4 therefore stages and
+validates the stream before entering an SQLite `BEGIN IMMEDIATE` transaction.
+Inside that write transaction it rechecks idempotency/blob state, finalizes the
+deterministic tenant/checksum key, verifies the result, and commits metadata and
+audit rows afterward. A rollback may leave an inaccessible final orphan, but
+never a committed document whose bytes are unavailable. A retry safely reuses
+the immutable object. Bounded automated orphan cleanup remains deferred until a
+retention workflow exists.
 
 ## Consequences
 
@@ -50,6 +65,8 @@ explicit.
   must supply disk encryption and an appropriate delivery mechanism.
 - Content-address-like keys can expose equality to a storage operator, so family
   scope and storage access controls remain necessary.
+- Finalizing local storage while an SQLite write transaction is open increases
+  write-lock time; the bounded 5 MiB local upload keeps this trade-off explicit.
 
 ## Deferred work
 

@@ -36,8 +36,8 @@ Commit intent: `chore: bootstrap runnable TypeScript workspace`
 
 - pnpm workspaces: `apps/web`, `apps/api`, `packages/contracts`.
 - Next.js web; Fastify HTTP entry and separate worker entry in `apps/api`.
-- PostgreSQL Compose service, persistent volumes, environment examples, health
-  checks, and explicit migration/test harness.
+- Embedded `node:sqlite` database, persistent local path, environment example,
+  health checks, and explicit up/down migration and isolated test harness.
 - Baseline strict TypeScript, lint, unit/integration/E2E harness, CI, and
   dependency-license gate.
 - Verify and update README commands with actual output.
@@ -73,9 +73,10 @@ Commit intent: `feat: persist immutable documents with sha256 deduplication`
 
 Commit intent: `feat: extract synthetic lab facts idempotently`
 
-- Postgres-backed jobs with stable dedupe key, lease, retry schedule, attempt
+- SQLite-backed jobs with stable dedupe key, lease, retry schedule, attempt
   limit, and visible dead-letter state.
-- Separate worker runtime entry in `apps/api`, polling PostgreSQL.
+- Existing separate worker runtime entry in `apps/api`, polling the shared local
+  SQLite database. Before this task it performs readiness checks only.
 - PDF text-layer extraction and narrow deterministic parser for the checked-in,
   clearly synthetic fixture format.
 - Strict `lab-extraction/v1` schema, parser version, page/source fragment,
