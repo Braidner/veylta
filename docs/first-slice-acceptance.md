@@ -1,7 +1,7 @@
 # First-slice acceptance evidence
 
 **Recorded:** 2026-08-12
-**Code baseline:** local Task 18 worktree atop `0f7642e feat: add source-first profile overview`
+**Code baseline:** local Task 19 worktree atop `a1f4104 feat: export local synthetic evidence bundle`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
@@ -42,6 +42,7 @@ fact and represents the user-confirmed source value separately.
 | `46de15e` | Direct synthetic PNG/JPEG ingestion, bounded local OCR, and immutable content-type provenance. |
 | Task 17 worktree | Authorized source-first profile overview with bounded document/review/observation projections. |
 | Task 18 worktree | Owner/self-only local synthetic evidence TAR with bounded, checksummed source bytes. |
+| Task 19 worktree | Offline, no-extraction verifier for the narrow local synthetic evidence TAR. |
 
 ## Fresh local verification
 
@@ -52,9 +53,9 @@ its output.
 | Command | Result |
 | --- | --- |
 | `pnpm license:check` | Passed: 8 license groups and 5 exact reviewed exceptions. |
-| `pnpm lint` | Passed: Biome checked 77 files; no fixes applied. |
+| `pnpm lint` | Passed: Biome checked 81 files; no fixes applied. |
 | `pnpm typecheck` | Passed: contracts, API, and web typechecks completed. |
-| `pnpm test` | Passed: 81 unit/contract tests (10 contracts, 71 API), 0 failed. |
+| `pnpm test` | Passed: 90 unit/contract tests (10 contracts, 80 API), 0 failed. |
 | `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0010_direct_image_documents`. |
 | `pnpm test:integration` | Passed: 41 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
@@ -97,6 +98,7 @@ gates on every push and pull request.
 | Confirmed data appears in history with its source | Integration test `observation history is source-first, paginated, re-authorized, and audited without payloads`; browser test `profile history shows confirmed and corrected observations with their authorized sources only`. |
 | Profile landing view stays source-first | Integration tests cover bounded overview projections, payload-free audit, non-disclosing denial, and revocable read access; browser upload flow shows the review queue after returning to the profile. |
 | Local synthetic evidence snapshot is bounded and non-disclosing | Integration tests cover checksum-verified archive bytes, owner/self-only authorization, `profile.read` denial, five-source cap, cross-family denial, and payload-free audit; the browser flow downloads the TAR attachment. |
+| Local evidence snapshot can be checked without extraction | Unit tests accept PDF/PNG/JPEG bundles and confirmed-observation provenance; they fail closed on checksum mutation, traversal, unsupported TAR fields, non-zero padding, and manifest drift. The file command emits counts only. |
 | Caregiver remains default-deny until profile consent | Integration and browser tests `a caregiver joins without an implicit profile and reads only an explicitly shared profile` / `a caregiver starts without a profile and sees only a profile explicitly shared by the owner`; SQLite trigger regression prevents caregiver linkage to a personal profile. |
 | Failed writes leave no partial medical record | Integration test `an audit failure rolls back review decision, observation, reference range, and idempotency record together`; processing tests cover invalid-output rollback. |
 | Retry is idempotent and terminal failure remains visible | Job-service tests cover stable dedupe, exclusive lease/reclaim, replay-safe completion, retry schedule, and dead-letter exhaustion; processing integration covers a replay-safe terminal retry command. |

@@ -264,6 +264,16 @@
       "norm_label": "typecheck"
     },
     {
+      "label": "verify:evidence-bundle",
+      "file_type": "code",
+      "source_file": "apps/api/package.json",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "apps_api_package_scripts_verify_evidence_bundle",
+      "community": 5,
+      "norm_label": "verify:evidence-bundle"
+    },
+    {
       "label": "app.test.ts",
       "file_type": "code",
       "source_file": "apps/api/src/app.test.ts",
@@ -560,7 +570,7 @@
       "source_location": "L5",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_queryresult",
-      "community": 51,
+      "community": 44,
       "norm_label": "queryresult"
     },
     {
@@ -570,7 +580,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_databaseclient",
-      "community": 54,
+      "community": 44,
       "norm_label": "databaseclient"
     },
     {
@@ -660,7 +670,7 @@
       "source_location": "L86",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_transactionclient",
-      "community": 54,
+      "community": 73,
       "norm_label": "transactionclient"
     },
     {
@@ -670,7 +680,7 @@
       "source_location": "L89",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_transactionclient_constructor",
-      "community": 54,
+      "community": 73,
       "norm_label": ".constructor()"
     },
     {
@@ -680,7 +690,7 @@
       "source_location": "L91",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_transactionclient_release",
-      "community": 54,
+      "community": 73,
       "norm_label": ".release()"
     },
     {
@@ -690,7 +700,7 @@
       "source_location": "L95",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_transactionclient_requireactive",
-      "community": 54,
+      "community": 73,
       "norm_label": ".requireactive()"
     },
     {
@@ -700,7 +710,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_transactionclient_exec",
-      "community": 54,
+      "community": 73,
       "norm_label": ".exec()"
     },
     {
@@ -710,7 +720,7 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "apps_api_src_database_pool_transactionclient_query",
-      "community": 54,
+      "community": 73,
       "norm_label": ".query()"
     },
     {
@@ -870,7 +880,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_processingnotavailableerror",
-      "community": 67,
+      "community": 51,
       "norm_label": "processingnotavailableerror"
     },
     {
@@ -880,7 +890,7 @@
       "source_location": "L59",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_stageddocument",
-      "community": 19,
+      "community": 36,
       "norm_label": "stageddocument"
     },
     {
@@ -960,7 +970,7 @@
       "source_location": "L175",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_documentrow",
-      "community": 29,
+      "community": 77,
       "norm_label": "documentrow"
     },
     {
@@ -1080,7 +1090,7 @@
       "source_location": "L333",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_profileoverviewdocumentrow",
-      "community": 29,
+      "community": 77,
       "norm_label": "profileoverviewdocumentrow"
     },
     {
@@ -1120,7 +1130,7 @@
       "source_location": "L369",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_evidencebundledocumentrow",
-      "community": 29,
+      "community": 77,
       "norm_label": "evidencebundledocumentrow"
     },
     {
@@ -1210,7 +1220,7 @@
       "source_location": "L406",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_finalobjectkey",
-      "community": 44,
+      "community": 19,
       "norm_label": "finalobjectkey()"
     },
     {
@@ -1220,7 +1230,7 @@
       "source_location": "L410",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_stagingobjectkey",
-      "community": 44,
+      "community": 19,
       "norm_label": "stagingobjectkey()"
     },
     {
@@ -1230,7 +1240,7 @@
       "source_location": "L414",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_canonicalprofilescope",
-      "community": 29,
+      "community": 74,
       "norm_label": "canonicalprofilescope()"
     },
     {
@@ -1240,7 +1250,7 @@
       "source_location": "L421",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_canonicaldocumentscope",
-      "community": 29,
+      "community": 74,
       "norm_label": "canonicaldocumentscope()"
     },
     {
@@ -1250,7 +1260,7 @@
       "source_location": "L432",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_canonicalfactscope",
-      "community": 29,
+      "community": 74,
       "norm_label": "canonicalfactscope()"
     },
     {
@@ -1310,7 +1320,7 @@
       "source_location": "L495",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_cursortimestamp",
-      "community": 29,
+      "community": 75,
       "norm_label": "cursortimestamp()"
     },
     {
@@ -1320,7 +1330,7 @@
       "source_location": "L504",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_decodeobservationhistorycursor",
-      "community": 29,
+      "community": 75,
       "norm_label": "decodeobservationhistorycursor()"
     },
     {
@@ -1340,7 +1350,7 @@
       "source_location": "L540",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_decodeindicatorseriescursor",
-      "community": 29,
+      "community": 75,
       "norm_label": "decodeindicatorseriescursor()"
     },
     {
@@ -1600,7 +1610,7 @@
       "source_location": "L1145",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_parsestoredobject",
-      "community": 29,
+      "community": 78,
       "norm_label": "parsestoredobject()"
     },
     {
@@ -1610,7 +1620,7 @@
       "source_location": "L1157",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_stringarray",
-      "community": 29,
+      "community": 78,
       "norm_label": "stringarray()"
     },
     {
@@ -1660,7 +1670,7 @@
       "source_location": "L1213",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_referencerange",
-      "community": 29,
+      "community": 78,
       "norm_label": "referencerange()"
     },
     {
@@ -1822,6 +1832,336 @@
       "id": "apps_api_src_documents_document_service_createdocumentservice",
       "community": 0,
       "norm_label": "createdocumentservice()"
+    },
+    {
+      "label": "evidence-bundle-verifier.test.ts",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "community": 79,
+      "norm_label": "evidence-bundle-verifier.test.ts"
+    },
+    {
+      "label": "bundleFor()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L14",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_test_bundlefor",
+      "community": 79,
+      "norm_label": "bundlefor()"
+    },
+    {
+      "label": "bundle()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L49",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_test_bundle",
+      "community": 79,
+      "norm_label": "bundle()"
+    },
+    {
+      "label": "rewriteHeaderChecksum()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L53",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_test_rewriteheaderchecksum",
+      "community": 79,
+      "norm_label": "rewriteheaderchecksum()"
+    },
+    {
+      "label": "evidence-bundle-verifier.ts",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier",
+      "community": 79,
+      "norm_label": "evidence-bundle-verifier.ts"
+    },
+    {
+      "label": "EvidenceBundleVerificationError",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L21",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverificationerror",
+      "community": 79,
+      "norm_label": "evidencebundleverificationerror"
+    },
+    {
+      "label": ".constructor()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L22",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverificationerror_constructor",
+      "community": 79,
+      "norm_label": ".constructor()"
+    },
+    {
+      "label": "EvidenceBundleVerification",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L28",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverification",
+      "community": 79,
+      "norm_label": "evidencebundleverification"
+    },
+    {
+      "label": "TarEntry",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L34",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_tarentry",
+      "community": 79,
+      "norm_label": "tarentry"
+    },
+    {
+      "label": "VerifiedDocument",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L39",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_verifieddocument",
+      "community": 79,
+      "norm_label": "verifieddocument"
+    },
+    {
+      "label": "VerifiedManifest",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L48",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_verifiedmanifest",
+      "community": 79,
+      "norm_label": "verifiedmanifest"
+    },
+    {
+      "label": "fail()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L53",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "community": 79,
+      "norm_label": "fail()"
+    },
+    {
+      "label": "isRecord()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L57",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_isrecord",
+      "community": 79,
+      "norm_label": "isrecord()"
+    },
+    {
+      "label": "hasExactKeys()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L61",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_hasexactkeys",
+      "community": 79,
+      "norm_label": "hasexactkeys()"
+    },
+    {
+      "label": "requiredString()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L70",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "community": 79,
+      "norm_label": "requiredstring()"
+    },
+    {
+      "label": "nullableBoundedString()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L75",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_nullableboundedstring",
+      "community": 79,
+      "norm_label": "nullableboundedstring()"
+    },
+    {
+      "label": "nullableStoredText()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L82",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_nullablestoredtext",
+      "community": 79,
+      "norm_label": "nullablestoredtext()"
+    },
+    {
+      "label": "requiredBoundedString()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L87",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_requiredboundedstring",
+      "community": 79,
+      "norm_label": "requiredboundedstring()"
+    },
+    {
+      "label": "requiredStoredText()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L93",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_requiredstoredtext",
+      "community": 79,
+      "norm_label": "requiredstoredtext()"
+    },
+    {
+      "label": "requiredCanonicalUuid()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L99",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_requiredcanonicaluuid",
+      "community": 79,
+      "norm_label": "requiredcanonicaluuid()"
+    },
+    {
+      "label": "requiredTimestamp()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L105",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_requiredtimestamp",
+      "community": 79,
+      "norm_label": "requiredtimestamp()"
+    },
+    {
+      "label": "nullableTimestamp()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L112",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_nullabletimestamp",
+      "community": 79,
+      "norm_label": "nullabletimestamp()"
+    },
+    {
+      "label": "tarChecksum()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L117",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_tarchecksum",
+      "community": 79,
+      "norm_label": "tarchecksum()"
+    },
+    {
+      "label": "allZero()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L123",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_allzero",
+      "community": 79,
+      "norm_label": "allzero()"
+    },
+    {
+      "label": "octalField()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L127",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_octalfield",
+      "community": 79,
+      "norm_label": "octalfield()"
+    },
+    {
+      "label": "headerPath()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L135",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_headerpath",
+      "community": 79,
+      "norm_label": "headerpath()"
+    },
+    {
+      "label": "parseTar()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L144",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "community": 79,
+      "norm_label": "parsetar()"
+    },
+    {
+      "label": "expectedExtension()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L194",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_expectedextension",
+      "community": 79,
+      "norm_label": "expectedextension()"
+    },
+    {
+      "label": "verifyReferenceRange()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L205",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "community": 79,
+      "norm_label": "verifyreferencerange()"
+    },
+    {
+      "label": "verifyObservation()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L250",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "community": 79,
+      "norm_label": "verifyobservation()"
+    },
+    {
+      "label": "verifyManifest()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L348",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "community": 79,
+      "norm_label": "verifymanifest()"
+    },
+    {
+      "label": "matchesSourceSignature()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L452",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_matchessourcesignature",
+      "community": 79,
+      "norm_label": "matchessourcesignature()"
+    },
+    {
+      "label": "verifySyntheticEvidenceBundle()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L468",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "community": 79,
+      "norm_label": "verifysyntheticevidencebundle()"
     },
     {
       "label": "evidence-bundle.test.ts",
@@ -2090,7 +2430,7 @@
       "source_location": "L142",
       "_origin": "ast",
       "id": "apps_api_src_documents_routes_ismultipartlimiterror",
-      "community": 36,
+      "community": 72,
       "norm_label": "ismultipartlimiterror()"
     },
     {
@@ -2100,7 +2440,7 @@
       "source_location": "L152",
       "_origin": "ast",
       "id": "apps_api_src_documents_routes_ismultipartparseerror",
-      "community": 36,
+      "community": 72,
       "norm_label": "ismultipartparseerror()"
     },
     {
@@ -2110,7 +2450,7 @@
       "source_location": "L164",
       "_origin": "ast",
       "id": "apps_api_src_documents_routes_senddocumenterror",
-      "community": 36,
+      "community": 72,
       "norm_label": "senddocumenterror()"
     },
     {
@@ -2122,6 +2462,46 @@
       "id": "apps_api_src_documents_routes_registerdocumentroutes",
       "community": 0,
       "norm_label": "registerdocumentroutes()"
+    },
+    {
+      "label": "verify-evidence-bundle.test.ts",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_verify_evidence_bundle_test",
+      "community": 79,
+      "norm_label": "verify-evidence-bundle.test.ts"
+    },
+    {
+      "label": "bundle()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L10",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_verify_evidence_bundle_test_bundle",
+      "community": 79,
+      "norm_label": "bundle()"
+    },
+    {
+      "label": "verify-evidence-bundle.ts",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_verify_evidence_bundle",
+      "community": 79,
+      "norm_label": "verify-evidence-bundle.ts"
+    },
+    {
+      "label": "verifyEvidenceBundleFile()",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.ts",
+      "source_location": "L11",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_verify_evidence_bundle_verifyevidencebundlefile",
+      "community": 79,
+      "norm_label": "verifyevidencebundlefile()"
     },
     {
       "label": "family-service.ts",
@@ -2140,7 +2520,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "apps_api_src_family_family_service_resourcenotfounderror",
-      "community": 32,
+      "community": 51,
       "norm_label": "resourcenotfounderror"
     },
     {
@@ -2150,7 +2530,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "apps_api_src_family_family_service_domainconflicterror",
-      "community": 67,
+      "community": 51,
       "norm_label": "domainconflicterror"
     },
     {
@@ -2160,7 +2540,7 @@
       "source_location": "L36",
       "_origin": "ast",
       "id": "apps_api_src_family_family_service_domainvalidationerror",
-      "community": 32,
+      "community": 51,
       "norm_label": "domainvalidationerror"
     },
     {
@@ -2170,7 +2550,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "apps_api_src_family_family_service_sessionactor",
-      "community": 32,
+      "community": 51,
       "norm_label": "sessionactor"
     },
     {
@@ -2220,7 +2600,7 @@
       "source_location": "L65",
       "_origin": "ast",
       "id": "apps_api_src_family_family_service_familyservice",
-      "community": 32,
+      "community": 51,
       "norm_label": "familyservice"
     },
     {
@@ -2620,7 +3000,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "apps_api_src_http_route_helpers",
-      "community": 32,
+      "community": 51,
       "norm_label": "route-helpers.ts"
     },
     {
@@ -2630,7 +3010,7 @@
       "source_location": "L10",
       "_origin": "ast",
       "id": "apps_api_src_http_route_helpers_canonicaluuidschema",
-      "community": 32,
+      "community": 51,
       "norm_label": "canonicaluuidschema"
     },
     {
@@ -2640,7 +3020,7 @@
       "source_location": "L15",
       "_origin": "ast",
       "id": "apps_api_src_http_route_helpers_errorenvelope",
-      "community": 32,
+      "community": 72,
       "norm_label": "errorenvelope()"
     },
     {
@@ -2650,7 +3030,7 @@
       "source_location": "L19",
       "_origin": "ast",
       "id": "apps_api_src_http_route_helpers_privateresponse",
-      "community": 32,
+      "community": 51,
       "norm_label": "privateresponse()"
     },
     {
@@ -2660,7 +3040,7 @@
       "source_location": "L23",
       "_origin": "ast",
       "id": "apps_api_src_http_route_helpers_senddomainerror",
-      "community": 36,
+      "community": 72,
       "norm_label": "senddomainerror()"
     },
     {
@@ -2670,7 +3050,7 @@
       "source_location": "L49",
       "_origin": "ast",
       "id": "apps_api_src_http_route_helpers_requiretrustedorigin",
-      "community": 32,
+      "community": 72,
       "norm_label": "requiretrustedorigin()"
     },
     {
@@ -2680,7 +3060,7 @@
       "source_location": "L62",
       "_origin": "ast",
       "id": "apps_api_src_http_route_helpers_requireactor",
-      "community": 32,
+      "community": 72,
       "norm_label": "requireactor()"
     },
     {
@@ -2690,7 +3070,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test",
-      "community": 51,
+      "community": 44,
       "norm_label": "document-extraction-processor.test.ts"
     },
     {
@@ -2710,7 +3090,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_storagekey",
-      "community": 51,
+      "community": 44,
       "norm_label": "storagekey"
     },
     {
@@ -2720,7 +3100,7 @@
       "source_location": "L31",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_pdfbytes",
-      "community": 51,
+      "community": 44,
       "norm_label": "pdfbytes"
     },
     {
@@ -2730,7 +3110,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_pdfsha256",
-      "community": 51,
+      "community": 44,
       "norm_label": "pdfsha256"
     },
     {
@@ -2740,7 +3120,7 @@
       "source_location": "L34",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_claim",
-      "community": 51,
+      "community": 44,
       "norm_label": "claim()"
     },
     {
@@ -2750,7 +3130,7 @@
       "source_location": "L57",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_sourcedatabase",
-      "community": 51,
+      "community": 44,
       "norm_label": "sourcedatabase"
     },
     {
@@ -2760,7 +3140,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_sourcedatabase_exec",
-      "community": 51,
+      "community": 44,
       "norm_label": ".exec()"
     },
     {
@@ -2770,7 +3150,7 @@
       "source_location": "L60",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_sourcedatabase_query",
-      "community": 51,
+      "community": 44,
       "norm_label": ".query()"
     },
     {
@@ -2780,7 +3160,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_storagefor",
-      "community": 51,
+      "community": 44,
       "norm_label": "storagefor()"
     },
     {
@@ -2790,7 +3170,7 @@
       "source_location": "L118",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_syntheticpage",
-      "community": 51,
+      "community": 44,
       "norm_label": "syntheticpage()"
     },
     {
@@ -2800,7 +3180,7 @@
       "source_location": "L138",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_test_coordinatorharness",
-      "community": 51,
+      "community": 44,
       "norm_label": "coordinatorharness"
     },
     {
@@ -2820,7 +3200,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_documentextractionjobcoordinator",
-      "community": 51,
+      "community": 44,
       "norm_label": "documentextractionjobcoordinator"
     },
     {
@@ -2880,7 +3260,7 @@
       "source_location": "L104",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_documentsource",
-      "community": 44,
+      "community": 19,
       "norm_label": "documentsource"
     },
     {
@@ -2910,7 +3290,7 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_transactionaldatabase",
-      "community": 56,
+      "community": 44,
       "norm_label": "transactionaldatabase()"
     },
     {
@@ -2920,7 +3300,7 @@
       "source_location": "L127",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_sourceforclaim",
-      "community": 44,
+      "community": 19,
       "norm_label": "sourceforclaim()"
     },
     {
@@ -3000,7 +3380,7 @@
       "source_location": "L355",
       "_origin": "ast",
       "id": "apps_api_src_processing_document_extraction_processor_processnextdocumentextraction",
-      "community": 56,
+      "community": 44,
       "norm_label": "processnextdocumentextraction()"
     },
     {
@@ -3430,7 +3810,7 @@
       "source_location": "L29",
       "_origin": "ast",
       "id": "apps_api_src_processing_pdf_ocr_extractor_pdfocrextractionerror",
-      "community": 51,
+      "community": 44,
       "norm_label": "pdfocrextractionerror"
     },
     {
@@ -3440,7 +3820,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "apps_api_src_processing_pdf_ocr_extractor_pdfocrextractionerror_constructor",
-      "community": 51,
+      "community": 44,
       "norm_label": ".constructor()"
     },
     {
@@ -3740,7 +4120,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "apps_api_src_processing_processing_job_service_test_parsedextraction",
-      "community": 39,
+      "community": 65,
       "norm_label": "parsedextraction()"
     },
     {
@@ -3750,7 +4130,7 @@
       "source_location": "L54",
       "_origin": "ast",
       "id": "apps_api_src_processing_processing_job_service_test_highconfidenceextraction",
-      "community": 39,
+      "community": 65,
       "norm_label": "highconfidenceextraction()"
     },
     {
@@ -3860,7 +4240,7 @@
       "source_location": "L17",
       "_origin": "ast",
       "id": "apps_api_src_processing_processing_job_service_processingstage",
-      "community": 51,
+      "community": 44,
       "norm_label": "processingstage"
     },
     {
@@ -3870,7 +4250,7 @@
       "source_location": "L24",
       "_origin": "ast",
       "id": "apps_api_src_processing_processing_job_service_processingerrorcode",
-      "community": 51,
+      "community": 44,
       "norm_label": "processingerrorcode"
     },
     {
@@ -3880,7 +4260,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "apps_api_src_processing_processing_job_service_processingjob",
-      "community": 51,
+      "community": 44,
       "norm_label": "processingjob"
     },
     {
@@ -3890,7 +4270,7 @@
       "source_location": "L53",
       "_origin": "ast",
       "id": "apps_api_src_processing_processing_job_service_leasedprocessingjob",
-      "community": 51,
+      "community": 44,
       "norm_label": "leasedprocessingjob"
     },
     {
@@ -4360,7 +4740,7 @@
       "source_location": "L739",
       "_origin": "ast",
       "id": "apps_api_src_processing_processing_job_service_createprocessingjobservice",
-      "community": 56,
+      "community": 65,
       "norm_label": "createprocessingjobservice()"
     },
     {
@@ -4530,7 +4910,7 @@
       "source_location": "L83",
       "_origin": "ast",
       "id": "apps_api_src_processing_synthetic_lab_parser_parsedlabextraction",
-      "community": 51,
+      "community": 44,
       "norm_label": "parsedlabextraction"
     },
     {
@@ -4560,7 +4940,7 @@
       "source_location": "L99",
       "_origin": "ast",
       "id": "apps_api_src_processing_synthetic_lab_parser_requiresyntheticlabfixture",
-      "community": 39,
+      "community": 65,
       "norm_label": "requiresyntheticlabfixture()"
     },
     {
@@ -4660,7 +5040,7 @@
       "source_location": "L229",
       "_origin": "ast",
       "id": "apps_api_src_processing_synthetic_lab_parser_parsesyntheticlabpages",
-      "community": 39,
+      "community": 65,
       "norm_label": "parsesyntheticlabpages()"
     },
     {
@@ -5140,7 +5520,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "apps_api_src_storage_object_storage_contract_stagingkey",
-      "community": 44,
+      "community": 19,
       "norm_label": "stagingkey()"
     },
     {
@@ -5400,7 +5780,7 @@
       "source_location": "L112",
       "_origin": "ast",
       "id": "apps_api_src_storage_object_storage_createobjectstoragekey",
-      "community": 44,
+      "community": 19,
       "norm_label": "createobjectstoragekey()"
     },
     {
@@ -6290,7 +6670,7 @@
       "source_location": "L45",
       "_origin": "ast",
       "id": "apps_api_test_document_review_integration_test_testcontext",
-      "community": 54,
+      "community": 50,
       "norm_label": "testcontext"
     },
     {
@@ -6380,7 +6760,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test",
-      "community": 37,
+      "community": 0,
       "norm_label": "document-upload.integration.test.ts"
     },
     {
@@ -6390,7 +6770,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_identity",
-      "community": 37,
+      "community": 0,
       "norm_label": "identity"
     },
     {
@@ -6400,7 +6780,7 @@
       "source_location": "L30",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_multipartoptions",
-      "community": 37,
+      "community": 0,
       "norm_label": "multipartoptions"
     },
     {
@@ -6410,7 +6790,7 @@
       "source_location": "L38",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_cookiefrom",
-      "community": 37,
+      "community": 0,
       "norm_label": "cookiefrom()"
     },
     {
@@ -6420,7 +6800,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_multipartfile",
-      "community": 37,
+      "community": 0,
       "norm_label": "multipartfile()"
     },
     {
@@ -6430,7 +6810,7 @@
       "source_location": "L82",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_multipartwithoutfile",
-      "community": 37,
+      "community": 0,
       "norm_label": "multipartwithoutfile()"
     },
     {
@@ -6440,7 +6820,7 @@
       "source_location": "L92",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_syntheticpdf",
-      "community": 37,
+      "community": 0,
       "norm_label": "syntheticpdf()"
     },
     {
@@ -6460,7 +6840,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_replaceobjectonfirstget",
-      "community": 37,
+      "community": 0,
       "norm_label": "replaceobjectonfirstget()"
     },
     {
@@ -6470,7 +6850,7 @@
       "source_location": "L157",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_registerowner",
-      "community": 37,
+      "community": 0,
       "norm_label": "registerowner()"
     },
     {
@@ -6480,7 +6860,7 @@
       "source_location": "L172",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_upload",
-      "community": 37,
+      "community": 0,
       "norm_label": "upload()"
     },
     {
@@ -6490,7 +6870,7 @@
       "source_location": "L199",
       "_origin": "ast",
       "id": "apps_api_test_document_upload_integration_test_rowcounts",
-      "community": 37,
+      "community": 0,
       "norm_label": "rowcounts()"
     },
     {
@@ -6540,7 +6920,7 @@
       "source_location": "L32",
       "_origin": "ast",
       "id": "apps_api_test_evidence_bundle_integration_test_testcontext",
-      "community": 54,
+      "community": 41,
       "norm_label": "testcontext"
     },
     {
@@ -6670,7 +7050,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "apps_api_test_family_profiles_integration_test",
-      "community": 0,
+      "community": 37,
       "norm_label": "family-profiles.integration.test.ts"
     },
     {
@@ -6680,7 +7060,7 @@
       "source_location": "L16",
       "_origin": "ast",
       "id": "apps_api_test_family_profiles_integration_test_cookiefrom",
-      "community": 0,
+      "community": 37,
       "norm_label": "cookiefrom()"
     },
     {
@@ -6690,7 +7070,7 @@
       "source_location": "L27",
       "_origin": "ast",
       "id": "apps_api_test_family_profiles_integration_test_errorshape",
-      "community": 0,
+      "community": 37,
       "norm_label": "errorshape()"
     },
     {
@@ -6720,7 +7100,7 @@
       "source_location": "L79",
       "_origin": "ast",
       "id": "apps_api_test_family_profiles_integration_test_register",
-      "community": 0,
+      "community": 37,
       "norm_label": "register()"
     },
     {
@@ -6900,7 +7280,7 @@
       "source_location": "L42",
       "_origin": "ast",
       "id": "apps_api_test_observation_history_integration_test_testcontext",
-      "community": 54,
+      "community": 66,
       "norm_label": "testcontext"
     },
     {
@@ -11297,7 +11677,7 @@
       "label": "Product principles",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L58",
+      "source_location": "L60",
       "_origin": "ast",
       "id": "readme_product_principles",
       "community": 52,
@@ -11307,7 +11687,7 @@
       "label": "Intended architecture",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L68",
+      "source_location": "L70",
       "_origin": "ast",
       "id": "readme_intended_architecture",
       "community": 52,
@@ -11317,7 +11697,7 @@
       "label": "Local development",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L90",
+      "source_location": "L92",
       "_origin": "ast",
       "id": "readme_local_development",
       "community": 52,
@@ -11327,7 +11707,7 @@
       "label": "Safety and data policy",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L170",
+      "source_location": "L185",
       "_origin": "ast",
       "id": "readme_safety_and_data_policy",
       "community": 52,
@@ -11337,7 +11717,7 @@
       "label": "License",
       "file_type": "document",
       "source_file": "README.md",
-      "source_location": "L177",
+      "source_location": "L192",
       "_origin": "ast",
       "id": "readme_license",
       "community": 52,
@@ -12174,12 +12554,22 @@
       "norm_label": "`get /v1/families/{familyid}/profiles/{profileid}/evidence-bundle`"
     },
     {
-      "label": "Observation history and provenance (Task 7)",
+      "label": "Offline verification command (Task 19)",
       "file_type": "document",
       "source_file": "docs/api.md",
       "source_location": "L570",
       "_origin": "ast",
-      "id": "docs_api_observation_history_and_provenance_task_7_570",
+      "id": "docs_api_offline_verification_command_task_19",
+      "community": 7,
+      "norm_label": "offline verification command (task 19)"
+    },
+    {
+      "label": "Observation history and provenance (Task 7)",
+      "file_type": "document",
+      "source_file": "docs/api.md",
+      "source_location": "L582",
+      "_origin": "ast",
+      "id": "docs_api_observation_history_and_provenance_task_7_582",
       "community": 7,
       "norm_label": "observation history and provenance (task 7)"
     },
@@ -12187,7 +12577,7 @@
       "label": "`GET /v1/families/{familyId}/profiles/{profileId}/observations`",
       "file_type": "document",
       "source_file": "docs/api.md",
-      "source_location": "L572",
+      "source_location": "L584",
       "_origin": "ast",
       "id": "docs_api_get_v1_families_familyid_profiles_profileid_observations",
       "community": 7,
@@ -12197,7 +12587,7 @@
       "label": "Comparable indicator catalog (Task 9)",
       "file_type": "document",
       "source_file": "docs/api.md",
-      "source_location": "L671",
+      "source_location": "L683",
       "_origin": "ast",
       "id": "docs_api_comparable_indicator_catalog_task_9",
       "community": 7,
@@ -12207,7 +12597,7 @@
       "label": "`GET /v1/families/{familyId}/profiles/{profileId}/indicators`",
       "file_type": "document",
       "source_file": "docs/api.md",
-      "source_location": "L678",
+      "source_location": "L690",
       "_origin": "ast",
       "id": "docs_api_get_v1_families_familyid_profiles_profileid_indicators",
       "community": 7,
@@ -12217,7 +12607,7 @@
       "label": "`GET /v1/families/{familyId}/profiles/{profileId}/indicators/{canonicalCode}`",
       "file_type": "document",
       "source_file": "docs/api.md",
-      "source_location": "L707",
+      "source_location": "L719",
       "_origin": "ast",
       "id": "docs_api_get_v1_families_familyid_profiles_profileid_indicators_canonicalcode",
       "community": 7,
@@ -12227,7 +12617,7 @@
       "label": "Processing jobs",
       "file_type": "document",
       "source_file": "docs/api.md",
-      "source_location": "L753",
+      "source_location": "L765",
       "_origin": "ast",
       "id": "docs_api_processing_jobs",
       "community": 7,
@@ -12237,7 +12627,7 @@
       "label": "Audit behavior",
       "file_type": "document",
       "source_file": "docs/api.md",
-      "source_location": "L770",
+      "source_location": "L782",
       "_origin": "ast",
       "id": "docs_api_audit_behavior",
       "community": 7,
@@ -12247,7 +12637,7 @@
       "label": "Deferred APIs",
       "file_type": "document",
       "source_file": "docs/api.md",
-      "source_location": "L786",
+      "source_location": "L798",
       "_origin": "ast",
       "id": "docs_api_deferred_apis",
       "community": 7,
@@ -12337,7 +12727,7 @@
       "label": "Worker",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L133",
+      "source_location": "L136",
       "_origin": "ast",
       "id": "docs_architecture_worker",
       "community": 3,
@@ -12347,7 +12737,7 @@
       "label": "SQLite",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L144",
+      "source_location": "L147",
       "_origin": "ast",
       "id": "docs_architecture_sqlite",
       "community": 3,
@@ -12357,7 +12747,7 @@
       "label": "Upload and extraction flow",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L163",
+      "source_location": "L166",
       "_origin": "ast",
       "id": "docs_architecture_upload_and_extraction_flow",
       "community": 3,
@@ -12367,7 +12757,7 @@
       "label": "Idempotency and consistency",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L199",
+      "source_location": "L202",
       "_origin": "ast",
       "id": "docs_architecture_idempotency_and_consistency",
       "community": 3,
@@ -12377,7 +12767,7 @@
       "label": "Document storage boundary",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L228",
+      "source_location": "L231",
       "_origin": "ast",
       "id": "docs_architecture_document_storage_boundary",
       "community": 3,
@@ -12387,7 +12777,7 @@
       "label": "Medical data boundary",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L246",
+      "source_location": "L249",
       "_origin": "ast",
       "id": "docs_architecture_medical_data_boundary",
       "community": 3,
@@ -12397,7 +12787,7 @@
       "label": "Authentication and tenant isolation",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L256",
+      "source_location": "L259",
       "_origin": "ast",
       "id": "docs_architecture_authentication_and_tenant_isolation",
       "community": 3,
@@ -12407,7 +12797,7 @@
       "label": "Observability",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L274",
+      "source_location": "L277",
       "_origin": "ast",
       "id": "docs_architecture_observability",
       "community": 3,
@@ -12417,7 +12807,7 @@
       "label": "Evolution boundaries",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L284",
+      "source_location": "L287",
       "_origin": "ast",
       "id": "docs_architecture_evolution_boundaries",
       "community": 3,
@@ -12427,7 +12817,7 @@
       "label": "Deployment and readiness",
       "file_type": "document",
       "source_file": "docs/architecture.md",
-      "source_location": "L294",
+      "source_location": "L297",
       "_origin": "ast",
       "id": "docs_architecture_deployment_and_readiness",
       "community": 3,
@@ -12817,7 +13207,7 @@
       "label": "Fresh local verification",
       "file_type": "document",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L46",
+      "source_location": "L47",
       "_origin": "ast",
       "id": "docs_first_slice_acceptance_fresh_local_verification",
       "community": 43,
@@ -12827,7 +13217,7 @@
       "label": "Requirement-to-evidence map",
       "file_type": "document",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L85",
+      "source_location": "L86",
       "_origin": "ast",
       "id": "docs_first_slice_acceptance_requirement_to_evidence_map",
       "community": 43,
@@ -12837,7 +13227,7 @@
       "label": "Safety and MIT boundary verified by this slice",
       "file_type": "document",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L108",
+      "source_location": "L110",
       "_origin": "ast",
       "id": "docs_first_slice_acceptance_safety_and_mit_boundary_verified_by_this_slice",
       "community": 43,
@@ -12847,7 +13237,7 @@
       "label": "Explicitly not accepted or deferred",
       "file_type": "document",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L128",
+      "source_location": "L130",
       "_origin": "ast",
       "id": "docs_first_slice_acceptance_explicitly_not_accepted_or_deferred",
       "community": 43,
@@ -12857,7 +13247,7 @@
       "label": "Reproduction boundary",
       "file_type": "document",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L150",
+      "source_location": "L152",
       "_origin": "ast",
       "id": "docs_first_slice_acceptance_reproduction_boundary",
       "community": 43,
@@ -13027,7 +13417,7 @@
       "label": "Acceptance outcomes",
       "file_type": "document",
       "source_file": "docs/product.md",
-      "source_location": "L122",
+      "source_location": "L126",
       "_origin": "ast",
       "id": "docs_product_acceptance_outcomes",
       "community": 48,
@@ -13037,7 +13427,7 @@
       "label": "Full MVP direction",
       "file_type": "document",
       "source_file": "docs/product.md",
-      "source_location": "L149",
+      "source_location": "L153",
       "_origin": "ast",
       "id": "docs_product_full_mvp_direction",
       "community": 48,
@@ -13047,7 +13437,7 @@
       "label": "Explicitly deferred",
       "file_type": "document",
       "source_file": "docs/product.md",
-      "source_location": "L173",
+      "source_location": "L177",
       "_origin": "ast",
       "id": "docs_product_explicitly_deferred",
       "community": 48,
@@ -13057,7 +13447,7 @@
       "label": "Product evidence rules",
       "file_type": "document",
       "source_file": "docs/product.md",
-      "source_location": "L190",
+      "source_location": "L194",
       "_origin": "ast",
       "id": "docs_product_product_evidence_rules",
       "community": 48,
@@ -13214,10 +13604,20 @@
       "norm_label": "task 18 \u2014 local synthetic evidence snapshot"
     },
     {
-      "label": "Task 9 \u2014 Comparable indicator catalog and chart",
+      "label": "Task 19 \u2014 Offline synthetic evidence verification",
       "file_type": "document",
       "source_file": "docs/slices.md",
       "source_location": "L220",
+      "_origin": "ast",
+      "id": "docs_slices_task_19_offline_synthetic_evidence_verification",
+      "community": 10,
+      "norm_label": "task 19 \u2014 offline synthetic evidence verification"
+    },
+    {
+      "label": "Task 9 \u2014 Comparable indicator catalog and chart",
+      "file_type": "document",
+      "source_file": "docs/slices.md",
+      "source_location": "L234",
       "_origin": "ast",
       "id": "docs_slices_task_9_comparable_indicator_catalog_and_chart",
       "community": 10,
@@ -13227,7 +13627,7 @@
       "label": "Task 10 \u2014 Optional S3-compatible immutable storage",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L246",
+      "source_location": "L260",
       "_origin": "ast",
       "id": "docs_slices_task_10_optional_s3_compatible_immutable_storage",
       "community": 10,
@@ -13237,7 +13637,7 @@
       "label": "Task 11 \u2014 Local synthetic scanned-PDF OCR fallback",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L268",
+      "source_location": "L282",
       "_origin": "ast",
       "id": "docs_slices_task_11_local_synthetic_scanned_pdf_ocr_fallback",
       "community": 10,
@@ -13247,7 +13647,7 @@
       "label": "Task 16 \u2014 Direct synthetic PNG/JPEG ingestion",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L293",
+      "source_location": "L307",
       "_origin": "ast",
       "id": "docs_slices_task_16_direct_synthetic_png_jpeg_ingestion",
       "community": 10,
@@ -13257,7 +13657,7 @@
       "label": "Task 12 \u2014 Owner-only payload-free audit log",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L311",
+      "source_location": "L325",
       "_origin": "ast",
       "id": "docs_slices_task_12_owner_only_payload_free_audit_log",
       "community": 10,
@@ -13267,7 +13667,7 @@
       "label": "Task 13 \u2014 Local one-time adult invitation",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L324",
+      "source_location": "L338",
       "_origin": "ast",
       "id": "docs_slices_task_13_local_one_time_adult_invitation",
       "community": 10,
@@ -13277,7 +13677,7 @@
       "label": "Task 14 \u2014 Explicit revocable profile read grant",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L337",
+      "source_location": "L351",
       "_origin": "ast",
       "id": "docs_slices_task_14_explicit_revocable_profile_read_grant",
       "community": 10,
@@ -13287,7 +13687,7 @@
       "label": "Task 15 \u2014 Local caregiver invitation and explicit read access",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L352",
+      "source_location": "L366",
       "_origin": "ast",
       "id": "docs_slices_task_15_local_caregiver_invitation_and_explicit_read_access",
       "community": 10,
@@ -13297,7 +13697,7 @@
       "label": "Later MVP slices",
       "file_type": "document",
       "source_file": "docs/slices.md",
-      "source_location": "L368",
+      "source_location": "L382",
       "_origin": "ast",
       "id": "docs_slices_later_mvp_slices",
       "community": 10,
@@ -13402,6 +13802,16 @@
       "id": "docs_threat_model_security_verification",
       "community": 49,
       "norm_label": "security verification"
+    },
+    {
+      "label": "MAX_SYNTHETIC_EVIDENCE_BUNDLE_ARCHIVE_BYTES",
+      "file_type": "code",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L492",
+      "_origin": "ast",
+      "id": "apps_api_src_documents_evidence_bundle_verifier_max_synthetic_evidence_bundle_archive_bytes",
+      "community": 79,
+      "norm_label": "max_synthetic_evidence_bundle_archive_bytes"
     },
     {
       "label": "MAX_SYNTHETIC_PDF_BYTES",
@@ -13663,6 +14073,16 @@
       "weight": 1.0,
       "source": "apps_api_package_scripts",
       "target": "apps_api_package_scripts_typecheck",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/package.json",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "apps_api_package_scripts",
+      "target": "apps_api_package_scripts_verify_evidence_bundle",
       "confidence_score": 1.0
     },
     {
@@ -18283,6 +18703,954 @@
       "relation": "imports_from",
       "context": "import",
       "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle_createsyntheticevidencebundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle_verifier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverificationerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L49",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_test_bundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L14",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_test_bundlefor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_test_rewriteheaderchecksum",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L9",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L50",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test_bundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_test_bundlefor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.test.ts",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_test_bundlefor",
+      "target": "apps_api_src_documents_evidence_bundle_createsyntheticevidencebundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L123",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_allzero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L28",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L21",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverificationerror",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L194",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_expectedextension",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L53",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L61",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_hasexactkeys",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L135",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_headerpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L57",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_isrecord",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L452",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_matchessourcesignature",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L75",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullableboundedstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L82",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullablestoredtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L112",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullabletimestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L127",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_octalfield",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L144",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L87",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredboundedstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L99",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredcanonicaluuid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L93",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstoredtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L70",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L105",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredtimestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L117",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_tarchecksum",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L34",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_tarentry",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L39",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifieddocument",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L48",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifiedmanifest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L348",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L250",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L205",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L468",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "method",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L22",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverificationerror",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_evidencebundleverificationerror_constructor",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L138",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_headerpath",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L78",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_nullableboundedstring",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L129",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_octalfield",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L150",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L89",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredboundedstring",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L101",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredcanonicaluuid",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L95",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredstoredtext",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L71",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L108",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredtimestamp",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L349",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L268",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L221",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L471",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_fail",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L357",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_isrecord",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L252",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_isrecord",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L208",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_isrecord",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L358",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_hasexactkeys",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L253",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_hasexactkeys",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L209",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_hasexactkeys",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L77",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_nullableboundedstring",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L84",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_nullablestoredtext",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L100",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredcanonicaluuid",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L106",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredtimestamp",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L378",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L334",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L88",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredboundedstring",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullableboundedstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L271",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullableboundedstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L224",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullableboundedstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L94",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_requiredstoredtext",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullablestoredtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L223",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullablestoredtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L274",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredboundedstring",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L345",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredstoredtext",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L376",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredcanonicaluuid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L270",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredcanonicaluuid",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L114",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_nullabletimestamp",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredtimestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L369",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredtimestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L303",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_requiredtimestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L301",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_nullabletimestamp",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L174",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_tarchecksum",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L169",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_allzero",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L164",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_octalfield",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L175",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_headerpath",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L469",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_parsetar",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L432",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_expectedextension",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L294",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifyreferencerange",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L447",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifyobservation",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L472",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifymanifest",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/evidence-bundle-verifier.ts",
+      "source_location": "L479",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_matchessourcesignature",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "confidence_score": 1.0,
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.ts",
+      "source_location": "L42",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle_verifyevidencebundlefile",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_verifysyntheticevidencebundle"
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
       "source_file": "apps/api/src/documents/evidence-bundle.test.ts",
       "source_location": "L4",
       "weight": 1.0,
@@ -18404,6 +19772,17 @@
       "confidence_score": 1.0
     },
     {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle_test",
+      "target": "apps_api_src_documents_evidence_bundle",
+      "confidence_score": 1.0
+    },
+    {
       "relation": "calls",
       "context": "call",
       "confidence": "EXTRACTED",
@@ -18445,6 +19824,28 @@
       "weight": 1.0,
       "source": "apps_api_src_documents_evidence_bundle_createsyntheticevidencebundle",
       "target": "apps_api_src_documents_evidence_bundle_validate",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L7",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle_test",
+      "target": "apps_api_src_documents_evidence_bundle_createsyntheticevidencebundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L13",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle_test_bundle",
+      "target": "apps_api_src_documents_evidence_bundle_createsyntheticevidencebundle",
       "confidence_score": 1.0
     },
     {
@@ -19031,6 +20432,59 @@
       "weight": 1.0,
       "source": "apps_api_test_profile_overview_integration_test_createtestapp",
       "target": "apps_api_src_documents_routes_registerdocumentroutes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle_test",
+      "target": "apps_api_src_documents_verify_evidence_bundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L10",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle_test",
+      "target": "apps_api_src_documents_verify_evidence_bundle_test_bundle",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.test.ts",
+      "source_location": "L8",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle_test",
+      "target": "apps_api_src_documents_verify_evidence_bundle_verifyevidencebundlefile",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle",
+      "target": "apps_api_src_documents_evidence_bundle_verifier_max_synthetic_evidence_bundle_archive_bytes",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/documents/verify-evidence-bundle.ts",
+      "source_location": "L11",
+      "weight": 1.0,
+      "source": "apps_api_src_documents_verify_evidence_bundle",
+      "target": "apps_api_src_documents_verify_evidence_bundle_verifyevidencebundlefile",
       "confidence_score": 1.0
     },
     {
@@ -35062,7 +36516,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L89",
+      "source_location": "L90",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance",
       "target": "readme",
@@ -35072,7 +36526,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L86",
+      "source_location": "L88",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_api",
@@ -35082,7 +36536,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L85",
+      "source_location": "L87",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_architecture",
@@ -35092,7 +36546,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L86",
+      "source_location": "L88",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_er_model",
@@ -35102,7 +36556,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L181",
+      "source_location": "L196",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_license_policy",
@@ -35112,7 +36566,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L85",
+      "source_location": "L87",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_product",
@@ -35122,7 +36576,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L87",
+      "source_location": "L89",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_slices",
@@ -35132,7 +36586,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L86",
+      "source_location": "L88",
       "weight": 1.0,
       "source": "readme",
       "target": "docs_threat_model",
@@ -35152,7 +36606,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L68",
+      "source_location": "L70",
       "weight": 1.0,
       "source": "readme_veylta",
       "target": "readme_intended_architecture",
@@ -35162,7 +36616,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L177",
+      "source_location": "L192",
       "weight": 1.0,
       "source": "readme_veylta",
       "target": "readme_license",
@@ -35172,7 +36626,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L90",
+      "source_location": "L92",
       "weight": 1.0,
       "source": "readme_veylta",
       "target": "readme_local_development",
@@ -35182,7 +36636,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L58",
+      "source_location": "L60",
       "weight": 1.0,
       "source": "readme_veylta",
       "target": "readme_product_principles",
@@ -35202,7 +36656,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "README.md",
-      "source_location": "L170",
+      "source_location": "L185",
       "weight": 1.0,
       "source": "readme_veylta",
       "target": "readme_safety_and_data_policy",
@@ -35212,7 +36666,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L114",
+      "source_location": "L116",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance",
       "target": "third_party_notices",
@@ -35482,7 +36936,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L254",
+      "source_location": "L257",
       "weight": 1.0,
       "source": "docs_architecture",
       "target": "docs_adr_0003_medical_data_model",
@@ -35722,7 +37176,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L770",
+      "source_location": "L782",
       "weight": 1.0,
       "source": "docs_api_http_api_contract",
       "target": "docs_api_audit_behavior",
@@ -35732,7 +37186,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L671",
+      "source_location": "L683",
       "weight": 1.0,
       "source": "docs_api_http_api_contract",
       "target": "docs_api_comparable_indicator_catalog_task_9",
@@ -35742,7 +37196,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L786",
+      "source_location": "L798",
       "weight": 1.0,
       "source": "docs_api_http_api_contract",
       "target": "docs_api_deferred_apis",
@@ -35812,17 +37266,17 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L570",
+      "source_location": "L582",
       "weight": 1.0,
       "source": "docs_api_http_api_contract",
-      "target": "docs_api_observation_history_and_provenance_task_7_570",
+      "target": "docs_api_observation_history_and_provenance_task_7_582",
       "confidence_score": 1.0
     },
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L753",
+      "source_location": "L765",
       "weight": 1.0,
       "source": "docs_api_http_api_contract",
       "target": "docs_api_processing_jobs",
@@ -36062,9 +37516,19 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L572",
+      "source_location": "L570",
       "weight": 1.0,
-      "source": "docs_api_observation_history_and_provenance_task_7_570",
+      "source": "docs_api_local_synthetic_evidence_snapshot_task_18",
+      "target": "docs_api_offline_verification_command_task_19",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/api.md",
+      "source_location": "L584",
+      "weight": 1.0,
+      "source": "docs_api_observation_history_and_provenance_task_7_582",
       "target": "docs_api_get_v1_families_familyid_profiles_profileid_observations",
       "confidence_score": 1.0
     },
@@ -36072,7 +37536,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L678",
+      "source_location": "L690",
       "weight": 1.0,
       "source": "docs_api_comparable_indicator_catalog_task_9",
       "target": "docs_api_get_v1_families_familyid_profiles_profileid_indicators",
@@ -36082,7 +37546,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/api.md",
-      "source_location": "L707",
+      "source_location": "L719",
       "weight": 1.0,
       "source": "docs_api_comparable_indicator_catalog_task_9",
       "target": "docs_api_get_v1_families_familyid_profiles_profileid_indicators_canonicalcode",
@@ -36102,7 +37566,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L256",
+      "source_location": "L259",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_authentication_and_tenant_isolation",
@@ -36122,7 +37586,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L294",
+      "source_location": "L297",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_deployment_and_readiness",
@@ -36132,7 +37596,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L228",
+      "source_location": "L231",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_document_storage_boundary",
@@ -36142,7 +37606,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L284",
+      "source_location": "L287",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_evolution_boundaries",
@@ -36152,7 +37616,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L199",
+      "source_location": "L202",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_idempotency_and_consistency",
@@ -36162,7 +37626,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L246",
+      "source_location": "L249",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_medical_data_boundary",
@@ -36172,7 +37636,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L274",
+      "source_location": "L277",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_observability",
@@ -36212,7 +37676,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L163",
+      "source_location": "L166",
       "weight": 1.0,
       "source": "docs_architecture_architecture",
       "target": "docs_architecture_upload_and_extraction_flow",
@@ -36232,7 +37696,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L144",
+      "source_location": "L147",
       "weight": 1.0,
       "source": "docs_architecture_runtime_responsibilities",
       "target": "docs_architecture_sqlite",
@@ -36252,7 +37716,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/architecture.md",
-      "source_location": "L133",
+      "source_location": "L136",
       "weight": 1.0,
       "source": "docs_architecture_runtime_responsibilities",
       "target": "docs_architecture_worker",
@@ -36602,7 +38066,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L113",
+      "source_location": "L115",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance",
       "target": "docs_license_policy",
@@ -36612,7 +38076,7 @@
       "relation": "references",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L125",
+      "source_location": "L127",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance",
       "target": "docs_threat_model",
@@ -36642,7 +38106,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L128",
+      "source_location": "L130",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance_first_slice_acceptance_evidence",
       "target": "docs_first_slice_acceptance_explicitly_not_accepted_or_deferred",
@@ -36652,7 +38116,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L46",
+      "source_location": "L47",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance_first_slice_acceptance_evidence",
       "target": "docs_first_slice_acceptance_fresh_local_verification",
@@ -36672,7 +38136,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L150",
+      "source_location": "L152",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance_first_slice_acceptance_evidence",
       "target": "docs_first_slice_acceptance_reproduction_boundary",
@@ -36682,7 +38146,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L85",
+      "source_location": "L86",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance_first_slice_acceptance_evidence",
       "target": "docs_first_slice_acceptance_requirement_to_evidence_map",
@@ -36692,7 +38156,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/first-slice-acceptance.md",
-      "source_location": "L108",
+      "source_location": "L110",
       "weight": 1.0,
       "source": "docs_first_slice_acceptance_first_slice_acceptance_evidence",
       "target": "docs_first_slice_acceptance_safety_and_mit_boundary_verified_by_this_slice",
@@ -36802,7 +38266,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/product.md",
-      "source_location": "L173",
+      "source_location": "L177",
       "weight": 1.0,
       "source": "docs_product_product_brief",
       "target": "docs_product_explicitly_deferred",
@@ -36822,7 +38286,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/product.md",
-      "source_location": "L149",
+      "source_location": "L153",
       "weight": 1.0,
       "source": "docs_product_product_brief",
       "target": "docs_product_full_mvp_direction",
@@ -36832,7 +38296,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/product.md",
-      "source_location": "L190",
+      "source_location": "L194",
       "weight": 1.0,
       "source": "docs_product_product_brief",
       "target": "docs_product_product_evidence_rules",
@@ -36872,7 +38336,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/product.md",
-      "source_location": "L122",
+      "source_location": "L126",
       "weight": 1.0,
       "source": "docs_product_first_vertical_slice",
       "target": "docs_product_acceptance_outcomes",
@@ -36922,7 +38386,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L368",
+      "source_location": "L382",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_later_mvp_slices",
@@ -36932,7 +38396,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L246",
+      "source_location": "L260",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_10_optional_s3_compatible_immutable_storage",
@@ -36942,7 +38406,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L268",
+      "source_location": "L282",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_11_local_synthetic_scanned_pdf_ocr_fallback",
@@ -36952,7 +38416,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L311",
+      "source_location": "L325",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_12_owner_only_payload_free_audit_log",
@@ -36962,7 +38426,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L324",
+      "source_location": "L338",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_13_local_one_time_adult_invitation",
@@ -36972,7 +38436,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L337",
+      "source_location": "L351",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_14_explicit_revocable_profile_read_grant",
@@ -36982,7 +38446,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L352",
+      "source_location": "L366",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_15_local_caregiver_invitation_and_explicit_read_access",
@@ -36992,7 +38456,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
-      "source_location": "L293",
+      "source_location": "L307",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_16_direct_synthetic_png_jpeg_ingestion",
@@ -37023,6 +38487,16 @@
       "confidence": "EXTRACTED",
       "source_file": "docs/slices.md",
       "source_location": "L220",
+      "weight": 1.0,
+      "source": "docs_slices_vertical_slice_plan",
+      "target": "docs_slices_task_19_offline_synthetic_evidence_verification",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "docs/slices.md",
+      "source_location": "L234",
       "weight": 1.0,
       "source": "docs_slices_vertical_slice_plan",
       "target": "docs_slices_task_9_comparable_indicator_catalog_and_chart",
@@ -37200,5 +38674,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "0f7642e9e5742829c9e96db2911f911833872c6c"
+  "built_at_commit": "a1f4104d18062da1476386665de186fb1f69c712"
 }

@@ -1,7 +1,7 @@
 {
   "apps/api/package.json": {
-    "mtime": 1786543431.7050953,
-    "ast_hash": "8fb2b3a0e7f14ae7eb19c45c6559c615",
+    "mtime": 1786559210.9457033,
+    "ast_hash": "1a1f342179e27532ec55a74034e22e00",
     "semantic_hash": ""
   },
   "apps/api/src/app.test.ts": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786558509.0017102,
-    "ast_hash": "0f68625d7fcf06b5a671c908427d7b6f",
+    "mtime": 1786559577.8881564,
+    "ast_hash": "68dce5a98107ad6aed103d0aa4fb4d35",
     "semantic_hash": ""
   },
   "THIRD_PARTY_NOTICES.md": {
@@ -195,13 +195,13 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1786558702.368207,
-    "ast_hash": "18534d7093a403e7f2f1d1b694e5059f",
+    "mtime": 1786559577.9272797,
+    "ast_hash": "79ca85a96635df6b69dbfe867b786be6",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1786558509.0827153,
-    "ast_hash": "8785ca709e3ba34a7b4678009fdaa74f",
+    "mtime": 1786559351.0411801,
+    "ast_hash": "c7261e3e830dbb9d2fafca037b363daa",
     "semantic_hash": ""
   },
   "docs/er-model.md": {
@@ -215,18 +215,18 @@
     "semantic_hash": ""
   },
   "docs/product.md": {
-    "mtime": 1786558509.0441518,
-    "ast_hash": "2efeba5ac47985e788c4dc5401f2302c",
+    "mtime": 1786559577.9668632,
+    "ast_hash": "58e33064a73441bd9b2e1a1cb31c78d7",
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786558785.018924,
-    "ast_hash": "4b2b103e5facce7eac4fa2b8adaabb0e",
+    "mtime": 1786559578.0034642,
+    "ast_hash": "3fd1aa29d3a1d663f218e01ee45cd2d7",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
-    "mtime": 1786558509.1974196,
-    "ast_hash": "dc3982f669bef18040540109c50eb026",
+    "mtime": 1786559351.1507459,
+    "ast_hash": "5243dcc6a124cd0d6f1c2c4c23094890",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "docs/first-slice-acceptance.md": {
-    "mtime": 1786558656.1494646,
-    "ast_hash": "17fafe24d00ee0c2e77505523e2c8658",
+    "mtime": 1786559803.743329,
+    "ast_hash": "340fd6fd2c9f30956f19422f81b8fea3",
     "semantic_hash": ""
   },
   "apps/api/src/storage/create-object-storage.ts": {
@@ -577,6 +577,26 @@
   "apps/api/test/evidence-bundle.integration.test.ts": {
     "mtime": 1786558733.2275083,
     "ast_hash": "0e97143d375f55f51c804d1e968a1baa",
+    "semantic_hash": ""
+  },
+  "apps/api/src/documents/evidence-bundle-verifier.test.ts": {
+    "mtime": 1786559746.5083952,
+    "ast_hash": "fd5be20c3faca2c15cb25c5650a3960b",
+    "semantic_hash": ""
+  },
+  "apps/api/src/documents/evidence-bundle-verifier.ts": {
+    "mtime": 1786559803.6979935,
+    "ast_hash": "1a5e65ee80967b2bcb5d91ba0818c4fb",
+    "semantic_hash": ""
+  },
+  "apps/api/src/documents/verify-evidence-bundle.test.ts": {
+    "mtime": 1786559350.923849,
+    "ast_hash": "db9a1639c51d71474fa70f2646ed2f20",
+    "semantic_hash": ""
+  },
+  "apps/api/src/documents/verify-evidence-bundle.ts": {
+    "mtime": 1786559844.944235,
+    "ast_hash": "5d68ecbf79cc856a6ac2eb7c465d1033",
     "semantic_hash": ""
   }
 }

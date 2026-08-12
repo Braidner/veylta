@@ -93,6 +93,10 @@ The first slice proves one complete and safe path with synthetic data:
     up to five latest synthetic source files and an immutable manifest. This is
     deliberately not a backup, restore format, or production portability claim
     (Task 18, delivered).
+14. A local command can verify that downloaded snapshot's safe TAR structure,
+    manifest, source signature, size, and SHA-256 before it is handled. It
+    reports aggregate counts only and never extracts entries; it is not a proof
+    of origin or clinical correctness (Task 19, delivered).
 
 The implemented synthetic record path reaches step 10, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as

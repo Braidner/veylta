@@ -43,6 +43,8 @@ The full first slice remains deliberately narrow:
 11. download a local TAR snapshot of at most five latest synthetic source files
     plus their checksummed manifest, only as the owner/self profile actor (Task 18,
     delivered).
+12. verify a downloaded local synthetic snapshot offline, before any manual
+    handling of its contents (Task 19, delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
 exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
@@ -157,6 +159,19 @@ disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.
 `DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
 state-changing requests require the exact configured `WEB_ORIGIN`.
+
+An artifact can be checked without extracting it to disk:
+
+```bash
+pnpm --filter @veylta/api verify:evidence-bundle ./veylta-synthetic-evidence.tar
+```
+
+The verifier accepts only the local `synthetic-evidence-bundle/v1` USTAR shape,
+generated document paths, supported source signatures, and matching SHA-256/size
+metadata. It proves structural consistency of the captured local archive, not
+its origin, clinical correctness, or a production export guarantee. It prints
+counts only; it never calls the API, writes archive entries, or logs profile
+names, filenames, values, or source bytes.
 
 This demo session has no login or account recovery and is not production
 authentication. Integration tests create isolated temporary SQLite databases;

@@ -125,6 +125,9 @@ required. Shared code is extracted only when two real consumers need it.
   profile boundary. It reads at most five current immutable sources through the
   expected checksum/size/content-type storage boundary, writes generated-safe
   archive paths, and records only the versioned payload-free export audit event.
+- Supplies a local, read-only evidence-bundle verifier. It parses the bounded
+  USTAR bytes in memory without extraction or API access, checks the manifest
+  and every source checksum/signature, and returns only safe aggregate counts.
 - Reads `audit-log/v1` only after an active owner check on the requested family;
   it uses opaque keyset pagination, adds one payload-free access event per
   successful page, and does not expose audit metadata or correlation IDs.

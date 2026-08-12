@@ -217,6 +217,20 @@ Commit intent: `feat: export local synthetic evidence bundle`
 - This is a synthetic, bounded local snapshot — not a backup, restore format,
   account export, or production portability feature.
 
+## Task 19 — Offline synthetic evidence verification
+
+Commit intent: `feat: verify local synthetic evidence bundle`
+
+- A dependency-free local command reads a Task 18 TAR without extracting its
+  contents or calling an API.
+- It fail-closes on malformed USTAR headers, duplicate/traversal entries,
+  unbounded archive/manifest/source data, wrong content signatures, or a
+  checksum/size mismatch.
+- It validates only the narrow `synthetic-evidence-bundle/v1` shape and prints
+  safe aggregate counts, never profile data, filenames, extracted values, or
+  source bytes. It establishes local structural consistency, not cryptographic
+  origin or clinical correctness, and is not import, restore, or backup.
+
 ## Task 9 — Comparable indicator catalog and chart
 
 Commit intent: `feat: compare compatible confirmed indicators`

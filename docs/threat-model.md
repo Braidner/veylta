@@ -77,7 +77,7 @@ the family's trust boundary merely because it exposes an API.
 | Dependency/license compromise | Code execution or prohibited distribution | Lockfile, minimal dependencies, license allowlist, vulnerability review, reproducible CI, update policy | From scaffold onward |
 | Audit tampering or overcollection | No accountability or new privacy leak | Append-only semantics and restricted reads; record identifiers/action/result/time, not medical payload; integrity/retention policy | Events in first slice; hardening before real data |
 | Backup loss/disclosure | Irrecoverable or leaked history | Encrypted backups, separate access, retention, checksum, documented restore drills, deletion propagation | Before real data |
-| Export/account deletion bug | Incomplete portability or unintended destruction | The delivered local synthetic TAR is bounded to five sources, verifies manifest checksums, uses owner/self authorization, and is payload-free audited; verified production portability also needs deletion workflow, grace period, and backup-retention disclosure | Full MVP, before production |
+| Export/account deletion bug | Incomplete portability or unintended destruction | The delivered local synthetic TAR is bounded to five sources, verifies manifest checksums, uses owner/self authorization, and is payload-free audited; a local verifier fail-closes on malformed USTAR/manifest/checksum data without extraction. Verified production portability also needs deletion workflow, grace period, and backup-retention disclosure | Full MVP, before production |
 
 ## First-slice security invariants
 

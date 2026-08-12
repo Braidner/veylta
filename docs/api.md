@@ -567,6 +567,18 @@ account export, or real-data portability claim. A successful request writes
 `profile.evidence_bundle.exported` with only
 `synthetic-evidence-bundle/v1` as payload-free audit metadata.
 
+### Offline verification command (Task 19)
+
+Run `pnpm --filter @veylta/api verify:evidence-bundle <bundle.tar>` before
+manually handling a downloaded local archive. The command is completely local:
+it neither contacts the API nor extracts entries to disk. It accepts only the
+exact USTAR entry shape produced by Task 18, enforces archive/manifest/document
+byte limits, checks generated document paths and content-type signatures, and
+recomputes each source SHA-256. This proves structural consistency of the local
+snapshot, not cryptographic origin, clinical correctness, or production export
+validity. Successful output contains only the contract version and
+source/observation counts; failures reveal no archive payload.
+
 ## Observation history and provenance (Task 7)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/observations`
