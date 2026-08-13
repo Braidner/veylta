@@ -15,6 +15,27 @@ person answer:
 It is a preparation and understanding tool, not a clinician, diagnostic system,
 prescribing system, or complete EHR.
 
+## Target product model
+
+Veylta is an installable PWA over a `veylta-vault/v1` folder owned by the user.
+The user chooses a dedicated folder, commonly inside an already synchronized
+cloud drive. The vault, rather than a Veylta-hosted database, is the durable
+record. The PWA remains useful offline for browsing previously authorized data,
+importing sources, reviewing proposals, and reading provenance.
+
+Document analysis is an explicit session, not an always-on hidden worker. The
+user selects which unprocessed documents an installed Codex skill may read;
+the `veylta-agent/v1` bridge shows queued, working, failed, and completed state.
+The skill writes a versioned proposal tied to the exact source checksum. A
+person must still make every final fact decision.
+
+Storage ownership and model egress are separate choices. The vault stays in the
+user's storage, but a selected document can be sent to the model service during
+a Codex run. The confirmation screen must name the selected documents, explain
+that boundary, and offer the local deterministic processor when supported.
+No Veylta-owned model key, token resale, or hidden per-document charge is part
+of this mode.
+
 ## Users and access model
 
 | Role | Product responsibility |

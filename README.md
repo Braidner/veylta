@@ -11,6 +11,29 @@ The product helps a family understand its own health history and prepare for a
 conversation with a clinician. It does **not** diagnose disease, prescribe or
 change treatment, or replace a clinician or an electronic health record.
 
+## New product direction: PWA over your own vault
+
+Veylta is moving from an application-hosted database toward an installable PWA
+whose source of truth is a folder selected and owned by the user. That folder
+can be inside iCloud Drive, Google Drive, Dropbox, or another locally
+synchronized drive. Original documents, manifests, reviewed observations, and
+agent results use the open [`veylta-vault/v1`](docs/vault-format.md) layout; the
+portable data contains no Veylta server credential or provider lock-in.
+
+An optional installable Codex skill connects only when the user requests it. A
+loopback-only bridge leases narrow `veylta-agent/v1` commands, analyzes the
+selected unprocessed sources, and writes versioned proposals back to the vault.
+The user still confirms or rejects extracted facts before they enter health
+history. Veylta does not need an application-owned OpenAI API key in this mode;
+agent usage belongs to the user's Codex plan or credits. Before processing, the
+UI must disclose that the selected source content can be sent to the model
+service under that account's data controls.
+
+The existing Fastify/SQLite/object-storage implementation remains a tested
+synthetic reference while this transition is delivered one vertical slice at a
+time. It is not the target hosted architecture. See
+[ADR 0006](docs/adr/0006-user-owned-vault-and-connected-agent.md).
+
 ## Project status
 
 The repository is implementing its first vertical slice. The completed local
@@ -80,7 +103,7 @@ real-data readiness claim.
 - Portable data and provider-independent storage, OCR, and LLM boundaries.
 - Synthetic fixtures only. Never commit real medical documents or secrets.
 
-## Intended architecture
+## Current executable reference architecture
 
 - TypeScript monorepo without an orchestration framework.
 - Next.js web application.

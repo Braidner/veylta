@@ -24,6 +24,10 @@ export const SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION = "synthetic-profile-expo
  * hides a profile and its sources from active access; it never deletes them.
  */
 export const PROFILE_ARCHIVE_CONTRACT_VERSION = "profile-archive/v1" as const;
+/** Portable, provider-neutral data layout selected and owned by the user. */
+export const VEYLTA_VAULT_CONTRACT_VERSION = "veylta-vault/v1" as const;
+/** Narrow command/result protocol used by an explicitly connected local agent. */
+export const VEYLTA_AGENT_PROTOCOL_VERSION = "veylta-agent/v1" as const;
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
 /**
  * The complete local profile export fails before sending bytes if a profile
@@ -39,6 +43,58 @@ export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
+
+export const VEYLTA_VAULT_MEDIA_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const;
+export const VEYLTA_AGENT_COMMAND_TYPES = ["scan_unprocessed", "analyze_document"] as const;
+
+export type VeyltaVaultMediaType = (typeof VEYLTA_VAULT_MEDIA_TYPES)[number];
+export type VeyltaAgentCommandType = (typeof VEYLTA_AGENT_COMMAND_TYPES)[number];
+
+/**
+ * Public root metadata. Credentials, provider tokens, local bridge tokens, and
+ * absolute machine paths are intentionally not part of the portable vault.
+ */
+export interface VeyltaVaultManifest {
+  readonly contractVersion: typeof VEYLTA_VAULT_CONTRACT_VERSION;
+  readonly vaultId: string;
+  readonly createdAt: string;
+}
+
+/** Immutable source selector stored next to one user-owned original. */
+export interface VeyltaVaultDocumentManifest {
+  readonly contractVersion: typeof VEYLTA_VAULT_CONTRACT_VERSION;
+  readonly id: string;
+  readonly profileId: string;
+  readonly importedAt: string;
+  readonly mediaType: VeyltaVaultMediaType;
+  readonly byteSize: number;
+  readonly sha256: string;
+  readonly originalFileName: string;
+  /** Slash-separated path relative to the vault root. */
+  readonly sourcePath: string;
+}
+
+interface VeyltaAgentCommandBase {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly id: string;
+  readonly vaultId: string;
+  readonly requestedAt: string;
+}
+
+export interface VeyltaScanUnprocessedCommand extends VeyltaAgentCommandBase {
+  readonly type: "scan_unprocessed";
+  readonly profileId?: string;
+}
+
+export interface VeyltaAnalyzeDocumentCommand extends VeyltaAgentCommandBase {
+  readonly type: "analyze_document";
+  readonly profileId: string;
+  readonly documentId: string;
+  /** Binds every result to the exact immutable input version. */
+  readonly sourceSha256: string;
+}
+
+export type VeyltaAgentCommand = VeyltaScanUnprocessedCommand | VeyltaAnalyzeDocumentCommand;
 
 /**
  * The only canonical codes the deterministic synthetic parser can propose.

@@ -48,6 +48,11 @@ import {
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
   SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
+  VEYLTA_AGENT_PROTOCOL_VERSION,
+  VEYLTA_VAULT_CONTRACT_VERSION,
+  type VeyltaAgentCommand,
+  type VeyltaVaultDocumentManifest,
+  type VeyltaVaultManifest,
 } from "./index.js";
 
 test("public contracts carry explicit versions", () => {
@@ -72,6 +77,45 @@ test("public contracts carry explicit versions", () => {
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
+});
+
+test("the user-owned vault and connected agent have separate portable contracts", () => {
+  assert.equal(VEYLTA_VAULT_CONTRACT_VERSION, "veylta-vault/v1");
+  assert.equal(VEYLTA_AGENT_PROTOCOL_VERSION, "veylta-agent/v1");
+
+  const vault = {
+    contractVersion: VEYLTA_VAULT_CONTRACT_VERSION,
+    vaultId: "10000000-0000-4000-8000-000000000001",
+    createdAt: "2026-08-13T12:00:00.000Z",
+  } as const satisfies VeyltaVaultManifest;
+
+  const document = {
+    contractVersion: VEYLTA_VAULT_CONTRACT_VERSION,
+    id: "10000000-0000-4000-8000-000000000002",
+    profileId: "10000000-0000-4000-8000-000000000003",
+    importedAt: "2026-08-13T12:01:00.000Z",
+    mediaType: "application/pdf",
+    byteSize: 1024,
+    sha256: "a".repeat(64),
+    originalFileName: "synthetic-report.pdf",
+    sourcePath:
+      "profiles/10000000-0000-4000-8000-000000000003/documents/10000000-0000-4000-8000-000000000002/original.pdf",
+  } as const satisfies VeyltaVaultDocumentManifest;
+
+  const command = {
+    protocolVersion: VEYLTA_AGENT_PROTOCOL_VERSION,
+    id: "10000000-0000-4000-8000-000000000004",
+    type: "analyze_document",
+    vaultId: vault.vaultId,
+    profileId: document.profileId,
+    documentId: document.id,
+    sourceSha256: document.sha256,
+    requestedAt: "2026-08-13T12:02:00.000Z",
+  } as const satisfies VeyltaAgentCommand;
+
+  assert.equal("token" in vault, false);
+  assert.equal("providerCredentials" in document, false);
+  assert.equal(command.sourceSha256, document.sha256);
 });
 
 test("health summary is an explicit evidence snapshot, not a clinical assessment", () => {

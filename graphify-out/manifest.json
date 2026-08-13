@@ -115,13 +115,13 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/index.test.ts": {
-    "mtime": 1786637577.5632598,
-    "ast_hash": "49a935b197f843bb5dfe1c373dbf6c39",
+    "mtime": 1786644870.5872838,
+    "ast_hash": "6ec692fa9aab3a661caa495b21806890",
     "semantic_hash": ""
   },
   "packages/contracts/src/index.ts": {
-    "mtime": 1786637308.3663433,
-    "ast_hash": "ab35026cce3e1e68c2b297a5b14edc3b",
+    "mtime": 1786644905.4934907,
+    "ast_hash": "5dc73361f3562ebb94d903019c8afc8b",
     "semantic_hash": ""
   },
   "packages/contracts/tsconfig.json": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786637823.3185463,
-    "ast_hash": "61f88bb3ccbbd9b8623a66ac3d054528",
+    "mtime": 1786645021.7017937,
+    "ast_hash": "d18f456e2a68520f87501007dc17acfe",
     "semantic_hash": ""
   },
   "THIRD_PARTY_NOTICES.md": {
@@ -200,8 +200,8 @@
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1786637823.3200197,
-    "ast_hash": "af4592901fa7100d5f7de97906014c49",
+    "mtime": 1786645021.7028713,
+    "ast_hash": "5605d26cd744a519d188057f6abadc63",
     "semantic_hash": ""
   },
   "docs/er-model.md": {
@@ -215,18 +215,18 @@
     "semantic_hash": ""
   },
   "docs/product.md": {
-    "mtime": 1786637823.3190424,
-    "ast_hash": "801ed3dca8be1b6ee0b991c5a1281e91",
+    "mtime": 1786645021.7021503,
+    "ast_hash": "d697e0170938bd0ade7ac20276fd898d",
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786637823.3214748,
-    "ast_hash": "41989a885271cd860e1a6d5e9958a44c",
+    "mtime": 1786645045.6499321,
+    "ast_hash": "cc307e6149f5a760c029ad619e82365f",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
-    "mtime": 1786637823.3205945,
-    "ast_hash": "96557b1845acf074c2dc2a9f6d3a68a7",
+    "mtime": 1786645030.8627293,
+    "ast_hash": "bc805a6afbd7ce6ab7f6e31cc9836dab",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -617,6 +617,16 @@
   "e2e/health-summary.spec.ts": {
     "mtime": 1786634798.3347194,
     "ast_hash": "754c2e4724c3c41d50e45519be544e5f",
+    "semantic_hash": ""
+  },
+  "docs/adr/0006-user-owned-vault-and-connected-agent.md": {
+    "mtime": 1786644963.4573069,
+    "ast_hash": "a7c38c331afa5b1b3db4a2e11bc6163a",
+    "semantic_hash": ""
+  },
+  "docs/vault-format.md": {
+    "mtime": 1786644963.4577966,
+    "ast_hash": "b939ce504814f75f2042dada17c2cb02",
     "semantic_hash": ""
   }
 }

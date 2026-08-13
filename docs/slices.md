@@ -461,6 +461,58 @@ Commit intent: `feat: add local caregiver read access`
   before the owner grants access, then only the shared read-only profile, and
   returns to the empty state after revocation.
 
+## PWA and user-owned vault transition
+
+ADR 0006 establishes the next implementation sequence. Each item is a separate
+TDD task and commit; the SQLite reference path is retained until its vault-backed
+replacement passes equivalent acceptance tests.
+
+### Task 25 — Portable vault contract
+
+Commit intent: `docs: adopt user-owned vault and connected agent`
+
+- Versioned `veylta-vault/v1` root and immutable document manifest.
+- Versioned, closed `veylta-agent/v1` command selectors.
+- Provider-neutral folder layout, integrity/conflict rules, egress disclosure,
+  and no credentials in portable data.
+
+### Task 26 — Installable offline PWA shell
+
+Commit intent: `feat: make veylta installable offline`
+
+- Web app manifest, icons, standalone presentation, safe offline shell, update
+  state, and capability disclosure.
+- No caching of medical API responses or document bodies by the service worker.
+- Desktop/mobile installability and offline-navigation browser tests.
+
+### Task 27 — User-selected directory vault
+
+Commit intent: `feat: initialize user-owned veylta vault`
+
+- `VaultAdapter` with strict directory capability detection and permission
+  recovery.
+- Initialize/read `vault.json`; import one immutable synthetic source through a
+  temporary write, SHA-256 verification, and create-only finalization.
+- Explicit unsupported-browser state; no silent OPFS/IndexedDB data fallback.
+
+### Task 28 — Installable connected-agent bridge
+
+Commit intent: `feat: connect veylta document agent`
+
+- Installable skill, loopback-only random-token bridge, durable command journal,
+  long polling, expiring leases, interruption recovery, and visible status.
+- `scan_unprocessed` and one checksum-bound `analyze_document` command only.
+- Explicit source selection and model-egress disclosure before enqueue.
+
+### Task 29 — Vault-backed review and history
+
+Commit intent: `feat: review vault-backed agent results`
+
+- Strict result schema and immutable runs tied to exact source SHA-256.
+- Existing confirm/correct/reject boundary persisted in the vault.
+- Health cockpit and observation history read from the vault adapter; SQLite is
+  no longer needed for the migrated single-user path.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and

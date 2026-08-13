@@ -1,5 +1,35 @@
 # Architecture
 
+## Target architecture: PWA + user-owned vault
+
+ADR 0006 changes the long-term system boundary. The executable SQLite slice
+below remains a reference implementation during migration; it is not the target
+custody model.
+
+```mermaid
+flowchart LR
+  U["User"] --> P["Installed Veylta PWA"]
+  P --> A["VaultAdapter"]
+  A --> V[("User-owned Veylta Vault")]
+  V -. "folder sync" .-> C["iCloud Drive / Google Drive / Dropbox"]
+  U -->|"explicit Analyze request"| S["Installed Veylta Codex skill"]
+  S <--> B["127.0.0.1 bridge"]
+  B -->|"leased veylta-agent/v1 command"| V
+  S -->|"versioned proposal"| V
+  P -->|"explicit review decision"| V
+```
+
+The PWA owns presentation, capability detection, and human decisions. A
+provider-neutral `VaultAdapter` owns bounded reads and atomic/versioned writes.
+The first adapter targets a user-selected directory in a supporting desktop
+browser. The local bridge implements the same contract for agent connectivity
+and later browser fallback; it is not a remote storage service.
+
+The synchronized vault contains portable records only. Directory handles,
+cloud OAuth credentials, bridge tokens, Codex credentials, and absolute paths
+stay in browser or OS-local state. The exact layout and integrity rules are in
+[Veylta Vault v1](vault-format.md).
+
 ## Decision summary
 
 Veylta uses a small TypeScript monorepo with three deployable processes:
