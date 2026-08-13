@@ -11,33 +11,32 @@ The product helps a family understand its own health history and prepare for a
 conversation with a clinician. It does **not** diagnose disease, prescribe or
 change treatment, or replace a clinician or an electronic health record.
 
-## New product direction: PWA over your own vault
+## Product direction: a home health-care PWA
 
-Veylta is moving from an application-hosted database toward an installable PWA
-whose source of truth is a folder selected and owned by the user. That folder
-can be inside iCloud Drive, Google Drive, Dropbox, or another locally
-synchronized drive. Original documents, manifests, reviewed observations, and
-agent results use the open [`veylta-vault/v1`](docs/vault-format.md) layout; the
-portable data contains no Veylta server credential or provider lock-in.
+Veylta is an installable PWA served by one home installation, in the same
+operational style as BraidnerAssist. Fastify and the worker own a local SQLite
+database and a configurable document-storage directory. There is no Veylta
+cloud control plane and no serverless custody model: accounts, access grants,
+medical metadata, audit events, and jobs stay on the household server.
 
-An optional installable Codex skill connects only when the user requests it. A
-loopback-only bridge leases narrow `veylta-agent/v1` commands, analyzes the
-selected unprocessed sources, and writes versioned proposals back to the vault.
-The user still confirms or rejects extracted facts before they enter health
-history. Veylta does not need an application-owned OpenAI API key in this mode;
-agent usage belongs to the user's Codex plan or credits. Before processing, the
-UI must disclose that the selected source content can be sent to the model
-service under that account's data controls.
+On an empty installation the only available product action creates the first
+administrator, their home workspace, and their linked health profile in one
+transaction. Later sign-in uses a local username and password. The target
+settings surface manages Codex connection status, document-storage location,
+local administrator/user accounts, and per-profile access.
 
-The existing Fastify/SQLite/object-storage implementation remains a tested
-synthetic reference while this transition is delivered one vertical slice at a
-time. It is not the target hosted architecture. See
-[ADR 0006](docs/adr/0006-user-owned-vault-and-connected-agent.md).
+The optional Codex integration follows Hermes' proven local-runtime pattern:
+Veylta talks to a locally installed `codex app-server`, while `codex login`
+continues to own the ChatGPT subscription session. Veylta never reads, copies,
+or persists Codex OAuth tokens. The integration remains isolated behind a port
+because app-server is an experimental interface. See
+[ADR 0007](docs/adr/0007-home-server-pwa-and-codex-runtime.md).
 
 ## Project status
 
-The repository is implementing its first vertical slice. The completed local
-path creates an opaque synthetic demo session, one owner-scoped family,
+The repository contains the source-first synthetic record path and is now
+moving it behind the home-server account model. The completed first-run path
+creates exactly one local administrator, one owner-scoped home workspace,
 adult/dependent profiles, immutable synthetic PDF/PNG/JPEG records, review-ready
 extracted facts, and explicit review decisions in persistent local storage.
 The full first slice remains deliberately narrow:
@@ -82,9 +81,9 @@ The full first slice remains deliberately narrow:
     originals, extracted facts, observations, or storage objects; the owner can
     restore it later (Task 24, delivered).
 
-Cloud OCR, LLM processing, clinical trend summaries, clinical recommendations, FHIR
+Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
-In the loopback-local synthetic demo, an owner can issue a one-time invitation
+The old loopback demo registration remains test-only. In that synthetic test path, an owner can issue a one-time invitation
 to an adult or caregiver. An adult receives only a personal linked profile;
 a caregiver receives no profile at all until the owner explicitly grants the
 single, revocable `profile.read` capability for one profile. The grant never
@@ -103,12 +102,13 @@ real-data readiness claim.
 - Portable data and provider-independent storage, OCR, and LLM boundaries.
 - Synthetic fixtures only. Never commit real medical documents or secrets.
 
-## Current executable reference architecture
+## Current executable architecture
 
 - TypeScript monorepo without an orchestration framework.
 - Next.js web application.
 - Fastify API and worker process.
-- Embedded SQLite through Node.js `node:sqlite` for domain state, audit events,
+- Embedded SQLite through Node.js `node:sqlite` as the authoritative household
+  store for accounts, access, domain state, audit events,
   explicit migrations, and—beginning with Task 5—durable idempotent jobs.
 - Versioned `ObjectStorage/v1` contract, backed by a persistent local filesystem
   directory by default and an explicit S3-compatible encrypted adapter for
@@ -160,8 +160,9 @@ pnpm license:check
 ```
 
 `pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
-The browser flow at <http://127.0.0.1:4300> creates a local demo family and
-keeps the active profile explicit in both the route and heading. It accepts one
+On first launch, <http://127.0.0.1:4300> creates the only bootstrap administrator
+and signs them into their linked profile. Later visits show the local sign-in
+screen. The active profile stays explicit in both the route and heading. It accepts one
 synthetic PDF, PNG, or JPEG up to 5 MiB, streams it through matching
 MIME/signature, size, and SHA-256 checks, and
 keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
@@ -193,9 +194,10 @@ manifest, never a backup, restore format, or production portability claim. The
 separate `synthetic-profile-export/v1` download contains every current source and
 confirmed observation for one profile when the profile has at most ten sources;
 it fails closed rather than omitting older data. It is a local synthetic export,
-not a restore or production backup. The demo never asks for a real email. The opaque session token exists only in
-an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
-disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
+not a restore or production backup. Account setup asks for no email and stores a
+versioned scrypt password hash. The opaque session token exists only in an
+HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is disabled
+by default and enabled only by the E2E runner for legacy synthetic scenarios,
 while both web and API bind only to loopback.
 `DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
 state-changing requests require the exact configured `WEB_ORIGIN`.
@@ -236,8 +238,9 @@ consistency of the captured local archive, not its origin, clinical correctness,
 or a production export guarantee. It prints counts only; it never calls the API,
 writes archive entries, or logs profile names, filenames, values, or source bytes.
 
-This demo session has no login or account recovery and is not production
-authentication. Integration tests create isolated temporary SQLite databases;
+Local username/password sign-in and first-administrator bootstrap are delivered;
+password recovery, passkeys, remote exposure, and hardened multi-device session
+management are not. Integration tests create isolated temporary SQLite databases;
 they do not reset the default development file. The upload path is also
 limited to PDF signature, MIME, size, immutable-storage, and authorization
 controls. The checked-in fixture, tests, and supported deterministic parser are

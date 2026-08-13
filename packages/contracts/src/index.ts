@@ -1,4 +1,5 @@
 export const HTTP_API_VERSION = "v1" as const;
+export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
@@ -199,6 +200,7 @@ export interface HealthStatus {
 }
 
 export type FamilyRole = "owner" | "adult_member" | "caregiver";
+export type AppAccountRole = "admin" | "user";
 export type FamilyInvitationRole = "adult_member" | "caregiver";
 export type PatientProfileKind = "adult" | "dependent";
 export type PatientProfileAccess = "owner" | "self" | "granted_read";
@@ -218,6 +220,41 @@ export interface PatientProfileSummary {
   /** The server-authorized scope this session has for the profile. */
   access: PatientProfileAccess;
   createdAt: string;
+}
+
+export interface AppAccountUser {
+  readonly id: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly role: AppAccountRole;
+}
+
+export interface SetupStatusResponse {
+  readonly contractVersion: typeof ACCOUNT_CONTRACT_VERSION;
+  readonly setupRequired: boolean;
+}
+
+export interface AdminSetupRequest {
+  readonly username: string;
+  readonly password: string;
+  readonly displayName: string;
+}
+
+export interface AdminSetupResponse {
+  readonly contractVersion: typeof ACCOUNT_CONTRACT_VERSION;
+  readonly user: AppAccountUser;
+  readonly family: FamilySummary;
+  readonly profile: PatientProfileSummary;
+}
+
+export interface LoginRequest {
+  readonly username: string;
+  readonly password: string;
+}
+
+export interface LoginResponse {
+  readonly contractVersion: typeof ACCOUNT_CONTRACT_VERSION;
+  readonly user: AppAccountUser;
 }
 
 export interface DemoRegistrationRequest {
@@ -369,7 +406,11 @@ export interface SessionResponse {
   contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
   user: {
     id: string;
+    /** Null only for legacy local-demo sessions created before account setup. */
+    username: string | null;
     displayName: string;
+    /** Null only for legacy local-demo sessions created before account setup. */
+    role: AppAccountRole | null;
   };
   families: SessionFamily[];
 }

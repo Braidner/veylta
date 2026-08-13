@@ -394,6 +394,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "observation_reference_ranges"), true);
     assert.equal(await tableExists(database, "health_summaries"), true);
     assert.equal(await tableExists(database, "health_summary_evidence"), true);
+    assert.equal(await tableExists(database, "app_accounts"), true);
     assert.equal(await tableExists(database, "family_invitations"), true);
     assert.equal(await tableExists(database, "profile_consent_grants"), true);
     assert.equal(await tableExists(database, "caregiver_rollback_guard"), false);
@@ -523,6 +524,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ]),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0012_app_accounts");
+    assert.equal(await tableExists(database, "app_accounts"), false);
     assert.equal(await migrateDown(database), "0011_health_summaries");
     assert.equal(await migrateDown(database), "0010_direct_image_documents");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
@@ -599,6 +602,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0009_caregiver_access",
       "0010_direct_image_documents",
       "0011_health_summaries",
+      "0012_app_accounts",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -729,6 +733,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0012_app_accounts");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     assert.equal(await tableExists(database, "health_summaries"), true);
     assert.equal(await tableExists(database, "health_summary_evidence"), true);

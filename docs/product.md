@@ -17,38 +17,33 @@ prescribing system, or complete EHR.
 
 ## Target product model
 
-Veylta is an installable PWA over a `veylta-vault/v1` folder owned by the user.
-The user chooses a dedicated folder, commonly inside an already synchronized
-cloud drive. The vault, rather than a Veylta-hosted database, is the durable
-record. The PWA remains useful offline for browsing previously authorized data,
-importing sources, reviewing proposals, and reading provenance.
+Veylta is an installable PWA backed by a household-owned server. SQLite is the
+authoritative structured store and immutable source bytes live in a configured
+local storage directory. The first visit creates one administrator account;
+later visits require local sign-in. Administrators manage accounts, storage,
+Codex connectivity, and access, while each profile remains an independently
+authorized medical boundary.
 
-Document analysis is an explicit session, not an always-on hidden worker. The
-user selects which unprocessed documents an installed Codex skill may read;
-the `veylta-agent/v1` bridge shows queued, working, failed, and completed state.
-The skill writes a versioned proposal tied to the exact source checksum. A
-person must still make every final fact decision.
-
-Storage ownership and model egress are separate choices. The vault stays in the
-user's storage, but a selected document can be sent to the model service during
-a Codex run. The confirmation screen must name the selected documents, explain
-that boundary, and offer the local deterministic processor when supported.
-No Veylta-owned model key, token resale, or hidden per-document charge is part
-of this mode.
+Document analysis is explicit and visible. The local deterministic worker is
+the default. An optional Codex adapter may process selected documents through a
+locally installed `codex app-server`; the user's `codex login` session remains
+owned by Codex. Veylta stores no model key or OAuth token, and the confirmation
+screen must disclose which source can leave the home server. A person still
+makes every final fact decision.
 
 ## Users and access model
 
 | Role | Product responsibility |
 | --- | --- |
-| Family owner | Manages the family, configured storage, and access grants. |
-| Adult member | Manages their linked personal profile and may receive a specific read grant. |
-| Caregiver | Starts without a profile and may read only a profile explicitly shared by the owner. |
+| Administrator | Manages the home installation, accounts, storage, Codex connection, and every profile. |
+| User | Opens their own linked profile and any profile explicitly shared with them. |
+| Granted user | Reads only the named profile and capabilities explicitly granted to their account. |
 | Dependent profile | Represents a child or other dependent without its own login. |
 
-Membership in a family is not blanket access to every patient profile. Every
-medical-data request is authorized on the server against the active family,
-profile, membership, and applicable consent grant. Access and material agent
-actions produce audit events.
+A profile URL is only a selector. Every medical-data request is authorized on
+the server against the active account, system role, linked profile, and any
+applicable explicit grant. Access and material agent actions produce audit
+events.
 
 ## Product principles
 

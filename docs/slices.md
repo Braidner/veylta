@@ -463,6 +463,9 @@ Commit intent: `feat: add local caregiver read access`
 
 ## PWA and user-owned vault transition
 
+Superseded by Task 30 and ADR 0007. Tasks 25–28 remain historical delivered
+experiments; their browser-owned vault is not the target data authority.
+
 ADR 0006 establishes the next implementation sequence. Each item is a separate
 TDD task and commit; the SQLite reference path is retained until its vault-backed
 replacement passes equivalent acceptance tests.
@@ -516,6 +519,49 @@ Commit intent: `feat: review vault-backed agent results`
 - Existing confirm/correct/reject boundary persisted in the vault.
 - Health cockpit and observation history read from the vault adapter; SQLite is
   no longer needed for the migrated single-user path.
+
+## Home-server PWA transition
+
+ADR 0007 restores the tested SQLite/object-storage runtime as the target home
+service and keeps the installable PWA shell. Each item remains a separate TDD
+task and commit.
+
+### Task 30 — First administrator and local sign-in
+
+Commit intent: `feat: bootstrap the home server administrator`
+
+- Empty-installation `account/v1` setup status and exact-Origin bootstrap.
+- One atomic administrator, home workspace, linked profile, opaque session, and
+  payload-free audit graph protected by SQLite constraints/transaction locking.
+- Versioned scrypt password storage, uniform credential failures, sign-out and
+  later username/password sign-in; legacy demo registration test-only.
+
+### Task 31 — System settings and account administration
+
+Commit intent: `feat: add home server settings`
+
+- Admin-only settings shell and account lifecycle for `admin`/`user`.
+- Codex CLI/app-server capability and login status through a non-secret adapter.
+- Current storage location plus guarded, checksummed relocation workflow.
+
+### Task 32 — Profile URLs and access policy
+
+Commit intent: `feat: enforce home profile access`
+
+- Stable profile link and server-side authorization for administrator, linked
+  owner, or explicit revocable grant only.
+- No inherited read/write access from merely knowing a URL or sharing a family.
+- Two-account integration and browser tests for grant/revoke/non-disclosure.
+
+### Task 33 — Evidence-backed home health cockpit
+
+Commit intent: `feat: build the household health cockpit`
+
+- Reference-informed body/status infographic and a visible evidence-state model.
+- Separate source-backed sections for nutrition discussion prompts, analyses to
+  discuss, clinician specialties, reminders, and bounded sport suggestions.
+- No opaque score, diagnosis, treatment, false urgency, or recommendation
+  without source, rule version, missing-context disclosure, and human review.
 
 ## Later MVP slices
 

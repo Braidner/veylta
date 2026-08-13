@@ -1,3 +1,5 @@
+import { createAccountService } from "./accounts/account-service.js";
+import { registerAccountRoutes } from "./accounts/routes.js";
 import { buildApp } from "./app.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, databaseReadiness } from "./database/pool.js";
@@ -15,6 +17,15 @@ const familyService = createFamilyService(database, {
   secureCookie: config.secureSessionCookie,
   sessionTtlSeconds: config.sessionTtlSeconds,
 });
+registerAccountRoutes(
+  app,
+  createAccountService(database, {
+    cookieName: "veylta_session",
+    secureCookie: config.secureSessionCookie,
+    sessionTtlSeconds: config.sessionTtlSeconds,
+  }),
+  { allowedMutationOrigins: [config.webOrigin] },
+);
 registerFamilyRoutes(app, familyService, {
   allowedMutationOrigins: [config.webOrigin],
   demoRegistrationEnabled: config.demoRegistrationEnabled,

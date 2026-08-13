@@ -1,6 +1,6 @@
 # ADR 0006: User-owned vault and explicitly connected agent
 
-- Status: Accepted as the target architecture
+- Status: Superseded by ADR 0007
 - Date: 2026-08-13
 - Supersedes: the long-term persistence and agent-connectivity direction in ADR 0001, ADR 0004, and ADR 0005
 

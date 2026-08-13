@@ -21,6 +21,7 @@
 
 ```mermaid
 erDiagram
+  User ||--o| AppAccount : authenticates_as
   User ||--o{ FamilyMembership : joins
   Family ||--o{ FamilyMembership : has
   Family ||--o{ PatientProfile : contains
@@ -66,12 +67,19 @@ claim that they are migrated in the first slice.
 ### User
 
 - `id`
-- display name; production login identity remains owned by a future
-  authentication subsystem
+- display name
 - `created_at`, `disabled_at`
 
-Task 3 creates an opaque local demo identity and stores no email or reusable
-credential in the domain table.
+### AppAccount
+
+- `user_id` (one-to-one with `User`)
+- normalized, case-insensitive `username`
+- versioned salted scrypt `password_hash`
+- system `role`: `admin | user`
+- `created_at`, `updated_at`
+
+An empty installation creates the first `admin` account exactly once. Passwords
+and Codex credentials are never stored in `User`, `Session`, or audit metadata.
 
 ### Session
 
@@ -79,8 +87,9 @@ credential in the domain table.
 - SHA-256 token digest (never the plaintext cookie value)
 - `created_at`, `expires_at`, `revoked_at`
 
-The local browser token is an HttpOnly, SameSite cookie. Production identity,
-rotation, recovery, and deployment controls are intentionally deferred.
+The local browser token is an HttpOnly, SameSite cookie. Local account sign-in
+is delivered; rotation policy, password recovery, passkeys, and remote-deployment
+controls remain deferred.
 
 ### Family
 

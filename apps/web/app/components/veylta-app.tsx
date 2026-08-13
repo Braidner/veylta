@@ -1,9 +1,8 @@
 "use client";
 
 import type {
+  AdminSetupResponse,
   ArchivedProfileListResponse,
-  DemoInvitationAcceptResponse,
-  DemoRegistrationResponse,
   DocumentFactsResponse,
   DocumentProcessingResponse,
   DocumentProcessingRetryResponse,
@@ -24,6 +23,7 @@ import type {
   HealthSummaryResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
+  LoginResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
   ProfileArchiveResponse,
@@ -35,20 +35,21 @@ import type {
   ProfileRestoreResponse,
   SessionFamily,
   SessionResponse,
+  SetupStatusResponse,
 } from "@veylta/contracts";
 import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { SystemStatus } from "./system-status";
-import { VaultConnection } from "./vault-connection";
 
 const apiPrefix = "/health-api";
 const processingPollIntervalMs = 2_000;
 
 type ScreenState =
   | { kind: "loading" }
-  | { kind: "unauthenticated" }
+  | { kind: "setup" }
+  | { kind: "login" }
   | { kind: "authenticated"; session: SessionResponse }
   | { kind: "error" };
 
@@ -94,6 +95,10 @@ async function readSession(): Promise<SessionResponse | null> {
     }
     throw error;
   }
+}
+
+async function readSetupStatus(): Promise<SetupStatusResponse> {
+  return apiRequest<SetupStatusResponse>("/v1/setup");
 }
 
 function firstProfile(session: SessionResponse): PatientProfileSummary | undefined {
@@ -195,9 +200,7 @@ export function VeyltaApp({
 }: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
-  const [action, setAction] = useState<
-    "register" | "accept-invitation" | "add-profile" | "logout" | null
-  >(null);
+  const [action, setAction] = useState<"setup" | "login" | "add-profile" | "logout" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
   const requestedContext =
@@ -209,12 +212,12 @@ export function VeyltaApp({
   useEffect(() => {
     let active = true;
 
-    readSession()
-      .then((session) => {
+    Promise.all([readSession(), readSetupStatus()])
+      .then(([session, setup]) => {
         if (!active) return;
 
         if (session === null) {
-          setScreen({ kind: "unauthenticated" });
+          setScreen({ kind: setup.setupRequired ? "setup" : "login" });
           if (hasRequestedProfile) router.replace("/");
           return;
         }
@@ -237,62 +240,59 @@ export function VeyltaApp({
     };
   }, [hasRequestedProfile, router]);
 
-  async function handleRegistration(event: FormEvent<HTMLFormElement>) {
+  async function handleSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setAction("register");
+    setAction("setup");
     setActionError(null);
 
     const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") ?? "");
+    if (password !== String(form.get("passwordConfirmation") ?? "")) {
+      setActionError("Пароли не совпадают.");
+      setAction(null);
+      return;
+    }
     try {
-      const registration = await apiRequest<DemoRegistrationResponse>("/v1/demo/registrations", {
+      const setup = await apiRequest<AdminSetupResponse>("/v1/setup", {
         method: "POST",
         body: JSON.stringify({
+          username: String(form.get("username") ?? "").trim(),
           displayName: String(form.get("displayName") ?? "").trim(),
-          familyName: String(form.get("familyName") ?? "").trim(),
-          profileName: String(form.get("profileName") ?? "").trim(),
+          password,
         }),
       });
       const session = await readSession();
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
-      router.replace(profilePath(registration.family.id, registration.profile.id));
+      router.replace(profilePath(setup.family.id, setup.profile.id));
     } catch {
-      setActionError("Не удалось создать пространство. Проверьте поля и попробуйте ещё раз.");
+      setActionError("Не удалось создать администратора. Проверьте поля и попробуйте ещё раз.");
     } finally {
       setAction(null);
     }
   }
 
-  async function handleInvitationAcceptance(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setAction("accept-invitation");
+    setAction("login");
     setActionError(null);
 
     const form = new FormData(event.currentTarget);
     try {
-      const accepted = await apiRequest<DemoInvitationAcceptResponse>(
-        "/v1/demo/invitations/accept",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            code: String(form.get("code") ?? "").trim(),
-            displayName: String(form.get("displayName") ?? "").trim(),
-            ...(String(form.get("profileName") ?? "").trim().length > 0
-              ? { profileName: String(form.get("profileName") ?? "").trim() }
-              : {}),
-          }),
-        },
-      );
+      await apiRequest<LoginResponse>("/v1/session", {
+        method: "POST",
+        body: JSON.stringify({
+          username: String(form.get("username") ?? "").trim(),
+          password: String(form.get("password") ?? ""),
+        }),
+      });
       const session = await readSession();
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
-      router.replace(
-        accepted.profile === null ? "/" : profilePath(accepted.family.id, accepted.profile.id),
-      );
+      const profile = firstProfile(session);
+      router.replace(profile === undefined ? "/" : profilePath(profile.familyId, profile.id));
     } catch {
-      setActionError(
-        "Не удалось принять приглашение. Проверьте одноразовый код и попробуйте ещё раз.",
-      );
+      setActionError("Неверный логин или пароль.");
     } finally {
       setAction(null);
     }
@@ -332,7 +332,7 @@ export function VeyltaApp({
     setActionError(null);
     try {
       await apiRequest<void>("/v1/session", { method: "DELETE" });
-      setScreen({ kind: "unauthenticated" });
+      setScreen({ kind: "login" });
       setAddProfileOpen(false);
       router.replace("/");
     } catch {
@@ -346,7 +346,7 @@ export function VeyltaApp({
   async function refreshSessionAfterProfileArchive(): Promise<void> {
     const refreshed = await readSession();
     if (refreshed === null) {
-      setScreen({ kind: "unauthenticated" });
+      setScreen({ kind: "login" });
       router.replace("/");
       return;
     }
@@ -358,7 +358,7 @@ export function VeyltaApp({
   async function refreshSessionAfterProfileRestore(): Promise<void> {
     const refreshed = await readSession();
     if (refreshed === null) {
-      setScreen({ kind: "unauthenticated" });
+      setScreen({ kind: "login" });
       router.replace("/");
       return;
     }
@@ -388,7 +388,7 @@ export function VeyltaApp({
           Veylta
         </Link>
         <div className="workspace-actions">
-          <span className="environment">Только синтетика</span>
+          <span className="environment">Домашний сервер</span>
           {session !== undefined ? (
             <button
               className="text-button"
@@ -405,16 +405,15 @@ export function VeyltaApp({
       <main id="main-content">
         {screen.kind === "loading" ? <LoadingScreen /> : null}
         {screen.kind === "error" ? <ErrorScreen onRetry={() => window.location.reload()} /> : null}
-        {screen.kind === "unauthenticated" && !hasRequestedProfile ? (
-          <OnboardingScreen
-            acceptPending={action === "accept-invitation"}
+        {(screen.kind === "setup" || screen.kind === "login") && !hasRequestedProfile ? (
+          <AccountAccessScreen
+            mode={screen.kind}
             error={actionError}
-            pending={action === "register"}
-            onAccept={handleInvitationAcceptance}
-            onSubmit={handleRegistration}
+            pending={action === screen.kind}
+            onSubmit={screen.kind === "setup" ? handleSetup : handleLogin}
           />
         ) : null}
-        {screen.kind === "unauthenticated" && hasRequestedProfile ? (
+        {(screen.kind === "setup" || screen.kind === "login") && hasRequestedProfile ? (
           <LoadingScreen copy="Возвращаем к началу…" />
         ) : null}
         {session !== undefined && !hasRequestedProfile && redirectProfile !== undefined ? (
@@ -433,7 +432,7 @@ export function VeyltaApp({
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
             addProfileOpen={addProfileOpen}
-            action={action === "accept-invitation" ? null : action}
+            action={action}
             error={actionError}
             onProfileChange={(familyId, profileId) => {
               setActionError(null);
@@ -521,42 +520,35 @@ function NoAuthorizedProfilesScreen() {
   );
 }
 
-interface OnboardingScreenProps {
-  acceptPending: boolean;
+interface AccountAccessScreenProps {
+  mode: "setup" | "login";
   pending: boolean;
   error: string | null;
-  onAccept: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-function OnboardingScreen({
-  acceptPending,
-  pending,
-  error,
-  onAccept,
-  onSubmit,
-}: OnboardingScreenProps) {
-  const [mode, setMode] = useState<"register" | "accept">("register");
-  const formPending = mode === "register" ? pending : acceptPending;
-
+function AccountAccessScreen({ mode, pending, error, onSubmit }: AccountAccessScreenProps) {
   return (
     <section className="onboarding-shell" aria-labelledby="onboarding-title">
       <div className="onboarding-intro">
-        <p className="context-line">Спокойная семейная история здоровья</p>
-        <h1 id="onboarding-title">Создайте семейное пространство</h1>
+        <p className="context-line">Домашняя история здоровья</p>
+        <h1 id="onboarding-title">
+          {mode === "setup" ? "Настройте домашнюю Veylta" : "Войдите в Veylta"}
+        </h1>
         <p className="lede">
-          Начните с владельца и одного профиля. Активный человек всегда будет указан в заголовке и
-          адресе страницы.
+          {mode === "setup"
+            ? "Первый вход создаёт администратора, его личную карточку и закрытое семейное пространство."
+            : "Откройте свою карточку или профиль, к которому вам выдали доступ."}
         </p>
         <div className="privacy-note">
           <span className="privacy-note__mark" aria-hidden="true">
-            S
+            L
           </span>
           <div>
-            <strong>Сейчас — только синтетические данные</strong>
+            <strong>SQLite и документы остаются дома</strong>
             <p>
-              Используйте вымышленные имена. Реальные медицинские документы и адрес электронной
-              почты на этом этапе не нужны.
+              Veylta работает на вашем сервере. Пароль хранится только как стойкий scrypt-хеш,
+              сессия — в HttpOnly cookie.
             </p>
           </div>
         </div>
@@ -564,104 +556,77 @@ function OnboardingScreen({
       </div>
 
       <div className="onboarding-actions">
-        <VaultConnection />
         <form
-          className="onboarding-form"
-          onSubmit={mode === "register" ? onSubmit : onAccept}
-          aria-busy={formPending}
-          aria-describedby="demo-form-note"
+          className="onboarding-form account-access-form"
+          onSubmit={onSubmit}
+          aria-busy={pending}
+          aria-describedby="account-form-note"
         >
           <div className="form-heading">
-            <p>Локальный demo-доступ</p>
-            <h2>{mode === "register" ? "Владелец и семья" : "Принять приглашение"}</h2>
+            <p>{mode === "setup" ? "Первый запуск" : "Защищённая сессия"}</p>
+            <h2>{mode === "setup" ? "Главная учётная запись" : "Учётная запись"}</h2>
           </div>
 
-          {mode === "register" ? (
-            <>
-              <label className="field">
-                <span>Имя владельца</span>
-                <input
-                  name="displayName"
-                  type="text"
-                  required
-                  minLength={1}
-                  maxLength={120}
-                  autoComplete="off"
-                  placeholder="Например, Владелец 01"
-                  disabled={formPending}
-                />
-              </label>
+          <label className="field">
+            <span>Логин</span>
+            <input
+              name="username"
+              type="text"
+              required
+              minLength={3}
+              maxLength={32}
+              pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
+              autoCapitalize="none"
+              autoComplete="username"
+              spellCheck={false}
+              placeholder="home-admin"
+              disabled={pending}
+            />
+          </label>
 
-              <label className="field">
-                <span>Название семьи</span>
-                <input
-                  name="familyName"
-                  type="text"
-                  required
-                  minLength={1}
-                  maxLength={120}
-                  autoComplete="off"
-                  placeholder="Например, Семья 01"
-                  disabled={formPending}
-                />
-              </label>
+          {mode === "setup" ? (
+            <label className="field">
+              <span>Ваше имя</span>
+              <input
+                name="displayName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="name"
+                placeholder="Как обращаться в интерфейсе"
+                disabled={pending}
+              />
+            </label>
+          ) : null}
 
-              <label className="field">
-                <span>Имя профиля</span>
-                <input
-                  name="profileName"
-                  type="text"
-                  required
-                  minLength={1}
-                  maxLength={120}
-                  autoComplete="off"
-                  placeholder="Например, Профиль 01"
-                  disabled={formPending}
-                />
-              </label>
-            </>
-          ) : (
-            <>
-              <label className="field">
-                <span>Одноразовый код</span>
-                <input
-                  name="code"
-                  type="text"
-                  required
-                  minLength={46}
-                  maxLength={46}
-                  autoComplete="off"
-                  placeholder="vi_…"
-                  disabled={formPending}
-                />
-              </label>
-              <label className="field">
-                <span>Ваше имя</span>
-                <input
-                  name="displayName"
-                  type="text"
-                  required
-                  minLength={1}
-                  maxLength={120}
-                  autoComplete="off"
-                  placeholder="Например, Участник 01"
-                  disabled={formPending}
-                />
-              </label>
-              <label className="field">
-                <span>Имя вашего профиля, если приглашены как взрослый</span>
-                <input
-                  name="profileName"
-                  type="text"
-                  minLength={1}
-                  maxLength={120}
-                  autoComplete="off"
-                  placeholder="Не заполняйте для помощника по уходу"
-                  disabled={formPending}
-                />
-              </label>
-            </>
-          )}
+          <label className="field">
+            <span>Пароль</span>
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={12}
+              maxLength={128}
+              autoComplete={mode === "setup" ? "new-password" : "current-password"}
+              disabled={pending}
+            />
+          </label>
+
+          {mode === "setup" ? (
+            <label className="field">
+              <span>Повторите пароль</span>
+              <input
+                name="passwordConfirmation"
+                type="password"
+                required
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+                disabled={pending}
+              />
+            </label>
+          ) : null}
 
           {error !== null ? (
             <p className="form-error" role="alert">
@@ -669,33 +634,19 @@ function OnboardingScreen({
             </p>
           ) : null}
 
-          <button
-            className="button button--primary button--wide"
-            type="submit"
-            disabled={formPending}
-          >
-            {formPending
-              ? mode === "register"
-                ? "Создаём…"
-                : "Присоединяем…"
-              : mode === "register"
-                ? "Создать пространство"
-                : "Присоединиться к семье"}
+          <button className="button button--primary button--wide" type="submit" disabled={pending}>
+            {pending
+              ? mode === "setup"
+                ? "Создаём администратора…"
+                : "Входим…"
+              : mode === "setup"
+                ? "Создать администратора"
+                : "Войти"}
           </button>
-          <button
-            className="text-button onboarding-form__mode"
-            type="button"
-            disabled={formPending}
-            onClick={() => {
-              setMode((current) => (current === "register" ? "accept" : "register"));
-            }}
-          >
-            {mode === "register" ? "У меня есть код приглашения" : "Создать новое пространство"}
-          </button>
-          <p id="demo-form-note" className="form-note">
-            Код действует один раз 24 часа. Для взрослого укажите имя личного профиля; помощник по
-            уходу оставляет его пустым. Demo-сессия хранится в защищённой HttpOnly cookie; в
-            браузере нет токена доступа.
+          <p id="account-form-note" className="form-note">
+            {mode === "setup"
+              ? "Этот администратор сможет подключить Codex, настроить хранилище и создать остальные учётные записи."
+              : "Доступ определяется сервером: администратор, владелец карточки или явно выданное разрешение."}
           </p>
         </form>
       </div>
@@ -709,7 +660,7 @@ interface ProfileWorkspaceProps {
   profile: PatientProfileSummary;
   requestedDocumentId: string | undefined;
   addProfileOpen: boolean;
-  action: "register" | "add-profile" | "logout" | null;
+  action: "setup" | "login" | "add-profile" | "logout" | null;
   error: string | null;
   onProfileChange: (familyId: string, profileId: string) => void;
   onAddProfileToggle: () => void;
@@ -815,6 +766,11 @@ function ProfileWorkspace({
             {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}:{" "}
             {session.user.displayName}
           </p>
+          {session.user.role !== null ? (
+            <p className="profile-access">
+              {session.user.role === "admin" ? "Администратор системы" : "Пользователь системы"}
+            </p>
+          ) : null}
           {profile.access === "granted_read" ? (
             <p className="profile-access">Доступ по согласию: только чтение</p>
           ) : null}

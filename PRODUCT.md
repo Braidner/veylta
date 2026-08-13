@@ -10,15 +10,15 @@ web
 
 ## Users
 
-The primary user is a family owner who keeps health documents for themselves and dependent family members and wants to prepare for a clinician conversation without losing the original evidence. Adult members manage their own data. Caregivers can access only the profiles explicitly shared with them; dependent profiles have no independent sign-in.
+The primary user is the administrator of a household Veylta server who keeps health documents for themselves and family members. Local users sign in to their own account and open a profile only when they own it, administer the installation, or hold an explicit grant. Dependent profiles have no independent sign-in.
 
 Users may be reviewing unfamiliar medical language while worried or short on time. The interface must always make the active family member, the status of unconfirmed data, and the path back to the source document obvious.
 
 ## Product Purpose
 
-Veylta keeps immutable source documents together with structured, longitudinal health data. It helps a family upload a result, review uncertain extraction, confirm the facts, and understand how a measurement changed over time without presenting itself as a clinician or an electronic health record.
+Veylta is a home health-care PWA backed by SQLite and immutable source documents. It helps a household upload a result, review uncertain extraction, confirm facts, and understand what is known, missing, or due without presenting itself as a clinician or an electronic health record.
 
-Success means a user can verify every displayed medical value against a specific page and fragment of the source, correct uncertain extraction without destroying the raw value, and export their information without vendor lock-in.
+Success means a user can verify every displayed medical value against a specific page and fragment of the source, distinguish evidence from safe suggestions, correct uncertain extraction without destroying the raw value, and control who may open each profile.
 
 ## Positioning
 
@@ -35,6 +35,7 @@ Calm, exact, and humane. The product should lower cognitive load without softeni
 - Alarmist red states and false urgency for routine review work.
 - Clinic billing, scheduling, or EHR administration patterns imposed on a family tool.
 - Decorative wellness imagery that competes with the user's actual documents and measurements.
+- Generic server-admin dashboards that make the household member secondary.
 
 ## Design Principles
 
@@ -43,6 +44,7 @@ Calm, exact, and humane. The product should lower cognitive load without softeni
 3. The active person is never implicit: every screen makes the selected family profile clear.
 4. Progressive disclosure: lead with the next useful action, then reveal raw, technical, and provenance details.
 5. Familiar controls, careful language: interaction should disappear into the task while medical meaning stays precise.
+6. Home-server clarity: account, storage, Codex runtime, and access settings must expose their actual local state without revealing secrets.
 
 ## Accessibility & Inclusion
 

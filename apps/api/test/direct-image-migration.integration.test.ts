@@ -43,6 +43,7 @@ test("direct-image MIME provenance blocks a lossy schema rollback", async () => 
       );
     });
 
+    assert.equal(await migrateDown(database), "0012_app_accounts");
     assert.equal(await migrateDown(database), "0011_health_summaries");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
   } finally {

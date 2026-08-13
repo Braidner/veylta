@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  ACCOUNT_CONTRACT_VERSION,
   AUDIT_LOG_CONTRACT_VERSION,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
@@ -58,6 +59,7 @@ import {
 
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
+  assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");

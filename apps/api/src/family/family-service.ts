@@ -42,7 +42,9 @@ export class DomainValidationError extends Error {}
 
 export interface SessionActor {
   userId: string;
+  username: string | null;
   displayName: string;
+  accountRole: "admin" | "user" | null;
   tokenHash: string;
 }
 
@@ -440,10 +442,16 @@ export function createFamilyService(
       const token = cookieValue(cookieHeader, options.cookieName);
       if (token === null || token.length < 32 || token.length > 128) return null;
       const tokenHash = sha256(token);
-      const result = await database.query<{ user_id: string; display_name: string }>(
-        `SELECT s.user_id, u.display_name
+      const result = await database.query<{
+        user_id: string;
+        username: string | null;
+        display_name: string;
+        account_role: "admin" | "user" | null;
+      }>(
+        `SELECT s.user_id, u.display_name, a.username, a.role AS account_role
          FROM sessions s
          JOIN users u ON u.id = s.user_id
+         LEFT JOIN app_accounts a ON a.user_id = u.id
          WHERE s.token_hash = $1
            AND s.revoked_at IS NULL
            AND s.expires_at > $2
@@ -453,7 +461,13 @@ export function createFamilyService(
       const row = result.rows[0];
       return row === undefined
         ? null
-        : { userId: row.user_id, displayName: row.display_name, tokenHash };
+        : {
+            userId: row.user_id,
+            username: row.username,
+            displayName: row.display_name,
+            accountRole: row.account_role,
+            tokenHash,
+          };
     },
 
     clearSessionCookie() {
@@ -802,7 +816,12 @@ export function createFamilyService(
         }
         return {
           contractVersion: FAMILY_PROFILE_CONTRACT_VERSION,
-          user: { id: actor.userId, displayName: actor.displayName },
+          user: {
+            id: actor.userId,
+            username: actor.username,
+            displayName: actor.displayName,
+            role: actor.accountRole,
+          },
           families,
         };
       });

@@ -1,41 +1,36 @@
 # Architecture
 
-## Target architecture: PWA + user-owned vault
+## Target architecture: home-server PWA
 
-ADR 0006 changes the long-term system boundary. The executable SQLite slice
-below remains a reference implementation during migration; it is not the target
-custody model.
+ADR 0007 establishes one household server as the authority boundary. SQLite is
+the durable structured store, the configured object root holds immutable source
+bytes, and the browser is an installable client rather than the data custodian.
 
 ```mermaid
 flowchart LR
-  U["User"] --> P["Installed Veylta PWA"]
-  P --> A["VaultAdapter"]
-  A --> V[("User-owned Veylta Vault")]
-  V -. "folder sync" .-> C["iCloud Drive / Google Drive / Dropbox"]
-  U -->|"explicit Analyze request"| S["Installed Veylta Codex skill"]
-  S <--> B["127.0.0.1 bridge"]
-  B -->|"leased veylta-agent/v1 command"| V
-  S -->|"versioned proposal"| V
-  P -->|"explicit review decision"| V
+  U["Household user"] --> P["Installed Veylta PWA"]
+  P --> A["Fastify API"]
+  A --> D[("SQLite")]
+  A --> O["Configured object storage root"]
+  W["Worker"] --> D
+  W --> O
+  A -. "explicit agent request" .-> C["Codex adapter"]
+  C --> X["Local codex app-server"]
+  X -. "user-owned ChatGPT session" .-> M["Codex model service"]
 ```
 
-The PWA owns presentation, capability detection, and human decisions. A
-provider-neutral `VaultAdapter` owns bounded reads and atomic/versioned writes.
-The first adapter targets a user-selected directory in a supporting desktop
-browser. The local bridge implements the same contract for agent connectivity
-and later browser fallback; it is not a remote storage service.
-
-The synchronized vault contains portable records only. Directory handles,
-cloud OAuth credentials, bridge tokens, Codex credentials, and absolute paths
-stay in browser or OS-local state. The exact layout and integrity rules are in
-[Veylta Vault v1](vault-format.md).
+The PWA owns presentation and human decisions. The API resolves the signed-in
+account and authorizes every profile selector. Only an administrator, the
+profile's linked user, or an explicitly granted actor may open a profile. The
+Codex adapter is optional, receives narrow profile/document work, and never
+reads or stores Codex OAuth credentials.
 
 ## Decision summary
 
 Veylta uses a small TypeScript monorepo with three deployable processes:
 a Next.js web application, a Fastify API, and a worker. Embedded SQLite through
-Node.js `node:sqlite` stores domain state, explicit schema migrations, audit
-events, and durable idempotent jobs. Original documents live behind versioned
+Node.js `node:sqlite` stores accounts, domain state, explicit schema migrations,
+audit events, and durable idempotent jobs. Original documents live behind versioned
 `ObjectStorage/v1`; the default adapter uses a persistent local filesystem
 directory, and an optional S3-compatible adapter preserves the same contract
 for synthetic deployments.

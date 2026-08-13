@@ -50,9 +50,57 @@ Common status meanings:
 - `202`: processing accepted and asynchronous;
 - `503`: safely retryable dependency failure.
 
-## Local demo identity, family, and profile
+## Home-server setup and identity
 
-### `POST /v1/demo/registrations`
+### `GET /v1/setup`
+
+Returns `account/v1` and `setupRequired`. It is always private/no-store. On an
+empty database this is the only product bootstrap path; it never accepts an
+actor identifier or secret.
+
+```json
+{
+  "contractVersion": "account/v1",
+  "setupRequired": true
+}
+```
+
+### `POST /v1/setup`
+
+Available exactly once. With the configured browser `Origin`, it atomically
+creates the first `admin`, home workspace, owner membership, linked adult
+profile, session, and payload-free audit records. Username is case-insensitive
+and normalized to lower-case; password length is 12–128 characters and storage
+uses a versioned salted scrypt hash. A concurrent or later call returns `409`.
+
+```json
+{
+  "username": "home-admin",
+  "displayName": "Домашний администратор",
+  "password": "a long local password"
+}
+```
+
+Response `201` sets the opaque `HttpOnly; SameSite=Strict` session cookie and
+returns the `account/v1` user plus the created family/profile selectors. It
+never returns a password or password hash.
+
+### `POST /v1/session`
+
+Signs into an existing active local account using username and password. It
+requires the configured browser `Origin`, returns `account/v1`, and sets a new
+opaque session cookie. Unknown user and wrong password share the same
+`401 INVALID_CREDENTIALS` envelope.
+
+### Legacy synthetic test identity
+
+`POST /v1/demo/registrations` remains disabled by default and exists only to
+create isolated synthetic fixtures in browser/integration tests. The normal
+`pnpm dev` flow never enables it.
+
+## Family and profile
+
+### `POST /v1/demo/registrations` (test-only)
 
 Creates an opaque local demo identity, session, family, owner membership, and
 first linked adult profile in one transaction. The route is available only when
@@ -97,11 +145,13 @@ session token.
 
 ### `GET /v1/session`
 
-Resolves the cookie server-side and returns the current demo user plus active
+Resolves the cookie server-side and returns the current local user plus active
 families and profiles that actor may access. An owner receives all active
 profiles in their family; an invited adult receives their linked adult profile
 plus any currently granted `profile.read` profile. Each returned profile names
-its server-determined access as `owner`, `self`, or `granted_read`. A caregiver
+its server-determined access as `owner`, `self`, or `granted_read`. Account-backed
+sessions additionally return normalized `username` and system `role`; legacy
+test sessions return `null` for those fields. A caregiver
 receives no profile list. It returns `401` for an absent, expired, revoked, or
 disabled session and is always `Cache-Control: no-store`.
 

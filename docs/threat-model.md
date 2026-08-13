@@ -21,11 +21,11 @@ not claims about current implementation or regulatory compliance.
 Medical data is highly sensitive. A resource identifier, checksum, filename,
 processing state, or fact that a document exists can itself be sensitive.
 
-The target PWA architecture adds a user-owned `veylta-vault/v1` folder. User
-ownership reduces Veylta's central custody but does not make the data public or
-automatically encrypted. Cloud-drive account security, local device security,
-sync conflicts, sharing permissions, and backups remain part of the user's
-storage threat boundary.
+The target PWA architecture places custody on one household server. That reduces
+third-party custody but does not make the data automatically encrypted or safe
+to expose. Host accounts, filesystem permissions, home-network access, remote
+access configuration, storage relocation, and backups are part of the threat
+boundary.
 
 ## Trust boundaries
 
@@ -36,11 +36,10 @@ storage threat boundary.
 4. Untrusted document bytes/text to security checks and deterministic parsing.
 5. Future deployment to S3, OCR, or LLM provider networks.
 6. Operators, logs, metrics, traces, backups, and exported files.
-7. PWA to a user-selected directory handle or loopback `VaultAdapter` bridge.
-8. Loopback bridge to an explicitly invoked Codex skill through the closed
-   `veylta-agent/v1` command journal.
-9. Codex skill to the configured model service for only the sources named in a
-   user-confirmed run. User-owned storage does not remove this egress.
+7. Browser/PWA to local account bootstrap, sign-in, and settings surfaces.
+8. API/worker to the optional local Codex app-server adapter.
+9. Codex app-server to the model service for only the sources named in a
+   user-confirmed run. Home storage does not remove this egress.
 
 All document content and metadata supplied by a user are untrusted. Extracted
 text is data, never an instruction. A configured external provider is not inside
@@ -81,11 +80,12 @@ the family's trust boundary merely because it exposes an API.
 | Prompt injection | Future LLM follows document instructions | Treat text as quoted data; fixed system policy; tool allowlist; strict schema; deterministic pre/post safety layer | Before any LLM |
 | Unsafe medical output | Diagnosis/treatment harm or missed urgency | The delivered summary is a closed, non-clinical evidence snapshot: confirmed data only, source links, missing-context labels, no risk/red-flag/diagnosis/treatment field, and only operational next actions. Rule-based clinical red flags and any recommendation require a separately reviewed safety boundary | Before recommendation features |
 | Provider egress without consent | Sensitive document sent externally | Local OCR reads only the checked-in English model and has no provider URL; external OCR/LLM remains disabled by default and later needs owner configuration, a clear provider warning, minimum-data handling, and egress audit | Before any external provider |
-| Vault permission overreach | PWA reads or changes unrelated files | Require an explicit user gesture; select only a dedicated vault directory; re-check permission each session; reject parent/root directories where possible; keep the handle outside portable data | First PWA slice |
-| Synced-vault conflict or partial write | Evidence/result corruption across devices | Immutable IDs and source checksums; temporary sibling plus atomic finalize where supported; reject same ID with different checksum; rebuild derived indexes; surface unresolved conflicts | Before real multi-device data |
-| Synced credential disclosure | Cloud/agent credentials propagate with medical files | Never place directory handles, OAuth tokens, API keys, bridge tokens, Codex credentials, or absolute paths in the vault | First PWA slice |
-| Unauthorized local agent | Another origin/process reads the vault or submits work | Bind bridge to loopback; random session token outside vault; strict Origin; narrow closed command schema; expiring leases; no arbitrary shell/URL/write command | First connected-agent slice |
-| Misleading local-storage claim | User assumes model processing never leaves device | Before agent run, identify selected sources and disclose model-service egress under the user's Codex data controls; keep deterministic local processing as a distinct option | First connected-agent slice |
+| Bootstrap race or second administrator | Attacker claims or duplicates the first account | Expose setup only while no account exists; serialize with `BEGIN IMMEDIATE`; create account/workspace/profile/session atomically; exact-Origin mutation | Home-server bootstrap |
+| Weak local password storage | Offline database theft reveals credentials | Versioned memory-hard scrypt hash with random salt; password-length bounds; uniform login failure; no password in audit/logs | Home-server bootstrap |
+| Unsafe storage relocation | Partial copy or typed-path mistake loses evidence | Admin-only maintenance mode; copy and checksum every object; atomically switch configuration only after verification; retain recovery journal | Before configurable relocation |
+| Codex credential disclosure | Home app copies subscription tokens into its database/logs | Never read or persist Codex OAuth; start/connect to local app-server; store only non-secret preferences and status | First Codex adapter |
+| Unauthorized local agent | Another process submits work or broadens scope | Narrow adapter port, explicit profile/document selectors, app-server sandbox, audit, no arbitrary command surface | First Codex adapter |
+| Misleading local-storage claim | User assumes model processing never leaves device | Before agent run, identify selected sources and disclose model-service egress under the user's Codex data controls; keep deterministic local processing distinct | First Codex adapter |
 | SSRF through URL/provider config | Access to internal network or cloud metadata | No arbitrary URL ingest in first slice; allowlisted endpoints; URL parsing, DNS/IP checks, redirect limits, egress policy | Before URL/provider features |
 | Signed-link leakage | Temporary public access to a document | API still proxies authorized reads; later presigned URLs are single-purpose, short-lived, non-logged, and tenant-bound | Before presigned URLs |
 | Sensitive logs/traces | Persistent secondary disclosure | Never log bodies, text, medical values, raw filenames, tokens, or signed URLs; redact errors; no patient labels in metrics | First slice |
@@ -97,9 +97,10 @@ the family's trust boundary merely because it exposes an API.
 
 ## First-slice security invariants
 
-- Local demo onboarding binds only to loopback, collects no email/password,
-  persists only a SHA-256 session-token digest, and requires an exact configured
-  browser origin for mutations. It is not production authentication.
+- Empty-installation setup collects no email, stores a versioned scrypt password
+  hash, persists only a SHA-256 session-token digest, and requires an exact
+  configured browser origin. The transaction creates exactly one administrator,
+  workspace, linked profile, and session.
 - Synthetic PDF/PNG/JPEG only; no real medical data enters the repository or demo flow.
 - Every family/profile/document/fact/observation query starts from the authorized
   tenant scope, including worker queries.
