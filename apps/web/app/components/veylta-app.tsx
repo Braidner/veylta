@@ -782,6 +782,23 @@ function ProfileWorkspace({
 
   return (
     <section className="profile-shell" aria-labelledby="profile-title">
+      <nav className="profile-navigation" aria-label="Разделы профиля">
+        <a
+          className="profile-navigation__item profile-navigation__item--active"
+          href="#profile-dashboard"
+        >
+          Обзор
+        </a>
+        <a className="profile-navigation__item" href="#document-inbox-title">
+          Источники
+        </a>
+        <a className="profile-navigation__item" href="#observation-history">
+          История
+        </a>
+        <a className="profile-navigation__item" href="#indicator-catalog">
+          Динамика
+        </a>
+      </nav>
       <div className="profile-heading">
         <div>
           <p className="context-line">
@@ -1614,6 +1631,61 @@ function profileOverviewProcessingCopy(
   }
 }
 
+function sourceCountCopy(count: number): string {
+  const remainder10 = count % 10;
+  const remainder100 = count % 100;
+  if (remainder10 === 1 && remainder100 !== 11) return `${count} источник`;
+  if ([2, 3, 4].includes(remainder10) && ![12, 13, 14].includes(remainder100)) {
+    return `${count} источника`;
+  }
+  return `${count} источников`;
+}
+
+function profileDataState(overview: ProfileOverviewResponse): {
+  label: string;
+  detail: string;
+  actionHref: string;
+  actionLabel: string;
+} {
+  if (overview.reviewQueue.pendingFactCount > 0) {
+    const firstReview = overview.reviewQueue.documents[0];
+    return {
+      label: "Нужна ваша проверка",
+      detail: `${factCountCopy(overview.reviewQueue.pendingFactCount)} ещё не стали подтверждёнными данными.`,
+      actionHref:
+        firstReview === undefined
+          ? "#document-inbox-title"
+          : documentPath(overview.profile.familyId, overview.profile.id, firstReview.id),
+      actionLabel: firstReview === undefined ? "Открыть источники" : "Проверить значения",
+    };
+  }
+  const activeProcessing = overview.recentDocuments.find(
+    (document) => !["completed", "failed", "awaiting_review"].includes(document.processing.state),
+  );
+  if (activeProcessing !== undefined) {
+    return {
+      label: "Обрабатываем источник",
+      detail: profileOverviewProcessingCopy(activeProcessing.processing),
+      actionHref: documentPath(overview.profile.familyId, overview.profile.id, activeProcessing.id),
+      actionLabel: "Открыть статус",
+    };
+  }
+  if (overview.recentObservations.length > 0) {
+    return {
+      label: "Данные подтверждены",
+      detail: "Последние значения связаны с исходными документами и готовы для просмотра.",
+      actionHref: "#observation-history",
+      actionLabel: "Открыть историю",
+    };
+  }
+  return {
+    label: "Нужен первый источник",
+    detail: "Добавьте документ, чтобы начать собирать проверяемую историю.",
+    actionHref: "#document-inbox-title",
+    actionLabel: "Добавить документ",
+  };
+}
+
 function ProfileOverviewPanel({
   familyId,
   profileId,
@@ -1649,16 +1721,17 @@ function ProfileOverviewPanel({
 
   return (
     <section
+      id="profile-dashboard"
       className="profile-overview"
       aria-labelledby="profile-overview-title"
       aria-busy={state.kind === "loading"}
     >
       <div className="profile-overview__heading">
-        <p className="context-line">Профиль · источники и решения</p>
+        <p className="context-line">Живая карта профиля</p>
         <h2 id="profile-overview-title">Обзор профиля</h2>
         <p className="profile-overview__description">
-          Здесь только состояние исходников, явные решения и подтверждённые значения. Медицинские
-          выводы, оценки и рекомендации не формируются.
+          Документы, проверка и подтверждённые значения собраны в одном месте. Каждый результат
+          остаётся связан с исходником.
         </p>
         {canWriteProfile ? (
           <div className="profile-overview__exports">
@@ -1711,141 +1784,273 @@ function ProfileOverviewPanel({
       ) : null}
 
       {state.kind === "ready" ? (
-        <div className="profile-overview__sections">
-          <section className="profile-overview__section" aria-labelledby="overview-review-title">
-            <div className="profile-overview__section-heading">
-              <div>
-                <p className="context-line">Следующее действие</p>
-                <h3 id="overview-review-title">Проверка исходников</h3>
-              </div>
-              <span className="profile-overview__count">
-                <span className="visually-hidden">Документов в очереди: </span>
-                {state.overview.reviewQueue.documentCount}
-              </span>
-            </div>
-            {state.overview.reviewQueue.documentCount === 0 ? (
-              <div className="profile-overview__empty">
-                <p>
-                  Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
-                </p>
-              </div>
-            ) : (
-              <ol className="profile-overview__list">
-                {state.overview.reviewQueue.documents.map((document) => (
-                  <li key={document.id} className="profile-overview__row">
+        <>
+          {(() => {
+            const dataState = profileDataState(state.overview);
+            const latestDocument = state.overview.recentDocuments[0];
+            return (
+              <div className="profile-cockpit">
+                <section
+                  className="profile-cockpit__map"
+                  aria-labelledby="profile-data-state-title"
+                >
+                  <div className="profile-cockpit__title-row">
                     <div>
-                      <strong>{document.originalFilename}</strong>
-                      <span>
-                        {factCountCopy(document.pendingFactCount)} ждут решения
-                        {document.needsAttentionFactCount > 0
-                          ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
-                          : ""}
-                      </span>
+                      <p>Контур профиля</p>
+                      <h3 id="profile-data-state-title">Состояние данных</h3>
                     </div>
-                    <Link
-                      className="text-link"
-                      href={documentPath(familyId, profileId, document.id)}
-                    >
-                      Открыть проверку
+                    <span className="profile-cockpit__boundary">Не оценка здоровья</span>
+                  </div>
+
+                  <div className="evidence-map">
+                    <div className="evidence-map__core">
+                      <span>{state.overview.recentDocuments.length}</span>
+                      <small>
+                        {sourceCountCopy(state.overview.recentDocuments.length)} в обзоре
+                      </small>
+                    </div>
+                    <ol className="evidence-map__steps">
+                      <li
+                        data-state={state.overview.recentDocuments.length > 0 ? "ready" : "empty"}
+                      >
+                        <span className="evidence-map__step-index">1</span>
+                        <strong>Источники</strong>
+                        <small>
+                          {latestDocument === undefined
+                            ? "Ещё не добавлены"
+                            : `Последний · ${formatDate(latestDocument.uploadedAt)}`}
+                        </small>
+                      </li>
+                      <li
+                        data-state={
+                          state.overview.reviewQueue.pendingFactCount > 0 ? "attention" : "ready"
+                        }
+                      >
+                        <span className="evidence-map__step-index">2</span>
+                        <strong>Проверка</strong>
+                        <small>
+                          {state.overview.reviewQueue.pendingFactCount === 0
+                            ? "Нет ожидающих решений"
+                            : `${factCountCopy(state.overview.reviewQueue.pendingFactCount)} ожидают проверки`}
+                        </small>
+                      </li>
+                      <li
+                        data-state={
+                          state.overview.recentObservations.length > 0 ? "ready" : "empty"
+                        }
+                      >
+                        <span className="evidence-map__step-index">3</span>
+                        <strong>Подтверждено</strong>
+                        <small>
+                          {state.overview.recentObservations.length === 0
+                            ? "Пока нет значений"
+                            : `${state.overview.recentObservations.length} последних значения`}
+                        </small>
+                      </li>
+                    </ol>
+                  </div>
+                </section>
+
+                <aside
+                  className="profile-cockpit__action"
+                  aria-labelledby="profile-next-action-title"
+                >
+                  <span className="profile-cockpit__pulse" aria-hidden="true" />
+                  <p>Следующее действие</p>
+                  <h3 id="profile-next-action-title">{dataState.label}</h3>
+                  <p className="profile-cockpit__action-copy">{dataState.detail}</p>
+                  {dataState.actionHref.startsWith("/") ? (
+                    <Link className="button button--primary" href={dataState.actionHref}>
+                      {dataState.actionLabel}
                     </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {state.overview.reviewQueue.documentCount >
-            state.overview.reviewQueue.documents.length ? (
-              <p className="profile-overview__more">
-                Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
-                очереди.
-              </p>
-            ) : null}
+                  ) : (
+                    <a className="button button--primary" href={dataState.actionHref}>
+                      {dataState.actionLabel}
+                    </a>
+                  )}
+                  <dl className="profile-cockpit__facts">
+                    <div>
+                      <dt>Документы в проверке</dt>
+                      <dd>{state.overview.reviewQueue.documentCount}</dd>
+                    </div>
+                    <div>
+                      <dt>Недавние подтверждения</dt>
+                      <dd>{state.overview.recentObservations.length}</dd>
+                    </div>
+                  </dl>
+                </aside>
+              </div>
+            );
+          })()}
+
+          <section className="care-plan-preview" aria-labelledby="care-plan-preview-title">
+            <div className="care-plan-preview__heading">
+              <div>
+                <p>Персональный план</p>
+                <h3 id="care-plan-preview-title">Что делать дальше</h3>
+              </div>
+              <span>Только после проверки источников</span>
+            </div>
+            <div className="care-plan-preview__lanes">
+              <div>
+                <strong>Анализы</strong>
+                <span>Сначала нужны подтверждённые даты и показатели</span>
+              </div>
+              <div>
+                <strong>Специалисты</strong>
+                <span>Направление не рассчитано без клинического контекста</span>
+              </div>
+              <div>
+                <strong>Питание и движение</strong>
+                <span>План появится только с источниками и явными ограничениями</span>
+              </div>
+              <div>
+                <strong>Напоминания</strong>
+                <span>Здесь будут принятые вами действия и сроки</span>
+              </div>
+            </div>
           </section>
 
-          <section className="profile-overview__section" aria-labelledby="overview-documents-title">
-            <div className="profile-overview__section-heading">
-              <div>
-                <p className="context-line">Неизменяемые байты</p>
-                <h3 id="overview-documents-title">Последние исходники</h3>
+          <div className="profile-overview__sections">
+            <section className="profile-overview__section" aria-labelledby="overview-review-title">
+              <div className="profile-overview__section-heading">
+                <div>
+                  <p className="context-line">Следующее действие</p>
+                  <h3 id="overview-review-title">Проверка исходников</h3>
+                </div>
+                <span className="profile-overview__count">
+                  <span className="visually-hidden">Документов в очереди: </span>
+                  {state.overview.reviewQueue.documentCount}
+                </span>
               </div>
-            </div>
-            {state.overview.recentDocuments.length === 0 ? (
-              <div className="profile-overview__empty">
-                <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
-                {canWriteProfile ? (
-                  <a className="text-link" href="#document-inbox-title">
-                    Добавить исходник
-                  </a>
-                ) : null}
-              </div>
-            ) : (
-              <ol className="profile-overview__list">
-                {state.overview.recentDocuments.map((document) => (
-                  <li key={document.id} className="profile-overview__row">
-                    <div>
-                      <strong>{document.originalFilename}</strong>
-                      <span>
-                        {documentKindLabel(document.contentType)} ·{" "}
-                        {formatDate(document.uploadedAt)} ·{" "}
-                        {profileOverviewProcessingCopy(document.processing)}
-                      </span>
-                    </div>
-                    <Link
-                      className="text-link"
-                      href={documentPath(familyId, profileId, document.id)}
-                    >
-                      Открыть источник
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-
-          <section
-            className="profile-overview__section"
-            aria-labelledby="overview-observations-title"
-          >
-            <div className="profile-overview__section-heading">
-              <div>
-                <p className="context-line">Явно подтверждено</p>
-                <h3 id="overview-observations-title">Последние значения</h3>
-              </div>
-              <a className="text-link" href="#observation-history">
-                Вся история
-              </a>
-            </div>
-            {state.overview.recentObservations.length === 0 ? (
-              <div className="profile-overview__empty">
-                <p>
-                  Подтверждённых значений пока нет. Они появятся здесь только после явного решения.
+              {state.overview.reviewQueue.documentCount === 0 ? (
+                <div className="profile-overview__empty">
+                  <p>
+                    Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                  </p>
+                </div>
+              ) : (
+                <ol className="profile-overview__list">
+                  {state.overview.reviewQueue.documents.map((document) => (
+                    <li key={document.id} className="profile-overview__row">
+                      <div>
+                        <strong>{document.originalFilename}</strong>
+                        <span>
+                          {factCountCopy(document.pendingFactCount)} ждут решения
+                          {document.needsAttentionFactCount > 0
+                            ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                            : ""}
+                        </span>
+                      </div>
+                      <Link
+                        className="text-link"
+                        href={documentPath(familyId, profileId, document.id)}
+                      >
+                        Открыть проверку
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {state.overview.reviewQueue.documentCount >
+              state.overview.reviewQueue.documents.length ? (
+                <p className="profile-overview__more">
+                  Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
+                  очереди.
                 </p>
+              ) : null}
+            </section>
+
+            <section
+              className="profile-overview__section"
+              aria-labelledby="overview-documents-title"
+            >
+              <div className="profile-overview__section-heading">
+                <div>
+                  <p className="context-line">Неизменяемые байты</p>
+                  <h3 id="overview-documents-title">Последние исходники</h3>
+                </div>
               </div>
-            ) : (
-              <ol className="profile-overview__list">
-                {state.overview.recentObservations.map((observation) => (
-                  <li key={observation.id} className="profile-overview__row">
-                    <div>
-                      <strong>
-                        {observation.source.name}: {observation.source.value}{" "}
-                        {observation.source.unit}
-                      </strong>
-                      <span>
-                        Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
-                        {observation.sourceDocument.pageNumber}
-                      </span>
-                    </div>
-                    <Link
-                      className="text-link"
-                      href={documentPath(familyId, profileId, observation.sourceDocument.id)}
-                    >
-                      Открыть источник
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
-        </div>
+              {state.overview.recentDocuments.length === 0 ? (
+                <div className="profile-overview__empty">
+                  <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
+                  {canWriteProfile ? (
+                    <a className="text-link" href="#document-inbox-title">
+                      Добавить исходник
+                    </a>
+                  ) : null}
+                </div>
+              ) : (
+                <ol className="profile-overview__list">
+                  {state.overview.recentDocuments.map((document) => (
+                    <li key={document.id} className="profile-overview__row">
+                      <div>
+                        <strong>{document.originalFilename}</strong>
+                        <span>
+                          {documentKindLabel(document.contentType)} ·{" "}
+                          {formatDate(document.uploadedAt)} ·{" "}
+                          {profileOverviewProcessingCopy(document.processing)}
+                        </span>
+                      </div>
+                      <Link
+                        className="text-link"
+                        href={documentPath(familyId, profileId, document.id)}
+                      >
+                        Открыть источник
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+
+            <section
+              className="profile-overview__section"
+              aria-labelledby="overview-observations-title"
+            >
+              <div className="profile-overview__section-heading">
+                <div>
+                  <p className="context-line">Явно подтверждено</p>
+                  <h3 id="overview-observations-title">Последние значения</h3>
+                </div>
+                <a className="text-link" href="#observation-history">
+                  Вся история
+                </a>
+              </div>
+              {state.overview.recentObservations.length === 0 ? (
+                <div className="profile-overview__empty">
+                  <p>
+                    Подтверждённых значений пока нет. Они появятся здесь только после явного
+                    решения.
+                  </p>
+                </div>
+              ) : (
+                <ol className="profile-overview__list">
+                  {state.overview.recentObservations.map((observation) => (
+                    <li key={observation.id} className="profile-overview__row">
+                      <div>
+                        <strong>
+                          {observation.source.name}: {observation.source.value}{" "}
+                          {observation.source.unit}
+                        </strong>
+                        <span>
+                          Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
+                          {observation.sourceDocument.pageNumber}
+                        </span>
+                      </div>
+                      <Link
+                        className="text-link"
+                        href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                      >
+                        Открыть источник
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          </div>
+        </>
       ) : null}
     </section>
   );
