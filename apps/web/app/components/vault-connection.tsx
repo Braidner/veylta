@@ -4,6 +4,7 @@ import type { VeyltaVaultManifest } from "@veylta/contracts";
 import { useCallback, useEffect, useState } from "react";
 import {
   type DirectoryHandleLike,
+  enqueueAgentScan,
   initializeDirectoryVault,
   readVaultManifest,
 } from "../vault/directory-vault";
@@ -56,6 +57,7 @@ function safeVaultError(error: unknown): string {
 
 export function VaultConnection() {
   const [state, setState] = useState<VaultConnectionState>({ kind: "loading" });
+  const [agentRequest, setAgentRequest] = useState<"idle" | "saving" | "queued" | "error">("idle");
 
   const openHandle = useCallback(async (handle: DirectoryHandleLike, askPermission: boolean) => {
     setState({ kind: "connecting" });
@@ -123,6 +125,17 @@ export function VaultConnection() {
     setState({ kind: "disconnected" });
   }
 
+  async function requestAgentScan(): Promise<void> {
+    if (state.kind !== "connected") return;
+    setAgentRequest("saving");
+    try {
+      await enqueueAgentScan(state.handle, state.manifest);
+      setAgentRequest("queued");
+    } catch {
+      setAgentRequest("error");
+    }
+  }
+
   return (
     <section className="vault-connect" aria-labelledby="vault-connect-title" aria-live="polite">
       <div className="vault-connect__heading">
@@ -153,6 +166,39 @@ export function VaultConnection() {
               <dd title={state.manifest.vaultId}>{state.manifest.vaultId.slice(0, 8)}…</dd>
             </div>
           </dl>
+          <div className="vault-connect__agent">
+            <p>
+              Агент получает только явный запрос из этой папки. Исходники не меняются, а результат
+              остаётся черновиком до вашей проверки.
+            </p>
+            <p className="vault-connect__agent-disclosure">
+              Этот запрос лишь ищет manifest необработанных документов и ничего не отправляет
+              модели. Перед анализом источника агент отдельно назовёт файл и предупредит о передаче
+              в Codex.
+            </p>
+            <button
+              className="button button--primary button--wide"
+              type="button"
+              disabled={agentRequest === "saving" || agentRequest === "queued"}
+              onClick={() => void requestAgentScan()}
+            >
+              {agentRequest === "saving"
+                ? "Сохраняем запрос…"
+                : agentRequest === "queued"
+                  ? "Запрос сохранён в Vault"
+                  : "Позвать агента"}
+            </button>
+            {agentRequest === "queued" ? (
+              <p className="vault-connect__agent-status" role="status">
+                Когда локальный Veylta Agent будет запущен, он заберёт необработанные документы.
+              </p>
+            ) : null}
+            {agentRequest === "error" ? (
+              <p className="form-error" role="alert">
+                Не удалось сохранить запрос. Данные Vault не изменены.
+              </p>
+            ) : null}
+          </div>
           <button className="text-button" type="button" onClick={() => void forgetDirectory()}>
             Забыть папку на этом устройстве
           </button>

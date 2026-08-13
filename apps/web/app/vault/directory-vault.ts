@@ -1,4 +1,10 @@
-import { VEYLTA_VAULT_CONTRACT_VERSION, type VeyltaVaultManifest } from "@veylta/contracts";
+import {
+  VEYLTA_AGENT_PROTOCOL_VERSION,
+  VEYLTA_VAULT_CONTRACT_VERSION,
+  type VeyltaQueuedAgentCommandRecord,
+  type VeyltaScanUnprocessedCommand,
+  type VeyltaVaultManifest,
+} from "@veylta/contracts";
 
 const maximumManifestBytes = 16 * 1024;
 const canonicalUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
@@ -83,11 +89,22 @@ async function createLayout(directory: DirectoryHandleLike): Promise<void> {
   const commands = await agent.getDirectoryHandle("commands", { create: true });
   await Promise.all([
     commands.getDirectoryHandle("queued", { create: true }),
+    commands.getDirectoryHandle("leased", { create: true }),
     commands.getDirectoryHandle("completed", { create: true }),
     commands.getDirectoryHandle("failed", { create: true }),
     agent.getDirectoryHandle("runs", { create: true }),
     directory.getDirectoryHandle("audit", { create: true }),
   ]);
+}
+
+async function fileExists(directory: DirectoryHandleLike, name: string): Promise<boolean> {
+  try {
+    await directory.getFileHandle(name);
+    return true;
+  } catch (error) {
+    if (isNotFound(error)) return false;
+    throw error;
+  }
 }
 
 async function writeNewManifest(
@@ -129,4 +146,61 @@ export async function initializeDirectoryVault(
   await createLayout(directory);
   await writeNewManifest(directory, manifest);
   return manifest;
+}
+
+export interface EnqueueAgentScanOptions {
+  readonly profileId?: string;
+  readonly now?: () => Date;
+  readonly randomUuid?: () => string;
+}
+
+export async function enqueueAgentScan(
+  directory: DirectoryHandleLike,
+  manifest: VeyltaVaultManifest,
+  options: EnqueueAgentScanOptions = {},
+): Promise<VeyltaQueuedAgentCommandRecord> {
+  const diskManifest = await readVaultManifest(directory);
+  if (diskManifest === null || diskManifest.vaultId !== manifest.vaultId)
+    throw new VaultFormatError();
+
+  const now = options.now ?? (() => new Date());
+  const randomUuid = options.randomUuid ?? (() => crypto.randomUUID());
+  const requestedAt = now().toISOString();
+  const command: VeyltaScanUnprocessedCommand = {
+    protocolVersion: VEYLTA_AGENT_PROTOCOL_VERSION,
+    id: randomUuid(),
+    type: "scan_unprocessed",
+    vaultId: manifest.vaultId,
+    ...(options.profileId === undefined ? {} : { profileId: options.profileId }),
+    requestedAt,
+  };
+  if (!canonicalUuid.test(command.id)) throw new VaultFormatError();
+  if (command.profileId !== undefined && !canonicalUuid.test(command.profileId)) {
+    throw new VaultFormatError();
+  }
+  if (new Date(requestedAt).toISOString() !== requestedAt) throw new VaultFormatError();
+
+  const agent = await directory.getDirectoryHandle("agent", { create: true });
+  const commands = await agent.getDirectoryHandle("commands", { create: true });
+  const queued = await commands.getDirectoryHandle("queued", { create: true });
+  const fileName = `${command.id}.json`;
+  if (await fileExists(queued, fileName)) throw new VaultFormatError();
+
+  const record: VeyltaQueuedAgentCommandRecord = {
+    protocolVersion: VEYLTA_AGENT_PROTOCOL_VERSION,
+    state: "queued",
+    command,
+    attemptCount: 0,
+    queuedAt: requestedAt,
+  };
+  const handle = await queued.getFileHandle(fileName, { create: true });
+  const writable = await handle.createWritable();
+  try {
+    await writable.write(`${JSON.stringify(record, null, 2)}\n`);
+    await writable.close();
+  } catch (error) {
+    await writable.abort?.().catch(() => undefined);
+    throw error;
+  }
+  return record;
 }

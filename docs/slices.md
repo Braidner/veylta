@@ -499,10 +499,14 @@ Commit intent: `feat: initialize user-owned veylta vault`
 
 Commit intent: `feat: connect veylta document agent`
 
+Delivered in the local bridge slice:
+
 - Installable skill, loopback-only random-token bridge, durable command journal,
   long polling, expiring leases, interruption recovery, and visible status.
 - `scan_unprocessed` and one checksum-bound `analyze_document` command only.
-- Explicit source selection and model-egress disclosure before enqueue.
+- A PWA action enqueues only `scan_unprocessed` and explicitly says no source is
+  sent at that point. The skill must name the exact checksum-bound source and
+  disclose Codex model egress before a later `analyze_document` command.
 
 ### Task 29 — Vault-backed review and history
 

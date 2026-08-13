@@ -3,6 +3,7 @@ import test from "node:test";
 import { VEYLTA_VAULT_CONTRACT_VERSION } from "@veylta/contracts";
 import {
   type DirectoryHandleLike,
+  enqueueAgentScan,
   initializeDirectoryVault,
   readVaultManifest,
 } from "./directory-vault";
@@ -76,7 +77,12 @@ test("initializes the portable vault once and reopens the same identity", async 
   assert.deepEqual([...agent.directories.keys()].sort(), ["commands", "runs"]);
   const commands = agent.directories.get("commands");
   assert.ok(commands);
-  assert.deepEqual([...commands.directories.keys()].sort(), ["completed", "failed", "queued"]);
+  assert.deepEqual([...commands.directories.keys()].sort(), [
+    "completed",
+    "failed",
+    "leased",
+    "queued",
+  ]);
 });
 
 test("fails closed instead of replacing an invalid existing root manifest", async () => {
@@ -88,4 +94,29 @@ test("fails closed instead of replacing an invalid existing root manifest", asyn
 
   await assert.rejects(() => readVaultManifest(root), /unsupported or invalid/i);
   await assert.rejects(() => initializeDirectoryVault(root), /unsupported or invalid/i);
+});
+
+test("queues an explicit scan request inside the vault without credentials", async () => {
+  const root = new MemoryDirectory("Veylta Vault");
+  const manifest = await initializeDirectoryVault(root, {
+    now: () => new Date("2026-08-13T12:00:00.000Z"),
+    randomUuid: () => "10000000-0000-4000-8000-000000000001",
+  });
+
+  const record = await enqueueAgentScan(root, manifest, {
+    now: () => new Date("2026-08-13T12:05:00.000Z"),
+    randomUuid: () => "10000000-0000-4000-8000-000000000002",
+  });
+
+  assert.equal(record.state, "queued");
+  assert.equal(record.command.type, "scan_unprocessed");
+  assert.equal("token" in record, false);
+  const queued = root.directories
+    .get("agent")
+    ?.directories.get("commands")
+    ?.directories.get("queued")
+    ?.files.get("10000000-0000-4000-8000-000000000002.json");
+  assert.ok(queued);
+  const persisted = JSON.parse(new TextDecoder().decode(queued.bytes));
+  assert.deepEqual(persisted, record);
 });

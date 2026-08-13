@@ -46,6 +46,7 @@ export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
 
 export const VEYLTA_VAULT_MEDIA_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const;
 export const VEYLTA_AGENT_COMMAND_TYPES = ["scan_unprocessed", "analyze_document"] as const;
+export const VEYLTA_AGENT_COMMAND_STATES = ["queued", "leased", "completed", "failed"] as const;
 
 export type VeyltaVaultMediaType = (typeof VEYLTA_VAULT_MEDIA_TYPES)[number];
 export type VeyltaAgentCommandType = (typeof VEYLTA_AGENT_COMMAND_TYPES)[number];
@@ -95,6 +96,53 @@ export interface VeyltaAnalyzeDocumentCommand extends VeyltaAgentCommandBase {
 }
 
 export type VeyltaAgentCommand = VeyltaScanUnprocessedCommand | VeyltaAnalyzeDocumentCommand;
+
+export interface VeyltaQueuedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "queued";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+}
+
+export interface VeyltaLeasedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "leased";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+  readonly workerId: string;
+  /** One-way digest; the raw lease token is never synchronized in the vault. */
+  readonly leaseTokenHash: string;
+  readonly leasedAt: string;
+  readonly leaseExpiresAt: string;
+}
+
+export interface VeyltaCompletedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "completed";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+  readonly completedAt: string;
+}
+
+export interface VeyltaFailedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "failed";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+  /** Sanitized machine code only; no document values or prompt text. */
+  readonly failureCode: string;
+  readonly failedAt: string;
+}
+
+export type VeyltaAgentCommandRecord =
+  | VeyltaQueuedAgentCommandRecord
+  | VeyltaLeasedAgentCommandRecord
+  | VeyltaCompletedAgentCommandRecord
+  | VeyltaFailedAgentCommandRecord;
 
 /**
  * The only canonical codes the deterministic synthetic parser can propose.

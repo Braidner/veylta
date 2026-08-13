@@ -26,6 +26,7 @@ Veylta Vault/
   agent/
     commands/
       queued/<command-id>.json
+      leased/<command-id>.json
       completed/<command-id>.json
       failed/<command-id>.json
     runs/<run-id>.json
@@ -86,6 +87,13 @@ The agent may create a new immutable run and move its command to a terminal
 directory. It may not mutate the original, an earlier run, a review decision,
 or a confirmed observation. A successful result is still a proposal until the
 user reviews it.
+
+The PWA creates only a `queued` record after an explicit user action. The
+loopback bridge atomically moves it to `leased`, stores only a SHA-256 digest of
+the lease token in the synchronized vault, and moves it to `completed` or
+`failed` only when the current lease holder replies. The raw lease token stays
+outside the vault. An expired lease is moved back to `queued` with an incremented
+attempt count on the next claim.
 
 ## Local-only state
 

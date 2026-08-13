@@ -413,6 +413,31 @@ h3 {
   line-height: 1.5;
 }
 
+.vault-connect__agent {
+  padding-top: 18px;
+  margin-top: 18px;
+  border-top: 1px solid rgb(255 255 255 / 24%);
+}
+
+.vault-connect__agent > p {
+  margin: 0;
+  color: rgb(255 255 255 / 82%);
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.vault-connect__agent .vault-connect__agent-disclosure {
+  margin-top: 8px;
+  color: rgb(255 255 255 / 70%);
+  font-size: 0.8125rem;
+}
+
+.vault-connect__agent .vault-connect__agent-status {
+  margin-top: 10px;
+  color: white;
+  font-weight: 650;
+}
+
 .onboarding-form__mode {
   align-self: flex-start;
   min-height: 28px;

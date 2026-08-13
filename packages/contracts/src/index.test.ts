@@ -51,6 +51,7 @@ import {
   VEYLTA_AGENT_PROTOCOL_VERSION,
   VEYLTA_VAULT_CONTRACT_VERSION,
   type VeyltaAgentCommand,
+  type VeyltaQueuedAgentCommandRecord,
   type VeyltaVaultDocumentManifest,
   type VeyltaVaultManifest,
 } from "./index.js";
@@ -116,6 +117,16 @@ test("the user-owned vault and connected agent have separate portable contracts"
   assert.equal("token" in vault, false);
   assert.equal("providerCredentials" in document, false);
   assert.equal(command.sourceSha256, document.sha256);
+
+  const queued = {
+    protocolVersion: VEYLTA_AGENT_PROTOCOL_VERSION,
+    state: "queued",
+    command,
+    attemptCount: 0,
+    queuedAt: "2026-08-13T12:02:01.000Z",
+  } as const satisfies VeyltaQueuedAgentCommandRecord;
+  assert.equal(queued.state, "queued");
+  assert.equal("leaseToken" in queued, false);
 });
 
 test("health summary is an explicit evidence snapshot, not a clinical assessment", () => {
