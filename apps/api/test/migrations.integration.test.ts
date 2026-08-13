@@ -524,6 +524,21 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ]),
       "trigger",
     );
+    assert.equal(await tableExists(database, "home_storage_settings"), true);
+    await database.query(
+      `INSERT INTO home_storage_settings
+         (singleton, driver, current_root, state, generation)
+       VALUES (1, 'local', '/srv/veylta/storage', 'stable', 1)`,
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          "UPDATE home_storage_settings SET state = 'copying', target_root = NULL WHERE singleton = 1",
+        ),
+      "check",
+    );
+    assert.equal(await migrateDown(database), "0013_home_settings");
+    assert.equal(await tableExists(database, "home_storage_settings"), false);
     assert.equal(await migrateDown(database), "0012_app_accounts");
     assert.equal(await tableExists(database, "app_accounts"), false);
     assert.equal(await migrateDown(database), "0011_health_summaries");
@@ -603,6 +618,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0010_direct_image_documents",
       "0011_health_summaries",
       "0012_app_accounts",
+      "0013_home_settings",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -733,6 +749,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0013_home_settings");
     assert.equal(await migrateDown(database), "0012_app_accounts");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     assert.equal(await tableExists(database, "health_summaries"), true);

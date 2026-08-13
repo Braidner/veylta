@@ -3,6 +3,7 @@
 import type {
   AdminSetupResponse,
   ArchivedProfileListResponse,
+  CodexRuntimeActionResponse,
   DocumentFactsResponse,
   DocumentProcessingResponse,
   DocumentProcessingRetryResponse,
@@ -21,9 +22,11 @@ import type {
   HealthSummaryMissingData,
   HealthSummaryRecommendationCode,
   HealthSummaryResponse,
+  HomeSettingsResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
   LoginResponse,
+  ManagedAccountCreateResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
   ProfileArchiveResponse,
@@ -36,6 +39,7 @@ import type {
   SessionFamily,
   SessionResponse,
   SetupStatusResponse,
+  StorageRelocationResponse,
 } from "@veylta/contracts";
 import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import Link from "next/link";
@@ -191,12 +195,14 @@ interface VeyltaAppProps {
   requestedFamilyId?: string;
   requestedProfileId?: string;
   requestedDocumentId?: string;
+  requestedSettings?: boolean;
 }
 
 export function VeyltaApp({
   requestedFamilyId,
   requestedProfileId,
   requestedDocumentId,
+  requestedSettings = false,
 }: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
@@ -224,7 +230,7 @@ export function VeyltaApp({
 
         setScreen({ kind: "authenticated", session });
         const profile = firstProfile(session);
-        if (!hasRequestedProfile && profile !== undefined) {
+        if (!hasRequestedProfile && !requestedSettings && profile !== undefined) {
           router.replace(profilePath(profile.familyId, profile.id));
         }
         if (hasRequestedProfile && profile === undefined) {
@@ -238,7 +244,7 @@ export function VeyltaApp({
     return () => {
       active = false;
     };
-  }, [hasRequestedProfile, router]);
+  }, [hasRequestedProfile, requestedSettings, router]);
 
   async function handleSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -290,7 +296,9 @@ export function VeyltaApp({
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
       const profile = firstProfile(session);
-      router.replace(profile === undefined ? "/" : profilePath(profile.familyId, profile.id));
+      if (!requestedSettings) {
+        router.replace(profile === undefined ? "/" : profilePath(profile.familyId, profile.id));
+      }
     } catch {
       setActionError("Неверный логин или пароль.");
     } finally {
@@ -332,7 +340,7 @@ export function VeyltaApp({
     setActionError(null);
     try {
       await apiRequest<void>("/v1/session", { method: "DELETE" });
-      setScreen({ kind: "login" });
+      setScreen({ kind: "loading" });
       setAddProfileOpen(false);
       router.replace("/");
     } catch {
@@ -365,13 +373,27 @@ export function VeyltaApp({
     setScreen({ kind: "authenticated", session: refreshed });
   }
 
+  async function refreshSession(): Promise<void> {
+    const refreshed = await readSession();
+    if (refreshed === null) {
+      setScreen({ kind: "login" });
+      router.replace("/");
+      return;
+    }
+    setScreen({ kind: "authenticated", session: refreshed });
+  }
+
   const session = screen.kind === "authenticated" ? screen.session : undefined;
   const context =
     session !== undefined && requestedContext !== undefined
       ? findProfileContext(session, requestedContext.familyId, requestedContext.profileId)
       : undefined;
   const redirectProfile = session === undefined ? undefined : firstProfile(session);
-  const pageTitle = context === undefined ? "Veylta" : `${context.profile.displayName} — Veylta`;
+  const pageTitle = requestedSettings
+    ? "Настройки — Veylta"
+    : context === undefined
+      ? "Veylta"
+      : `${context.profile.displayName} — Veylta`;
 
   useEffect(() => {
     document.title = pageTitle;
@@ -389,6 +411,11 @@ export function VeyltaApp({
         </Link>
         <div className="workspace-actions">
           <span className="environment">Домашний сервер</span>
+          {session?.user.role === "admin" ? (
+            <Link className="text-button" href={requestedSettings ? "/" : "/settings"}>
+              {requestedSettings ? "Профили" : "Настройки"}
+            </Link>
+          ) : null}
           {session !== undefined ? (
             <button
               className="text-button"
@@ -416,16 +443,28 @@ export function VeyltaApp({
         {(screen.kind === "setup" || screen.kind === "login") && hasRequestedProfile ? (
           <LoadingScreen copy="Возвращаем к началу…" />
         ) : null}
-        {session !== undefined && !hasRequestedProfile && redirectProfile !== undefined ? (
+        {session !== undefined && requestedSettings ? (
+          <HomeSettingsScreen session={session} onSessionRefresh={refreshSession} />
+        ) : null}
+        {session !== undefined &&
+        !requestedSettings &&
+        !hasRequestedProfile &&
+        redirectProfile !== undefined ? (
           <LoadingScreen copy="Открываем профиль…" />
         ) : null}
-        {session !== undefined && !hasRequestedProfile && redirectProfile === undefined ? (
+        {session !== undefined &&
+        !requestedSettings &&
+        !hasRequestedProfile &&
+        redirectProfile === undefined ? (
           <NoAuthorizedProfilesScreen />
         ) : null}
-        {session !== undefined && hasRequestedProfile && context === undefined ? (
+        {session !== undefined &&
+        !requestedSettings &&
+        hasRequestedProfile &&
+        context === undefined ? (
           <MissingProfileScreen fallbackProfile={redirectProfile} />
         ) : null}
-        {session !== undefined && context !== undefined ? (
+        {session !== undefined && !requestedSettings && context !== undefined ? (
           <ProfileWorkspace
             session={session}
             family={context.family}
@@ -449,6 +488,449 @@ export function VeyltaApp({
         ) : null}
       </main>
     </>
+  );
+}
+
+interface HomeSettingsScreenProps {
+  session: SessionResponse;
+  onSessionRefresh: () => Promise<void>;
+}
+
+function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenProps) {
+  const [settings, setSettings] = useState<HomeSettingsResponse | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "error">("loading");
+  const [pending, setPending] = useState<"account" | "storage" | "codex" | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [codexError, setCodexError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoadState("loading");
+    try {
+      setSettings(await apiRequest<HomeSettingsResponse>("/v1/settings"));
+      setLoadState("ready");
+    } catch (error) {
+      setLoadState(error instanceof ApiError && error.status === 404 ? "denied" : "error");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function createAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("account");
+    setAccountError(null);
+    setNotice(null);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const password = String(form.get("password") ?? "");
+    if (password !== String(form.get("passwordConfirmation") ?? "")) {
+      setAccountError("Пароли не совпадают.");
+      setPending(null);
+      return;
+    }
+    try {
+      const created = await apiRequest<ManagedAccountCreateResponse>("/v1/settings/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          username: String(form.get("username") ?? "").trim(),
+          displayName: String(form.get("displayName") ?? "").trim(),
+          role: String(form.get("role") ?? "user"),
+          password,
+        }),
+      });
+      formElement.reset();
+      setSettings((current) =>
+        current === null
+          ? current
+          : { ...current, accounts: [...current.accounts, created.account] },
+      );
+      await onSessionRefresh();
+      setNotice(`Учётная запись ${created.account.username} создана вместе с личной карточкой.`);
+    } catch (error) {
+      setAccountError(
+        error instanceof ApiError && error.status === 409
+          ? "Такой логин уже занят."
+          : "Не удалось создать учётную запись. Проверьте поля и повторите.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function relocateStorage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("storage");
+    setStorageError(null);
+    setNotice(null);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    try {
+      const relocated = await apiRequest<StorageRelocationResponse>(
+        "/v1/settings/storage/relocate",
+        {
+          method: "POST",
+          body: JSON.stringify({ rootPath: String(form.get("rootPath") ?? "").trim() }),
+        },
+      );
+      setSettings((current) =>
+        current === null ? current : { ...current, storage: relocated.storage },
+      );
+      formElement.reset();
+      setNotice("Хранилище проверено и переключено. Прежняя копия сохранена для восстановления.");
+    } catch (error) {
+      setStorageError(
+        error instanceof ApiError && error.status === 422
+          ? "Укажите абсолютный путь внутри отдельной папки, не домашний каталог и не корень диска."
+          : "Перенос не завершён. Активная точка хранения не изменилась.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function startCodex() {
+    setPending("codex");
+    setCodexError(null);
+    setNotice(null);
+    try {
+      const started = await apiRequest<CodexRuntimeActionResponse>("/v1/settings/codex/start", {
+        method: "POST",
+      });
+      setSettings((current) => (current === null ? current : { ...current, codex: started.codex }));
+      if (started.codex.daemonRunning) {
+        setNotice("Codex runtime запущен и готов принимать локальные задания.");
+      } else {
+        setCodexError(
+          "Runtime не запустился. Проверьте установку и выполните codex login в терминале.",
+        );
+      }
+    } catch {
+      setCodexError("Не удалось запустить Codex runtime. Данные Veylta не изменились.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  if (loadState === "loading") return <LoadingScreen copy="Проверяем домашний сервер…" />;
+  if (loadState === "denied" || session.user.role !== "admin") {
+    return <MissingSettingsScreen />;
+  }
+  if (loadState === "error" || settings === null) {
+    return <ErrorScreen onRetry={() => void load()} />;
+  }
+
+  const codexState = !settings.codex.installed
+    ? "CLI не установлен"
+    : !settings.codex.authenticated
+      ? "Требуется вход"
+      : settings.codex.daemonRunning
+        ? "Агент готов"
+        : "Готов к запуску";
+  const subscriptionConnected =
+    settings.codex.authenticated && settings.codex.authenticationMode === "chatgpt";
+
+  return (
+    <section className="settings-shell" aria-labelledby="settings-title">
+      <div className="settings-heading">
+        <div>
+          <p className="context-line">Управление домашним контуром</p>
+          <h1 id="settings-title">Настройки сервера</h1>
+          <p className="lede">
+            Здесь администратор управляет локальным агентом, местом хранения и доступом людей.
+            Медицинские данные не покидают выбранное домашнее хранилище.
+          </p>
+        </div>
+        <div className="settings-heading__identity">
+          <span>Администратор</span>
+          <strong>{session.user.displayName}</strong>
+          <small>@{session.user.username}</small>
+        </div>
+      </div>
+
+      {notice !== null ? (
+        <p className="settings-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
+
+      <div className="settings-console">
+        <section className="codex-console" aria-labelledby="codex-settings-title">
+          <div className="codex-console__topline">
+            <span
+              className={`status-dot ${settings.codex.daemonRunning ? "status-dot--ready" : ""}`}
+            />
+            <span>{codexState}</span>
+            <span className="codex-console__mode">
+              {subscriptionConnected ? "ChatGPT подписка" : "Локальный Codex"}
+            </span>
+          </div>
+          <div className="codex-console__body">
+            <div>
+              <p className="section-label">Codex runtime</p>
+              <h2 id="codex-settings-title">Локальный агент без API-ключа</h2>
+              <p className="codex-console__copy">
+                Veylta делегирует разбор документов установленному Codex CLI. Авторизацией владеет
+                сам Codex; приложение не читает и не копирует OAuth-токены.
+              </p>
+            </div>
+            <dl className="runtime-facts">
+              <div>
+                <dt>CLI</dt>
+                <dd>{settings.codex.cliVersion ?? "Не найден"}</dd>
+              </div>
+              <div>
+                <dt>Авторизация</dt>
+                <dd>
+                  {subscriptionConnected
+                    ? "ChatGPT / Codex"
+                    : settings.codex.authenticated
+                      ? "Другой режим"
+                      : "Не выполнена"}
+                </dd>
+              </div>
+              <div>
+                <dt>App-server</dt>
+                <dd>
+                  {settings.codex.runtimeVersion ??
+                    (settings.codex.daemonRunning ? "Запущен" : "Остановлен")}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          {!settings.codex.installed ? (
+            <p className="codex-console__instruction">
+              Установите CLI на домашнем сервере: <code>npm install -g @openai/codex</code>
+            </p>
+          ) : !settings.codex.authenticated ? (
+            <p className="codex-console__instruction">
+              В терминале выполните <code>codex login</code> и войдите через ChatGPT.
+            </p>
+          ) : !settings.codex.daemonRunning ? (
+            <button
+              className="button codex-console__action"
+              type="button"
+              onClick={startCodex}
+              disabled={pending !== null}
+            >
+              {pending === "codex" ? "Запускаем…" : "Запустить Codex runtime"}
+            </button>
+          ) : (
+            <p className="codex-console__instruction codex-console__instruction--ready">
+              Агент подключён. Он получает только явно поставленные Veylta задания.
+            </p>
+          )}
+          {codexError !== null ? (
+            <p className="form-error" role="alert">
+              {codexError}
+            </p>
+          ) : null}
+          <p className="codex-console__footnote">
+            Экспериментальный адаптер · расходуются лимиты вашей подписки Codex, отдельной оплаты за
+            API-токены нет.
+          </p>
+        </section>
+
+        <section className="storage-settings" aria-labelledby="storage-settings-title">
+          <div className="settings-section-heading">
+            <div>
+              <p className="section-label">Локальные данные</p>
+              <h2 id="storage-settings-title">Точка хранения</h2>
+            </div>
+            <span className="storage-generation">Поколение {settings.storage.generation}</span>
+          </div>
+          <dl className="storage-current">
+            <div>
+              <dt>Драйвер</dt>
+              <dd>{settings.storage.driver === "local" ? "Локальная папка" : "S3-совместимый"}</dd>
+            </div>
+            <div>
+              <dt>Активный путь</dt>
+              <dd>
+                <code>{settings.storage.rootPath ?? "Настраивается вне интерфейса"}</code>
+              </dd>
+            </div>
+          </dl>
+          {settings.storage.relocationSupported ? (
+            <form
+              className="storage-relocation"
+              onSubmit={relocateStorage}
+              aria-busy={pending === "storage"}
+            >
+              <label className="field">
+                <span>Новая папка</span>
+                <input
+                  name="rootPath"
+                  type="text"
+                  required
+                  minLength={2}
+                  maxLength={2048}
+                  placeholder="/Volumes/Health/Veylta"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending !== null}
+                />
+              </label>
+              <label className="confirmation-field">
+                <input name="confirmed" type="checkbox" required disabled={pending !== null} />
+                <span>
+                  Скопировать и проверить все объекты перед переключением. Старую папку не удалять.
+                </span>
+              </label>
+              <button
+                className="button button--secondary"
+                type="submit"
+                disabled={pending !== null}
+              >
+                {pending === "storage" ? "Проверяем копию…" : "Перенести хранилище"}
+              </button>
+              {storageError !== null ? (
+                <p className="form-error" role="alert">
+                  {storageError}
+                </p>
+              ) : null}
+            </form>
+          ) : (
+            <p className="form-note">
+              Для этого драйвера перенос выполняется в конфигурации сервера.
+            </p>
+          )}
+        </section>
+      </div>
+
+      <section className="account-settings" aria-labelledby="account-settings-title">
+        <div className="settings-section-heading account-settings__heading">
+          <div>
+            <p className="section-label">Доступ к сервису</p>
+            <h2 id="account-settings-title">Учётные записи</h2>
+          </div>
+          <p>{settings.accounts.length} на домашнем сервере</p>
+        </div>
+        <div className="account-settings__body">
+          <ul className="account-register" aria-label="Учётные записи">
+            {settings.accounts.map((account) => (
+              <li className="account-register__row" key={account.id}>
+                <span className="account-avatar" aria-hidden="true">
+                  {account.displayName.slice(0, 1).toLocaleUpperCase("ru")}
+                </span>
+                <span className="account-register__identity">
+                  <strong>{account.displayName}</strong>
+                  <small>@{account.username}</small>
+                </span>
+                <span className="account-register__role">
+                  {account.role === "admin" ? "Администратор" : "Пользователь"}
+                </span>
+                <span
+                  className={`account-register__status account-register__status--${account.status}`}
+                >
+                  {account.status === "active" ? "Активна" : "Отключена"}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <form
+            className="account-create"
+            onSubmit={createAccount}
+            aria-busy={pending === "account"}
+          >
+            <div className="form-heading">
+              <p>Новый доступ</p>
+              <h3>Создать учётную запись</h3>
+            </div>
+            <label className="field">
+              <span>Имя человека</span>
+              <input
+                name="displayName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                disabled={pending !== null}
+              />
+            </label>
+            <label className="field">
+              <span>Логин</span>
+              <input
+                name="username"
+                type="text"
+                required
+                minLength={3}
+                maxLength={32}
+                pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
+                autoCapitalize="none"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={pending !== null}
+              />
+            </label>
+            <label className="field">
+              <span>Роль</span>
+              <select name="role" defaultValue="user" disabled={pending !== null}>
+                <option value="user">Пользователь</option>
+                <option value="admin">Администратор</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Временный пароль</span>
+              <input
+                name="password"
+                type="password"
+                required
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+                disabled={pending !== null}
+              />
+            </label>
+            <label className="field">
+              <span>Повторите временный пароль</span>
+              <input
+                name="passwordConfirmation"
+                type="password"
+                required
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+                disabled={pending !== null}
+              />
+            </label>
+            <p className="form-note">
+              Вместе с учёткой создаётся личная взрослая карточка. Роль определяет системные права,
+              доступ к чужим карточкам проверяется отдельно.
+            </p>
+            {accountError !== null ? (
+              <p className="form-error" role="alert">
+                {accountError}
+              </p>
+            ) : null}
+            <button className="button button--primary" type="submit" disabled={pending !== null}>
+              {pending === "account" ? "Создаём…" : "Создать учётную запись"}
+            </button>
+          </form>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function MissingSettingsScreen() {
+  return (
+    <section className="state-shell" aria-labelledby="missing-settings-title">
+      <p className="context-line">Доступ ограничен</p>
+      <h1 id="missing-settings-title">Настройки недоступны</h1>
+      <p className="lede">
+        Раздел существует только для администратора. Сведения об учётках, путях и Codex runtime не
+        раскрываются.
+      </p>
+      <Link className="button button--primary" href="/">
+        Открыть свою карточку
+      </Link>
+    </section>
   );
 }
 

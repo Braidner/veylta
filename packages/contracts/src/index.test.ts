@@ -25,6 +25,7 @@ import {
   type HealthSummaryComparisonResponse,
   type HealthSummaryHistoryResponse,
   type HealthSummaryResponse,
+  HOME_SETTINGS_CONTRACT_VERSION,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorSeriesResponse,
@@ -60,6 +61,7 @@ import {
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
+  assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v1");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");

@@ -23,7 +23,8 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm --filter @veylta/api dev:api",
+      command: "node --import tsx src/server.ts",
+      cwd: "apps/api",
       url: "http://127.0.0.1:4301/healthz",
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       env: {
@@ -35,7 +36,8 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: "pnpm --filter @veylta/api dev:worker",
+      command: "node --import tsx src/worker.ts",
+      cwd: "apps/api",
       url: "http://127.0.0.1:4302/healthz",
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       env: process.env,
@@ -43,7 +45,8 @@ export default defineConfig({
       timeout: 30_000,
     },
     {
-      command: "pnpm --filter @veylta/web dev",
+      command: "node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port 4300",
+      cwd: "apps/web",
       url: "http://127.0.0.1:4300",
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       env: process.env,

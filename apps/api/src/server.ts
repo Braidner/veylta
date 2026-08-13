@@ -7,10 +7,15 @@ import { createDocumentService } from "./documents/document-service.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
 import { registerFamilyRoutes } from "./family/routes.js";
-import { createObjectStorage } from "./storage/create-object-storage.js";
+import { createCodexRuntimeProbe } from "./settings/codex-runtime.js";
+import { createHomeSettingsService } from "./settings/home-settings-service.js";
+import { registerHomeSettingsRoutes } from "./settings/routes.js";
+import { createStorageController } from "./storage/storage-controller.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databasePath);
+const storage = createStorageController(database, config.objectStorage);
+await storage.initialize();
 const app = buildApp({ readiness: databaseReadiness(database) });
 const familyService = createFamilyService(database, {
   cookieName: "veylta_session",
@@ -30,10 +35,16 @@ registerFamilyRoutes(app, familyService, {
   allowedMutationOrigins: [config.webOrigin],
   demoRegistrationEnabled: config.demoRegistrationEnabled,
 });
+registerHomeSettingsRoutes(
+  app,
+  familyService,
+  createHomeSettingsService(database, storage, createCodexRuntimeProbe()),
+  { allowedMutationOrigins: [config.webOrigin] },
+);
 registerDocumentRoutes(
   app,
   familyService,
-  createDocumentService(database, createObjectStorage(config.objectStorage), {
+  createDocumentService(database, storage, {
     maxDocumentBytes: config.maxDocumentBytes,
   }),
   {

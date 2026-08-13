@@ -1,5 +1,6 @@
 export const HTTP_API_VERSION = "v1" as const;
 export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
+export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v1" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
@@ -255,6 +256,69 @@ export interface LoginRequest {
 export interface LoginResponse {
   readonly contractVersion: typeof ACCOUNT_CONTRACT_VERSION;
   readonly user: AppAccountUser;
+}
+
+export interface ManagedAccount {
+  readonly id: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly role: AppAccountRole;
+  readonly status: "active" | "disabled";
+}
+
+export interface ManagedAccountCreateRequest {
+  readonly username: string;
+  readonly password: string;
+  readonly displayName: string;
+  readonly role: AppAccountRole;
+}
+
+export interface ManagedAccountCreateResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly account: ManagedAccount;
+  readonly profile: PatientProfileSummary;
+}
+
+export interface CodexRuntimeStatus {
+  readonly installed: boolean;
+  readonly authenticated: boolean;
+  readonly authenticationMode: "chatgpt" | "api_key" | "unknown" | null;
+  readonly authenticationOwner: "codex_cli";
+  readonly daemonRunning: boolean;
+  readonly cliVersion: string | null;
+  readonly runtimeVersion: string | null;
+  readonly experimental: true;
+}
+
+export interface HomeStorageStatus {
+  readonly driver: "local" | "s3";
+  readonly rootPath: string | null;
+  readonly state: "stable" | "copying" | "failed";
+  readonly targetRootPath: string | null;
+  readonly generation: number;
+  readonly relocationSupported: boolean;
+  readonly lastFailureCode: "TARGET_INVALID" | "COPY_FAILED" | "VERIFY_FAILED" | null;
+}
+
+export interface HomeSettingsResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly codex: CodexRuntimeStatus;
+  readonly storage: HomeStorageStatus;
+  readonly accounts: readonly ManagedAccount[];
+}
+
+export interface StorageRelocationRequest {
+  readonly rootPath: string;
+}
+
+export interface StorageRelocationResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly storage: HomeStorageStatus;
+}
+
+export interface CodexRuntimeActionResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly codex: CodexRuntimeStatus;
 }
 
 export interface DemoRegistrationRequest {

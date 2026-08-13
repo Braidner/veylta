@@ -293,151 +293,6 @@ h3 {
   gap: 18px;
 }
 
-.vault-connect {
-  position: relative;
-  overflow: hidden;
-  padding: 28px;
-  color: white;
-  background:
-    radial-gradient(circle at 100% 0%, rgb(132 173 255 / 42%), transparent 34%),
-    linear-gradient(145deg, #123cae 0%, #245edc 55%, #6038c8 120%);
-  border: 1px solid rgb(255 255 255 / 20%);
-  border-radius: 18px;
-  box-shadow: 0 22px 60px rgb(31 66 154 / 18%);
-}
-
-.vault-connect__heading {
-  display: flex;
-  gap: 14px;
-  align-items: center;
-}
-
-.vault-connect__mark {
-  display: grid;
-  flex: 0 0 auto;
-  width: 44px;
-  height: 44px;
-  color: #1649d8;
-  background: white;
-  border-radius: 13px;
-  place-items: center;
-  font-weight: 850;
-}
-
-.vault-connect__heading p,
-.vault-connect__copy,
-.vault-connect__fineprint,
-.vault-connect__notice {
-  margin: 0;
-}
-
-.vault-connect__heading p {
-  color: rgb(255 255 255 / 72%);
-  font-size: 0.75rem;
-  font-weight: 750;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-}
-
-.vault-connect__heading h2 {
-  margin-top: 3px;
-  color: white;
-}
-
-.vault-connect__copy {
-  margin-top: 20px;
-  color: rgb(255 255 255 / 86%);
-  font-size: 0.9rem;
-  line-height: 1.65;
-}
-
-.vault-connect__copy strong {
-  color: white;
-}
-
-.vault-connect .text-button {
-  margin-top: 18px;
-  color: rgb(255 255 255 / 78%);
-}
-
-.vault-connect .text-button:hover {
-  color: white;
-}
-
-.vault-connect__facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  margin: 20px 0 0;
-}
-
-.vault-connect__facts div {
-  min-width: 0;
-  padding: 12px;
-  background: rgb(255 255 255 / 10%);
-  border: 1px solid rgb(255 255 255 / 14%);
-  border-radius: 12px;
-}
-
-.vault-connect__facts dt {
-  color: rgb(255 255 255 / 65%);
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.vault-connect__facts dd {
-  margin: 4px 0 0;
-  overflow: hidden;
-  font-size: 0.85rem;
-  font-weight: 700;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.vault-connect__notice {
-  padding: 12px;
-  color: white;
-  background: rgb(7 22 69 / 24%);
-  border: 1px solid rgb(255 255 255 / 20%);
-  border-radius: 12px;
-  font-size: 0.84rem;
-  line-height: 1.55;
-}
-
-.vault-connect__fineprint {
-  margin-top: 16px;
-  color: rgb(255 255 255 / 65%);
-  font-size: 0.75rem;
-  line-height: 1.5;
-}
-
-.vault-connect__agent {
-  padding-top: 18px;
-  margin-top: 18px;
-  border-top: 1px solid rgb(255 255 255 / 24%);
-}
-
-.vault-connect__agent > p {
-  margin: 0;
-  color: rgb(255 255 255 / 82%);
-  font-size: 0.875rem;
-  line-height: 1.55;
-}
-
-.vault-connect__agent .vault-connect__agent-disclosure {
-  margin-top: 8px;
-  color: rgb(255 255 255 / 70%);
-  font-size: 0.8125rem;
-}
-
-.vault-connect__agent .vault-connect__agent-status {
-  margin-top: 10px;
-  color: white;
-  font-weight: 650;
-}
-
 .onboarding-form__mode {
   align-self: flex-start;
   min-height: 28px;
@@ -552,25 +407,378 @@ h3 {
   font-weight: 650;
 }
 
-.vault-connect .button--primary {
-  color: #1649d8;
-  background: white;
-  border-color: white;
-}
-
-.vault-connect .button--primary:hover:not(:disabled) {
-  color: #113897;
-  background: #eef4ff;
-  border-color: #eef4ff;
-}
-
-.vault-connect__notice,
-.vault-connect .form-error {
-  margin-top: 18px;
-}
-
 .workspace-error {
   margin-bottom: 24px;
+}
+
+.settings-shell {
+  width: min(1280px, calc(100% - 64px));
+  margin: 0 auto;
+  padding: 56px 0 88px;
+}
+
+.settings-heading {
+  display: flex;
+  gap: 48px;
+  align-items: flex-end;
+  justify-content: space-between;
+  padding-bottom: 36px;
+}
+
+.settings-heading h1 {
+  font-size: clamp(2.7rem, 6vw, 4.8rem);
+}
+
+.settings-heading .lede {
+  max-width: 68ch;
+  margin-bottom: 0;
+}
+
+.settings-heading__identity {
+  display: flex;
+  flex: 0 0 240px;
+  flex-direction: column;
+  gap: 2px;
+  padding: 16px 0;
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.settings-heading__identity span,
+.settings-heading__identity small {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.settings-heading__identity strong {
+  font-size: 0.95rem;
+}
+
+.settings-notice {
+  margin: 0 0 24px;
+  padding: 12px 16px;
+  color: var(--color-success);
+  background: oklch(0.965 0.025 155);
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.settings-console {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+  background: var(--color-ink);
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.section-label {
+  margin: 0 0 7px;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 750;
+}
+
+.codex-console {
+  min-width: 0;
+  padding: 28px 32px 26px;
+  color: oklch(0.96 0.008 250);
+  background: oklch(0.235 0.035 255);
+}
+
+.codex-console__topline {
+  display: flex;
+  gap: 9px;
+  align-items: center;
+  padding-bottom: 18px;
+  color: oklch(0.78 0.02 250);
+  border-bottom: 1px solid oklch(1 0 0 / 12%);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  background: oklch(0.67 0.05 250);
+  border-radius: 50%;
+}
+
+.status-dot--ready {
+  background: oklch(0.73 0.18 155);
+  box-shadow: 0 0 0 4px oklch(0.73 0.18 155 / 13%);
+}
+
+.codex-console__mode {
+  padding-left: 9px;
+  margin-left: auto;
+  color: oklch(0.86 0.06 175);
+  border-left: 1px solid oklch(1 0 0 / 15%);
+}
+
+.codex-console__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 210px;
+  gap: 40px;
+  align-items: start;
+  padding: 28px 0 24px;
+}
+
+.codex-console .section-label {
+  color: oklch(0.77 0.11 175);
+}
+
+.codex-console h2 {
+  max-width: 15ch;
+  color: white;
+  font-size: clamp(1.65rem, 3vw, 2.5rem);
+  letter-spacing: -0.035em;
+}
+
+.codex-console__copy {
+  max-width: 55ch;
+  margin: 16px 0 0;
+  color: oklch(0.79 0.018 250);
+  line-height: 1.65;
+}
+
+.runtime-facts,
+.storage-current {
+  margin: 0;
+}
+
+.runtime-facts div {
+  padding: 10px 0;
+  border-bottom: 1px solid oklch(1 0 0 / 11%);
+}
+
+.runtime-facts div:first-child {
+  padding-top: 0;
+}
+
+.runtime-facts dt,
+.storage-current dt {
+  color: oklch(0.68 0.018 250);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+
+.runtime-facts dd,
+.storage-current dd {
+  min-width: 0;
+  margin: 4px 0 0;
+  overflow-wrap: anywhere;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.codex-console__instruction {
+  margin: 0 0 16px;
+  padding: 12px 14px;
+  color: oklch(0.9 0.018 250);
+  background: oklch(1 0 0 / 7%);
+  border-radius: 9px;
+  font-size: 0.84rem;
+}
+
+.codex-console__instruction--ready {
+  color: oklch(0.88 0.1 160);
+}
+
+.codex-console__instruction code,
+.codex-console__footnote code {
+  color: white;
+}
+
+.codex-console__action {
+  margin-bottom: 16px;
+  color: oklch(0.2 0.025 250);
+  background: oklch(0.8 0.14 170);
+  border: 1px solid oklch(0.8 0.14 170);
+}
+
+.codex-console__action:hover:not(:disabled) {
+  background: oklch(0.86 0.12 170);
+  border-color: oklch(0.86 0.12 170);
+}
+
+.codex-console__footnote {
+  margin: 0;
+  color: oklch(0.65 0.015 250);
+  font-size: 0.72rem;
+  line-height: 1.55;
+}
+
+.codex-console .form-error {
+  margin: 0 0 16px;
+  color: oklch(0.9 0.09 25);
+  background: oklch(0.34 0.07 25);
+  border: 0;
+}
+
+.storage-settings {
+  min-width: 0;
+  padding: 28px;
+  color: var(--color-ink);
+  background: oklch(0.955 0.01 250);
+}
+
+.settings-section-heading {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.storage-generation {
+  padding: 5px 8px;
+  color: var(--color-muted);
+  background: var(--color-bg);
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.storage-current {
+  padding: 18px 0;
+  margin: 18px 0;
+  border-top: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+}
+
+.storage-current div + div {
+  margin-top: 12px;
+}
+
+.storage-current dt {
+  color: var(--color-muted);
+}
+
+.storage-current dd code {
+  font-size: 0.75rem;
+}
+
+.storage-relocation {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.confirmation-field {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 9px;
+  align-items: start;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.confirmation-field input {
+  width: 16px;
+  height: 16px;
+  margin: 2px 0 0;
+}
+
+.account-settings {
+  padding-top: 48px;
+}
+
+.account-settings__heading {
+  align-items: end;
+  padding-bottom: 20px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.account-settings__heading > p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.82rem;
+}
+
+.account-settings__body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 48px;
+  align-items: start;
+  padding-top: 24px;
+}
+
+.account-register {
+  padding: 0;
+  margin: 0;
+  border-top: 1px solid var(--color-line);
+  list-style: none;
+}
+
+.account-register__row {
+  display: grid;
+  grid-template-columns: 36px minmax(180px, 1fr) 120px 72px;
+  gap: 14px;
+  align-items: center;
+  min-height: 72px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.account-avatar {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  color: var(--color-primary);
+  background: var(--color-surface-strong);
+  border-radius: 9px;
+  place-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.account-register__identity {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.account-register__identity strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-register__identity small,
+.account-register__role {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.account-register__status {
+  color: var(--color-success);
+  font-size: 0.72rem;
+  font-weight: 750;
+  text-align: right;
+}
+
+.account-register__status--disabled {
+  color: var(--color-danger);
+}
+
+.account-create {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 24px;
+  background: var(--color-surface);
+  border-radius: 14px;
+}
+
+.account-create .field select {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
 }
 
 .state-shell,
@@ -2820,8 +3028,45 @@ h3 {
 
   .onboarding-shell,
   .profile-heading,
-  .profile-workspace {
+  .profile-workspace,
+  .settings-console,
+  .account-settings__body {
     grid-template-columns: 1fr;
+  }
+
+  .settings-shell {
+    width: min(100% - 40px, 680px);
+    padding: 44px 0 64px;
+  }
+
+  .settings-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 28px;
+  }
+
+  .settings-heading__identity {
+    flex-basis: auto;
+    width: 100%;
+  }
+
+  .settings-console {
+    background: transparent;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .codex-console,
+  .storage-settings {
+    border-radius: 14px;
+  }
+
+  .storage-settings {
+    margin-top: 14px;
+  }
+
+  .account-settings__body {
+    gap: 28px;
   }
 
   .onboarding-shell {
@@ -2940,6 +3185,52 @@ h3 {
 
   .workspace-actions {
     gap: 8px;
+  }
+
+  .workspace-actions .environment {
+    padding: 4px 6px;
+    font-size: 0.6875rem;
+    white-space: nowrap;
+  }
+
+  .workspace-actions .text-button {
+    font-size: 0.8125rem;
+  }
+
+  .settings-shell {
+    width: min(100% - 32px, 520px);
+  }
+
+  .codex-console,
+  .storage-settings,
+  .account-create {
+    padding: 22px 20px;
+  }
+
+  .codex-console__topline {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .codex-console__mode {
+    width: 100%;
+    padding: 7px 0 0;
+    margin: 0;
+    border-top: 1px solid oklch(1 0 0 / 12%);
+    border-left: 0;
+  }
+
+  .codex-console__body {
+    grid-template-columns: 1fr;
+    gap: 24px;
+  }
+
+  .account-register__row {
+    grid-template-columns: 36px minmax(0, 1fr) auto;
+  }
+
+  .account-register__role {
+    display: none;
   }
 
   .environment {
@@ -3098,6 +3389,19 @@ h3 {
   .integrity-details dl > div {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+}
+
+@media (max-width: 360px) {
+  .workspace-bar {
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    padding-block: 8px;
+  }
+
+  .workspace-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 }
 

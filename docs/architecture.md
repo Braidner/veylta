@@ -25,6 +25,12 @@ profile's linked user, or an explicitly granted actor may open a profile. The
 Codex adapter is optional, receives narrow profile/document work, and never
 reads or stores Codex OAuth credentials.
 
+`StorageController` is the single runtime port used by API and worker. It reads
+the authoritative local root from SQLite for every object operation, so a
+verified administrator relocation becomes visible to both processes without a
+second configuration authority. The previous root is retained for recovery;
+cleanup and backup policy remain explicit operator work.
+
 ## Decision summary
 
 Veylta uses a small TypeScript monorepo with three deployable processes:

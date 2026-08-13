@@ -543,6 +543,8 @@ Commit intent: `feat: add home server settings`
 - Admin-only settings shell and account lifecycle for `admin`/`user`.
 - Codex CLI/app-server capability and login status through a non-secret adapter.
 - Current storage location plus guarded, checksummed relocation workflow.
+- Delivered with non-disclosing user access, retained verified recovery copy,
+  payload-free runtime audit, and a shared API/worker `StorageController`.
 
 ### Task 32 — Profile URLs and access policy
 

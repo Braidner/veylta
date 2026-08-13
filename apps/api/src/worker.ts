@@ -4,13 +4,15 @@ import { type HealthStatus, HTTP_API_VERSION } from "@veylta/contracts";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./database/pool.js";
 import { createDocumentExtractionProcessor } from "./processing/document-extraction-processor.js";
-import { createObjectStorage } from "./storage/create-object-storage.js";
+import { createStorageController } from "./storage/storage-controller.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databasePath);
+const storage = createStorageController(database, config.objectStorage);
+await storage.initialize();
 const processor = createDocumentExtractionProcessor({
   database,
-  storage: createObjectStorage(config.objectStorage),
+  storage,
 });
 const workerId = randomUUID();
 let ready = false;
@@ -48,12 +50,19 @@ async function processAvailableDocument(): Promise<void> {
         retryDelayMs: config.processingRetryDelayMs,
       }),
     );
-  } catch {
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    const errorCode =
+      typeof error === "object" && error !== null && "code" in error
+        ? String(error.code).slice(0, 64)
+        : undefined;
     console.error(
       JSON.stringify({
         service: "worker",
         event: "document_processing",
         status: "unexpected_failure",
+        errorName,
+        ...(errorCode === undefined ? {} : { errorCode }),
       }),
     );
   }

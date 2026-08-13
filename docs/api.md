@@ -160,6 +160,93 @@ disabled session and is always `Cache-Control: no-store`.
 Revokes the current session transactionally, records a payload-free audit event,
 and expires the cookie. It requires the configured web `Origin`.
 
+## Home-server settings
+
+Every settings response is private/no-store. These routes are intentionally
+non-disclosing: a signed-in non-administrator receives `404`, with no account
+names, filesystem paths, or Codex status.
+
+### `GET /v1/settings`
+
+Returns the administrator-only `home-settings/v1` projection:
+
+```json
+{
+  "contractVersion": "home-settings/v1",
+  "codex": {
+    "installed": true,
+    "authenticated": true,
+    "authenticationMode": "chatgpt",
+    "authenticationOwner": "codex_cli",
+    "daemonRunning": false,
+    "cliVersion": "codex-cli 0.x",
+    "runtimeVersion": null,
+    "experimental": true
+  },
+  "storage": {
+    "driver": "local",
+    "rootPath": "/srv/veylta/objects",
+    "state": "stable",
+    "targetRootPath": null,
+    "generation": 1,
+    "relocationSupported": true,
+    "lastFailureCode": null
+  },
+  "accounts": [
+    {
+      "id": "user_placeholder",
+      "username": "home-admin",
+      "displayName": "Домашний администратор",
+      "role": "admin",
+      "status": "active"
+    }
+  ]
+}
+```
+
+The Codex projection contains capability and version data only. Veylta never
+reads or returns Codex OAuth tokens, API keys, or Codex-home contents.
+
+### `POST /v1/settings/accounts`
+
+Creates an `admin` or `user` plus a linked adult profile in the administrator's
+home family. It uses the same normalized username and scrypt password boundary
+as setup, requires the configured `Origin`, and returns `409` for duplicates.
+
+```json
+{
+  "username": "family-user",
+  "displayName": "Пользователь семьи",
+  "role": "user",
+  "password": "a different long local password"
+}
+```
+
+Response `201` returns the safe account and profile selectors, never a password
+or password hash.
+
+### `POST /v1/settings/storage/relocate`
+
+For local storage, copies every persisted document blob to a different absolute
+directory, verifies bytes against SQLite size/content-type/SHA-256 records, and
+then switches the authoritative root in the same serialized transaction. The
+previous root remains as a recovery copy. Invalid/root/home paths return `422`;
+active upload/relocation returns `409`; copy or verification failure returns
+`503` without switching roots.
+
+```json
+{
+  "rootPath": "/Volumes/Health/Veylta"
+}
+```
+
+### `POST /v1/settings/codex/start`
+
+Requests local `codex app-server daemon` startup. Codex owns authentication via
+`codex login`; Veylta accepts and stores no API key. The safe status response and
+payload-free audit report the result. This adapter is experimental and consumes
+the household's Codex subscription limits.
+
 ### `POST /v1/families/{familyId}/profiles`
 
 Creates an adult or dependent profile within an authorized family.

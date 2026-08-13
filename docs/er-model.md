@@ -91,6 +91,18 @@ The local browser token is an HttpOnly, SameSite cookie. Local account sign-in
 is delivered; rotation policy, password recovery, passkeys, and remote-deployment
 controls remain deferred.
 
+### HomeStorageSettings
+
+- singleton installation row
+- `driver`: `local | s3`
+- `current_root`, guarded `target_root`
+- relocation `state`: `stable | copying | failed`
+- monotonic `generation`, sanitized `last_failure_code`, `updated_at`
+
+The row contains configuration, never document bytes or credentials. Only an
+administrator projection may read an absolute local path. API and worker resolve
+the same row through `StorageController`.
+
 ### Family
 
 - `id`, `display_name`

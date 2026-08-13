@@ -25,23 +25,23 @@
     "semantic_hash": ""
   },
   "apps/api/src/database/pool.ts": {
-    "mtime": 1786651315.4694226,
-    "ast_hash": "c3465f6411471feead724aa917028b16",
+    "mtime": 1786653212.9972708,
+    "ast_hash": "912c987c56b1faca6dfa11ec02627b4d",
     "semantic_hash": ""
   },
   "apps/api/src/server.ts": {
-    "mtime": 1786652441.2025983,
-    "ast_hash": "ad36431e023f91738c706f72154cd01e",
+    "mtime": 1786653476.26391,
+    "ast_hash": "c4c3dbbf23bbe86bbce1a83e495024e7",
     "semantic_hash": ""
   },
   "apps/api/src/worker.ts": {
-    "mtime": 1786541155.2013776,
-    "ast_hash": "b4326ce1ac4e3d2e4acd350fc8eb8afd",
+    "mtime": 1786655731.083102,
+    "ast_hash": "9e1331cbba15fa99de21d131e9d099ac",
     "semantic_hash": ""
   },
   "apps/api/test/migrations.integration.test.ts": {
-    "mtime": 1786651786.1785102,
-    "ast_hash": "f8e112d5bf1dacf0db7984f5b8c35524",
+    "mtime": 1786654082.308389,
+    "ast_hash": "aa29be7f16be141d83b74db9a4f1595d",
     "semantic_hash": ""
   },
   "apps/api/tsconfig.json": {
@@ -115,13 +115,13 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/index.test.ts": {
-    "mtime": 1786652700.23952,
-    "ast_hash": "bfa180b69ea5d96bf6b06c8ee924b607",
+    "mtime": 1786653482.0354555,
+    "ast_hash": "4012a91e7c96662ef9f8be545937b5d3",
     "semantic_hash": ""
   },
   "packages/contracts/src/index.ts": {
-    "mtime": 1786651315.4676409,
-    "ast_hash": "014c2fc59dc835eec3355a8b26700772",
+    "mtime": 1786653212.9978514,
+    "ast_hash": "6965417c336f728d12a965c1a823a590",
     "semantic_hash": ""
   },
   "packages/contracts/tsconfig.json": {
@@ -130,8 +130,8 @@
     "semantic_hash": ""
   },
   "playwright.config.ts": {
-    "mtime": 1786528136.2355027,
-    "ast_hash": "81a75f98b64f5f3d192c7f3297f9866d",
+    "mtime": 1786655441.8017552,
+    "ast_hash": "1700b74f22f1e048c5036380aeebca9d",
     "semantic_hash": ""
   },
   "scripts/check-licenses.mjs": {
@@ -195,18 +195,18 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1786652430.2166843,
-    "ast_hash": "a5e161eab522e8317a076603d5aef27e",
+    "mtime": 1786654743.4992595,
+    "ast_hash": "106d2482c5ac436fe394925c3b1cf8ae",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1786652405.5466015,
-    "ast_hash": "ef2e680a084cbca51fb0571d49b700f8",
+    "mtime": 1786654743.5000257,
+    "ast_hash": "4c9c3b690e2604726342d938455cd1f6",
     "semantic_hash": ""
   },
   "docs/er-model.md": {
-    "mtime": 1786652489.9101577,
-    "ast_hash": "5f24d2c29dddf8d1c7250fa34fc0d4fd",
+    "mtime": 1786654743.5004573,
+    "ast_hash": "46436fe5a8788e7ccc2c140abac3596d",
     "semantic_hash": ""
   },
   "docs/license-policy.md": {
@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786652430.2170422,
-    "ast_hash": "ce3093bd1db64316752d4bf2a80c3dde",
+    "mtime": 1786654743.5009475,
+    "ast_hash": "a979ae6f205077b253cfbe35b1beddd6",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786651553.9335108,
-    "ast_hash": "56a10187e277e66778a83f3b148378e8",
+    "mtime": 1786654577.4099393,
+    "ast_hash": "bc2100ebbf5f7463ea3a3f118818798a",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -540,8 +540,8 @@
     "semantic_hash": ""
   },
   "apps/api/test/direct-image-migration.integration.test.ts": {
-    "mtime": 1786651726.9801571,
-    "ast_hash": "8ad46b6fa7e2c93b0753cf7df2c19357",
+    "mtime": 1786654253.5788753,
+    "ast_hash": "fb3bfe5caea29ce2e2eed8fff0dd175c",
     "semantic_hash": ""
   },
   "apps/api/test/synthetic-lab-image.ts": {
@@ -679,26 +679,6 @@
     "ast_hash": "38d645d962fcf49bb98badb7e1039322",
     "semantic_hash": ""
   },
-  "apps/web/app/components/vault-connection.tsx": {
-    "mtime": 1786646534.3118873,
-    "ast_hash": "d75acece6b2d1dd2b184b046907aa1e0",
-    "semantic_hash": ""
-  },
-  "apps/web/app/vault/directory-vault.test.ts": {
-    "mtime": 1786646343.5934436,
-    "ast_hash": "99e1dedddbbf75250f5dfada7f60dcb7",
-    "semantic_hash": ""
-  },
-  "apps/web/app/vault/directory-vault.ts": {
-    "mtime": 1786646442.6416185,
-    "ast_hash": "47456f6f84d59deb497e1999d915280d",
-    "semantic_hash": ""
-  },
-  "apps/web/app/vault/vault-handle-store.ts": {
-    "mtime": 1786645702.1303105,
-    "ast_hash": "78891cf41ef87b02cc1c64fe6bc9f9cb",
-    "semantic_hash": ""
-  },
   "skills/veylta-agent/scripts/bridge-lib.mjs": {
     "mtime": 1786646825.5553436,
     "ast_hash": "c761a7a4f5330030dbc715bb24f2b26a",
@@ -765,8 +745,8 @@
     "semantic_hash": ""
   },
   "e2e/account-setup.spec.ts": {
-    "mtime": 1786651733.176152,
-    "ast_hash": "c6ab1c1e29743283a87f8a5cf0c698e5",
+    "mtime": 1786654448.7057765,
+    "ast_hash": "59f01e971cf65c8a896d2f782c72ba45",
     "semantic_hash": ""
   },
   "e2e/support/synthetic-family.ts": {
@@ -777,6 +757,51 @@
   "docs/adr/0007-home-server-pwa-and-codex-runtime.md": {
     "mtime": 1786652351.1630385,
     "ast_hash": "5a387c959da7e9421c8f2483f8166f0c",
+    "semantic_hash": ""
+  },
+  "apps/api/src/settings/codex-runtime.test.ts": {
+    "mtime": 1786655019.4553583,
+    "ast_hash": "e6e11541d805020145101a0647d66b2a",
+    "semantic_hash": ""
+  },
+  "apps/api/src/settings/codex-runtime.ts": {
+    "mtime": 1786655258.649426,
+    "ast_hash": "c6a54247fcbc71103b3746980ee1c495",
+    "semantic_hash": ""
+  },
+  "apps/api/src/settings/home-settings-service.ts": {
+    "mtime": 1786653844.9196513,
+    "ast_hash": "09245eac2ecdded954c1014c6f4f128b",
+    "semantic_hash": ""
+  },
+  "apps/api/src/settings/routes.ts": {
+    "mtime": 1786653844.919985,
+    "ast_hash": "b5c49fd45330742f172be3c5f0a16e7b",
+    "semantic_hash": ""
+  },
+  "apps/api/src/storage/storage-controller.ts": {
+    "mtime": 1786655960.3872387,
+    "ast_hash": "ceb15423a7021194eb263b4fe0c926ae",
+    "semantic_hash": ""
+  },
+  "apps/api/test/home-settings.integration.test.ts": {
+    "mtime": 1786655994.2504082,
+    "ast_hash": "b0afb5eff6831e1908a069781481b342",
+    "semantic_hash": ""
+  },
+  "apps/web/app/settings/page.tsx": {
+    "mtime": 1786653877.326435,
+    "ast_hash": "a9d977e6ce6ff03ba06ea932455ff245",
+    "semantic_hash": ""
+  },
+  "db/migrations/0013_home_settings.down.sql": {
+    "mtime": 1786653212.9968638,
+    "ast_hash": "245afd95fdffded709a847b3014d51d3",
+    "semantic_hash": ""
+  },
+  "db/migrations/0013_home_settings.up.sql": {
+    "mtime": 1786653212.99668,
+    "ast_hash": "09c2a8089fa39dfe021369679809d82e",
     "semantic_hash": ""
   }
 }
