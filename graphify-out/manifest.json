@@ -70,8 +70,8 @@
     "semantic_hash": ""
   },
   "apps/web/package.json": {
-    "mtime": 1786519300.9227357,
-    "ast_hash": "b2e1d32db8e0efb5927a5da398000a21",
+    "mtime": 1786645495.73785,
+    "ast_hash": "28e07ed595a41d95e9cf15eb87efc5c7",
     "semantic_hash": ""
   },
   "apps/web/tsconfig.json": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786644678.2620196,
-    "ast_hash": "bdd5ae8f84139955bdf793b45e009ff6",
+    "mtime": 1786645702.1892953,
+    "ast_hash": "ba7096f53b2f67e97a5342a14ff39497",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -677,6 +677,31 @@
   "apps/web/public/icons/veylta-maskable-icon.svg": {
     "mtime": 1786645227.5871856,
     "ast_hash": "38d645d962fcf49bb98badb7e1039322",
+    "semantic_hash": ""
+  },
+  "apps/web/app/components/vault-connection.tsx": {
+    "mtime": 1786645702.1318316,
+    "ast_hash": "73e249e727350ba4d98c447b43e891c1",
+    "semantic_hash": ""
+  },
+  "apps/web/app/vault/directory-vault.test.ts": {
+    "mtime": 1786645572.269112,
+    "ast_hash": "dd46ff4db00a172932082e4887e56452",
+    "semantic_hash": ""
+  },
+  "apps/web/app/vault/directory-vault.ts": {
+    "mtime": 1786645576.6390135,
+    "ast_hash": "6797965ab7dfe85380d38d4214d15d1a",
+    "semantic_hash": ""
+  },
+  "apps/web/app/vault/vault-handle-store.ts": {
+    "mtime": 1786645702.1303105,
+    "ast_hash": "78891cf41ef87b02cc1c64fe6bc9f9cb",
+    "semantic_hash": ""
+  },
+  "e2e/vault-directory.spec.ts": {
+    "mtime": 1786645663.4993093,
+    "ast_hash": "5c28365221bbecf7d14930f8a39df81c",
     "semantic_hash": ""
   }
 }

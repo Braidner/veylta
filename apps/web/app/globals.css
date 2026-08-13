@@ -287,6 +287,132 @@ h3 {
   border-radius: 14px;
 }
 
+.onboarding-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.vault-connect {
+  position: relative;
+  overflow: hidden;
+  padding: 28px;
+  color: white;
+  background:
+    radial-gradient(circle at 100% 0%, rgb(132 173 255 / 42%), transparent 34%),
+    linear-gradient(145deg, #123cae 0%, #245edc 55%, #6038c8 120%);
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 18px;
+  box-shadow: 0 22px 60px rgb(31 66 154 / 18%);
+}
+
+.vault-connect__heading {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+}
+
+.vault-connect__mark {
+  display: grid;
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  color: #1649d8;
+  background: white;
+  border-radius: 13px;
+  place-items: center;
+  font-weight: 850;
+}
+
+.vault-connect__heading p,
+.vault-connect__copy,
+.vault-connect__fineprint,
+.vault-connect__notice {
+  margin: 0;
+}
+
+.vault-connect__heading p {
+  color: rgb(255 255 255 / 72%);
+  font-size: 0.75rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.vault-connect__heading h2 {
+  margin-top: 3px;
+  color: white;
+}
+
+.vault-connect__copy {
+  margin-top: 20px;
+  color: rgb(255 255 255 / 86%);
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+
+.vault-connect__copy strong {
+  color: white;
+}
+
+.vault-connect .text-button {
+  margin-top: 18px;
+  color: rgb(255 255 255 / 78%);
+}
+
+.vault-connect .text-button:hover {
+  color: white;
+}
+
+.vault-connect__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 20px 0 0;
+}
+
+.vault-connect__facts div {
+  min-width: 0;
+  padding: 12px;
+  background: rgb(255 255 255 / 10%);
+  border: 1px solid rgb(255 255 255 / 14%);
+  border-radius: 12px;
+}
+
+.vault-connect__facts dt {
+  color: rgb(255 255 255 / 65%);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.vault-connect__facts dd {
+  margin: 4px 0 0;
+  overflow: hidden;
+  font-size: 0.85rem;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-connect__notice {
+  padding: 12px;
+  color: white;
+  background: rgb(7 22 69 / 24%);
+  border: 1px solid rgb(255 255 255 / 20%);
+  border-radius: 12px;
+  font-size: 0.84rem;
+  line-height: 1.55;
+}
+
+.vault-connect__fineprint {
+  margin-top: 16px;
+  color: rgb(255 255 255 / 65%);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
 .onboarding-form__mode {
   align-self: flex-start;
   min-height: 28px;
@@ -399,6 +525,23 @@ h3 {
   border-radius: 10px;
   font-size: 0.875rem;
   font-weight: 650;
+}
+
+.vault-connect .button--primary {
+  color: #1649d8;
+  background: white;
+  border-color: white;
+}
+
+.vault-connect .button--primary:hover:not(:disabled) {
+  color: #113897;
+  background: #eef4ff;
+  border-color: #eef4ff;
+}
+
+.vault-connect__notice,
+.vault-connect .form-error {
+  margin-top: 18px;
 }
 
 .workspace-error {

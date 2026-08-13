@@ -41,6 +41,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { SystemStatus } from "./system-status";
+import { VaultConnection } from "./vault-connection";
 
 const apiPrefix = "/health-api";
 const processingPollIntervalMs = 2_000;
@@ -562,139 +563,142 @@ function OnboardingScreen({
         <SystemStatus />
       </div>
 
-      <form
-        className="onboarding-form"
-        onSubmit={mode === "register" ? onSubmit : onAccept}
-        aria-busy={formPending}
-        aria-describedby="demo-form-note"
-      >
-        <div className="form-heading">
-          <p>Локальный demo-доступ</p>
-          <h2>{mode === "register" ? "Владелец и семья" : "Принять приглашение"}</h2>
-        </div>
+      <div className="onboarding-actions">
+        <VaultConnection />
+        <form
+          className="onboarding-form"
+          onSubmit={mode === "register" ? onSubmit : onAccept}
+          aria-busy={formPending}
+          aria-describedby="demo-form-note"
+        >
+          <div className="form-heading">
+            <p>Локальный demo-доступ</p>
+            <h2>{mode === "register" ? "Владелец и семья" : "Принять приглашение"}</h2>
+          </div>
 
-        {mode === "register" ? (
-          <>
-            <label className="field">
-              <span>Имя владельца</span>
-              <input
-                name="displayName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Владелец 01"
-                disabled={formPending}
-              />
-            </label>
+          {mode === "register" ? (
+            <>
+              <label className="field">
+                <span>Имя владельца</span>
+                <input
+                  name="displayName"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Например, Владелец 01"
+                  disabled={formPending}
+                />
+              </label>
 
-            <label className="field">
-              <span>Название семьи</span>
-              <input
-                name="familyName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Семья 01"
-                disabled={formPending}
-              />
-            </label>
+              <label className="field">
+                <span>Название семьи</span>
+                <input
+                  name="familyName"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Например, Семья 01"
+                  disabled={formPending}
+                />
+              </label>
 
-            <label className="field">
-              <span>Имя профиля</span>
-              <input
-                name="profileName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Профиль 01"
-                disabled={formPending}
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label className="field">
-              <span>Одноразовый код</span>
-              <input
-                name="code"
-                type="text"
-                required
-                minLength={46}
-                maxLength={46}
-                autoComplete="off"
-                placeholder="vi_…"
-                disabled={formPending}
-              />
-            </label>
-            <label className="field">
-              <span>Ваше имя</span>
-              <input
-                name="displayName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Участник 01"
-                disabled={formPending}
-              />
-            </label>
-            <label className="field">
-              <span>Имя вашего профиля, если приглашены как взрослый</span>
-              <input
-                name="profileName"
-                type="text"
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Не заполняйте для помощника по уходу"
-                disabled={formPending}
-              />
-            </label>
-          </>
-        )}
+              <label className="field">
+                <span>Имя профиля</span>
+                <input
+                  name="profileName"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Например, Профиль 01"
+                  disabled={formPending}
+                />
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="field">
+                <span>Одноразовый код</span>
+                <input
+                  name="code"
+                  type="text"
+                  required
+                  minLength={46}
+                  maxLength={46}
+                  autoComplete="off"
+                  placeholder="vi_…"
+                  disabled={formPending}
+                />
+              </label>
+              <label className="field">
+                <span>Ваше имя</span>
+                <input
+                  name="displayName"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Например, Участник 01"
+                  disabled={formPending}
+                />
+              </label>
+              <label className="field">
+                <span>Имя вашего профиля, если приглашены как взрослый</span>
+                <input
+                  name="profileName"
+                  type="text"
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Не заполняйте для помощника по уходу"
+                  disabled={formPending}
+                />
+              </label>
+            </>
+          )}
 
-        {error !== null ? (
-          <p className="form-error" role="alert">
-            {error}
+          {error !== null ? (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <button
+            className="button button--primary button--wide"
+            type="submit"
+            disabled={formPending}
+          >
+            {formPending
+              ? mode === "register"
+                ? "Создаём…"
+                : "Присоединяем…"
+              : mode === "register"
+                ? "Создать пространство"
+                : "Присоединиться к семье"}
+          </button>
+          <button
+            className="text-button onboarding-form__mode"
+            type="button"
+            disabled={formPending}
+            onClick={() => {
+              setMode((current) => (current === "register" ? "accept" : "register"));
+            }}
+          >
+            {mode === "register" ? "У меня есть код приглашения" : "Создать новое пространство"}
+          </button>
+          <p id="demo-form-note" className="form-note">
+            Код действует один раз 24 часа. Для взрослого укажите имя личного профиля; помощник по
+            уходу оставляет его пустым. Demo-сессия хранится в защищённой HttpOnly cookie; в
+            браузере нет токена доступа.
           </p>
-        ) : null}
-
-        <button
-          className="button button--primary button--wide"
-          type="submit"
-          disabled={formPending}
-        >
-          {formPending
-            ? mode === "register"
-              ? "Создаём…"
-              : "Присоединяем…"
-            : mode === "register"
-              ? "Создать пространство"
-              : "Присоединиться к семье"}
-        </button>
-        <button
-          className="text-button onboarding-form__mode"
-          type="button"
-          disabled={formPending}
-          onClick={() => {
-            setMode((current) => (current === "register" ? "accept" : "register"));
-          }}
-        >
-          {mode === "register" ? "У меня есть код приглашения" : "Создать новое пространство"}
-        </button>
-        <p id="demo-form-note" className="form-note">
-          Код действует один раз 24 часа. Для взрослого укажите имя личного профиля; помощник по
-          уходу оставляет его пустым. Demo-сессия хранится в защищённой HttpOnly cookie; в браузере
-          нет токена доступа.
-        </p>
-      </form>
+        </form>
+      </div>
     </section>
   );
 }
