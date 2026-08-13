@@ -3,6 +3,10 @@
 import type {
   AdminSetupResponse,
   ArchivedProfileListResponse,
+  CarePlanCategory,
+  CarePlanItem,
+  CarePlanItemResponse,
+  CarePlanResponse,
   CodexRuntimeActionResponse,
   DocumentFactsResponse,
   DocumentProcessingResponse,
@@ -141,6 +145,10 @@ function profileOverviewPath(familyId: string, profileId: string): string {
 
 function healthSummaryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/health-summary`;
+}
+
+function carePlanPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/care-plan`;
 }
 
 function healthSummaryHistoryPath(familyId: string, profileId: string): string {
@@ -2325,33 +2333,11 @@ function ProfileOverviewPanel({
             );
           })()}
 
-          <section className="care-plan-preview" aria-labelledby="care-plan-preview-title">
-            <div className="care-plan-preview__heading">
-              <div>
-                <p>Персональный план</p>
-                <h3 id="care-plan-preview-title">Что делать дальше</h3>
-              </div>
-              <span>Только после проверки источников</span>
-            </div>
-            <div className="care-plan-preview__lanes">
-              <div>
-                <strong>Анализы</strong>
-                <span>Сначала нужны подтверждённые даты и показатели</span>
-              </div>
-              <div>
-                <strong>Специалисты</strong>
-                <span>Направление не рассчитано без клинического контекста</span>
-              </div>
-              <div>
-                <strong>Питание и движение</strong>
-                <span>План появится только с источниками и явными ограничениями</span>
-              </div>
-              <div>
-                <strong>Напоминания</strong>
-                <span>Здесь будут принятые вами действия и сроки</span>
-              </div>
-            </div>
-          </section>
+          <CarePlanPanel
+            familyId={familyId}
+            profileId={profileId}
+            canWriteProfile={canWriteProfile}
+          />
 
           <div className="profile-overview__sections">
             <section className="profile-overview__section" aria-labelledby="overview-review-title">
@@ -2491,6 +2477,396 @@ function ProfileOverviewPanel({
                 </ol>
               )}
             </section>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+const carePlanLanes: ReadonlyArray<{
+  category: CarePlanCategory;
+  label: string;
+  empty: string;
+}> = [
+  {
+    category: "laboratory",
+    label: "Анализы",
+    empty: "Зафиксируйте анализ, который вы уже решили обсудить или повторить.",
+  },
+  {
+    category: "clinician",
+    label: "Специалисты",
+    empty: "Врач или специальность появляются только как принятый вами пункт.",
+  },
+  {
+    category: "nutrition",
+    label: "Питание",
+    empty: "Не назначаем рацион без ограничений, контекста и подтверждённого источника.",
+  },
+  {
+    category: "activity",
+    label: "Активность",
+    empty: "Спортивная программа требует ваших ограничений и явного принятия.",
+  },
+  {
+    category: "reminder",
+    label: "Напоминания",
+    empty: "Добавьте срок для уже принятого домашнего действия.",
+  },
+];
+
+type CarePlanState =
+  | { kind: "loading" }
+  | { kind: "ready"; response: CarePlanResponse }
+  | { kind: "error"; copy: string };
+
+function carePlanErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "План этого профиля недоступен. Вернитесь к доступной карточке.";
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return "План уже изменился в другой вкладке. Обновите его и повторите действие.";
+  }
+  if (error instanceof ApiError && [400, 422].includes(error.status)) {
+    return "Проверьте название, примечание и дату действия.";
+  }
+  return "Не удалось обновить домашний план. Сохранённые пункты не изменены.";
+}
+
+function carePlanStateCopy(item: CarePlanItem): string {
+  switch (item.state) {
+    case "proposed":
+      return "Предложение · ждёт решения";
+    case "accepted":
+      return item.scheduledFor === null
+        ? "Принято без срока"
+        : `Запланировано · ${item.scheduledFor}`;
+    case "completed":
+      return "Выполнено";
+    case "dismissed":
+      return "Отклонено";
+  }
+}
+
+function CarePlanPanel({
+  familyId,
+  profileId,
+  canWriteProfile,
+}: {
+  familyId: string;
+  profileId: string;
+  canWriteProfile: boolean;
+}) {
+  const formId = useId();
+  const [state, setState] = useState<CarePlanState>({ kind: "loading" });
+  const [formOpen, setFormOpen] = useState(false);
+  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const creationAttempt = useRef<{ fingerprint: string; itemId: string } | null>(null);
+
+  const load = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const response = await apiRequest<CarePlanResponse>(
+          carePlanPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", response });
+      } catch (loadError) {
+        if (!signal?.aborted) setState({ kind: "error", copy: carePlanErrorCopy(loadError) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  async function createItem(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fields = new FormData(form);
+    const category = fields.get("category");
+    const title = fields.get("title");
+    const note = fields.get("note");
+    const scheduledFor = fields.get("scheduledFor");
+    if (
+      typeof category !== "string" ||
+      !carePlanLanes.some((lane) => lane.category === category) ||
+      typeof title !== "string" ||
+      title.trim().length === 0 ||
+      typeof note !== "string" ||
+      typeof scheduledFor !== "string"
+    ) {
+      setError("Заполните название домашнего действия.");
+      return;
+    }
+    const input = {
+      category: category as CarePlanCategory,
+      title: title.trim(),
+      note: note.trim() || null,
+      scheduledFor: scheduledFor || null,
+    };
+    const fingerprint = JSON.stringify(input);
+    if (creationAttempt.current?.fingerprint !== fingerprint) {
+      creationAttempt.current = { fingerprint, itemId: crypto.randomUUID() };
+    }
+    const itemId = creationAttempt.current.itemId;
+    setPendingItemId(itemId);
+    setError(null);
+    try {
+      await apiRequest<CarePlanItemResponse>(
+        `${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(itemId)}`,
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+      creationAttempt.current = null;
+      form.reset();
+      setFormOpen(false);
+      await load();
+    } catch (requestError) {
+      if (requestError instanceof ApiError && [400, 409, 422].includes(requestError.status)) {
+        creationAttempt.current = null;
+      }
+      setError(carePlanErrorCopy(requestError));
+    } finally {
+      setPendingItemId(null);
+    }
+  }
+
+  async function changeState(
+    item: CarePlanItem,
+    nextState: "accepted" | "completed" | "dismissed",
+  ): Promise<void> {
+    setPendingItemId(item.id);
+    setError(null);
+    try {
+      await apiRequest<CarePlanItemResponse>(
+        `${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}/state`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            revision: item.revision,
+            state: nextState,
+            scheduledFor: item.scheduledFor,
+          }),
+        },
+      );
+      await load();
+    } catch (requestError) {
+      setError(carePlanErrorCopy(requestError));
+    } finally {
+      setPendingItemId(null);
+    }
+  }
+
+  const canWrite = state.kind === "ready" && state.response.canWrite && canWriteProfile;
+
+  return (
+    <section
+      className="care-plan"
+      aria-labelledby={`${formId}-title`}
+      aria-busy={state.kind === "loading"}
+    >
+      <div className="care-plan__heading">
+        <div>
+          <p>Домашний health-care</p>
+          <h3 id={`${formId}-title`}>План заботы</h3>
+          <span>
+            Предложения не становятся назначениями автоматически. Сначала источник, затем ваше
+            решение.
+          </span>
+        </div>
+        {canWrite ? (
+          <button
+            className="button button--secondary"
+            type="button"
+            aria-expanded={formOpen}
+            aria-controls={`${formId}-form`}
+            onClick={() => {
+              setFormOpen((current) => !current);
+              setError(null);
+            }}
+          >
+            {formOpen ? "Закрыть" : "Добавить действие"}
+          </button>
+        ) : null}
+      </div>
+
+      {state.kind === "loading" ? (
+        <div className="care-plan__loading" aria-live="polite">
+          <div className="skeleton skeleton--overview-row" aria-hidden="true" />
+          <p>Собираем план и проверяем его источники…</p>
+        </div>
+      ) : null}
+
+      {state.kind === "error" ? (
+        <div className="care-plan__error" role="status">
+          <p>{state.copy}</p>
+          <button className="button button--secondary" type="button" onClick={() => void load()}>
+            Обновить план
+          </button>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" ? (
+        <>
+          <dl className="care-plan__evidence" aria-label="Основание плана">
+            <div>
+              <dt>Источники</dt>
+              <dd>{state.response.evidence.sourceCount}</dd>
+            </div>
+            <div>
+              <dt>Ждут проверки</dt>
+              <dd>{state.response.evidence.pendingReviewCount}</dd>
+            </div>
+            <div>
+              <dt>Подтверждено</dt>
+              <dd>{state.response.evidence.confirmedObservationCount}</dd>
+            </div>
+            <div>
+              <dt>Версия сводки</dt>
+              <dd>{state.response.evidence.latestSummary?.version ?? "—"}</dd>
+            </div>
+          </dl>
+
+          {formOpen && canWrite ? (
+            <form id={`${formId}-form`} className="care-plan__form" onSubmit={createItem}>
+              <label>
+                <span>Направление</span>
+                <select name="category" defaultValue="reminder" disabled={pendingItemId !== null}>
+                  {carePlanLanes.map((lane) => (
+                    <option key={lane.category} value={lane.category}>
+                      {lane.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="care-plan__form-title">
+                <span>Что вы решили сделать</span>
+                <input
+                  name="title"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  disabled={pendingItemId !== null}
+                  placeholder="Например, обсудить повторный анализ"
+                />
+              </label>
+              <label>
+                <span>Срок</span>
+                <input name="scheduledFor" type="date" disabled={pendingItemId !== null} />
+              </label>
+              <label className="care-plan__form-note">
+                <span>Контекст для себя</span>
+                <textarea
+                  name="note"
+                  maxLength={500}
+                  rows={2}
+                  disabled={pendingItemId !== null}
+                  placeholder="Необязательно. Не вводите сюда пароль или ключ Codex."
+                />
+              </label>
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={pendingItemId !== null}
+              >
+                {pendingItemId === null ? "Сохранить в план" : "Сохраняем…"}
+              </button>
+            </form>
+          ) : null}
+
+          {error !== null ? (
+            <p className="form-error care-plan__form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="care-plan__lanes">
+            {carePlanLanes.map((lane) => {
+              const items = state.response.items.filter(
+                (item) => item.category === lane.category && item.state !== "dismissed",
+              );
+              return (
+                <section
+                  key={lane.category}
+                  className="care-plan__lane"
+                  aria-labelledby={`${formId}-${lane.category}`}
+                >
+                  <div className="care-plan__lane-heading">
+                    <h4 id={`${formId}-${lane.category}`}>{lane.label}</h4>
+                    <span>{items.length}</span>
+                  </div>
+                  {items.length === 0 ? (
+                    <p className="care-plan__empty">{lane.empty}</p>
+                  ) : (
+                    <ol>
+                      {items.map((item) => (
+                        <li key={item.id} data-state={item.state}>
+                          <div>
+                            <strong>{item.title}</strong>
+                            <span>{carePlanStateCopy(item)}</span>
+                            {item.note === null ? null : <p>{item.note}</p>}
+                            {item.provenance === null ? (
+                              <small>Добавлено человеком · без автоматической рекомендации</small>
+                            ) : (
+                              <details>
+                                <summary>Почему это предложено</summary>
+                                <p>
+                                  Сводка v{item.provenance.healthSummary.version} · правило{" "}
+                                  {item.provenance.ruleVersion}
+                                </p>
+                                <p>
+                                  Не хватает контекста:{" "}
+                                  {item.provenance.missingContext.join(", ") || "не указано"}
+                                </p>
+                              </details>
+                            )}
+                          </div>
+                          {canWrite && item.state === "proposed" ? (
+                            <div className="care-plan__actions">
+                              <button
+                                className="text-button"
+                                type="button"
+                                disabled={pendingItemId !== null}
+                                onClick={() => void changeState(item, "accepted")}
+                              >
+                                Принять
+                              </button>
+                              <button
+                                className="text-button"
+                                type="button"
+                                disabled={pendingItemId !== null}
+                                onClick={() => void changeState(item, "dismissed")}
+                              >
+                                Отклонить
+                              </button>
+                            </div>
+                          ) : null}
+                          {canWrite && item.state === "accepted" ? (
+                            <button
+                              className="care-plan__complete"
+                              type="button"
+                              disabled={pendingItemId !== null}
+                              onClick={() => void changeState(item, "completed")}
+                            >
+                              Отметить выполненным
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
+              );
+            })}
           </div>
         </>
       ) : null}

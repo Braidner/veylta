@@ -22,9 +22,10 @@ async function registerDemoFamily(page: Page) {
   await expect(page.getByRole("navigation", { name: "Разделы профиля" })).toBeVisible();
   await expect(overview.getByRole("heading", { name: "Состояние данных" })).toBeVisible();
   await expect(overview.getByText("Не оценка здоровья", { exact: true })).toBeVisible();
-  await expect(overview.getByText("Источники", { exact: true })).toBeVisible();
-  await expect(overview.getByText("Проверка", { exact: true })).toBeVisible();
-  await expect(overview.getByText("Подтверждено", { exact: true })).toBeVisible();
+  const evidence = overview.getByLabel("Состояние данных");
+  await expect(evidence.getByText("Источники", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Проверка", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Подтверждено", { exact: true })).toBeVisible();
   await expect(overview.getByText("Ничего не ожидает проверки.")).toBeVisible();
   await expect(overview.getByText("Исходников пока нет.")).toBeVisible();
   await expect(

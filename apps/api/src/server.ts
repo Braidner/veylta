@@ -1,6 +1,8 @@
 import { createAccountService } from "./accounts/account-service.js";
 import { registerAccountRoutes } from "./accounts/routes.js";
 import { buildApp } from "./app.js";
+import { createCarePlanService } from "./care-plan/care-plan-service.js";
+import { registerCarePlanRoutes } from "./care-plan/routes.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, databaseReadiness } from "./database/pool.js";
 import { createDocumentService } from "./documents/document-service.js";
@@ -41,6 +43,9 @@ registerHomeSettingsRoutes(
   createHomeSettingsService(database, storage, createCodexRuntimeProbe()),
   { allowedMutationOrigins: [config.webOrigin] },
 );
+registerCarePlanRoutes(app, familyService, createCarePlanService(database), {
+  allowedMutationOrigins: [config.webOrigin],
+});
 registerDocumentRoutes(
   app,
   familyService,

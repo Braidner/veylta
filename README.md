@@ -80,6 +80,11 @@ The full first slice remains deliberately narrow:
     hiding its sources from active navigation and worker claims without deleting
     originals, extracted facts, observations, or storage objects; the owner can
     restore it later (Task 24, delivered).
+17. keep one profile-scoped household care plan for analyses, clinicians,
+    nutrition, activity, and reminders. A person-authored item is visibly a
+    decision, not a source-derived recommendation; the model also reserves a
+    provenance-locked `proposed` state for a later Codex adapter (Task 33a,
+    delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
@@ -119,6 +124,10 @@ real-data readiness claim.
   model on rendered PDF pages; direct PNG/JPEG inputs use that same bounded
   local path after signature and header-pixel checks. It never calls an
   OCR/LLM provider.
+- Versioned `home-care-plan/v1` read/write boundary backed by tenant-aware
+  SQLite constraints. User actions are replay-safe and retained; a future
+  Codex proposal must name its immutable summary, rule version, source when
+  applicable, and missing context before the UI can show it.
 
 See [product](docs/product.md), [architecture](docs/architecture.md),
 [threat model](docs/threat-model.md), [API](docs/api.md), [ER model](docs/er-model.md),

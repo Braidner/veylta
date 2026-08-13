@@ -61,6 +61,12 @@ snapshot, but never compares versions or derives a change.
 `health-summary-comparison/v1` is an explicit read of two authorized immutable
 snapshots. It returns only their source-set membership delta, and therefore
 does not calculate values, direction, trend, diagnosis, or recommendation.
+`home-care-plan/v1` is the profile-scoped household action boundary. It keeps
+person-authored decisions separate from agent proposals. User actions have no
+source provenance and begin accepted; an agent proposal must bind an immutable
+health summary, rule version, optional included observation, and closed missing
+context before it may be displayed. Only a person may move it from `proposed`
+to `accepted` or `dismissed`.
 
 The local synthetic demo additionally supports a one-time adult or caregiver
 invitation. The code is returned only at issuance and stored only as a SHA-256
@@ -142,6 +148,9 @@ required. Shared code is extracted only when two real consumers need it.
 - On explicit request, reads `health-summary-comparison/v1` under the same
   authorization and shows only the source records added to or absent from the
   target snapshot, with re-authorized document selectors.
+- Reads `home-care-plan/v1` under the same profile authorization. Granted
+  readers see it read-only; administrators, owners, and self-linked adults may
+  add human decisions or explicitly accept/dismiss a future agent proposal.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.

@@ -557,15 +557,32 @@ Commit intent: `feat: enforce home profile access`
   a regular user receives only self or explicit `profile.read` access.
 - Multi-account integration and browser tests cover direct-link non-disclosure.
 
-### Task 33 — Evidence-backed home health cockpit
+### Task 33a — Household care plan foundation
 
-Commit intent: `feat: build the household health cockpit`
+Commit intent: `feat: add household care plan`
 
 - Reference-informed body/status infographic and a visible evidence-state model.
-- Separate source-backed sections for nutrition discussion prompts, analyses to
-  discuss, clinician specialties, reminders, and bounded sport suggestions.
-- No opaque score, diagnosis, treatment, false urgency, or recommendation
-  without source, rule version, missing-context disclosure, and human review.
+- Separate visible sections for analyses, clinician specialties, nutrition,
+  activity, and reminders, with person-authored dated actions persisted in
+  SQLite and protected by the profile access boundary.
+- `home-care-plan/v1` distinguishes user decisions from future Codex proposals;
+  the latter cannot exist without an immutable health-summary selector, rule
+  version, and disclosed missing context.
+- No opaque score, diagnosis, treatment, false urgency, or silent conversion of
+  a proposal into an accepted plan item.
+
+### Task 33b — Codex-proposed home actions
+
+Commit intent: `feat: draft care actions with codex`
+
+- Explicit administrator-configured Codex OAuth/runtime connection with no API
+  key or copied token in Veylta.
+- Profile owner asks for a draft; selected evidence and egress are disclosed
+  before the run, and output is constrained to the five existing plan lanes.
+- Every draft remains `proposed` until a person accepts or dismisses it. Each
+  proposal retains summary/source provenance, model/rule version, and missing
+  context; medical diagnosis, treatment, triage, and fabricated certainty are
+  rejected before persistence.
 
 ## Later MVP slices
 

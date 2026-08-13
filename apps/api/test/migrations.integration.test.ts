@@ -525,6 +525,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "trigger",
     );
     assert.equal(await tableExists(database, "home_storage_settings"), true);
+    assert.equal(await tableExists(database, "care_plan_items"), true);
     await database.query(
       `INSERT INTO home_storage_settings
          (singleton, driver, current_root, state, generation)
@@ -537,6 +538,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0014_home_care_plan");
+    assert.equal(await tableExists(database, "care_plan_items"), false);
     assert.equal(await migrateDown(database), "0013_home_settings");
     assert.equal(await tableExists(database, "home_storage_settings"), false);
     assert.equal(await migrateDown(database), "0012_app_accounts");
@@ -619,6 +622,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0011_health_summaries",
       "0012_app_accounts",
       "0013_home_settings",
+      "0014_home_care_plan",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -660,6 +664,104 @@ test("audit events are append-only after the audit-log integrity migration", asy
       [eventId],
     );
     assert.deepEqual(stored.rows, [{ action: "synthetic.audit.created" }]);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("home care plan keeps provenance tenant-bound, content immutable, and rollback explicit", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-care-plan-schema-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const fixture = await createDocumentFixture(database, "Synthetic care plan");
+    const processing = await insertProcessingGraph(database, fixture, "care-plan");
+    const review = await insertConfirmedReviewGraph(database, fixture, processing, "care-plan");
+    const summaryId = await insertHealthSummary(database, fixture, review.observationId);
+    const itemId = randomUUID();
+    const now = new Date().toISOString();
+    await database.query(
+      `INSERT INTO care_plan_items
+         (id, family_id, patient_profile_id, category, title, note, scheduled_for,
+          state, origin, revision, created_by_user_id, health_summary_id,
+          source_observation_id, rule_version, missing_context, created_at, updated_at)
+       VALUES ($1, $2, $3, 'nutrition', 'Подготовить вопросы о питании', NULL, NULL,
+               'proposed', 'codex', 1, $4, $5, $6, 'home-care-safe/v1',
+               '["dietary_restrictions"]', $7, $7)`,
+      [
+        itemId,
+        fixture.familyId,
+        fixture.profileId,
+        fixture.userId,
+        summaryId,
+        review.observationId,
+        now,
+      ],
+    );
+
+    await rejectsConstraint(
+      () => database.query("UPDATE care_plan_items SET title = 'Changed' WHERE id = $1", [itemId]),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `UPDATE care_plan_items
+              SET state = 'completed', revision = revision + 1, updated_at = $1
+            WHERE id = $2`,
+          [new Date().toISOString(), itemId],
+        ),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () => database.query("DELETE FROM care_plan_items WHERE id = $1", [itemId]),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO care_plan_items
+             (id, family_id, patient_profile_id, category, title, state, origin, revision,
+              created_by_user_id, health_summary_id, rule_version, missing_context)
+           VALUES ($1, $2, $3, 'activity', 'Invalid context', 'proposed', 'codex', 1,
+                   $4, $5, 'home-care-safe/v1', '["invalid-context"]')`,
+          [randomUUID(), fixture.familyId, fixture.profileId, fixture.userId, summaryId],
+        ),
+      "trigger",
+    );
+
+    const foreign = await createDocumentFixture(database, "Foreign care plan");
+    const foreignProcessing = await insertProcessingGraph(database, foreign, "foreign-care-plan");
+    const foreignReview = await insertConfirmedReviewGraph(
+      database,
+      foreign,
+      foreignProcessing,
+      "foreign-care-plan",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO care_plan_items
+             (id, family_id, patient_profile_id, category, title, state, origin, revision,
+              created_by_user_id, health_summary_id, source_observation_id,
+              rule_version, missing_context)
+           VALUES ($1, $2, $3, 'clinician', 'Foreign source', 'proposed', 'codex', 1,
+                   $4, $5, $6, 'home-care-safe/v1', '[]')`,
+          [
+            randomUUID(),
+            fixture.familyId,
+            fixture.profileId,
+            fixture.userId,
+            summaryId,
+            foreignReview.observationId,
+          ],
+        ),
+      "trigger",
+    );
+
+    await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
+    assert.equal(await tableExists(database, "care_plan_items"), true);
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });
@@ -749,6 +851,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0014_home_care_plan");
     assert.equal(await migrateDown(database), "0013_home_settings");
     assert.equal(await migrateDown(database), "0012_app_accounts");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);

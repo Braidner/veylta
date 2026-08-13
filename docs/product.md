@@ -136,8 +136,13 @@ The first slice proves one complete and safe path with synthetic data:
     and pending extraction is paused until that owner restores it. Archive
     retains the immutable evidence graph and does not claim account deletion,
     retention, backup, recovery, or production restore (Task 24, delivered).
+20. An authorized profile owner keeps a household care plan split into
+    analyses, clinicians, nutrition, activity, and reminders. User-authored
+    actions are explicit decisions, not recommendations inferred from medical
+    evidence. A reserved Codex-proposal shape requires immutable provenance and
+    remains unaccepted until a person decides (Task 33a, delivered).
 
-The implemented synthetic record path reaches step 19, and the separate
+The implemented synthetic record path reaches step 20, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
@@ -178,6 +183,10 @@ independently reviewed.
   extraction.
 - Confirmed observations appear in a source-first profile history; the original
   document is authorized again when a user follows its source link.
+- A profile reader can inspect the same bounded plan, while only an
+  administrator/owner or self-linked user can create or change its actions.
+- A person-authored plan item survives reload and is never labelled as a Codex
+  or evidence-derived recommendation.
 - A failed confirmation produces no partial medical record.
 - Job retry produces no duplicate facts or observations.
 - All access and state-changing actions are audited without logging medical
@@ -205,7 +214,7 @@ independently reviewed.
 ## Full MVP direction
 
 Later slices may add a broader document classifier and extraction schema,
-clinically reviewed summaries and recommendations, full role/consent management,
+Codex-authored plan drafts, clinically reviewed recommendations, full role/consent management,
 production export, account deletion, and backup/restore. The local
 demo now supports one-time adult and caregiver joins. An adult receives one
 self-linked profile; a caregiver receives no profile until an owner explicitly

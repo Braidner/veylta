@@ -50,6 +50,9 @@ erDiagram
   PatientProfile ||--o{ Encounter : has
   PatientProfile ||--o{ HealthSummary : summarized_by
   HealthSummary ||--o{ HealthSummaryEvidence : contains
+  PatientProfile ||--o{ CarePlanItem : plans
+  HealthSummary ||--o{ CarePlanItem : supports_proposal
+  Observation ||--o{ CarePlanItem : may_support
 
   ExtractionRun ||--o{ AgentRun : may_use
   Family ||--o{ AuditEvent : records
@@ -57,8 +60,11 @@ erDiagram
   ProcessingJob ||--o{ ProcessingRetryRequest : requeued_by
 ```
 
-`ProfileConsentGrant` and Task 20 `HealthSummary` are current narrow migrated
-boundaries. Extended clinical resources, `Recommendation`, broader consent
+`ProfileConsentGrant`, Task 20 `HealthSummary`, and Task 33a `CarePlanItem` are
+current narrow migrated boundaries. `CarePlanItem` is a household action, not a
+clinical `Recommendation`: user items have no derived provenance, while an
+agent proposal must retain summary/rule/missing-context provenance and remains
+unaccepted. Extended clinical resources, `Recommendation`, broader consent
 capabilities, and live `AgentRun` providers remain designed boundaries, not a
 claim that they are migrated in the first slice.
 
@@ -411,7 +417,8 @@ tables: `observation-history/v1` is an authorized profile-scoped read over
 confirmed `Observation` rows, their optional source range, reviewer, and
 document/page provenance. Task 20 adds only `HealthSummary` and
 `HealthSummaryEvidence`, used by `health-summary/v1` and its Task 21 immutable
-version index. Add broader consent
+version index. Task 33a adds retained `CarePlanItem` rows with profile-scoped
+access, replay-safe revisions, and immutable proposal provenance. Add broader consent
 capabilities, extended clinical entities, recommendations, and agent runs only
 with the slice that uses and tests them.
 

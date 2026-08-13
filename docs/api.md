@@ -726,6 +726,96 @@ recommendation. Each successful read writes a payload-free
 `profile-overview/v1` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
+## Household care plan (Task 33a)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/care-plan`
+
+Returns `home-care-plan/v1` under the normal profile authorization boundary.
+Administrators, the family owner, and the self-linked adult receive
+`canWrite: true`; an explicitly granted `profile.read` actor receives the same
+plan with `canWrite: false`. Unknown, archived, cross-family, and ungranted
+selectors share the same non-disclosing `404`. The response is private and
+non-cacheable.
+
+```json
+{
+  "contractVersion": "home-care-plan/v1",
+  "profileId": "profile_placeholder",
+  "canWrite": true,
+  "evidence": {
+    "sourceCount": 2,
+    "pendingReviewCount": 1,
+    "confirmedObservationCount": 3,
+    "latestSummary": {
+      "id": "summary_placeholder",
+      "version": 2,
+      "createdAt": "2026-08-12T00:00:00.000Z"
+    }
+  },
+  "items": [
+    {
+      "id": "item_placeholder",
+      "category": "reminder",
+      "title": "Обсудить повторный анализ",
+      "note": null,
+      "scheduledFor": "2026-09-15",
+      "state": "accepted",
+      "origin": "user",
+      "revision": 1,
+      "provenance": null,
+      "createdAt": "2026-08-12T00:00:00.000Z",
+      "updatedAt": "2026-08-12T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+Categories are `laboratory`, `clinician`, `nutrition`, `activity`, and
+`reminder`. A user-authored item is an explicit household decision and always
+has `origin: "user"`, `state: "accepted"`, and `provenance: null`; it is never
+presented as an evidence-derived recommendation. A future Codex proposal has
+`origin: "codex"`, begins `proposed`, and must retain its immutable health
+summary selector, optional source observation, rule version, and disclosed
+`missingContext` until retained or dismissed.
+
+Successful reads append `profile.care_plan.opened` with only the contract
+version. Titles, notes, schedule, medical counts, and provenance never enter
+audit metadata.
+
+### `PUT /v1/families/{familyId}/profiles/{profileId}/care-plan/items/{itemId}`
+
+Creates a person-authored item using a client-generated canonical UUID. The
+cookie-authenticated mutation requires the exact trusted `Origin`. The body is:
+
+```json
+{
+  "category": "reminder",
+  "title": "Обсудить повторный анализ",
+  "note": "Взять подтверждённый источник",
+  "scheduledFor": "2026-09-15"
+}
+```
+
+The same UUID and canonical content replay with `200`; first creation returns
+`201`; reuse with different content returns `409`. Only a writer may call the
+route. It returns `{ "contractVersion", "profileId", "item" }` and writes a
+payload-free create or replay audit event.
+
+### `PUT /v1/families/{familyId}/profiles/{profileId}/care-plan/items/{itemId}/state`
+
+Changes one retained item with optimistic revision checking:
+
+```json
+{ "revision": 1, "state": "completed", "scheduledFor": "2026-09-15" }
+```
+
+Allowed target states are `accepted`, `completed`, and `dismissed`. A proposal
+may be accepted or dismissed; an accepted item may be rescheduled, completed,
+or dismissed. Content and provenance are immutable and rows cannot be deleted.
+An exact retry after a successful update returns the current revision; a stale
+or invalid transition returns `409`/`422`. State audit events contain no title,
+note, schedule, or medical payload.
+
 ## Evidence-backed profile summary (Task 20)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary`
