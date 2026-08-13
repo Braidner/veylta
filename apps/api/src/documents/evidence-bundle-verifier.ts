@@ -2,16 +2,18 @@ import { createHash } from "node:crypto";
 import {
   MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
+  MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+  SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
 } from "@veylta/contracts";
 
 const tarBlockBytes = 512;
 const maximumManifestBytes = 8 * 1024 * 1024;
 const maximumArchiveBytes =
-  MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS * MAX_SYNTHETIC_DOCUMENT_BYTES +
+  MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS * MAX_SYNTHETIC_DOCUMENT_BYTES +
   maximumManifestBytes +
-  (MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS + 3) * tarBlockBytes +
-  (MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS + 1) * (tarBlockBytes - 1);
+  (MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS + 3) * tarBlockBytes +
+  (MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS + 1) * (tarBlockBytes - 1);
 const documentPathPattern =
   /^documents\/([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})\.(pdf|png|jpg)$/;
 const checksumPattern = /^[a-f0-9]{64}$/;
@@ -26,7 +28,9 @@ export class EvidenceBundleVerificationError extends Error {
 }
 
 export interface EvidenceBundleVerification {
-  contractVersion: typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION;
+  contractVersion:
+    | typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION
+    | typeof SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION;
   documentCount: number;
   observationCount: number;
 }
@@ -46,6 +50,7 @@ interface VerifiedDocument {
 }
 
 interface VerifiedManifest {
+  contractVersion: EvidenceBundleVerification["contractVersion"];
   documents: Map<string, VerifiedDocument>;
   observationCount: number;
 }
@@ -362,7 +367,8 @@ function verifyManifest(bundle: Buffer): VerifiedManifest {
       "observations",
       "profile",
     ]) ||
-    parsed.contractVersion !== SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION
+    (parsed.contractVersion !== SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION &&
+      parsed.contractVersion !== SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION)
   ) {
     fail();
   }
@@ -380,7 +386,10 @@ function verifyManifest(bundle: Buffer): VerifiedManifest {
   requiredTimestamp(parsed.profile.createdAt);
   if (
     !Array.isArray(parsed.documents) ||
-    parsed.documents.length > MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS ||
+    parsed.documents.length >
+      (parsed.contractVersion === SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION
+        ? MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS
+        : MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS) ||
     !Array.isArray(parsed.observations) ||
     parsed.observations.length > maximumObservationCount
   ) {
@@ -446,7 +455,11 @@ function verifyManifest(bundle: Buffer): VerifiedManifest {
   for (const value of parsed.observations) {
     verifyObservation(value, documents);
   }
-  return { documents, observationCount: parsed.observations.length };
+  return {
+    contractVersion: parsed.contractVersion,
+    documents,
+    observationCount: parsed.observations.length,
+  };
 }
 
 function matchesSourceSignature(
@@ -465,11 +478,15 @@ function matchesSourceSignature(
  * The verifier intentionally exposes counts only, never profile, filename, or
  * source values, so a caller can log a successful verification safely.
  */
-export function verifySyntheticEvidenceBundle(bundle: Buffer): EvidenceBundleVerification {
+function verifyArchive(
+  bundle: Buffer,
+  expectedContractVersion: EvidenceBundleVerification["contractVersion"],
+): EvidenceBundleVerification {
   const entries = parseTar(bundle);
   const manifestEntry = entries.get("manifest.json");
   if (manifestEntry === undefined) fail();
   const manifest = verifyManifest(manifestEntry.body);
+  if (manifest.contractVersion !== expectedContractVersion) fail();
   if (entries.size !== manifest.documents.size + 1) fail();
   for (const document of manifest.documents.values()) {
     const entry = entries.get(document.archivePath);
@@ -483,10 +500,19 @@ export function verifySyntheticEvidenceBundle(bundle: Buffer): EvidenceBundleVer
     }
   }
   return {
-    contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+    contractVersion: manifest.contractVersion,
     documentCount: manifest.documents.size,
     observationCount: manifest.observationCount,
   };
+}
+
+export function verifySyntheticEvidenceBundle(bundle: Buffer): EvidenceBundleVerification {
+  return verifyArchive(bundle, SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION);
+}
+
+/** Validates the complete bounded local synthetic profile export without extraction. */
+export function verifySyntheticProfileArchive(bundle: Buffer): EvidenceBundleVerification {
+  return verifyArchive(bundle, SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION);
 }
 
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_ARCHIVE_BYTES = maximumArchiveBytes;

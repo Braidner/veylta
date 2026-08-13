@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import {
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_ARCHIVE_BYTES,
   verifySyntheticEvidenceBundle,
+  verifySyntheticProfileArchive,
 } from "./evidence-bundle-verifier.js";
 
 const isMain =
@@ -39,7 +40,12 @@ export async function verifyEvidenceBundleFile(path: string): Promise<{
     if ((await handle.stat()).size !== details.size) {
       throw new Error("Evidence bundle verification failed");
     }
-    return verifySyntheticEvidenceBundle(snapshot.subarray(0, offset));
+    const archive = snapshot.subarray(0, offset);
+    try {
+      return verifySyntheticEvidenceBundle(archive);
+    } catch {
+      return verifySyntheticProfileArchive(archive);
+    }
   } finally {
     await handle.close();
   }
@@ -54,7 +60,7 @@ if (isMain) {
     verifyEvidenceBundleFile(path).then(
       (result) => {
         console.log(
-          `Evidence bundle verified (${result.contractVersion}): ${result.documentCount} sources, ${result.observationCount} observations.`,
+          `Synthetic archive verified (${result.contractVersion}): ${result.documentCount} sources, ${result.observationCount} observations.`,
         );
       },
       () => {

@@ -8,6 +8,7 @@ import {
   type DemoRegistrationResponse,
   MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
+  MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
 } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../src/app.js";
@@ -50,6 +51,10 @@ function profilePath(identity: Identity): string {
 
 function evidenceBundlePath(identity: Identity): string {
   return `${profilePath(identity)}/evidence-bundle`;
+}
+
+function portableProfileExportPath(identity: Identity): string {
+  return `${profilePath(identity)}/portable-export`;
 }
 
 function documentPath(identity: Identity, documentId: string): string {
@@ -243,7 +248,7 @@ test("owner can export a bounded synthetic evidence bundle with source bytes and
   });
 });
 
-test("a profile.read grant cannot export a bundle", async () => {
+test("a profile.read grant cannot export either synthetic archive", async () => {
   await withTestContext(async (context) => {
     const owner = await registerOwner(context.app, "owner grant");
     const reader = await registerOwner(context.app, "reader grant");
@@ -276,6 +281,14 @@ test("a profile.read grant cannot export a bundle", async () => {
     });
     assert.equal(response.statusCode, 404);
     assert.equal(response.json().error.code, "RESOURCE_NOT_FOUND");
+
+    const portableResponse = await context.app.inject({
+      method: "GET",
+      url: portableProfileExportPath(owner),
+      headers: { cookie: reader.cookie },
+    });
+    assert.equal(portableResponse.statusCode, 404);
+    assert.equal(portableResponse.json().error.code, "RESOURCE_NOT_FOUND");
   });
 });
 
@@ -314,6 +327,85 @@ test("the local export is a bounded snapshot when a profile has more source docu
       `SELECT id FROM audit_events WHERE action = 'profile.evidence_bundle.exported'`,
     );
     assert.equal(audit.rows.length, 1);
+  });
+});
+
+test("owner can export every synthetic source and confirmed record from one profile", async () => {
+  await withTestContext(async (context) => {
+    const owner = await registerOwner(context.app, "portable profile");
+    const firstDocumentId = await uploadAndExtract(context, owner);
+    await confirmOneFact(context, owner, firstDocumentId);
+    for (let index = 1; index <= MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS; index += 1) {
+      await uploadDocument(context, owner, `portable-source-${index}.pdf`);
+    }
+
+    const response = await context.app.inject({
+      method: "GET",
+      url: portableProfileExportPath(owner),
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(response.statusCode, 200, response.rawPayload.toString());
+    assert.equal(response.headers["content-type"], "application/x-tar");
+    assert.equal(response.headers["cache-control"], "private, no-store");
+    const entries = tarEntries(response.rawPayload);
+    const manifest = JSON.parse(entries.get("manifest.json")?.toString("utf8") ?? "{}") as {
+      contractVersion: string;
+      documents: Array<{ id: string; archivePath: string }>;
+      observations: Array<{ sourceDocument: { id: string; archivePath: string } }>;
+    };
+    assert.equal(manifest.contractVersion, "synthetic-profile-export/v1");
+    assert.equal(manifest.documents.length, MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS + 1);
+    assert.equal(entries.size, manifest.documents.length + 1);
+    assert.equal(
+      manifest.documents.some((document) => document.id === firstDocumentId),
+      true,
+    );
+    assert.deepEqual(
+      manifest.observations.map((observation) => observation.sourceDocument.id),
+      [firstDocumentId],
+    );
+    assert.equal(
+      manifest.observations[0]?.sourceDocument.archivePath,
+      manifest.documents.find((document) => document.id === firstDocumentId)?.archivePath,
+    );
+
+    const audit = await context.database.query<{ metadata: string }>(
+      `SELECT metadata
+         FROM audit_events
+        WHERE family_id = $1
+          AND resource_id = $2
+          AND action = 'profile.portable_export.exported'`,
+      [owner.body.family.id, owner.body.profile.id],
+    );
+    assert.equal(audit.rows.length, 1);
+    assert.deepEqual(JSON.parse(audit.rows[0]?.metadata ?? "{}"), {
+      contractVersion: "synthetic-profile-export/v1",
+    });
+  });
+});
+
+test("portable profile export fails closed rather than silently omitting sources above its cap", async () => {
+  await withTestContext(async (context) => {
+    const owner = await registerOwner(context.app, "portable cap");
+    for (let index = 0; index <= MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS; index += 1) {
+      await uploadDocument(context, owner, `portable-cap-${index}.pdf`);
+    }
+
+    const response = await context.app.inject({
+      method: "GET",
+      url: portableProfileExportPath(owner),
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(response.statusCode, 409);
+    assert.equal(response.json().error.code, "CONFLICT");
+    assert.equal(response.rawPayload.includes("portable-cap-"), false);
+    const audit = await context.database.query<{ id: string }>(
+      `SELECT id
+         FROM audit_events
+        WHERE family_id = $1 AND action = 'profile.portable_export.exported'`,
+      [owner.body.family.id],
+    );
+    assert.equal(audit.rows.length, 0);
   });
 });
 

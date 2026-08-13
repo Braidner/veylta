@@ -115,13 +115,13 @@
     "semantic_hash": ""
   },
   "packages/contracts/src/index.test.ts": {
-    "mtime": 1786634913.5292675,
-    "ast_hash": "6ea24e3cf03f798c600da049d8c50e40",
+    "mtime": 1786636104.4396012,
+    "ast_hash": "78fbeb180a27bd0e3e9d312d777d7bd4",
     "semantic_hash": ""
   },
   "packages/contracts/src/index.ts": {
-    "mtime": 1786634629.3635337,
-    "ast_hash": "c4b336dd3fc50aa39bbf8aa0fdc5b730",
+    "mtime": 1786635761.812714,
+    "ast_hash": "77dee7f5214198e721c81ddf26fc50b4",
     "semantic_hash": ""
   },
   "packages/contracts/tsconfig.json": {
@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786634876.4377136,
-    "ast_hash": "e6409ac81268d00f970a498d93e5a809",
+    "mtime": 1786636192.5694869,
+    "ast_hash": "c97a6a2030cdc54b2ff3612b77585462",
     "semantic_hash": ""
   },
   "THIRD_PARTY_NOTICES.md": {
@@ -195,13 +195,13 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1786634876.440313,
-    "ast_hash": "4aca3246ba263ceaf67c73727a818214",
+    "mtime": 1786636192.5704782,
+    "ast_hash": "d27e199ea0f72433257b467415966d4c",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1786634876.4387386,
-    "ast_hash": "8b2cf3189fc78bb58328dd4db382e1fc",
+    "mtime": 1786636192.5712724,
+    "ast_hash": "f46c9bd7dfeb7ec30377386672f508a9",
     "semantic_hash": ""
   },
   "docs/er-model.md": {
@@ -215,18 +215,18 @@
     "semantic_hash": ""
   },
   "docs/product.md": {
-    "mtime": 1786634876.4381394,
-    "ast_hash": "17d1312c02339a5bb6c2b3fdb178c07c",
+    "mtime": 1786636192.5708916,
+    "ast_hash": "2a880d37ef9fe4a99d39817ce7003d5f",
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786634876.4398396,
-    "ast_hash": "00f11cf78a6b59c1d3ae01dcedf89753",
+    "mtime": 1786636449.4325085,
+    "ast_hash": "c8adddbab07e07d3ae17bac75e52105f",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
-    "mtime": 1786561382.3908873,
-    "ast_hash": "c3458f5759bfe2aedcc176c64cb6ba5a",
+    "mtime": 1786636192.5718052,
+    "ast_hash": "03b78f6660d86babaee13f68bf6ce090",
     "semantic_hash": ""
   },
   "pnpm-workspace.yaml": {
@@ -275,13 +275,13 @@
     "semantic_hash": ""
   },
   "apps/api/src/documents/document-service.ts": {
-    "mtime": 1786634903.000841,
-    "ast_hash": "ba63400a37881c9ee02e5b7c98076b39",
+    "mtime": 1786636104.438415,
+    "ast_hash": "9fc314c85396aa68ce8439591ae3a379",
     "semantic_hash": ""
   },
   "apps/api/src/documents/routes.ts": {
-    "mtime": 1786634711.467223,
-    "ast_hash": "3efdad55dcf2ea3550be108a7bd0e860",
+    "mtime": 1786635852.5943751,
+    "ast_hash": "fd4158fbd8baefd909fce3eab6d5f3d7",
     "semantic_hash": ""
   },
   "apps/api/src/http/route-helpers.ts": {
@@ -330,8 +330,8 @@
     "semantic_hash": ""
   },
   "e2e/document-upload.spec.ts": {
-    "mtime": 1786558560.8083446,
-    "ast_hash": "07c6446fc0cfaa4e8529e739059d2501",
+    "mtime": 1786635968.6334484,
+    "ast_hash": "7cc86c23099296da0738ef381c48ec4f",
     "semantic_hash": ""
   },
   "docs/adr/0005-sqlite-persistence.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786634787.1161008,
-    "ast_hash": "b45aad1c4e6acd814031b2dabc9e6783",
+    "mtime": 1786636319.64514,
+    "ast_hash": "a9b39de4c3676eb65faf10888e7b266b",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -445,8 +445,8 @@
     "semantic_hash": ""
   },
   "docs/first-slice-acceptance.md": {
-    "mtime": 1786634876.4407237,
-    "ast_hash": "86a16351d707b620a9467aa51f858355",
+    "mtime": 1786636422.4946306,
+    "ast_hash": "da97023a0f40823e517241f8e210514a",
     "semantic_hash": ""
   },
   "apps/api/src/storage/create-object-storage.ts": {
@@ -570,33 +570,33 @@
     "semantic_hash": ""
   },
   "apps/api/src/documents/evidence-bundle.ts": {
-    "mtime": 1786558784.9377198,
-    "ast_hash": "5f103521f212d696c67f415ae027d5ed",
+    "mtime": 1786635768.8798425,
+    "ast_hash": "8fa51e60e1e2d0ef687d36b640089d56",
     "semantic_hash": ""
   },
   "apps/api/test/evidence-bundle.integration.test.ts": {
-    "mtime": 1786558733.2275083,
-    "ast_hash": "0e97143d375f55f51c804d1e968a1baa",
+    "mtime": 1786636422.4944398,
+    "ast_hash": "6d9fd0d524e442bbf1b36914b2a60aa7",
     "semantic_hash": ""
   },
   "apps/api/src/documents/evidence-bundle-verifier.test.ts": {
-    "mtime": 1786559746.5083952,
-    "ast_hash": "fd5be20c3faca2c15cb25c5650a3960b",
+    "mtime": 1786636104.4388766,
+    "ast_hash": "6638e9b666adbc24d505c106dabe9c02",
     "semantic_hash": ""
   },
   "apps/api/src/documents/evidence-bundle-verifier.ts": {
-    "mtime": 1786559933.8157363,
-    "ast_hash": "c5cdf317f28464e53328e3b5e2227ec8",
+    "mtime": 1786635909.8279128,
+    "ast_hash": "f10aaf1863dc33f744c302ea860956c9",
     "semantic_hash": ""
   },
   "apps/api/src/documents/verify-evidence-bundle.test.ts": {
-    "mtime": 1786559350.923849,
-    "ast_hash": "db9a1639c51d71474fa70f2646ed2f20",
+    "mtime": 1786636053.0946617,
+    "ast_hash": "f3c9312ffab14ced4ed349d7c51dabbc",
     "semantic_hash": ""
   },
   "apps/api/src/documents/verify-evidence-bundle.ts": {
-    "mtime": 1786559844.944235,
-    "ast_hash": "5d68ecbf79cc856a6ac2eb7c465d1033",
+    "mtime": 1786636104.439204,
+    "ast_hash": "285d9c03104cd14ffafba37c71c87354",
     "semantic_hash": ""
   },
   "apps/api/test/health-summary.integration.test.ts": {

@@ -56,7 +56,7 @@ The full first slice remains deliberately narrow:
     assessment (Task 22, delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, clinical recommendations, FHIR
-exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
+exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
 In the loopback-local synthetic demo, an owner can issue a one-time invitation
 to an adult or caregiver. An adult receives only a personal linked profile;
 a caregiver receives no profile at all until the owner explicitly grants the
@@ -162,7 +162,11 @@ explicitly confirmed values with links back to the original document. It is an
 operational overview, never a clinical summary, and its successful read is
 payload-free audited. Its owner/self-only `synthetic-evidence-bundle/v1` download
 is a bounded TAR snapshot of five latest synthetic sources and their checksummed
-manifest, never a backup, restore format, or production portability claim. The demo never asks for a real email. The opaque session token exists only in
+manifest, never a backup, restore format, or production portability claim. The
+separate `synthetic-profile-export/v1` download contains every current source and
+confirmed observation for one profile when the profile has at most ten sources;
+it fails closed rather than omitting older data. It is a local synthetic export,
+not a restore or production backup. The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
 disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.
@@ -186,14 +190,15 @@ An artifact can be checked without extracting it to disk:
 
 ```bash
 pnpm --filter @veylta/api verify:evidence-bundle ./veylta-synthetic-evidence.tar
+# The same command also recognizes veylta-synthetic-profile.tar.
 ```
 
-The verifier accepts only the local `synthetic-evidence-bundle/v1` USTAR shape,
-generated document paths, supported source signatures, and matching SHA-256/size
-metadata. It proves structural consistency of the captured local archive, not
-its origin, clinical correctness, or a production export guarantee. It prints
-counts only; it never calls the API, writes archive entries, or logs profile
-names, filenames, values, or source bytes.
+The verifier accepts only the local `synthetic-evidence-bundle/v1` and
+`synthetic-profile-export/v1` USTAR shapes, generated document paths, supported
+source signatures, and matching SHA-256/size metadata. It proves structural
+consistency of the captured local archive, not its origin, clinical correctness,
+or a production export guarantee. It prints counts only; it never calls the API,
+writes archive entries, or logs profile names, filenames, values, or source bytes.
 
 This demo session has no login or account recovery and is not production
 authentication. Integration tests create isolated temporary SQLite databases;

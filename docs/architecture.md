@@ -113,6 +113,10 @@ required. Shared code is extracted only when two real consumers need it.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.
+- Offers the same stricter actor boundary a separately versioned
+  `synthetic-profile-export/v1` TAR with every current source and confirmed
+  observation for one profile. It rejects profiles beyond ten synthetic sources
+  before emitting bytes; it remains a local artifact, not restore/backup logic.
 - Presents an authorized catalog of known synthetic indicators and, only for an
   exact code/unit series, a compact numeric chart and deterministic source-value
   difference. The timeline and source links remain available beside the chart.
@@ -145,8 +149,9 @@ required. Shared code is extracted only when two real consumers need it.
   expected checksum/size/content-type storage boundary, writes generated-safe
   archive paths, and records only the versioned payload-free export audit event.
 - Supplies a local, read-only evidence-bundle verifier. It parses the bounded
-  USTAR bytes in memory without extraction or API access, checks the manifest
-  and every source checksum/signature, and returns only safe aggregate counts.
+  USTAR bytes in memory without extraction or API access, checks either local
+  archive manifest and every source checksum/signature, and returns only safe
+  aggregate counts.
 - Reads `audit-log/v1` only after an active owner check on the requested family;
   it uses opaque keyset pagination, adds one payload-free access event per
   successful page, and does not expose audit metadata or correlation IDs.

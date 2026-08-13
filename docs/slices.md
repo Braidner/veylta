@@ -226,10 +226,11 @@ Commit intent: `feat: verify local synthetic evidence bundle`
 - It fail-closes on malformed USTAR headers, duplicate/traversal entries,
   unbounded archive/manifest/source data, wrong content signatures, or a
   checksum/size mismatch.
-- It validates only the narrow `synthetic-evidence-bundle/v1` shape and prints
-  safe aggregate counts, never profile data, filenames, extracted values, or
-  source bytes. It establishes local structural consistency, not cryptographic
-  origin or clinical correctness, and is not import, restore, or backup.
+- It validates the narrow `synthetic-evidence-bundle/v1` and
+  `synthetic-profile-export/v1` shapes and prints safe aggregate counts, never
+  profile data, filenames, extracted values, or source bytes. It establishes
+  local structural consistency, not cryptographic origin or clinical
+  correctness, and is not import, restore, or backup.
 
 ## Task 20 — Evidence-backed profile summary
 
@@ -276,6 +277,21 @@ Commit intent: `feat: compare immutable summary source sets`
   closed for missing versions, and records a payload-free comparison audit.
 - The UI opens the comparison only on an explicit action and labels it as a
   source-membership view rather than a health assessment.
+
+## Task 23 — Complete local synthetic profile export
+
+Commit intent: `feat: export complete synthetic profile archive`
+
+- `synthetic-profile-export/v1` is a separate owner/self-authorized TAR for
+  every current immutable source document and confirmed observation of one
+  profile; generated archive paths never expose a storage key.
+- It verifies source bytes against immutable checksum/size/content-type metadata
+  and records only a payload-free contract marker audit. `profile.read` remains
+  insufficient and inaccessible selectors are non-disclosing.
+- The export is explicitly capped at ten synthetic sources. Above that it fails
+  with no archive or audit event instead of silently omitting older records.
+- The local verifier recognizes both TAR contracts without extracting them.
+  This is still neither restore, deletion, backup, nor production portability.
 
 ## Task 9 — Comparable indicator catalog and chart
 

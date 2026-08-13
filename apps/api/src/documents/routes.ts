@@ -401,6 +401,29 @@ export function registerDocumentRoutes(
     );
 
     scope.get<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/portable-export",
+      { schema: { params: profileParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          const archive = await service.getPortableProfileExport(actor, request.params, request.id);
+          return reply
+            .type("application/x-tar")
+            .header("content-length", archive.byteSize)
+            .header("content-disposition", 'attachment; filename="veylta-synthetic-profile.tar"')
+            .header("x-content-type-options", "nosniff")
+            .header("cache-control", "private, no-store")
+            .header("content-security-policy", "sandbox")
+            .send(archive.body);
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams }>(
       "/v1/families/:familyId/profiles/:profileId/indicators",
       { schema: { params: profileParamsSchema } },
       async (request, reply) => {

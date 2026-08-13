@@ -142,6 +142,10 @@ function evidenceBundlePath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/evidence-bundle`;
 }
 
+function portableProfileExportPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/portable-export`;
+}
+
 function observationHistoryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/observations`;
 }
@@ -1161,6 +1165,7 @@ function familyAuditActionCopy(action: string): string {
     "document.processing.opened": "Открыт статус обработки",
     "document.uploaded": "Добавлен документ",
     "profile.evidence_bundle.exported": "Скачан локальный пакет источников",
+    "profile.portable_export.exported": "Скачан полный synthetic-экспорт профиля",
     "family.audit_log.opened": "Открыт журнал действий",
     "family.created": "Создана семья",
     "family.invitation.accepted": "Принято приглашение в семью",
@@ -1441,16 +1446,31 @@ function ProfileOverviewPanel({
           выводы, оценки и рекомендации не формируются.
         </p>
         {canWriteProfile ? (
-          <p className="profile-overview__export">
-            <a
-              className="text-link"
-              href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-              download
-            >
-              Скачать локальный пакет источников
-            </a>
-            <span>До 5 последних synthetic-источников; это не резервная копия.</span>
-          </p>
+          <div className="profile-overview__exports">
+            <p className="profile-overview__export">
+              <a
+                className="text-link"
+                href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+                download
+              >
+                Скачать локальный пакет источников
+              </a>
+              <span>До 5 последних synthetic-источников; это не резервная копия.</span>
+            </p>
+            <p className="profile-overview__export">
+              <a
+                className="text-link"
+                href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
+                download
+              >
+                Скачать полный synthetic-экспорт профиля
+              </a>
+              <span>
+                Все источники и подтверждённые записи, если их не больше 10; это не восстановление и
+                не production backup.
+              </span>
+            </p>
+          </div>
         ) : null}
       </div>
 

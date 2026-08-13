@@ -13,7 +13,19 @@ export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
 export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
 export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
 export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
+/**
+ * A complete, profile-scoped synthetic export. It is intentionally distinct
+ * from the bounded five-source evidence snapshot and is not a production
+ * backup, restore, or real-data portability format.
+ */
+export const SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION = "synthetic-profile-export/v1" as const;
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
+/**
+ * The complete local profile export fails before sending bytes if a profile
+ * exceeds this explicit synthetic-demo cap. It must never silently omit older
+ * source documents.
+ */
+export const MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS = 10;
 export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
 export const MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE = 50;
 export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
@@ -486,6 +498,19 @@ export type SyntheticEvidenceBundleObservation = Omit<ObservationHistoryItem, "s
 
 export interface SyntheticEvidenceBundleManifest {
   readonly contractVersion: typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION;
+  readonly exportedAt: string;
+  readonly profile: Omit<PatientProfileSummary, "access">;
+  readonly documents: readonly SyntheticEvidenceBundleDocument[];
+  readonly observations: readonly SyntheticEvidenceBundleObservation[];
+}
+
+/**
+ * A complete, local synthetic profile snapshot. Every retained source document
+ * and confirmed observation must appear together or the request fails; it is
+ * not a restore/backup or production portability format.
+ */
+export interface SyntheticProfileExportManifest {
+  readonly contractVersion: typeof SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION;
   readonly exportedAt: string;
   readonly profile: Omit<PatientProfileSummary, "access">;
   readonly documents: readonly SyntheticEvidenceBundleDocument[];

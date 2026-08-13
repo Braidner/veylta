@@ -540,8 +540,14 @@ h3 {
   flex-wrap: wrap;
   gap: 8px 14px;
   align-items: baseline;
-  margin: 18px 0 0;
+  margin: 0;
   font-size: 0.8125rem;
+}
+
+.profile-overview__exports {
+  display: grid;
+  gap: 8px;
+  margin: 18px 0 0;
 }
 
 .profile-overview__export span {

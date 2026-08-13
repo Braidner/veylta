@@ -111,8 +111,12 @@ The first slice proves one complete and safe path with synthetic data:
     contains only newly included or no-longer-included confirmed records with
     their sources; it never labels the difference as a health change, trend, or
     recommendation (Task 22, delivered).
+18. An owner or self-linked adult can export every current synthetic source and
+    confirmed observation for one profile into a separately versioned local TAR.
+    The export fails rather than silently omitting data above its ten-source cap;
+    it is not a backup or restore flow (Task 23, delivered).
 
-The implemented synthetic record path reaches step 17, and the separate
+The implemented synthetic record path reaches step 18, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
@@ -209,8 +213,8 @@ membership without a processing or clinical state.
 - Any cloud OCR provider.
 - Any LLM extraction, analysis, explanation, nutrition, or training agent.
 - Automated clinical trend summaries, clinical recommendations, and red-flag UI.
-- Full role-management UX, FHIR R4 mapping/import/export, production portable export,
-  controlled account deletion, and backup/restore workflows.
+- Full role-management UX, FHIR R4 mapping/import/export, controlled account deletion,
+  and production backup/restore workflows.
 - Broad laboratory integration, clinical diagnosis, prescriptions, treatment
   changes, clinic billing/scheduling, and native mobile apps.
 

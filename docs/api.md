@@ -725,12 +725,31 @@ account export, or real-data portability claim. A successful request writes
 `profile.evidence_bundle.exported` with only
 `synthetic-evidence-bundle/v1` as payload-free audit metadata.
 
+### `GET /v1/families/{familyId}/profiles/{profileId}/portable-export`
+
+Returns attachment-only `application/x-tar` as `veylta-synthetic-profile.tar`.
+It has the same owner/self-only boundary, `private, no-store`, `nosniff`, and
+sandbox response headers as the bounded source snapshot; a `profile.read` grant
+does not authorize it and inaccessible selectors remain non-disclosing `404`s.
+
+The generated TAR is `synthetic-profile-export/v1`. It includes **every** current
+immutable source document and every confirmed observation whose provenance points
+to those sources, with generated archive paths and reverified content type, size,
+and SHA-256. It cannot silently truncate: a profile with more than ten synthetic
+sources receives a `409 CONFLICT` before archive bytes or an export audit are
+created. A successful request writes the payload-free
+`profile.portable_export.exported` event with only the contract marker.
+
+This is a bounded local synthetic portability artifact, not a restore endpoint,
+account-deletion workflow, backup, production export, or proof of archive origin.
+
 ### Offline verification command (Task 19)
 
 Run `pnpm --filter @veylta/api verify:evidence-bundle <bundle.tar>` before
 manually handling a downloaded local archive. The command is completely local:
 it neither contacts the API nor extracts entries to disk. It accepts only the
-exact USTAR entry shape produced by Task 18, enforces archive/manifest/document
+exact USTAR entry shapes produced by Task 18 and the local profile export,
+enforces archive/manifest/document
 byte limits, checks generated document paths and content-type signatures, and
 recomputes each source SHA-256. This proves structural consistency of the local
 snapshot, not cryptographic origin, clinical correctness, or production export

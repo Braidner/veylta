@@ -38,6 +38,7 @@ import {
   MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PDF_BYTES,
+  MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
@@ -45,6 +46,7 @@ import {
   PROFILE_OVERVIEW_CONTRACT_VERSION,
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
+  SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
 } from "./index.js";
 
 test("public contracts carry explicit versions", () => {
@@ -61,7 +63,9 @@ test("public contracts carry explicit versions", () => {
   assert.equal(HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION, "health-summary-history/v1");
   assert.equal(HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION, "health-summary-comparison/v1");
   assert.equal(SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION, "synthetic-evidence-bundle/v1");
+  assert.equal(SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION, "synthetic-profile-export/v1");
   assert.equal(MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS, 5);
+  assert.equal(MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS, 10);
   assert.equal(MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE, 50);
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
