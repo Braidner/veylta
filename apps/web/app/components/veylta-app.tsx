@@ -16,6 +16,9 @@ import type {
   FamilyConsentMemberListResponse,
   FamilyInvitationCreateResponse,
   FamilyInvitationRole,
+  HealthSummaryMissingData,
+  HealthSummaryRecommendationCode,
+  HealthSummaryResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
   ObservationHistoryResponse,
@@ -119,6 +122,10 @@ function documentFactsPath(familyId: string, profileId: string, documentId: stri
 
 function profileOverviewPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/overview`;
+}
+
+function healthSummaryPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/health-summary`;
 }
 
 function evidenceBundlePath(familyId: string, profileId: string): string {
@@ -768,6 +775,11 @@ function ProfileWorkspace({
                 familyId={family.id}
                 profileId={profile.id}
                 canWriteProfile={canWriteProfile}
+              />
+              <HealthSummaryPanel
+                key={`summary:${family.id}:${profile.id}`}
+                familyId={family.id}
+                profileId={profile.id}
               />
               {canWriteProfile ? (
                 <DocumentInbox
@@ -1594,6 +1606,196 @@ function ProfileOverviewPanel({
   );
 }
 
+type HealthSummaryState =
+  | { kind: "loading" }
+  | { kind: "ready"; response: HealthSummaryResponse }
+  | { kind: "error"; copy: string };
+
+function healthSummaryErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Сводка этого профиля недоступна. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось загрузить сводку. Подтверждённые источники и решения не изменены.";
+}
+
+function recommendationCopy(code: HealthSummaryRecommendationCode): string {
+  switch (code) {
+    case "prepare_source_for_clinician":
+      return "Если вы обсуждаете эти данные со специалистом, откройте источник и возьмите его с собой.";
+    case "complete_pending_review":
+      return "Есть извлечённые значения без финального решения: подтвердите, исправьте или отклоните их до опоры на них.";
+  }
+}
+
+function missingDataCopy(value: HealthSummaryMissingData): string {
+  switch (value) {
+    case "confirmed_observations":
+      return "нет подтверждённых значений";
+    case "sample_date":
+      return "нет даты биоматериала";
+    case "result_date":
+      return "нет даты результата";
+    case "laboratory":
+      return "не указана лаборатория";
+    case "canonical_indicator":
+      return "не определён сопоставимый показатель";
+  }
+}
+
+function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profileId: string }) {
+  const [state, setState] = useState<HealthSummaryState>({ kind: "loading" });
+
+  const loadSummary = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const response = await apiRequest<HealthSummaryResponse>(
+          healthSummaryPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", response });
+      } catch (error) {
+        if (!signal?.aborted) setState({ kind: "error", copy: healthSummaryErrorCopy(error) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadSummary(controller.signal);
+    return () => controller.abort();
+  }, [loadSummary]);
+
+  return (
+    <section
+      className="health-summary"
+      aria-labelledby="health-summary-title"
+      aria-busy={state.kind === "loading"}
+    >
+      <div className="health-summary__heading">
+        <p className="context-line">Подтверждённые источники · версия</p>
+        <h2 id="health-summary-title">Сводка для разговора об источниках</h2>
+        <p>
+          Это фиксированный список явно подтверждённых значений и недостающих полей. Здесь нет
+          диагноза, оценки риска, клинической интерпретации или проверки красных флагов.
+        </p>
+      </div>
+
+      {state.kind === "loading" ? (
+        <div className="health-summary__loading" aria-live="polite">
+          <div className="skeleton skeleton--summary-line" aria-hidden="true" />
+          <div className="skeleton skeleton--summary-line" aria-hidden="true" />
+          <p>Сверяем последнюю фиксированную версию…</p>
+        </div>
+      ) : null}
+
+      {state.kind === "error" ? (
+        <div className="health-summary__empty" role="status">
+          <p>{state.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadSummary()}
+          >
+            Обновить сводку
+          </button>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" && state.response.summary === null ? (
+        <div className="health-summary__empty">
+          <p>
+            Сводка появится после завершения проверки хотя бы одного документа: все извлечённые
+            значения должны получить явное решение.
+          </p>
+          <a className="text-link" href="#document-inbox-title">
+            Добавить или проверить источник
+          </a>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" && state.response.summary !== null ? (
+        <div className="health-summary__content">
+          <div className="health-summary__meta">
+            <p>
+              Версия {state.response.summary.version} ·{" "}
+              {formatDate(state.response.summary.createdAt)}
+            </p>
+            <p>
+              Источников в версии: {state.response.summary.evidenceScope.includedCount} из{" "}
+              {state.response.summary.evidenceScope.totalConfirmedObservationCount} подтверждённых
+            </p>
+          </div>
+
+          {state.response.summary.previous !== null ? (
+            <p className="health-summary__change" role="status">
+              Новых подтверждённых источников: {state.response.summary.newEvidenceCount}; перенесено
+              из версии {state.response.summary.previous.version}:{" "}
+              {state.response.summary.carriedForwardEvidenceCount}.
+            </p>
+          ) : null}
+
+          {state.response.summary.groups.map((group) => (
+            <section
+              key={group.id}
+              className="health-summary__group"
+              aria-labelledby={`summary-group-${group.id}`}
+            >
+              <h3 id={`summary-group-${group.id}`}>{group.label}</h3>
+              <ol>
+                {group.evidence.map(({ observation, isNewSincePreviousSummary }) => (
+                  <li key={observation.id}>
+                    <div>
+                      <strong>
+                        {observation.source.name}: {observation.source.value}{" "}
+                        {observation.source.unit}
+                      </strong>
+                      <span>
+                        {isNewSincePreviousSummary
+                          ? "Новый источник в этой версии"
+                          : "Перенесено из предыдущей версии"}
+                        {" · "}документ, страница {observation.sourceDocument.pageNumber}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                    >
+                      Открыть источник
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+
+          {state.response.summary.missingData.length > 0 ? (
+            <div className="health-summary__missing" role="note">
+              <strong>В источниках пока отсутствует</strong>
+              <ul>
+                {state.response.summary.missingData.map((item) => (
+                  <li key={item}>{missingDataCopy(item)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="health-summary__recommendations" role="note">
+            <strong>Осторожные следующие шаги</strong>
+            <ul>
+              {state.response.summary.recommendations.map(({ code }) => (
+                <li key={code}>{recommendationCopy(code)}</li>
+              ))}
+            </ul>
+            <p>Срочные симптомы и красные флаги этим локальным контуром не оцениваются.</p>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 interface DocumentInboxProps {
   pending: boolean;
   error: string | null;
@@ -1771,7 +1973,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
           ? current
           : {
               kind: "ready",
-              items: [...current.items, ...response.items],
+              items: appendDistinctObservations(current.items, response.items),
               nextCursor: response.nextCursor,
             },
       );
@@ -1874,6 +2076,14 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
       ) : null}
     </section>
   );
+}
+
+function appendDistinctObservations(
+  current: readonly ObservationHistoryItem[],
+  incoming: readonly ObservationHistoryItem[],
+): readonly ObservationHistoryItem[] {
+  const seen = new Set(current.map((item) => item.id));
+  return [...current, ...incoming.filter((item) => !seen.has(item.id))];
 }
 
 function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {

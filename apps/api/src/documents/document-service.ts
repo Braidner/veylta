@@ -10,6 +10,9 @@ import {
   type FactReviewCommand,
   type FactReviewOutcome,
   type FactReviewResponse,
+  HEALTH_SUMMARY_CONTRACT_VERSION,
+  type HealthSummary,
+  type HealthSummaryResponse,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorCatalogResponse,
   type IndicatorComparison,
@@ -17,6 +20,7 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
   type LabFactReferenceRange,
   type LabFactValidationIssue,
+  MAX_HEALTH_SUMMARY_EVIDENCE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
@@ -129,6 +133,11 @@ export interface DocumentService {
     scope: { familyId: string; profileId: string },
     correlationId: string,
   ): Promise<ProfileOverviewResponse>;
+  getHealthSummary(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<HealthSummaryResponse>;
   getIndicatorCatalog(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -367,6 +376,53 @@ interface EvidenceBundleProfileRow {
 }
 
 interface EvidenceBundleDocumentRow extends DocumentRow {}
+
+interface HealthSummaryRow {
+  id: string;
+  summary_id: string;
+  version: number;
+  created_at: string;
+  previous_summary_id: string | null;
+  previous_version: number | null;
+  previous_created_at: string | null;
+  included_evidence_count: number;
+  available_confirmed_observation_count: number;
+  missing_data: string;
+  recommendation_codes: string;
+  observation_id: string;
+  position: number;
+  is_new_since_previous_summary: number;
+  canonical_code: string | null;
+  source_name: string;
+  source_value: string;
+  source_unit: string;
+  normalized_value: string | null;
+  normalized_unit: string | null;
+  conversion_version: string | null;
+  sampled_at: string | null;
+  resulted_at: string | null;
+  uploaded_at: string;
+  specimen_type: string | null;
+  laboratory: string | null;
+  source_fragment: string;
+  extraction_confidence: number;
+  confirmed_at: string;
+  confirmed_by_user_id: string;
+  confirmed_by_display_name: string;
+  document_id: string;
+  document_version_id: string;
+  page_number: number;
+  timeline_at: string;
+  reference_source_text: string | null;
+  reference_source_low: string | null;
+  reference_source_high: string | null;
+  reference_source_unit: string | null;
+  reference_laboratory_out_of_range: number | null;
+  reference_normalized_low: string | null;
+  reference_normalized_high: string | null;
+  reference_normalized_unit: string | null;
+  reference_conversion_version: string | null;
+}
 
 interface RetryRequestRow {
   document_version_id: string;
@@ -1032,6 +1088,163 @@ async function audit(
   );
 }
 
+async function createHealthSummaryIfNeeded(
+  client: Queryable,
+  input: {
+    familyId: string;
+    profileId: string;
+    extractionRunId: string;
+    actorUserId: string;
+    correlationId: string;
+    now: Date;
+  },
+): Promise<void> {
+  const finalizedRunHasConfirmedEvidence = await client.query<{ id: string }>(
+    `SELECT observation.id
+       FROM observations observation
+       JOIN extracted_facts fact
+         ON fact.family_id = observation.family_id
+        AND fact.id = observation.source_extracted_fact_id
+      WHERE observation.family_id = $1
+        AND fact.extraction_run_id = $2
+        AND observation.status = 'confirmed'
+      LIMIT 1`,
+    [input.familyId, input.extractionRunId],
+  );
+  if (finalizedRunHasConfirmedEvidence.rows[0] === undefined) return;
+  const evidenceRows = await client.query<{
+    id: string;
+    sampled_at: string | null;
+    resulted_at: string | null;
+    laboratory: string | null;
+    canonical_code: string | null;
+  }>(
+    `SELECT id, sampled_at, resulted_at, laboratory, canonical_code
+       FROM observations
+      WHERE family_id = $1 AND patient_profile_id = $2 AND status = 'confirmed'
+      ORDER BY COALESCE(sampled_at, resulted_at, uploaded_at) DESC, id DESC
+      LIMIT $3`,
+    [input.familyId, input.profileId, MAX_HEALTH_SUMMARY_EVIDENCE],
+  );
+  if (evidenceRows.rows.length === 0) return;
+
+  const total = await client.query<{ count: number }>(
+    `SELECT count(*) AS count
+       FROM observations
+      WHERE family_id = $1 AND patient_profile_id = $2 AND status = 'confirmed'`,
+    [input.familyId, input.profileId],
+  );
+  const totalConfirmedObservationCount = asCount(
+    total.rows[0]?.count ?? -1,
+    "confirmed observation count",
+  );
+  const previous = (
+    await client.query<{ id: string; version: number }>(
+      `SELECT id, version
+         FROM health_summaries
+        WHERE family_id = $1 AND patient_profile_id = $2
+        ORDER BY version DESC
+        LIMIT 1`,
+      [input.familyId, input.profileId],
+    )
+  ).rows[0];
+  const previousEvidence =
+    previous === undefined
+      ? new Set<string>()
+      : new Set(
+          (
+            await client.query<{ observation_id: string }>(
+              `SELECT observation_id
+                 FROM health_summary_evidence
+                WHERE family_id = $1 AND health_summary_id = $2`,
+              [input.familyId, previous.id],
+            )
+          ).rows.map((row) =>
+            requiredCanonicalUuid(row.observation_id, "previous summary evidence"),
+          ),
+        );
+  const missing = new Set<HealthSummary["missingData"][number]>();
+  for (const evidence of evidenceRows.rows) {
+    if (evidence.sampled_at === null) missing.add("sample_date");
+    if (evidence.resulted_at === null) missing.add("result_date");
+    if (evidence.laboratory === null) missing.add("laboratory");
+    if (evidence.canonical_code === null) missing.add("canonical_indicator");
+  }
+  const pendingReview = await client.query<{ count: number }>(
+    `SELECT count(DISTINCT r.id) AS count
+       FROM extraction_runs r
+       JOIN document_versions version
+         ON version.family_id = r.family_id AND version.id = r.document_version_id
+       JOIN documents document
+         ON document.family_id = version.family_id AND document.id = version.document_id
+       JOIN extracted_facts fact
+         ON fact.family_id = r.family_id AND fact.extraction_run_id = r.id
+       LEFT JOIN review_decisions decision
+         ON decision.family_id = fact.family_id AND decision.extracted_fact_id = fact.id
+      WHERE r.family_id = $1
+        AND document.patient_profile_id = $2
+        AND r.status = 'awaiting_review'
+        AND decision.id IS NULL`,
+    [input.familyId, input.profileId],
+  );
+  const recommendationCodes: HealthSummary["recommendations"][number]["code"][] = [
+    "prepare_source_for_clinician",
+    ...(asCount(pendingReview.rows[0]?.count ?? -1, "pending review count") > 0
+      ? (["complete_pending_review"] as const)
+      : []),
+  ];
+  const now = input.now.toISOString();
+  const summaryId = randomUUID();
+  const version =
+    previous === undefined ? 1 : asCount(previous.version, "previous summary version") + 1;
+  await client.query(
+    `INSERT INTO health_summaries
+       (id, family_id, patient_profile_id, version, previous_summary_id,
+        summary_contract_version, included_evidence_count, available_confirmed_observation_count,
+        missing_data, recommendation_codes, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      summaryId,
+      input.familyId,
+      input.profileId,
+      version,
+      previous?.id ?? null,
+      HEALTH_SUMMARY_CONTRACT_VERSION,
+      evidenceRows.rows.length,
+      totalConfirmedObservationCount,
+      [...missing].sort(),
+      recommendationCodes,
+      now,
+    ],
+  );
+  for (const [index, evidence] of evidenceRows.rows.entries()) {
+    const observationId = requiredCanonicalUuid(evidence.id, "summary evidence observation");
+    await client.query(
+      `INSERT INTO health_summary_evidence
+         (health_summary_id, family_id, observation_id, position, is_new_since_previous_summary, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        summaryId,
+        input.familyId,
+        observationId,
+        index + 1,
+        previousEvidence.has(observationId) ? 0 : 1,
+        now,
+      ],
+    );
+  }
+  await audit(client, {
+    familyId: input.familyId,
+    actorUserId: input.actorUserId,
+    action: "profile.health_summary.generated",
+    resourceType: "HealthSummary",
+    resourceId: summaryId,
+    correlationId: input.correlationId,
+    createdAt: input.now,
+    contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+  });
+}
+
 async function documentRow(
   client: Queryable,
   actor: SessionActor,
@@ -1694,6 +1907,171 @@ function observationHistoryItem(
       pageNumber,
       fragment: requiredStoredText(row.source_fragment, 4_000, "observation source fragment"),
       contentPath: `/v1/families/${scope.familyId}/profiles/${scope.profileId}/documents/${documentId}/content`,
+    },
+  };
+}
+
+const healthSummaryMissingData = new Set([
+  "confirmed_observations",
+  "sample_date",
+  "result_date",
+  "laboratory",
+  "canonical_indicator",
+] as const);
+const healthSummaryRecommendationCodes = new Set([
+  "prepare_source_for_clinician",
+  "complete_pending_review",
+] as const);
+
+function healthSummaryStringArray<T extends string>(
+  value: string,
+  allowed: ReadonlySet<T>,
+  label: string,
+): readonly T[] {
+  const parsed = parseStoredObject<unknown>(value, label);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((entry) => typeof entry !== "string" || !allowed.has(entry as T)) ||
+    new Set(parsed).size !== parsed.length
+  ) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return parsed as readonly T[];
+}
+
+function healthSummaryResponse(
+  scope: { familyId: string; profileId: string },
+  rows: readonly HealthSummaryRow[],
+): HealthSummaryResponse {
+  const first = rows[0];
+  if (first === undefined) {
+    return { contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION, summary: null };
+  }
+  const summaryId = requiredCanonicalUuid(first.summary_id, "health summary");
+  const version = asCount(first.version, "health summary version");
+  if (version < 1)
+    throw new ObjectStorageIntegrityError("Stored health summary version is invalid");
+  const createdAt = canonicalTimestamp(first.created_at);
+  const includedEvidenceCount = asCount(
+    first.included_evidence_count,
+    "health summary evidence count",
+  );
+  const totalConfirmedObservationCount = asCount(
+    first.available_confirmed_observation_count,
+    "health summary confirmed observation count",
+  );
+  if (
+    includedEvidenceCount < 1 ||
+    includedEvidenceCount > MAX_HEALTH_SUMMARY_EVIDENCE ||
+    totalConfirmedObservationCount < includedEvidenceCount ||
+    rows.length !== includedEvidenceCount
+  ) {
+    throw new ObjectStorageIntegrityError("Stored health summary evidence count is invalid");
+  }
+  const previous =
+    first.previous_summary_id === null
+      ? (() => {
+          if (
+            version !== 1 ||
+            first.previous_version !== null ||
+            first.previous_created_at !== null
+          ) {
+            throw new ObjectStorageIntegrityError("Stored initial health summary is invalid");
+          }
+          return null;
+        })()
+      : (() => {
+          const previousVersion = asCount(first.previous_version ?? -1, "previous summary version");
+          if (previousVersion !== version - 1 || first.previous_created_at === null) {
+            throw new ObjectStorageIntegrityError("Stored previous health summary is invalid");
+          }
+          return {
+            id: requiredCanonicalUuid(first.previous_summary_id, "previous health summary"),
+            version: previousVersion,
+            createdAt: canonicalTimestamp(first.previous_created_at),
+          };
+        })();
+  const missingData = healthSummaryStringArray(
+    first.missing_data,
+    healthSummaryMissingData,
+    "health summary missing data",
+  );
+  const recommendations = healthSummaryStringArray(
+    first.recommendation_codes,
+    healthSummaryRecommendationCodes,
+    "health summary recommendation codes",
+  ).map((code) => ({ code }));
+  const evidence = rows.map((row, index) => {
+    if (
+      row.summary_id !== first.summary_id ||
+      row.version !== first.version ||
+      row.created_at !== first.created_at ||
+      row.previous_summary_id !== first.previous_summary_id ||
+      row.included_evidence_count !== first.included_evidence_count ||
+      row.available_confirmed_observation_count !== first.available_confirmed_observation_count ||
+      row.missing_data !== first.missing_data ||
+      row.recommendation_codes !== first.recommendation_codes
+    ) {
+      throw new ObjectStorageIntegrityError("Stored health summary rows are inconsistent");
+    }
+    if (row.is_new_since_previous_summary !== 0 && row.is_new_since_previous_summary !== 1) {
+      throw new ObjectStorageIntegrityError("Stored health summary evidence state is invalid");
+    }
+    if (asCount(row.position, "health summary evidence position") !== index + 1) {
+      throw new ObjectStorageIntegrityError("Stored health summary evidence order is invalid");
+    }
+    return {
+      isNewSincePreviousSummary: row.is_new_since_previous_summary === 1,
+      observation: observationHistoryItem(row, scope),
+    };
+  });
+  const syntheticEvidence = evidence.filter(
+    ({ observation }) =>
+      observation.canonicalCode !== null &&
+      syntheticIndicatorCatalog.has(observation.canonicalCode),
+  );
+  const otherEvidence = evidence.filter(
+    ({ observation }) =>
+      observation.canonicalCode === null ||
+      !syntheticIndicatorCatalog.has(observation.canonicalCode),
+  );
+  const groups: HealthSummary["groups"] = [
+    ...(syntheticEvidence.length > 0
+      ? [
+          {
+            id: "synthetic_laboratory" as const,
+            label: "Подтверждённые синтетические показатели",
+            evidence: syntheticEvidence,
+          },
+        ]
+      : []),
+    ...(otherEvidence.length > 0
+      ? [
+          {
+            id: "other_confirmed_source" as const,
+            label: "Другие подтверждённые источники",
+            evidence: otherEvidence,
+          },
+        ]
+      : []),
+  ];
+  const newEvidenceCount = evidence.filter(
+    ({ isNewSincePreviousSummary }) => isNewSincePreviousSummary,
+  ).length;
+  return {
+    contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+    summary: {
+      id: summaryId,
+      version,
+      createdAt,
+      previous,
+      evidenceScope: { includedCount: includedEvidenceCount, totalConfirmedObservationCount },
+      groups,
+      newEvidenceCount,
+      carriedForwardEvidenceCount: evidence.length - newEvidenceCount,
+      missingData,
+      recommendations,
+      redFlagStatus: "not_evaluated",
     },
   };
 }
@@ -2427,6 +2805,113 @@ export function createDocumentService(
       });
     },
 
+    async getHealthSummary(actor, requestedScope, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const storedSummary = (
+          await client.query<{ id: string }>(
+            `SELECT id
+               FROM health_summaries
+              WHERE family_id = $1 AND patient_profile_id = $2
+              ORDER BY version DESC
+              LIMIT 1`,
+            [scope.familyId, scope.profileId],
+          )
+        ).rows[0];
+        const rows = await client.query<HealthSummaryRow>(
+          `SELECT observation.id,
+                  summary.id AS summary_id,
+                  summary.version,
+                  summary.created_at,
+                  summary.previous_summary_id,
+                  previous.version AS previous_version,
+                  previous.created_at AS previous_created_at,
+                  summary.included_evidence_count,
+                  summary.available_confirmed_observation_count,
+                  summary.missing_data,
+                  summary.recommendation_codes,
+                  evidence.observation_id,
+                  evidence.position,
+                  evidence.is_new_since_previous_summary,
+                  observation.canonical_code,
+                  observation.source_name,
+                  observation.source_value,
+                  observation.source_unit,
+                  observation.normalized_value,
+                  observation.normalized_unit,
+                  observation.conversion_version,
+                  observation.sampled_at,
+                  observation.resulted_at,
+                  observation.uploaded_at,
+                  observation.specimen_type,
+                  observation.laboratory,
+                  observation.source_fragment,
+                  observation.extraction_confidence,
+                  observation.confirmed_at,
+                  observation.confirmed_by_user_id,
+                  reviewer.display_name AS confirmed_by_display_name,
+                  observation.document_id,
+                  observation.document_version_id,
+                  page.page_number,
+                  COALESCE(observation.sampled_at, observation.resulted_at, observation.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM health_summaries summary
+             JOIN health_summary_evidence evidence
+               ON evidence.family_id = summary.family_id AND evidence.health_summary_id = summary.id
+             JOIN observations observation
+               ON observation.family_id = evidence.family_id AND observation.id = evidence.observation_id
+             JOIN document_pages page
+               ON page.family_id = observation.family_id
+              AND page.id = observation.document_page_id
+              AND page.document_version_id = observation.document_version_id
+             JOIN users reviewer ON reviewer.id = observation.confirmed_by_user_id
+             LEFT JOIN health_summaries previous
+               ON previous.family_id = summary.family_id AND previous.id = summary.previous_summary_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = observation.family_id
+              AND reference_range.observation_id = observation.id
+            WHERE summary.family_id = $1
+              AND summary.patient_profile_id = $2
+              AND summary.id = (
+                SELECT latest.id
+                  FROM health_summaries latest
+                 WHERE latest.family_id = $1 AND latest.patient_profile_id = $2
+                 ORDER BY latest.version DESC
+                 LIMIT 1
+              )
+            ORDER BY evidence.position ASC
+            LIMIT $3`,
+          [scope.familyId, scope.profileId, MAX_HEALTH_SUMMARY_EVIDENCE],
+        );
+        if (storedSummary !== undefined && rows.rows.length === 0) {
+          throw new ObjectStorageIntegrityError(
+            "Stored health summary has no readable confirmed evidence",
+          );
+        }
+        const response = healthSummaryResponse(scope, rows.rows);
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.health_summary.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
     async getIndicatorCatalog(actor, requestedScope, correlationId) {
       const scope = canonicalProfileScope(requestedScope);
       return database.transaction(async (client) => {
@@ -2874,7 +3359,7 @@ export function createDocumentService(
           correlationId,
           createdAt: now,
         });
-        await client.query(
+        const completedRun = await client.query(
           `UPDATE extraction_runs
               SET status = 'completed'
             WHERE family_id = $1 AND id = $2 AND status = 'awaiting_review'
@@ -2889,6 +3374,16 @@ export function createDocumentService(
               )`,
           [scope.familyId, fact.extraction_run_id],
         );
+        if (completedRun.rowCount === 1) {
+          await createHealthSummaryIfNeeded(client, {
+            familyId: scope.familyId,
+            profileId: document.patient_profile_id,
+            extractionRunId: fact.extraction_run_id,
+            actorUserId: actor.userId,
+            correlationId,
+            now,
+          });
+        }
         return {
           response: factReviewResponse({
             id: decisionId,

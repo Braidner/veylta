@@ -292,6 +292,21 @@ export function registerDocumentRoutes(
     );
 
     scope.get<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/health-summary",
+      { schema: { params: profileParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(await service.getHealthSummary(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams }>(
       "/v1/families/:familyId/profiles/:profileId/evidence-bundle",
       { schema: { params: profileParamsSchema } },
       async (request, reply) => {

@@ -539,6 +539,106 @@ recommendation. Each successful read writes a payload-free
 `profile-overview/v1` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
+## Evidence-backed profile summary (Task 20)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary`
+
+Returns the latest immutable `health-summary/v1` snapshot for an authorized
+profile, or:
+
+```json
+{ "contractVersion": "health-summary/v1", "summary": null }
+```
+
+when no extraction run has completed final review with at least one confirmed
+observation. The safe `GET` requires neither `Origin` nor an idempotency key;
+it returns `Cache-Control: private, no-store`. The normal owner/self/granted
+`profile.read` boundary applies. Unknown, cross-family, and ungranted selectors
+use the same non-disclosing `404`.
+
+```json
+{
+  "contractVersion": "health-summary/v1",
+  "summary": {
+    "id": "summary_placeholder",
+    "version": 2,
+    "createdAt": "2026-08-12T00:00:00.000Z",
+    "previous": {
+      "id": "summary_previous",
+      "version": 1,
+      "createdAt": "2026-08-11T00:00:00.000Z"
+    },
+    "evidenceScope": { "includedCount": 2, "totalConfirmedObservationCount": 2 },
+    "groups": [
+      {
+        "id": "synthetic_laboratory",
+        "label": "Синтетические лабораторные источники",
+        "evidence": [
+          {
+            "isNewSincePreviousSummary": true,
+            "observation": {
+              "id": "observation_placeholder",
+              "canonicalCode": "synthetic-analyte-a",
+              "source": {
+                "name": "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
+                "value": "7.0",
+                "unit": "synthetic-unit"
+              },
+              "normalized": {
+                "value": null,
+                "unit": null,
+                "conversionVersion": null
+              },
+              "referenceRange": null,
+              "dates": {
+                "sampledAt": null,
+                "resultedAt": null,
+                "uploadedAt": "2026-08-12T00:00:00.000Z"
+              },
+              "timelineAt": "2026-08-12T00:00:00.000Z",
+              "specimenType": null,
+              "laboratory": null,
+              "extractionConfidence": 1,
+              "confirmed": {
+                "at": "2026-08-12T00:00:00.000Z",
+                "by": { "id": "user_placeholder", "displayName": "Synthetic owner" }
+              },
+              "sourceDocument": {
+                "id": "document_placeholder",
+                "versionId": "version_placeholder",
+                "pageNumber": 1,
+                "fragment": "Synthetic source fragment",
+                "contentPath": "/v1/families/family_placeholder/documents/document_placeholder/content"
+              }
+            },
+          }
+        ]
+      }
+    ],
+    "newEvidenceCount": 1,
+    "carriedForwardEvidenceCount": 1,
+    "missingData": ["result_date"],
+    "recommendations": [
+      {
+        "code": "prepare_source_for_clinician"
+      }
+    ],
+    "redFlagStatus": "not_evaluated"
+  }
+}
+```
+
+`missingData` is closed to `confirmed_observations`, `sample_date`,
+`result_date`, `laboratory`, and `canonical_indicator`. The only possible
+operational recommendations are `prepare_source_for_clinician` and
+`complete_pending_review`. Neither field is clinical advice. The response
+does not calculate or state a diagnosis, treatment, urgency, risk, red flag,
+or trend. Every evidence item comes from an immutable confirmed observation;
+the relative document path is only a selector and is authorized again by the
+content endpoint. A successful read writes `profile.health_summary.opened` and
+generation writes `profile.health_summary.generated`, each carrying only the
+contract marker and no medical payload.
+
 ## Local synthetic evidence snapshot (Task 18)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/evidence-bundle`
@@ -800,6 +900,6 @@ stack traces.
 No first-slice endpoint is defined for production authentication/account
 recovery, caregiver invitations, broader adult/caregiver consent capabilities
 beyond the delivered local `profile.read` grant, S3 configuration or presigned
-URLs, cloud OCR, LLM providers, summaries,
-recommendations, FHIR, production exports, backups, or account deletion. Those contracts
+URLs, cloud OCR, LLM providers, clinical summaries, clinical recommendations,
+FHIR, production exports, backups, or account deletion. Those contracts
 follow their own product, threat-model, and license review.

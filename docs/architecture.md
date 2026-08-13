@@ -19,6 +19,10 @@ requires an exact source unit before it returns a comparable series.
 `audit-log/v1` is a third, owner-only and payload-free boundary: it projects
 only audit action/result/time/actor/resource selectors and never exposes event
 metadata or medical/document payloads.
+`health-summary/v1` is an immutable, post-review profile snapshot: it contains
+only confirmed observations, source selectors, new-versus-carried evidence,
+closed missing-context labels, and two operational next-action codes. It does
+not calculate a diagnosis, triage, risk, red flag, trend, or treatment advice.
 
 The local synthetic demo additionally supports a one-time adult or caregiver
 invitation. The code is returned only at issuance and stored only as a SHA-256
@@ -91,6 +95,9 @@ required. Shared code is extracted only when two real consumers need it.
 - Reads `profile-overview/v1` after the same profile authorization and presents
   only bounded source/document/review state; it does not synthesize a clinical
   profile, score, diagnosis, or recommendation.
+- Reads `health-summary/v1` after the same profile authorization. It renders a
+  bounded immutable evidence snapshot, its missing-context labels, and
+  re-authorized document selectors; it never synthesizes clinical advice.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.

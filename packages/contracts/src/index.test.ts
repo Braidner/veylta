@@ -17,6 +17,9 @@ import {
   type FactReviewResponse,
   type FamilyAuditLogResponse,
   type FamilyInvitationCreateResponse,
+  HEALTH_SUMMARY_CONTRACT_VERSION,
+  HEALTH_SUMMARY_RECOMMENDATION_CODES,
+  type HealthSummaryResponse,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorSeriesResponse,
@@ -49,11 +52,26 @@ test("public contracts carry explicit versions", () => {
   assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
   assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
   assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v1");
+  assert.equal(HEALTH_SUMMARY_CONTRACT_VERSION, "health-summary/v1");
   assert.equal(SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION, "synthetic-evidence-bundle/v1");
   assert.equal(MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS, 5);
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
+});
+
+test("health summary is an explicit evidence snapshot, not a clinical assessment", () => {
+  assert.deepEqual(HEALTH_SUMMARY_RECOMMENDATION_CODES, [
+    "prepare_source_for_clinician",
+    "complete_pending_review",
+  ]);
+
+  const response = {
+    contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+    summary: null,
+  } as const satisfies HealthSummaryResponse;
+
+  assert.equal(response.summary, null);
 });
 
 test("family audit log omits internal metadata and exposes explicit pagination", () => {

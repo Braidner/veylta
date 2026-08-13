@@ -231,6 +231,22 @@ Commit intent: `feat: verify local synthetic evidence bundle`
   source bytes. It establishes local structural consistency, not cryptographic
   origin or clinical correctness, and is not import, restore, or backup.
 
+## Task 20 — Evidence-backed profile summary
+
+Commit intent: `feat: add evidence-backed profile summary`
+
+- `health-summary/v1` is created atomically only when the last final decision
+  completes an extraction run. It snapshots at most 50 confirmed observations;
+  rejected facts and unreviewed extraction proposals cannot enter it.
+- A version retains its predecessor and marks every evidence item as new or
+  carried forward. Summary rows and their evidence links are immutable.
+- The response exposes only evidence, bounded missing-context labels, and the
+  operational actions `prepare_source_for_clinician` and
+  `complete_pending_review`. It has no diagnosis, risk, red-flag, trend, or
+  treatment-advice field.
+- The safe, profile-authorized read is `private, no-store`, re-authorizes every
+  source path on follow-up, and records payload-free opened/generated audits.
+
 ## Task 9 — Comparable indicator catalog and chart
 
 Commit intent: `feat: compare compatible confirmed indicators`
@@ -387,7 +403,8 @@ commit chain:
 1. Alternate synthetic fixtures and any OCR language/model expansion beyond the
    delivered local English PDF/image fallback.
 2. Broader classification/extraction with provider interfaces and strict schemas.
-3. Evidence-backed versioned summary and carefully bounded recommendations.
+3. Clinically reviewed evidence summaries and recommendations beyond the
+   delivered non-clinical `health-summary/v1` snapshot.
 4. Broader role/consent UX: additional capability sets, expiry, delegation, and
    production identity. Task 15 delivers only local adult/caregiver invitation
    plus a single owner-issued `profile.read` grant.

@@ -45,8 +45,12 @@ The full first slice remains deliberately narrow:
     delivered).
 12. verify a downloaded local synthetic snapshot offline, before any manual
     handling of its contents (Task 19, delivered).
+13. open a versioned, evidence-backed profile summary assembled only after
+    explicit fact review; it labels missing context and offers only source
+    preparation or pending-review actions, never diagnosis, triage, or treatment
+    advice (Task 20, delivered).
 
-Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
+Cloud OCR, LLM processing, clinical trend summaries, clinical recommendations, FHIR
 exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
 In the loopback-local synthetic demo, an owner can issue a one-time invitation
 to an adult or caregiver. An adult receives only a personal linked profile;
@@ -159,6 +163,14 @@ disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.
 `DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
 state-changing requests require the exact configured `WEB_ORIGIN`.
+
+Once every fact in an extraction run has its explicit final decision, the
+profile can also open `health-summary/v1`. It is an immutable, bounded snapshot
+of confirmed observations with re-authorized links back to their source. It
+marks evidence new since the prior snapshot and missing context, but does not
+infer a condition, risk, red flag, trend, or treatment. Its only deterministic
+next actions are to prepare sources for a clinician or complete another pending
+review.
 
 An artifact can be checked without extracting it to disk:
 
