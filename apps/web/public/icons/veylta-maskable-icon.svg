@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Veylta">
+  <rect width="512" height="512" fill="#1649d8"/>
+  <circle cx="256" cy="256" r="164" fill="#ffffff" fill-opacity=".1"/>
+  <path d="M153 168h64l41 174 41-174h63l-67 219h-76z" fill="#ffffff"/>
+  <circle cx="338" cy="156" r="20" fill="#9fc2ff"/>
+</svg>

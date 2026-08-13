@@ -880,7 +880,7 @@
       "source_location": "L69",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_processingnotavailableerror",
-      "community": 75,
+      "community": 29,
       "norm_label": "processingnotavailableerror"
     },
     {
@@ -1310,7 +1310,7 @@
       "source_location": "L536",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_canonicalprofilescope",
-      "community": 86,
+      "community": 29,
       "norm_label": "canonicalprofilescope()"
     },
     {
@@ -1320,7 +1320,7 @@
       "source_location": "L543",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_canonicaldocumentscope",
-      "community": 86,
+      "community": 29,
       "norm_label": "canonicaldocumentscope()"
     },
     {
@@ -1330,7 +1330,7 @@
       "source_location": "L554",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_canonicalfactscope",
-      "community": 86,
+      "community": 29,
       "norm_label": "canonicalfactscope()"
     },
     {
@@ -1960,7 +1960,7 @@
       "source_location": "L2036",
       "_origin": "ast",
       "id": "apps_api_src_documents_document_service_healthsummaryresponse",
-      "community": 47,
+      "community": 85,
       "norm_label": "healthsummaryresponse()"
     },
     {
@@ -2730,7 +2730,7 @@
       "source_location": "L40",
       "_origin": "ast",
       "id": "apps_api_src_family_family_service_domainconflicterror",
-      "community": 75,
+      "community": 29,
       "norm_label": "domainconflicterror"
     },
     {
@@ -5330,7 +5330,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "apps_api_src_storage_create_object_storage",
-      "community": 35,
+      "community": 19,
       "norm_label": "create-object-storage.ts"
     },
     {
@@ -5340,7 +5340,7 @@
       "source_location": "L6",
       "_origin": "ast",
       "id": "apps_api_src_storage_create_object_storage_createobjectstorage",
-      "community": 35,
+      "community": 19,
       "norm_label": "createobjectstorage()"
     },
     {
@@ -6070,7 +6070,7 @@
       "source_location": "L25",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_s3failure",
-      "community": 68,
+      "community": 19,
       "norm_label": "s3failure()"
     },
     {
@@ -6080,7 +6080,7 @@
       "source_location": "L35",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_bodybytes",
-      "community": 68,
+      "community": 19,
       "norm_label": "bodybytes()"
     },
     {
@@ -6090,7 +6090,7 @@
       "source_location": "L47",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_inmemorys3client",
-      "community": 68,
+      "community": 19,
       "norm_label": "inmemorys3client"
     },
     {
@@ -6100,7 +6100,7 @@
       "source_location": "L52",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_inmemorys3client_address",
-      "community": 68,
+      "community": 19,
       "norm_label": ".#address()"
     },
     {
@@ -6110,7 +6110,7 @@
       "source_location": "L58",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_inmemorys3client_etag",
-      "community": 68,
+      "community": 19,
       "norm_label": ".#etag()"
     },
     {
@@ -6120,7 +6120,7 @@
       "source_location": "L67",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_inmemorys3client_head",
-      "community": 68,
+      "community": 19,
       "norm_label": ".#head()"
     },
     {
@@ -6130,7 +6130,7 @@
       "source_location": "L78",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_inmemorys3client_rawobject",
-      "community": 68,
+      "community": 19,
       "norm_label": ".rawobject()"
     },
     {
@@ -6140,7 +6140,7 @@
       "source_location": "L84",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_test_inmemorys3client_send",
-      "community": 68,
+      "community": 19,
       "norm_label": ".send()"
     },
     {
@@ -6570,7 +6570,7 @@
       "source_location": "L685",
       "_origin": "ast",
       "id": "apps_api_src_storage_s3_object_storage_creates3objectstorage",
-      "community": 35,
+      "community": 19,
       "norm_label": "creates3objectstorage()"
     },
     {
@@ -8044,6 +8044,26 @@
       "norm_label": "include"
     },
     {
+      "label": "pwa-registration.tsx",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/pwa-registration.tsx",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_web_app_components_pwa_registration",
+      "community": 27,
+      "norm_label": "pwa-registration.tsx"
+    },
+    {
+      "label": "PwaRegistration()",
+      "file_type": "code",
+      "source_file": "apps/web/app/components/pwa-registration.tsx",
+      "source_location": "L5",
+      "_origin": "ast",
+      "id": "apps_web_app_components_pwa_registration_pwaregistration",
+      "community": 27,
+      "norm_label": "pwaregistration()"
+    },
+    {
       "label": "system-status.tsx",
       "file_type": "code",
       "source_file": "apps/web/app/components/system-status.tsx",
@@ -9317,21 +9337,51 @@
       "label": "metadata",
       "file_type": "code",
       "source_file": "apps/web/app/layout.tsx",
-      "source_location": "L5",
+      "source_location": "L6",
       "_origin": "ast",
       "id": "apps_web_app_layout_metadata",
       "community": 27,
       "norm_label": "metadata"
     },
     {
+      "label": "viewport",
+      "file_type": "code",
+      "source_file": "apps/web/app/layout.tsx",
+      "source_location": "L20",
+      "_origin": "ast",
+      "id": "apps_web_app_layout_viewport",
+      "community": 27,
+      "norm_label": "viewport"
+    },
+    {
       "label": "RootLayout()",
       "file_type": "code",
       "source_file": "apps/web/app/layout.tsx",
-      "source_location": "L10",
+      "source_location": "L25",
       "_origin": "ast",
       "id": "apps_web_app_layout_rootlayout",
       "community": 27,
       "norm_label": "rootlayout()"
+    },
+    {
+      "label": "manifest.ts",
+      "file_type": "code",
+      "source_file": "apps/web/app/manifest.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_web_app_manifest",
+      "community": 68,
+      "norm_label": "manifest.ts"
+    },
+    {
+      "label": "manifest()",
+      "file_type": "code",
+      "source_file": "apps/web/app/manifest.ts",
+      "source_location": "L3",
+      "_origin": "ast",
+      "id": "apps_web_app_manifest_manifest",
+      "community": 68,
+      "norm_label": "manifest()"
     },
     {
       "label": "page.tsx",
@@ -9532,6 +9582,26 @@
       "id": "apps_web_package_scripts_typecheck",
       "community": 9,
       "norm_label": "typecheck"
+    },
+    {
+      "label": "sw.js",
+      "file_type": "code",
+      "source_file": "apps/web/public/sw.js",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "apps_web_public_sw",
+      "community": 84,
+      "norm_label": "sw.js"
+    },
+    {
+      "label": "SAFE_SHELL",
+      "file_type": "code",
+      "source_file": "apps/web/public/sw.js",
+      "source_location": "L2",
+      "_origin": "ast",
+      "id": "apps_web_public_sw_safe_shell",
+      "community": 84,
+      "norm_label": "safe_shell"
     },
     {
       "label": "tsconfig.json",
@@ -10172,6 +10242,16 @@
       "id": "e2e_observation_history_spec_correctandreject",
       "community": 69,
       "norm_label": "correctandreject()"
+    },
+    {
+      "label": "pwa.spec.ts",
+      "file_type": "code",
+      "source_file": "e2e/pwa.spec.ts",
+      "source_location": "L1",
+      "_origin": "ast",
+      "id": "e2e_pwa_spec",
+      "community": 86,
+      "norm_label": "pwa.spec.ts"
     },
     {
       "label": "package.json",
@@ -12990,7 +13070,7 @@
       "source_location": "L1",
       "_origin": "ast",
       "id": "docs_adr_0003_medical_data_model",
-      "community": 55,
+      "community": 82,
       "norm_label": "0003-medical-data-model.md"
     },
     {
@@ -13930,7 +14010,7 @@
       "source_location": "L120",
       "_origin": "ast",
       "id": "docs_architecture_runtime_responsibilities",
-      "community": 84,
+      "community": 3,
       "norm_label": "runtime responsibilities"
     },
     {
@@ -13940,7 +14020,7 @@
       "source_location": "L122",
       "_origin": "ast",
       "id": "docs_architecture_web",
-      "community": 84,
+      "community": 3,
       "norm_label": "web"
     },
     {
@@ -13950,7 +14030,7 @@
       "source_location": "L160",
       "_origin": "ast",
       "id": "docs_architecture_api",
-      "community": 84,
+      "community": 3,
       "norm_label": "api"
     },
     {
@@ -13960,7 +14040,7 @@
       "source_location": "L194",
       "_origin": "ast",
       "id": "docs_architecture_worker",
-      "community": 84,
+      "community": 3,
       "norm_label": "worker"
     },
     {
@@ -13970,7 +14050,7 @@
       "source_location": "L205",
       "_origin": "ast",
       "id": "docs_architecture_sqlite",
-      "community": 84,
+      "community": 3,
       "norm_label": "sqlite"
     },
     {
@@ -34297,6 +34377,38 @@
     {
       "relation": "contains",
       "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/components/pwa-registration.tsx",
+      "source_location": "L5",
+      "weight": 1.0,
+      "source": "apps_web_app_components_pwa_registration",
+      "target": "apps_web_app_components_pwa_registration_pwaregistration",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports_from",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/layout.tsx",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "apps_web_app_layout",
+      "target": "apps_web_app_components_pwa_registration",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "imports",
+      "context": "import",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/layout.tsx",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "apps_web_app_layout",
+      "target": "apps_web_app_components_pwa_registration_pwaregistration",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
       "source_file": "apps/web/app/components/system-status.tsx",
       "source_location": "L6",
       "weight": 1.0,
@@ -36134,7 +36246,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "apps/web/app/layout.tsx",
-      "source_location": "L5",
+      "source_location": "L6",
       "weight": 1.0,
       "source": "apps_web_app_layout",
       "target": "apps_web_app_layout_metadata",
@@ -36144,10 +36256,30 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "apps/web/app/layout.tsx",
-      "source_location": "L10",
+      "source_location": "L25",
       "weight": 1.0,
       "source": "apps_web_app_layout",
       "target": "apps_web_app_layout_rootlayout",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/layout.tsx",
+      "source_location": "L20",
+      "weight": 1.0,
+      "source": "apps_web_app_layout",
+      "target": "apps_web_app_layout_viewport",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/app/manifest.ts",
+      "source_location": "L3",
+      "weight": 1.0,
+      "source": "apps_web_app_manifest",
+      "target": "apps_web_app_manifest_manifest",
       "confidence_score": 1.0
     },
     {
@@ -36318,6 +36450,16 @@
       "weight": 1.0,
       "source": "apps_web_package_scripts",
       "target": "apps_web_package_scripts_typecheck",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "contains",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/web/public/sw.js",
+      "source_location": "L2",
+      "weight": 1.0,
+      "source": "apps_web_public_sw",
+      "target": "apps_web_public_sw_safe_shell",
       "confidence_score": 1.0
     },
     {
@@ -42491,5 +42633,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "18558a6f0c487522371580f7e5edbc6504d44470"
+  "built_at_commit": "1a2d7554b01c8fd18fb6a347287c33b275091b16"
 }
