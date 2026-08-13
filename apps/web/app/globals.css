@@ -769,6 +769,65 @@ h3 {
   line-height: 1.55;
 }
 
+.health-summary__change .text-button {
+  min-height: 32px;
+  margin-top: 6px;
+  color: var(--color-primary);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-align: left;
+}
+
+.health-summary__comparison {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.health-summary__comparison > h3 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.health-summary__comparison > p,
+.health-summary__comparison section > p {
+  margin: 8px 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.55;
+}
+
+.health-summary__comparison-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+  margin-top: 16px;
+}
+
+.health-summary__comparison-columns h4 {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.health-summary__comparison-columns ul {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 12px 0 0;
+  list-style: none;
+}
+
+.health-summary__comparison-columns li {
+  display: grid;
+  gap: 4px;
+  padding-top: 10px;
+  border-top: 1px solid var(--color-line);
+  font-size: 0.875rem;
+}
+
+.health-summary__comparison-columns strong {
+  overflow-wrap: anywhere;
+}
+
 .health-summary__group {
   padding: 22px 0;
   border-bottom: 1px solid var(--color-line);
@@ -2340,6 +2399,11 @@ h3 {
   .health-summary__group li {
     flex-direction: column;
     gap: 10px;
+  }
+
+  .health-summary__comparison-columns {
+    grid-template-columns: 1fr;
+    gap: 20px;
   }
 
   .health-summary__group .text-link {

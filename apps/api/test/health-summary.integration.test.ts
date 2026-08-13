@@ -6,7 +6,9 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   type DemoRegistrationResponse,
+  HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
   HEALTH_SUMMARY_CONTRACT_VERSION,
+  type HealthSummaryComparisonResponse,
   type HealthSummaryResponse,
   MAX_SYNTHETIC_DOCUMENT_BYTES,
 } from "@veylta/contracts";
@@ -61,6 +63,10 @@ function summaryPath(identity: Identity): string {
 
 function summaryHistoryPath(identity: Identity): string {
   return `${summaryPath(identity)}/versions`;
+}
+
+function summaryComparisonPath(identity: Identity): string {
+  return `${summaryPath(identity)}/compare`;
 }
 
 function multipartFile(bytes: Buffer, filename: string) {
@@ -473,6 +479,56 @@ test("a later completed review creates an immutable successor and identifies new
       totalConfirmedObservationCount: 1,
     });
 
+    const comparison = await context.app.inject({
+      method: "GET",
+      url: `${summaryComparisonPath(owner)}?fromVersion=1&toVersion=2`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(comparison.statusCode, 200, comparison.rawPayload.toString());
+    assert.equal(comparison.headers["cache-control"], "no-store");
+    const comparisonBody = comparison.json() as HealthSummaryComparisonResponse;
+    assert.equal(comparisonBody.contractVersion, HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION);
+    assert.deepEqual(comparisonBody.base, {
+      id: firstSummary.id,
+      version: 1,
+      createdAt: firstSummary.createdAt,
+    });
+    assert.deepEqual(comparisonBody.target, {
+      id: latest.id,
+      version: 2,
+      createdAt: latest.createdAt,
+    });
+    assert.deepEqual(
+      comparisonBody.newlyIncluded.map((item) => item.id),
+      [summaryEvidence.find((item) => item.isNewSincePreviousSummary)?.observation.id],
+    );
+    assert.deepEqual(comparisonBody.noLongerIncluded, []);
+
+    const comparisonAudit = await context.database.query<{ metadata: string }>(
+      `SELECT metadata
+         FROM audit_events
+        WHERE family_id = $1 AND action = 'profile.health_summary_comparison.opened'`,
+      [owner.body.family.id],
+    );
+    assert.deepEqual(
+      comparisonAudit.rows.map((row) => JSON.parse(row.metadata)),
+      [{ contractVersion: HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION }],
+    );
+
+    const reversedComparison = await context.app.inject({
+      method: "GET",
+      url: `${summaryComparisonPath(owner)}?fromVersion=2&toVersion=1`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(reversedComparison.statusCode, 422);
+
+    const absentComparisonVersion = await context.app.inject({
+      method: "GET",
+      url: `${summaryComparisonPath(owner)}?fromVersion=1&toVersion=3`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(absentComparisonVersion.statusCode, 404);
+
     const absentVersion = await context.app.inject({
       method: "GET",
       url: `${summaryPath(owner)}?version=3`,
@@ -496,6 +552,14 @@ test("a later completed review creates an immutable successor and identifies new
     });
     assert.equal(deniedHistory.statusCode, 404);
     assert.equal(deniedHistory.rawPayload.includes(firstSummary.id), false);
+
+    const deniedComparison = await context.app.inject({
+      method: "GET",
+      url: `${summaryComparisonPath(owner)}?fromVersion=1&toVersion=2`,
+      headers: { cookie: outsider.cookie },
+    });
+    assert.equal(deniedComparison.statusCode, 404);
+    assert.equal(deniedComparison.rawPayload.includes(latest.id), false);
 
     const rejectedOnly = await uploadAndExtract(context, owner, "rejected-only");
     for (const fact of rejectedOnly.facts) {

@@ -10,9 +10,11 @@ import {
   type FactReviewCommand,
   type FactReviewOutcome,
   type FactReviewResponse,
+  HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
   HEALTH_SUMMARY_CONTRACT_VERSION,
   HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
   type HealthSummary,
+  type HealthSummaryComparisonResponse,
   type HealthSummaryHistoryResponse,
   type HealthSummaryResponse,
   INDICATOR_SERIES_CONTRACT_VERSION,
@@ -94,6 +96,11 @@ export interface HealthSummaryHistoryQuery {
   limit?: string;
 }
 
+export interface HealthSummaryComparisonQuery {
+  fromVersion: string;
+  toVersion: string;
+}
+
 export interface IndicatorSeriesQuery {
   unit: string;
   limit?: string;
@@ -157,6 +164,12 @@ export interface DocumentService {
     query: HealthSummaryHistoryQuery,
     correlationId: string,
   ): Promise<HealthSummaryHistoryResponse>;
+  getHealthSummaryComparison(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    query: HealthSummaryComparisonQuery,
+    correlationId: string,
+  ): Promise<HealthSummaryComparisonResponse>;
   getIndicatorCatalog(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -453,6 +466,13 @@ interface HealthSummaryVersionRow {
   new_evidence_count: number;
 }
 
+interface HealthSummarySelectorRow {
+  id: string;
+  version: number;
+  created_at: string;
+  included_evidence_count: number;
+}
+
 interface RetryRequestRow {
   document_version_id: string;
   created_at: string;
@@ -577,6 +597,18 @@ function healthSummaryHistoryLimit(value: string | undefined): number {
     throw new DomainValidationError();
   }
   return limit;
+}
+
+function healthSummaryComparisonVersions(query: HealthSummaryComparisonQuery): {
+  fromVersion: number;
+  toVersion: number;
+} {
+  const fromVersion = healthSummaryVersion(query.fromVersion);
+  const toVersion = healthSummaryVersion(query.toVersion);
+  if (fromVersion === null || toVersion === null || fromVersion >= toVersion) {
+    throw new DomainValidationError();
+  }
+  return { fromVersion, toVersion };
 }
 
 function indicatorUnit(value: string): string {
@@ -3041,6 +3073,149 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
           contractVersion: HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getHealthSummaryComparison(actor, requestedScope, requestedQuery, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const { fromVersion, toVersion } = healthSummaryComparisonVersions(requestedQuery);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const summaries = await client.query<HealthSummarySelectorRow>(
+          `SELECT id, version, created_at, included_evidence_count
+             FROM health_summaries
+            WHERE family_id = $1
+              AND patient_profile_id = $2
+              AND version IN ($3, $4)
+            ORDER BY version ASC`,
+          [scope.familyId, scope.profileId, fromVersion, toVersion],
+        );
+        const baseRow = summaries.rows[0];
+        const targetRow = summaries.rows[1];
+        if (
+          baseRow === undefined ||
+          targetRow === undefined ||
+          asCount(baseRow.version, "comparison base summary version") !== fromVersion ||
+          asCount(targetRow.version, "comparison target summary version") !== toVersion
+        ) {
+          throw new ResourceNotFoundError();
+        }
+        const rows = await client.query<ObservationHistoryRow & { summary_version: number }>(
+          `SELECT summary.version AS summary_version,
+                  observation.id,
+                  observation.canonical_code,
+                  observation.source_name,
+                  observation.source_value,
+                  observation.source_unit,
+                  observation.normalized_value,
+                  observation.normalized_unit,
+                  observation.conversion_version,
+                  observation.sampled_at,
+                  observation.resulted_at,
+                  observation.uploaded_at,
+                  observation.specimen_type,
+                  observation.laboratory,
+                  observation.source_fragment,
+                  observation.extraction_confidence,
+                  observation.confirmed_at,
+                  observation.confirmed_by_user_id,
+                  reviewer.display_name AS confirmed_by_display_name,
+                  observation.document_id,
+                  observation.document_version_id,
+                  page.page_number,
+                  COALESCE(observation.sampled_at, observation.resulted_at, observation.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM health_summaries summary
+             JOIN health_summary_evidence evidence
+               ON evidence.family_id = summary.family_id AND evidence.health_summary_id = summary.id
+             JOIN observations observation
+               ON observation.family_id = evidence.family_id AND observation.id = evidence.observation_id
+             JOIN document_pages page
+               ON page.family_id = observation.family_id
+              AND page.id = observation.document_page_id
+              AND page.document_version_id = observation.document_version_id
+             JOIN users reviewer ON reviewer.id = observation.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = observation.family_id
+              AND reference_range.observation_id = observation.id
+            WHERE summary.family_id = $1
+              AND summary.patient_profile_id = $2
+              AND summary.version IN ($3, $4)
+            ORDER BY summary.version ASC, evidence.position ASC`,
+          [scope.familyId, scope.profileId, fromVersion, toVersion],
+        );
+        const baseEvidence = new Map<string, ObservationHistoryResponse["items"][number]>();
+        const targetEvidence = new Map<string, ObservationHistoryResponse["items"][number]>();
+        for (const row of rows.rows) {
+          const version = asCount(row.summary_version, "comparison evidence version");
+          const target =
+            version === fromVersion ? baseEvidence : version === toVersion ? targetEvidence : null;
+          if (target === null)
+            throw new ObjectStorageIntegrityError("Stored comparison evidence is invalid");
+          const observation = observationHistoryItem(row, scope);
+          if (target.has(observation.id)) {
+            throw new ObjectStorageIntegrityError("Stored comparison evidence is duplicated");
+          }
+          target.set(observation.id, observation);
+        }
+        const baseCount = asCount(
+          baseRow.included_evidence_count,
+          "comparison base summary evidence count",
+        );
+        const targetCount = asCount(
+          targetRow.included_evidence_count,
+          "comparison target summary evidence count",
+        );
+        if (
+          baseCount < 1 ||
+          baseCount > MAX_HEALTH_SUMMARY_EVIDENCE ||
+          targetCount < 1 ||
+          targetCount > MAX_HEALTH_SUMMARY_EVIDENCE ||
+          baseEvidence.size !== baseCount ||
+          targetEvidence.size !== targetCount
+        ) {
+          throw new ObjectStorageIntegrityError(
+            "Stored comparison summary has no readable evidence",
+          );
+        }
+        const response: HealthSummaryComparisonResponse = {
+          contractVersion: HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
+          base: {
+            id: requiredCanonicalUuid(baseRow.id, "comparison base summary"),
+            version: fromVersion,
+            createdAt: canonicalTimestamp(baseRow.created_at),
+          },
+          target: {
+            id: requiredCanonicalUuid(targetRow.id, "comparison target summary"),
+            version: toVersion,
+            createdAt: canonicalTimestamp(targetRow.created_at),
+          },
+          newlyIncluded: [...targetEvidence.values()].filter(
+            (observation) => !baseEvidence.has(observation.id),
+          ),
+          noLongerIncluded: [...baseEvidence.values()].filter(
+            (observation) => !targetEvidence.has(observation.id),
+          ),
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.health_summary_comparison.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
         });
         return response;
       });

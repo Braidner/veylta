@@ -26,6 +26,9 @@ not calculate a diagnosis, triage, risk, red flag, trend, or treatment advice.
 `health-summary-history/v1` is its separate read-only index: it exposes bounded
 immutable version selectors newest-first and permits reopening one exact stored
 snapshot, but never compares versions or derives a change.
+`health-summary-comparison/v1` is an explicit read of two authorized immutable
+snapshots. It returns only their source-set membership delta, and therefore
+does not calculate values, direction, trend, diagnosis, or recommendation.
 
 The local synthetic demo additionally supports a one-time adult or caregiver
 invitation. The code is returned only at issuance and stored only as a SHA-256
@@ -104,6 +107,9 @@ required. Shared code is extracted only when two real consumers need it.
 - Reads `health-summary-history/v1` under the same profile authorization and
   lets a user reopen an immutable earlier source snapshot without calculating a
   version-to-version conclusion.
+- On explicit request, reads `health-summary-comparison/v1` under the same
+  authorization and shows only the source records added to or absent from the
+  target snapshot, with re-authorized document selectors.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.

@@ -16,6 +16,7 @@ import {
 } from "../http/route-helpers.js";
 import {
   type DocumentService,
+  type HealthSummaryComparisonQuery,
   type HealthSummaryHistoryQuery,
   type HealthSummaryQuery,
   IdempotencyConflictError,
@@ -114,6 +115,16 @@ const healthSummaryHistoryQuerySchema = {
   properties: {
     beforeVersion: { type: "string", pattern: "^[1-9][0-9]{0,8}$" },
     limit: { type: "string", pattern: "^(?:[1-9]|[1-4][0-9]|50)$" },
+  },
+} as const;
+
+const healthSummaryComparisonQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["fromVersion", "toVersion"],
+  properties: {
+    fromVersion: { type: "string", pattern: "^[1-9][0-9]{0,8}$" },
+    toVersion: { type: "string", pattern: "^[1-9][0-9]{0,8}$" },
   },
 } as const;
 
@@ -337,6 +348,28 @@ export function registerDocumentRoutes(
         try {
           reply.send(
             await service.getHealthSummaryHistory(actor, request.params, request.query, request.id),
+          );
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams; Querystring: HealthSummaryComparisonQuery }>(
+      "/v1/families/:familyId/profiles/:profileId/health-summary/compare",
+      { schema: { params: profileParamsSchema, querystring: healthSummaryComparisonQuerySchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(
+            await service.getHealthSummaryComparison(
+              actor,
+              request.params,
+              request.query,
+              request.id,
+            ),
           );
         } catch (error) {
           if (!sendDocumentError(error, request, reply)) throw error;

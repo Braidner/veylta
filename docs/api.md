@@ -673,6 +673,30 @@ payload-free `profile.health_summary_history.opened` audit event with only the
 with `?version=N`: it returns the exact source snapshot, never a derived
 comparison, trend, diagnosis, or recommendation.
 
+### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary/compare`
+
+Requires exact positive decimal `fromVersion` and `toVersion`, with
+`fromVersion < toVersion`. Both immutable snapshots must exist in the same
+authorized profile. It returns `health-summary-comparison/v1`:
+
+```json
+{
+  "contractVersion": "health-summary-comparison/v1",
+  "base": { "id": "summary_v1", "version": 1, "createdAt": "2026-08-12T00:00:00.000Z" },
+  "target": { "id": "summary_v2", "version": 2, "createdAt": "2026-08-13T00:00:00.000Z" },
+  "newlyIncluded": ["source-first ObservationHistoryItem"],
+  "noLongerIncluded": []
+}
+```
+
+Each list item is the same source-first, re-authorized observation projection
+used by profile history. The response is a set-membership delta only: it does
+not compare values, calculate direction, or say that health changed. It is
+`Cache-Control: private, no-store`; unknown, cross-family, and ungranted
+selectors use the same non-disclosing `404`. A successful read writes the
+payload-free `profile.health_summary_comparison.opened` event carrying only the
+`health-summary-comparison/v1` marker.
+
 ## Local synthetic evidence snapshot (Task 18)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/evidence-bundle`

@@ -263,6 +263,20 @@ Commit intent: `feat: browse immutable summary versions`
 - The UI selects a version explicitly and labels its immutable source snapshot.
   It does not call the prior/newer version a trend, a change, or a recommendation.
 
+## Task 22 — Immutable summary source-set comparison
+
+Commit intent: `feat: compare immutable summary source sets`
+
+- `health-summary-comparison/v1` accepts two ordered existing versions and
+  returns only source observations newly included in the target or no longer
+  included from the base. It has no numeric delta, clinical label, trend,
+  recommendation, or write path.
+- The read is `private, no-store`, uses the same owner/self/granted
+  `profile.read` boundary, re-authorizes each follow-up source path, fails
+  closed for missing versions, and records a payload-free comparison audit.
+- The UI opens the comparison only on an explicit action and labels it as a
+  source-membership view rather than a health assessment.
+
 ## Task 9 — Comparable indicator catalog and chart
 
 Commit intent: `feat: compare compatible confirmed indicators`

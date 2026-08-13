@@ -17,9 +17,11 @@ import {
   type FactReviewResponse,
   type FamilyAuditLogResponse,
   type FamilyInvitationCreateResponse,
+  HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
   HEALTH_SUMMARY_CONTRACT_VERSION,
   HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
   HEALTH_SUMMARY_RECOMMENDATION_CODES,
+  type HealthSummaryComparisonResponse,
   type HealthSummaryHistoryResponse,
   type HealthSummaryResponse,
   HTTP_API_VERSION,
@@ -57,6 +59,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v1");
   assert.equal(HEALTH_SUMMARY_CONTRACT_VERSION, "health-summary/v1");
   assert.equal(HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION, "health-summary-history/v1");
+  assert.equal(HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION, "health-summary-comparison/v1");
   assert.equal(SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION, "synthetic-evidence-bundle/v1");
   assert.equal(MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS, 5);
   assert.equal(MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE, 50);
@@ -84,6 +87,23 @@ test("health summary is an explicit evidence snapshot, not a clinical assessment
     nextBeforeVersion: null,
   } as const satisfies HealthSummaryHistoryResponse;
   assert.equal(history.versions.length, 0);
+
+  const comparison = {
+    contractVersion: HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
+    base: {
+      id: "10000000-0000-4000-8000-000000000001",
+      version: 1,
+      createdAt: "2026-08-13T00:00:00.000Z",
+    },
+    target: {
+      id: "10000000-0000-4000-8000-000000000002",
+      version: 2,
+      createdAt: "2026-08-13T00:01:00.000Z",
+    },
+    newlyIncluded: [],
+    noLongerIncluded: [],
+  } as const satisfies HealthSummaryComparisonResponse;
+  assert.equal(comparison.target.version, 2);
 });
 
 test("family audit log omits internal metadata and exposes explicit pagination", () => {

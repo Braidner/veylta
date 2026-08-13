@@ -16,6 +16,7 @@ import type {
   FamilyConsentMemberListResponse,
   FamilyInvitationCreateResponse,
   FamilyInvitationRole,
+  HealthSummaryComparisonResponse,
   HealthSummaryHistoryResponse,
   HealthSummaryMissingData,
   HealthSummaryRecommendationCode,
@@ -131,6 +132,10 @@ function healthSummaryPath(familyId: string, profileId: string): string {
 
 function healthSummaryHistoryPath(familyId: string, profileId: string): string {
   return `${healthSummaryPath(familyId, profileId)}/versions`;
+}
+
+function healthSummaryComparisonPath(familyId: string, profileId: string): string {
+  return `${healthSummaryPath(familyId, profileId)}/compare`;
 }
 
 function evidenceBundlePath(familyId: string, profileId: string): string {
@@ -1617,6 +1622,11 @@ type HealthSummaryState =
       kind: "ready";
       response: HealthSummaryResponse;
       history: HealthSummaryHistoryResponse;
+      comparison:
+        | { kind: "idle" }
+        | { kind: "loading" }
+        | { kind: "ready"; response: HealthSummaryComparisonResponse }
+        | { kind: "error"; copy: string };
       versionPending: boolean;
       historyPending: boolean;
       versionError: string | null;
@@ -1628,6 +1638,13 @@ function healthSummaryErrorCopy(error: unknown): string {
     return "Сводка этого профиля недоступна. Вернитесь к доступному профилю и попробуйте снова.";
   }
   return "Не удалось загрузить сводку. Подтверждённые источники и решения не изменены.";
+}
+
+function healthSummaryComparisonErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Одна из фиксированных версий недоступна. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось открыть состав источников между версиями. Сводки и подтверждённые значения не изменены.";
 }
 
 function recommendationCopy(code: HealthSummaryRecommendationCode): string {
@@ -1676,6 +1693,7 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
             kind: "ready",
             response,
             history,
+            comparison: { kind: "idle" },
             versionPending: false,
             historyPending: false,
             versionError: null,
@@ -1707,7 +1725,13 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
       setState((current) =>
         current.kind !== "ready"
           ? current
-          : { ...current, response, versionPending: false, versionError: null },
+          : {
+              ...current,
+              response,
+              comparison: { kind: "idle" },
+              versionPending: false,
+              versionError: null,
+            },
       );
     } catch (error) {
       setState((current) =>
@@ -1717,6 +1741,41 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
               ...current,
               versionPending: false,
               versionError: healthSummaryErrorCopy(error),
+            },
+      );
+    }
+  }
+
+  async function loadComparison(): Promise<void> {
+    if (
+      state.kind !== "ready" ||
+      state.response.summary === null ||
+      state.response.summary.previous === null ||
+      state.comparison.kind === "loading"
+    ) {
+      return;
+    }
+    const { version } = state.response.summary;
+    const { previous } = state.response.summary;
+    setState((current) =>
+      current.kind !== "ready" ? current : { ...current, comparison: { kind: "loading" } },
+    );
+    try {
+      const response = await apiRequest<HealthSummaryComparisonResponse>(
+        `${healthSummaryComparisonPath(familyId, profileId)}?fromVersion=${encodeURIComponent(String(previous.version))}&toVersion=${encodeURIComponent(String(version))}`,
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { ...current, comparison: { kind: "ready", response } },
+      );
+    } catch (error) {
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              comparison: { kind: "error", copy: healthSummaryComparisonErrorCopy(error) },
             },
       );
     }
@@ -1859,11 +1918,95 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
           )}
 
           {state.response.summary.previous !== null ? (
-            <p className="health-summary__change" role="status">
-              Новых подтверждённых источников: {state.response.summary.newEvidenceCount}; перенесено
-              из версии {state.response.summary.previous.version}:{" "}
-              {state.response.summary.carriedForwardEvidenceCount}.
+            <div className="health-summary__change">
+              <p role="status">
+                Новых подтверждённых источников: {state.response.summary.newEvidenceCount}
+                {"; "}перенесено из версии {state.response.summary.previous.version}:{" "}
+                {state.response.summary.carriedForwardEvidenceCount}.
+              </p>
+              <button
+                className="text-button"
+                type="button"
+                disabled={state.comparison.kind === "loading"}
+                onClick={() => void loadComparison()}
+              >
+                {state.comparison.kind === "loading"
+                  ? "Открываем состав источников…"
+                  : `Показать состав источников версии ${state.response.summary.version} относительно версии ${state.response.summary.previous.version}`}
+              </button>
+            </div>
+          ) : null}
+
+          {state.comparison.kind === "error" ? (
+            <p className="form-error" role="alert">
+              {state.comparison.copy}
             </p>
+          ) : null}
+
+          {state.comparison.kind === "ready" ? (
+            <section
+              className="health-summary__comparison"
+              aria-labelledby="summary-comparison-title"
+            >
+              <h3 id="summary-comparison-title">Состав источников между версиями</h3>
+              <p>
+                Это сопоставление только сохранённых подтверждённых источников версии{" "}
+                {state.comparison.response.base.version} и версии{" "}
+                {state.comparison.response.target.version}. Оно не оценивает изменение здоровья.
+              </p>
+              <div className="health-summary__comparison-columns">
+                <section aria-labelledby="summary-comparison-added-title">
+                  <h4 id="summary-comparison-added-title">
+                    Добавлено в версию {state.comparison.response.target.version}
+                  </h4>
+                  {state.comparison.response.newlyIncluded.length === 0 ? (
+                    <p>Нет новых подтверждённых источников.</p>
+                  ) : (
+                    <ul>
+                      {state.comparison.response.newlyIncluded.map((observation) => (
+                        <li key={observation.id}>
+                          <strong>
+                            {observation.source.name}: {observation.source.value}{" "}
+                            {observation.source.unit}
+                          </strong>
+                          <Link
+                            className="text-link"
+                            href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                          >
+                            Открыть источник
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+                <section aria-labelledby="summary-comparison-removed-title">
+                  <h4 id="summary-comparison-removed-title">
+                    Не вошло в версию {state.comparison.response.target.version}
+                  </h4>
+                  {state.comparison.response.noLongerIncluded.length === 0 ? (
+                    <p>Все источники предыдущей версии сохранены в этой версии.</p>
+                  ) : (
+                    <ul>
+                      {state.comparison.response.noLongerIncluded.map((observation) => (
+                        <li key={observation.id}>
+                          <strong>
+                            {observation.source.name}: {observation.source.value}{" "}
+                            {observation.source.unit}
+                          </strong>
+                          <Link
+                            className="text-link"
+                            href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                          >
+                            Открыть источник
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
+            </section>
           ) : null}
 
           {state.response.summary.groups.map((group) => (

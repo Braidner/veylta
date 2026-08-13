@@ -333,6 +333,11 @@ profile-authorized, newest-first index over those existing immutable summary
 rows. Its version selector only reopens the exact `HealthSummary` evidence
 snapshot; it neither computes nor persists a comparison between versions.
 
+Task 22 likewise adds no table: `health-summary-comparison/v1` reads two
+authorized immutable snapshots and compares membership of their existing
+`HealthSummaryEvidence` links. It is not a value comparison and cannot persist
+or imply a health interpretation.
+
 `Recommendation` remains deferred until a separately reviewed deterministic
 safety boundary can distinguish facts, assumptions, advice, red flags,
 confidence, missing data, and evidence links.

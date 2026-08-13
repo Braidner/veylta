@@ -51,6 +51,9 @@ The full first slice remains deliberately narrow:
     advice (Task 20, delivered).
 14. browse any earlier immutable version of that evidence-backed summary, with
     its original source set and no derived "change" claim (Task 21, delivered).
+15. explicitly inspect which confirmed source records entered or did not enter
+    two saved summary versions, without turning that difference into a health
+    assessment (Task 22, delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, clinical recommendations, FHIR
 exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
@@ -175,6 +178,9 @@ next actions are to prepare sources for a clinician or complete another pending
 review. `health-summary-history/v1` lists those immutable versions newest-first;
 selecting one reopens its exact stored source set. It never compares versions or
 derives a clinical or non-clinical health conclusion from their difference.
+When two versions are selected for an explicit source-set comparison, Veylta
+lists only confirmed source records newly included or no longer included. It
+does not compute an improvement, decline, trend, diagnosis, or recommendation.
 
 An artifact can be checked without extracting it to disk:
 

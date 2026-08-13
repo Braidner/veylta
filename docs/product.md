@@ -107,8 +107,12 @@ The first slice proves one complete and safe path with synthetic data:
     newest-first version index. Each selection returns the exact saved evidence
     set; the product does not derive a difference, trend, or recommendation from
     versions (Task 21, delivered).
+17. A user can explicitly compare two immutable summary source sets. The result
+    contains only newly included or no-longer-included confirmed records with
+    their sources; it never labels the difference as a health change, trend, or
+    recommendation (Task 22, delivered).
 
-The implemented synthetic record path reaches step 16, and the separate
+The implemented synthetic record path reaches step 17, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
@@ -194,7 +198,8 @@ source-first history; and Task 9 calculates a bounded compatible-value
 difference without adding a processing state. The implementation does not fake
 OCR, clinical trends, or clinical summaries. Task 20 materializes a post-review
 evidence snapshot without adding a clinical processing state; Task 21 only
-indexes and reopens those immutable snapshots.
+indexes and reopens those immutable snapshots; Task 22 compares their source
+membership without a processing or clinical state.
 
 ## Explicitly deferred
 

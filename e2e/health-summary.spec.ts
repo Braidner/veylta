@@ -132,6 +132,23 @@ test("summary selector opens an older immutable source snapshot without deriving
     summary.getByText("Новых подтверждённых источников: 1", { exact: false }),
   ).toBeVisible();
 
+  await summary
+    .getByRole("button", {
+      name: "Показать состав источников версии 2 относительно версии 1",
+    })
+    .click();
+  const comparison = summary.getByRole("region", { name: "Состав источников между версиями" });
+  await expect(comparison.getByText("Добавлено в версию 2", { exact: true })).toBeVisible();
+  await expect(
+    comparison.getByText("СИНТЕТИЧЕСКИЙ АНАЛИТ A: 7.1 synthetic-unit", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    comparison.getByText("Все источники предыдущей версии сохранены в этой версии.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(comparison.getByText(/не оценивает изменение здоровья/i)).toBeVisible();
+
   await selector.selectOption("1");
   await expect(selector).toHaveValue("1");
   await expect(

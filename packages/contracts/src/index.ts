@@ -11,6 +11,7 @@ export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
 export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
 export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
 export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
+export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
 export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
 export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
@@ -436,6 +437,29 @@ export interface HealthSummaryHistoryResponse {
   readonly versions: readonly HealthSummaryVersion[];
   /** Pass this immutable version number as `beforeVersion` for the next older page. */
   readonly nextBeforeVersion: number | null;
+}
+
+/**
+ * An explicit source-set delta between two immutable summary snapshots. It
+ * reports only what each fixed snapshot includes; it is never a health change,
+ * trend, diagnosis, or recommendation.
+ */
+export interface HealthSummaryComparisonResponse {
+  readonly contractVersion: typeof HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION;
+  readonly base: {
+    readonly id: string;
+    readonly version: number;
+    readonly createdAt: string;
+  };
+  readonly target: {
+    readonly id: string;
+    readonly version: number;
+    readonly createdAt: string;
+  };
+  /** Confirmed source observations present in target but absent from base. */
+  readonly newlyIncluded: readonly ObservationHistoryItem[];
+  /** Confirmed source observations present in base but absent from target. */
+  readonly noLongerIncluded: readonly ObservationHistoryItem[];
 }
 
 /**
