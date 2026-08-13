@@ -15,15 +15,19 @@ flowchart LR
   W["Worker"] --> D
   W --> O
   A -. "explicit agent request" .-> C["Codex adapter"]
-  C --> X["Local codex app-server"]
+  C --> X["Local Codex CLI"]
   X -. "user-owned ChatGPT session" .-> M["Codex model service"]
 ```
 
 The PWA owns presentation and human decisions. The API resolves the signed-in
 account and authorizes every profile selector. Only an administrator, the
 profile's linked user, or an explicitly granted actor may open a profile. The
-Codex adapter is optional, receives narrow profile/document work, and never
-reads or stores Codex OAuth credentials.
+Codex adapter is optional and never reads or stores Codex OAuth credentials.
+Settings use `codex app-server daemon` only for local runtime status/control.
+One acknowledged care-plan request runs a separate bounded
+`codex exec --ephemeral` job in an empty read-only working directory, with
+tools and user customizations disabled. It receives only the latest confirmed
+summary projection, never an original document.
 
 `StorageController` is the single runtime port used by API and worker. Each
 process loads the authoritative local root and generation from SQLite at start.
@@ -98,7 +102,7 @@ flowchart LR
   O --> L["Persistent local filesystem (default)"]
   O -. "explicit adapter" .-> S["S3-compatible storage (optional)"]
   J --> Q["Local bounded synthetic PDF/image OCR"]
-  J -. "future, owner opt-in" .-> X["External OCR / LLM providers"]
+  J -. "future, owner opt-in" .-> X["External OCR providers"]
 ```
 
 The browser never accesses the database or a storage path directly. The API
@@ -150,7 +154,8 @@ required. Shared code is extracted only when two real consumers need it.
   target snapshot, with re-authorized document selectors.
 - Reads `home-care-plan/v1` under the same profile authorization. Granted
   readers see it read-only; administrators, owners, and self-linked adults may
-  add human decisions or explicitly accept/dismiss a future agent proposal.
+  add human decisions, request an acknowledged Codex proposal, or explicitly
+  accept/dismiss that proposal.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.

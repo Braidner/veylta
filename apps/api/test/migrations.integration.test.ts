@@ -526,6 +526,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
     );
     assert.equal(await tableExists(database, "home_storage_settings"), true);
     assert.equal(await tableExists(database, "care_plan_items"), true);
+    assert.equal(await tableExists(database, "care_plan_proposal_runs"), true);
+    assert.equal(await tableExists(database, "care_plan_codex_provenance"), true);
     await database.query(
       `INSERT INTO home_storage_settings
          (singleton, driver, current_root, state, generation)
@@ -538,6 +540,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
+    assert.equal(await tableExists(database, "care_plan_proposal_runs"), false);
     assert.equal(await migrateDown(database), "0014_home_care_plan");
     assert.equal(await tableExists(database, "care_plan_items"), false);
     assert.equal(await migrateDown(database), "0013_home_settings");
@@ -623,6 +627,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0012_app_accounts",
       "0013_home_settings",
       "0014_home_care_plan",
+      "0015_codex_care_plan_proposals",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -679,26 +684,155 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
     const processing = await insertProcessingGraph(database, fixture, "care-plan");
     const review = await insertConfirmedReviewGraph(database, fixture, processing, "care-plan");
     const summaryId = await insertHealthSummary(database, fixture, review.observationId);
+    const successorSummaryId = randomUUID();
     const itemId = randomUUID();
     const now = new Date().toISOString();
+    const proposalRunId = randomUUID();
+    await database.transaction(async (client) => {
+      await client.query(
+        `INSERT INTO health_summaries
+           (id, family_id, patient_profile_id, version, previous_summary_id,
+            summary_contract_version, included_evidence_count,
+            available_confirmed_observation_count, missing_data, recommendation_codes, created_at)
+         VALUES ($1, $2, $3, 2, $4, 'health-summary/v1', 1, 1, '[]',
+                 '["prepare_source_for_clinician"]', $5)`,
+        [successorSummaryId, fixture.familyId, fixture.profileId, summaryId, now],
+      );
+      await client.query(
+        `INSERT INTO health_summary_evidence
+           (health_summary_id, family_id, observation_id, position,
+            is_new_since_previous_summary, created_at)
+         VALUES ($1, $2, $3, 1, 0, $4)`,
+        [successorSummaryId, fixture.familyId, review.observationId, now],
+      );
+    });
+
+    await rejectsConstraint(
+      () =>
+        database.transaction(async (client) => {
+          await client.query(
+            `INSERT INTO care_plan_proposal_runs
+               (id, family_id, patient_profile_id, health_summary_id, requested_by_user_id,
+                model_id, rule_version, state, attempt_count, lease_expires_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'gpt-5.4-mini', 'home-care-safe/v1',
+                     'generating', 1, $6, $7, $7)`,
+            [
+              proposalRunId,
+              fixture.familyId,
+              fixture.profileId,
+              summaryId,
+              fixture.userId,
+              "2027-01-01T00:00:00.000Z",
+              now,
+            ],
+          );
+          await client.query(
+            `INSERT INTO care_plan_codex_provenance
+               (family_id, patient_profile_id, care_plan_item_id, proposal_run_id, category, created_at)
+             VALUES ($1, $2, $3, $4, 'nutrition', $5)`,
+            [fixture.familyId, fixture.profileId, itemId, proposalRunId, now],
+          );
+          await client.query(
+            `INSERT INTO care_plan_items
+               (id, family_id, patient_profile_id, category, title, state, origin, revision,
+                created_by_user_id, health_summary_id, rule_version, missing_context,
+                created_at, updated_at)
+             VALUES ($1, $2, $3, 'nutrition', 'Mismatched summary', 'proposed', 'codex', 1,
+                     $4, $5, 'home-care-safe/v1', '[]', $6, $6)`,
+            [itemId, fixture.familyId, fixture.profileId, fixture.userId, successorSummaryId, now],
+          );
+        }),
+      "trigger",
+    );
+
+    const userItemId = randomUUID();
     await database.query(
       `INSERT INTO care_plan_items
-         (id, family_id, patient_profile_id, category, title, note, scheduled_for,
-          state, origin, revision, created_by_user_id, health_summary_id,
-          source_observation_id, rule_version, missing_context, created_at, updated_at)
-       VALUES ($1, $2, $3, 'nutrition', 'Подготовить вопросы о питании', NULL, NULL,
-               'proposed', 'codex', 1, $4, $5, $6, 'home-care-safe/v1',
-               '["dietary_restrictions"]', $7, $7)`,
-      [
-        itemId,
-        fixture.familyId,
-        fixture.profileId,
-        fixture.userId,
-        summaryId,
-        review.observationId,
-        now,
-      ],
+         (id, family_id, patient_profile_id, category, title, state, origin, revision,
+          created_by_user_id, missing_context, created_at, updated_at)
+       VALUES ($1, $2, $3, 'activity', 'User-created item', 'accepted', 'user', 1,
+               $4, '[]', $5, $5)`,
+      [userItemId, fixture.familyId, fixture.profileId, fixture.userId, now],
     );
+    await rejectsConstraint(
+      () =>
+        database.transaction(async (client) => {
+          const attachmentRunId = randomUUID();
+          await client.query(
+            `INSERT INTO care_plan_proposal_runs
+               (id, family_id, patient_profile_id, health_summary_id, requested_by_user_id,
+                model_id, rule_version, state, attempt_count, lease_expires_at, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, 'gpt-5.4-mini', 'attachment-test/v1',
+                     'generating', 1, $6, $7, $7)`,
+            [
+              attachmentRunId,
+              fixture.familyId,
+              fixture.profileId,
+              summaryId,
+              fixture.userId,
+              "2027-01-01T00:00:00.000Z",
+              now,
+            ],
+          );
+          await client.query(
+            `INSERT INTO care_plan_codex_provenance
+               (family_id, patient_profile_id, care_plan_item_id, proposal_run_id, category, created_at)
+             VALUES ($1, $2, $3, $4, 'activity', $5)`,
+            [fixture.familyId, fixture.profileId, userItemId, attachmentRunId, now],
+          );
+        }),
+      "trigger",
+    );
+
+    await database.transaction(async (client) => {
+      await client.query(
+        `INSERT INTO care_plan_proposal_runs
+           (id, family_id, patient_profile_id, health_summary_id, requested_by_user_id,
+            model_id, rule_version, state, attempt_count, lease_expires_at, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, 'gpt-5.4-mini', 'home-care-safe/v1',
+                 'generating', 1, $6, $7, $7)`,
+        [
+          proposalRunId,
+          fixture.familyId,
+          fixture.profileId,
+          summaryId,
+          fixture.userId,
+          "2027-01-01T00:00:00.000Z",
+          now,
+        ],
+      );
+      await client.query(
+        `INSERT INTO care_plan_codex_provenance
+           (family_id, patient_profile_id, care_plan_item_id, proposal_run_id, category, created_at)
+         VALUES ($1, $2, $3, $4, 'nutrition', $5)`,
+        [fixture.familyId, fixture.profileId, itemId, proposalRunId, now],
+      );
+      await client.query(
+        `INSERT INTO care_plan_items
+           (id, family_id, patient_profile_id, category, title, note, scheduled_for,
+            state, origin, revision, created_by_user_id, health_summary_id,
+            source_observation_id, rule_version, missing_context, created_at, updated_at)
+         VALUES ($1, $2, $3, 'nutrition', 'Подготовить вопросы о питании', NULL, NULL,
+                 'proposed', 'codex', 1, $4, $5, $6, 'home-care-safe/v1',
+                 '["dietary_restrictions"]', $7, $7)`,
+        [
+          itemId,
+          fixture.familyId,
+          fixture.profileId,
+          fixture.userId,
+          summaryId,
+          review.observationId,
+          now,
+        ],
+      );
+      await client.query(
+        `UPDATE care_plan_proposal_runs
+            SET state = 'completed', runtime_version = 'codex-cli 0.147.0',
+                proposal_count = 1, lease_expires_at = NULL, completed_at = $1, updated_at = $1
+          WHERE id = $2`,
+        [now, proposalRunId],
+      );
+    });
 
     await rejectsConstraint(
       () => database.query("UPDATE care_plan_items SET title = 'Changed' WHERE id = $1", [itemId]),
@@ -851,6 +985,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
     assert.equal(await migrateDown(database), "0014_home_care_plan");
     assert.equal(await migrateDown(database), "0013_home_settings");
     assert.equal(await migrateDown(database), "0012_app_accounts");

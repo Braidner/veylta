@@ -1193,6 +1193,13 @@ h3 {
   max-width: 68ch;
 }
 
+.care-plan__heading-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 9px;
+  align-items: center;
+}
+
 .care-plan__heading p {
   margin: 0 0 4px;
   color: var(--color-primary);
@@ -1219,6 +1226,44 @@ h3 {
   margin: 22px 0 0;
   border-top: 1px solid var(--color-cockpit-line);
   border-bottom: 1px solid var(--color-cockpit-line);
+}
+
+.care-plan__codex-disclosure {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px 24px;
+  align-items: end;
+  margin-top: 18px;
+  padding: 18px 20px;
+  background: linear-gradient(112deg, rgb(24 120 101 / 9%), rgb(193 128 62 / 8%)), var(--color-bg);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 28%, var(--color-cockpit-line));
+  border-radius: 14px;
+}
+
+.care-plan__codex-disclosure h4,
+.care-plan__codex-disclosure p {
+  margin: 0;
+}
+
+.care-plan__codex-disclosure h4 {
+  margin-top: 4px;
+  font-size: 1rem;
+}
+
+.care-plan__codex-disclosure > div > p:last-child,
+.care-plan__codex-disclosure small {
+  color: var(--color-muted);
+  line-height: 1.55;
+}
+
+.care-plan__codex-disclosure small {
+  grid-column: 1 / -1;
+}
+
+.care-plan__codex-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }
 
 .care-plan__evidence div {
@@ -3507,6 +3552,27 @@ h3 {
     align-items: flex-start;
     flex-direction: column;
     gap: 10px;
+  }
+
+  .care-plan__heading-actions,
+  .care-plan__codex-actions {
+    align-items: stretch;
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .care-plan__heading-actions .button,
+  .care-plan__codex-actions .button {
+    width: 100%;
+  }
+
+  .care-plan__codex-disclosure {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+
+  .care-plan__codex-disclosure small {
+    grid-column: auto;
   }
 
   .evidence-map {

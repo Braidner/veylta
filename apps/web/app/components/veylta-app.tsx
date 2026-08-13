@@ -6,6 +6,7 @@ import type {
   CarePlanCategory,
   CarePlanItem,
   CarePlanItemResponse,
+  CarePlanProposalResponse,
   CarePlanResponse,
   CodexRuntimeActionResponse,
   DocumentFactsResponse,
@@ -649,7 +650,8 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
           <h1 id="settings-title">Настройки сервера</h1>
           <p className="lede">
             Здесь администратор управляет локальным агентом, местом хранения и доступом людей.
-            Медицинские данные не покидают выбранное домашнее хранилище.
+            Оригиналы остаются в выбранном домашнем хранилище. Только подтверждённая выжимка
+            отправляется в Codex после отдельного согласия владельца.
           </p>
         </div>
         <div className="settings-heading__identity">
@@ -681,8 +683,9 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
               <p className="section-label">Codex runtime</p>
               <h2 id="codex-settings-title">Локальный агент без API-ключа</h2>
               <p className="codex-console__copy">
-                Veylta делегирует разбор документов установленному Codex CLI. Авторизацией владеет
-                сам Codex; приложение не читает и не копирует OAuth-токены.
+                Veylta запускает узкие задания через установленный Codex CLI, а app-server daemon
+                показывает готовность runtime. Авторизацией владеет сам Codex; приложение не читает
+                и не копирует OAuth-токены.
               </p>
             </div>
             <dl className="runtime-facts">
@@ -2526,7 +2529,10 @@ function carePlanErrorCopy(error: unknown): string {
     return "План этого профиля недоступен. Вернитесь к доступной карточке.";
   }
   if (error instanceof ApiError && error.status === 409) {
-    return "План уже изменился в другой вкладке. Обновите его и повторите действие.";
+    return "План или сводка уже изменились. Обновите страницу и повторите действие.";
+  }
+  if (error instanceof ApiError && error.status === 503) {
+    return "Codex не подготовил черновики. Проверьте в настройках вход через ChatGPT и повторите позже.";
   }
   if (error instanceof ApiError && [400, 422].includes(error.status)) {
     return "Проверьте название, примечание и дату действия.";
@@ -2561,6 +2567,8 @@ function CarePlanPanel({
   const formId = useId();
   const [state, setState] = useState<CarePlanState>({ kind: "loading" });
   const [formOpen, setFormOpen] = useState(false);
+  const [codexDisclosureOpen, setCodexDisclosureOpen] = useState(false);
+  const [codexPending, setCodexPending] = useState(false);
   const [pendingItemId, setPendingItemId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const creationAttempt = useRef<{ fingerprint: string; itemId: string } | null>(null);
@@ -2664,6 +2672,29 @@ function CarePlanPanel({
     }
   }
 
+  async function generateWithCodex(): Promise<void> {
+    setCodexPending(true);
+    setError(null);
+    try {
+      const response = await apiRequest<CarePlanProposalResponse>(
+        `${carePlanPath(familyId, profileId)}/proposals`,
+        {
+          method: "POST",
+          body: JSON.stringify({ acknowledgement: "send_confirmed_summary_to_codex" }),
+        },
+      );
+      setCodexDisclosureOpen(false);
+      await load();
+      if (response.items.length === 0) {
+        setError("Codex не нашёл безопасных черновиков для этой версии сводки.");
+      }
+    } catch (requestError) {
+      setError(carePlanErrorCopy(requestError));
+    } finally {
+      setCodexPending(false);
+    }
+  }
+
   const canWrite = state.kind === "ready" && state.response.canWrite && canWriteProfile;
 
   return (
@@ -2682,18 +2713,35 @@ function CarePlanPanel({
           </span>
         </div>
         {canWrite ? (
-          <button
-            className="button button--secondary"
-            type="button"
-            aria-expanded={formOpen}
-            aria-controls={`${formId}-form`}
-            onClick={() => {
-              setFormOpen((current) => !current);
-              setError(null);
-            }}
-          >
-            {formOpen ? "Закрыть" : "Добавить действие"}
-          </button>
+          <div className="care-plan__heading-actions">
+            <button
+              className="button button--secondary"
+              type="button"
+              aria-expanded={codexDisclosureOpen}
+              aria-controls={`${formId}-codex-disclosure`}
+              disabled={codexPending || state.response.evidence.latestSummary === null}
+              onClick={() => {
+                setCodexDisclosureOpen((current) => !current);
+                setFormOpen(false);
+                setError(null);
+              }}
+            >
+              {codexPending ? "Codex анализирует…" : "Предложения Codex"}
+            </button>
+            <button
+              className="button button--secondary"
+              type="button"
+              aria-expanded={formOpen}
+              aria-controls={`${formId}-form`}
+              onClick={() => {
+                setFormOpen((current) => !current);
+                setCodexDisclosureOpen(false);
+                setError(null);
+              }}
+            >
+              {formOpen ? "Закрыть" : "Добавить действие"}
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -2733,6 +2781,47 @@ function CarePlanPanel({
               <dd>{state.response.evidence.latestSummary?.version ?? "—"}</dd>
             </div>
           </dl>
+
+          {codexDisclosureOpen && canWrite ? (
+            <section
+              id={`${formId}-codex-disclosure`}
+              className="care-plan__codex-disclosure"
+              aria-labelledby={`${formId}-codex-title`}
+            >
+              <div>
+                <p className="section-label">Внешняя обработка · ChatGPT подписка</p>
+                <h4 id={`${formId}-codex-title`}>Передать подтверждённую сводку в Codex?</h4>
+                <p>
+                  Уйдёт только выжимка из сводки v{state.response.evidence.latestSummary?.version}:
+                  названия, значения, единицы, даты, код показателя, лаборатория и метки
+                  недостающего контекста. PDF, имена файлов, фрагменты, идентификаторы записей,
+                  пароли и OAuth-токены не передаются.
+                </p>
+              </div>
+              <div className="care-plan__codex-actions">
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={codexPending}
+                  onClick={() => void generateWithCodex()}
+                >
+                  {codexPending ? "Формируем черновики…" : "Да, сформировать черновики"}
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={codexPending}
+                  onClick={() => setCodexDisclosureOpen(false)}
+                >
+                  Отмена
+                </button>
+              </div>
+              <small>
+                Используется вход Codex CLI через ChatGPT. Каждый результат останется черновиком до
+                вашего решения.
+              </small>
+            </section>
+          ) : null}
 
           {formOpen && canWrite ? (
             <form id={`${formId}-form`} className="care-plan__form" onSubmit={createItem}>
@@ -2822,6 +2911,10 @@ function CarePlanPanel({
                                 <p>
                                   Сводка v{item.provenance.healthSummary.version} · правило{" "}
                                   {item.provenance.ruleVersion}
+                                </p>
+                                <p>
+                                  Модель {item.provenance.modelId} · runtime{" "}
+                                  {item.provenance.runtimeVersion}
                                 </p>
                                 <p>
                                   Не хватает контекста:{" "}

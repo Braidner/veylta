@@ -773,10 +773,10 @@ non-cacheable.
 Categories are `laboratory`, `clinician`, `nutrition`, `activity`, and
 `reminder`. A user-authored item is an explicit household decision and always
 has `origin: "user"`, `state: "accepted"`, and `provenance: null`; it is never
-presented as an evidence-derived recommendation. A future Codex proposal has
+presented as an evidence-derived recommendation. A Codex proposal has
 `origin: "codex"`, begins `proposed`, and must retain its immutable health
-summary selector, optional source observation, rule version, and disclosed
-`missingContext` until retained or dismissed.
+summary selector, optional source observation, proposal run, model, runtime,
+rule version, and disclosed `missingContext` until retained or dismissed.
 
 Successful reads append `profile.care_plan.opened` with only the contract
 version. Titles, notes, schedule, medical counts, and provenance never enter
@@ -815,6 +815,33 @@ or dismissed. Content and provenance are immutable and rows cannot be deleted.
 An exact retry after a successful update returns the current revision; a stale
 or invalid transition returns `409`/`422`. State audit events contain no title,
 note, schedule, or medical payload.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/care-plan/proposals`
+
+Explicitly sends only the latest confirmed health-summary projection to the
+model service through the locally installed Codex CLI: summary version and
+closed missing-context labels plus each selected source name/value/unit,
+canonical code, sample/result dates, laboratory, and its positional index. It
+never sends source PDF/image bytes, filenames, fragments, document/observation
+IDs, passwords, API keys, or OAuth tokens.
+The trusted-origin body is deliberately literal:
+
+```json
+{ "acknowledgement": "send_confirmed_summary_to_codex" }
+```
+
+Only a profile writer may run it. The production adapter requires `codex login
+status` to report ChatGPT authentication, removes Platform API-key variables,
+and invokes `codex exec --ephemeral` in an empty temporary directory with a
+read-only sandbox, local tools/extensions disabled, and a closed schema that
+can select at most one item in each of the five lanes.
+
+First completion returns `201`; the same summary/model/rule returns the stored
+run with `200`, `replayed: true`, and no second Codex invocation. Every item
+remains `proposed`. Audit contains only action and `home-care-plan/v1`, never
+medical values, prompt, output, model, or context. Runtime/subscription failure
+returns sanitized `503 CODEX_UNAVAILABLE`; malformed output returns `503
+OUTPUT_INVALID`.
 
 ## Evidence-backed profile summary (Task 20)
 
@@ -1242,7 +1269,7 @@ retry/dead-letter transition with exactly one payload-free event in the same
 SQLite transaction. It is attributed to the uploader, correlated as the bounded
 `worker:<jobId>`, and contains only `contractVersion`, `automated`, `outcome`,
 and (for failure) a sanitized error code. Fact review,
-confirmation/correction/rejection, and future agent/provider egress have their
+confirmation/correction/rejection, and Codex/provider egress have their
 own events. Event metadata
 never includes filenames, file content, page text, source fragments, medical
 values, credentials, or signed URLs. Worker stdout carries only a processing

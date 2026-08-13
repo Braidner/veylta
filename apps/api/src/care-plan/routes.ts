@@ -1,4 +1,8 @@
-import type { CarePlanItemCreateRequest, CarePlanItemStateRequest } from "@veylta/contracts";
+import type {
+  CarePlanItemCreateRequest,
+  CarePlanItemStateRequest,
+  CarePlanProposalRequest,
+} from "@veylta/contracts";
 import type { FastifyInstance } from "fastify";
 import type { FamilyService } from "../family/family-service.js";
 import {
@@ -8,7 +12,7 @@ import {
   requireTrustedOrigin,
   sendDomainError,
 } from "../http/route-helpers.js";
-import type { CarePlanService } from "./care-plan-service.js";
+import { CarePlanProposalGenerationError, type CarePlanService } from "./care-plan-service.js";
 
 interface ProfileParams {
   familyId: string;
@@ -59,6 +63,48 @@ export function registerCarePlanRoutes(
       try {
         reply.send(await service.get(actor, request.params, request.id));
       } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: ProfileParams; Body: CarePlanProposalRequest }>(
+    "/v1/families/:familyId/profiles/:profileId/care-plan/proposals",
+    {
+      schema: {
+        params: profileParamsSchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["acknowledgement"],
+          properties: {
+            acknowledgement: {
+              type: "string",
+              const: "send_confirmed_summary_to_codex",
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      privateResponse(reply);
+      if (!requireTrustedOrigin(origins, request, reply)) return;
+      const actor = await requireActor(family, request, reply);
+      if (actor === null) return;
+      try {
+        const response = await service.generateProposals(actor, request.params, request.id);
+        reply.code(response.replayed ? 200 : 201).send(response);
+      } catch (error) {
+        if (error instanceof CarePlanProposalGenerationError) {
+          reply.code(503).send({
+            error: {
+              code: error.code,
+              message: "Codex could not create bounded care-plan drafts.",
+              correlationId: request.id,
+            },
+          });
+          return;
+        }
         if (!sendDomainError(error, request, reply)) throw error;
       }
     },

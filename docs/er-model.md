@@ -53,6 +53,10 @@ erDiagram
   PatientProfile ||--o{ CarePlanItem : plans
   HealthSummary ||--o{ CarePlanItem : supports_proposal
   Observation ||--o{ CarePlanItem : may_support
+  PatientProfile ||--o{ CarePlanProposalRun : requests
+  HealthSummary ||--o{ CarePlanProposalRun : exact_input
+  CarePlanProposalRun ||--o{ CarePlanCodexProvenance : produces
+  CarePlanItem ||--o| CarePlanCodexProvenance : binds
 
   ExtractionRun ||--o{ AgentRun : may_use
   Family ||--o{ AuditEvent : records
@@ -85,7 +89,8 @@ claim that they are migrated in the first slice.
 - `created_at`, `updated_at`
 
 An empty installation creates the first `admin` account exactly once. Passwords
-and Codex credentials are never stored in `User`, `Session`, or audit metadata.
+and Codex credentials are never stored in `User`, `Session`, proposal runs, or
+audit metadata.
 Every administrator account has owner membership in the single home family;
 every regular account has adult membership and one self-linked adult profile.
 System role does not create a second profile permission store.
@@ -418,9 +423,12 @@ confirmed `Observation` rows, their optional source range, reviewer, and
 document/page provenance. Task 20 adds only `HealthSummary` and
 `HealthSummaryEvidence`, used by `health-summary/v1` and its Task 21 immutable
 version index. Task 33a adds retained `CarePlanItem` rows with profile-scoped
-access, replay-safe revisions, and immutable proposal provenance. Add broader consent
-capabilities, extended clinical entities, recommendations, and agent runs only
-with the slice that uses and tests them.
+access and replay-safe revisions. Task 33b adds retained
+`CarePlanProposalRun` plus `CarePlanCodexProvenance`: the exact
+profile/summary/model/rule result is single-run, replayable, and every Codex
+item is bound to that run. Add broader consent capabilities, extended clinical
+entities, and clinically reviewed recommendations only with the slice that uses
+and tests them.
 
 ## Database invariants to test
 

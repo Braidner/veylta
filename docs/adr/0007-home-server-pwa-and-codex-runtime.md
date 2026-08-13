@@ -34,13 +34,17 @@ API key or OAuth refresh token.
    connection, and a guarded storage-location migration. Changing the storage
    path must copy, checksum-verify, switch atomically, and retain recovery state;
    it must never reinterpret a typed path as proof that data moved safely.
-5. The optional Codex adapter starts or connects to local `codex app-server`.
-   Authentication remains owned by `codex login` and the Codex home directory.
-   Veylta stores only non-secret connection preferences and health/status data;
-   it never parses, copies, logs, or persists Codex OAuth credentials.
-6. Agent work is explicit, least-privilege, auditable, and profile-scoped. Raw
-   documents may leave the home server only after a user-visible disclosure and
-   action. Human review remains mandatory before proposals become observations.
+5. The optional Codex adapter starts/checks local `codex app-server` for runtime
+   status and executes bounded one-shot jobs through `codex exec --ephemeral`.
+   Authentication remains owned by `codex login`; proposal execution requires
+   ChatGPT authentication and strips Platform API-key variables. Veylta stores
+   only non-secret status and run provenance; it never parses, copies, logs, or
+   persists Codex OAuth credentials.
+6. Agent work is explicit, least-privilege, auditable, and profile-scoped. The
+   delivered job sends only the disclosed confirmed projection and never raw
+   documents. Any later widening requires a separate user-visible disclosure
+   and action. Human acceptance remains mandatory before a proposal becomes a
+   household plan decision.
 
 ## Consequences
 

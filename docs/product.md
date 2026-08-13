@@ -139,8 +139,13 @@ The first slice proves one complete and safe path with synthetic data:
 20. An authorized profile owner keeps a household care plan split into
     analyses, clinicians, nutrition, activity, and reminders. User-authored
     actions are explicit decisions, not recommendations inferred from medical
-    evidence. A reserved Codex-proposal shape requires immutable provenance and
-    remains unaccepted until a person decides (Task 33a, delivered).
+    evidence. On a separate acknowledged action, Codex may select at most one
+    bounded draft in each existing lane from the latest confirmed summary. The
+    UI discloses ChatGPT egress before the call; no original bytes, filenames,
+    fragments, credentials, or OAuth tokens are sent. Every draft binds its
+    immutable summary, model/runtime/rule, optional source observation, and
+    missing context, and remains unaccepted until a person decides (Tasks 33a
+    and 33b, delivered).
 
 The implemented synthetic record path reaches step 20, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
@@ -187,6 +192,9 @@ independently reviewed.
   administrator/owner or self-linked user can create or change its actions.
 - A person-authored plan item survives reload and is never labelled as a Codex
   or evidence-derived recommendation.
+- A Codex proposal requires literal egress acknowledgement, refuses API-key
+  authentication, is replay-safe for one exact summary/model/rule, exposes its
+  immutable provenance, and remains only a proposal until a person accepts it.
 - A failed confirmation produces no partial medical record.
 - Job retry produces no duplicate facts or observations.
 - All access and state-changing actions are audited without logging medical
@@ -214,7 +222,7 @@ independently reviewed.
 ## Full MVP direction
 
 Later slices may add a broader document classifier and extraction schema,
-Codex-authored plan drafts, clinically reviewed recommendations, full role/consent management,
+clinically reviewed recommendations, full role/consent management,
 production export, account deletion, and backup/restore. The local
 demo now supports one-time adult and caregiver joins. An adult receives one
 self-linked profile; a caregiver receives no profile until an owner explicitly

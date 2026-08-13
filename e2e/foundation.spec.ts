@@ -12,7 +12,8 @@ test("the runnable foundation exposes web, API, worker, and SQLite readiness", a
   await expect(page.getByText("API и база данных готовы")).toBeVisible();
   await expect(page.getByLabel("Электронная почта")).toHaveCount(0);
 
-  const worker = await request.get("http://127.0.0.1:4302/readyz");
+  const workerPort = process.env.PLAYWRIGHT_WORKER_PORT ?? "4402";
+  const worker = await request.get(`http://127.0.0.1:${workerPort}/readyz`);
   expect(worker.ok()).toBe(true);
   await expect(worker.json()).resolves.toMatchObject({ status: "ok", service: "worker" });
 });

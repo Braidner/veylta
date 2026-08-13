@@ -2,6 +2,7 @@ import { createAccountService } from "./accounts/account-service.js";
 import { registerAccountRoutes } from "./accounts/routes.js";
 import { buildApp } from "./app.js";
 import { createCarePlanService } from "./care-plan/care-plan-service.js";
+import { createCodexCarePlanGenerator } from "./care-plan/codex-care-plan-generator.js";
 import { registerCarePlanRoutes } from "./care-plan/routes.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, databaseReadiness } from "./database/pool.js";
@@ -43,9 +44,21 @@ registerHomeSettingsRoutes(
   createHomeSettingsService(database, storage, createCodexRuntimeProbe()),
   { allowedMutationOrigins: [config.webOrigin] },
 );
-registerCarePlanRoutes(app, familyService, createCarePlanService(database), {
-  allowedMutationOrigins: [config.webOrigin],
-});
+registerCarePlanRoutes(
+  app,
+  familyService,
+  createCarePlanService(database, {
+    generator: createCodexCarePlanGenerator({
+      modelId: config.codexCarePlanModel,
+      timeoutMs: config.codexCarePlanTimeoutMs,
+    }),
+    leaseDurationMs: config.codexCarePlanTimeoutMs + 30_000,
+    modelId: config.codexCarePlanModel,
+  }),
+  {
+    allowedMutationOrigins: [config.webOrigin],
+  },
+);
 registerDocumentRoutes(
   app,
   familyService,

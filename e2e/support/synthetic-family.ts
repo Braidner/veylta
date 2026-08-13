@@ -1,5 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
+const webOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_WEB_PORT ?? "4400"}`;
+
 interface SyntheticFamilyNames {
   owner: string;
   family: string;
@@ -21,7 +23,7 @@ export async function createSyntheticFamily(
   names: SyntheticFamilyNames,
 ): Promise<string> {
   const response = await page.request.post("/health-api/v1/demo/registrations", {
-    headers: { origin: "http://127.0.0.1:4300" },
+    headers: { origin: webOrigin },
     data: {
       displayName: names.owner,
       familyName: names.family,
@@ -41,7 +43,7 @@ export async function acceptSyntheticInvitation(
   input: { code: string; displayName: string; profileName?: string },
 ): Promise<DemoInvitationAcceptResponse> {
   const response = await page.request.post("/health-api/v1/demo/invitations/accept", {
-    headers: { origin: "http://127.0.0.1:4300" },
+    headers: { origin: webOrigin },
     data: input,
   });
   expect(response.status()).toBe(201);

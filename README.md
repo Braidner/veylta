@@ -26,10 +26,11 @@ settings surface manages Codex connection status, document-storage location,
 local administrator/user accounts, and per-profile access.
 
 The optional Codex integration follows Hermes' proven local-runtime pattern:
-Veylta talks to a locally installed `codex app-server`, while `codex login`
-continues to own the ChatGPT subscription session. Veylta never reads, copies,
-or persists Codex OAuth tokens. The integration remains isolated behind a port
-because app-server is an experimental interface. See
+Veylta checks and starts a locally installed `codex app-server` daemon, while
+bounded proposal jobs run through `codex exec --ephemeral` using the same
+ChatGPT subscription session owned by `codex login`. Veylta never reads, copies,
+or persists Codex OAuth tokens or API keys, and refuses proposals unless Codex
+confirms ChatGPT authentication. See
 [ADR 0007](docs/adr/0007-home-server-pwa-and-codex-runtime.md).
 
 ## Project status
@@ -82,9 +83,10 @@ The full first slice remains deliberately narrow:
     restore it later (Task 24, delivered).
 17. keep one profile-scoped household care plan for analyses, clinicians,
     nutrition, activity, and reminders. A person-authored item is visibly a
-    decision, not a source-derived recommendation; the model also reserves a
-    provenance-locked `proposed` state for a later Codex adapter (Task 33a,
-    delivered).
+    decision, not a source-derived recommendation. After a separate disclosure,
+    Codex may select bounded drafts from the latest confirmed summary; every
+    draft is provenance-locked and remains `proposed` until a person decides
+    (Tasks 33a/33b, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

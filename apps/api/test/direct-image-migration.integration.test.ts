@@ -43,6 +43,7 @@ test("direct-image MIME provenance blocks a lossy schema rollback", async () => 
       );
     });
 
+    assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
     assert.equal(await migrateDown(database), "0014_home_care_plan");
     assert.equal(await migrateDown(database), "0013_home_settings");
     assert.equal(await migrateDown(database), "0012_app_accounts");

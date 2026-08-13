@@ -32,6 +32,14 @@ function integer(name: string, fallback: number): number {
   return parsed;
 }
 
+function boundedInteger(name: string, fallback: number, maximum: number): number {
+  const parsed = integer(name, fallback);
+  if (parsed > maximum) {
+    throw new Error(`${name} must not exceed ${maximum}`);
+  }
+  return parsed;
+}
+
 function boolean(name: string, fallback: boolean): boolean {
   const value = process.env[name];
   if (value === undefined) return fallback;
@@ -65,6 +73,14 @@ function databasePath(): string {
     throw new Error("DATABASE_PATH must point to a persistent SQLite file");
   }
   return resolve(projectRoot, configured);
+}
+
+function codexModel(): string {
+  const value = process.env.CODEX_CARE_PLAN_MODEL ?? "gpt-5.4-mini";
+  if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(value)) {
+    throw new Error("CODEX_CARE_PLAN_MODEL must be a canonical Codex model id");
+  }
+  return value;
 }
 
 export type ObjectStorageRuntimeConfig =
@@ -138,6 +154,8 @@ export interface RuntimeConfig {
   apiHost: string;
   apiPort: number;
   databasePath: string;
+  codexCarePlanModel: string;
+  codexCarePlanTimeoutMs: number;
   demoRegistrationEnabled: boolean;
   maxDocumentBytes: number;
   objectStorage: ObjectStorageRuntimeConfig;
@@ -165,6 +183,8 @@ export function loadConfig(): RuntimeConfig {
   return {
     apiHost,
     apiPort: integer("API_PORT", 4301),
+    codexCarePlanModel: codexModel(),
+    codexCarePlanTimeoutMs: boundedInteger("CODEX_CARE_PLAN_TIMEOUT_MS", 120_000, 600_000),
     databasePath: databasePath(),
     demoRegistrationEnabled,
     maxDocumentBytes,

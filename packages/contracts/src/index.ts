@@ -730,11 +730,14 @@ export type CarePlanItemState = (typeof CARE_PLAN_ITEM_STATES)[number];
  * provenance and are never presented as source-derived recommendations.
  */
 export interface CarePlanProvenance {
+  readonly proposalRunId: string;
   readonly healthSummary: {
     readonly id: string;
     readonly version: number;
   };
   readonly sourceObservationId: string | null;
+  readonly modelId: string;
+  readonly runtimeVersion: string;
   readonly ruleVersion: string;
   readonly missingContext: readonly string[];
 }
@@ -788,6 +791,33 @@ export interface CarePlanItemResponse {
   readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
   readonly profileId: string;
   readonly item: CarePlanItem;
+}
+
+export interface CarePlanProposalRequest {
+  /** Explicit acknowledgement that the confirmed summary is sent to the Codex model service. */
+  readonly acknowledgement: "send_confirmed_summary_to_codex";
+}
+
+export interface CarePlanProposalRun {
+  readonly id: string;
+  readonly healthSummary: {
+    readonly id: string;
+    readonly version: number;
+  };
+  readonly modelId: string;
+  readonly runtimeVersion: string;
+  readonly ruleVersion: string;
+  readonly proposalCount: number;
+  readonly completedAt: string;
+}
+
+export interface CarePlanProposalResponse {
+  readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
+  readonly profileId: string;
+  /** True when the exact summary/model/rule result was already stored. */
+  readonly replayed: boolean;
+  readonly run: CarePlanProposalRun;
+  readonly items: readonly CarePlanItem[];
 }
 
 /**

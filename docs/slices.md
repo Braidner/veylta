@@ -565,7 +565,7 @@ Commit intent: `feat: add household care plan`
 - Separate visible sections for analyses, clinician specialties, nutrition,
   activity, and reminders, with person-authored dated actions persisted in
   SQLite and protected by the profile access boundary.
-- `home-care-plan/v1` distinguishes user decisions from future Codex proposals;
+- `home-care-plan/v1` distinguishes user decisions from Codex proposals;
   the latter cannot exist without an immutable health-summary selector, rule
   version, and disclosed missing context.
 - No opaque score, diagnosis, treatment, false urgency, or silent conversion of
@@ -575,14 +575,20 @@ Commit intent: `feat: add household care plan`
 
 Commit intent: `feat: draft care actions with codex`
 
+Status: delivered.
+
 - Explicit administrator-configured Codex OAuth/runtime connection with no API
   key or copied token in Veylta.
-- Profile owner asks for a draft; selected evidence and egress are disclosed
-  before the run, and output is constrained to the five existing plan lanes.
+- Profile owner asks for a draft; the exact confirmed projection fields and
+  ChatGPT egress are disclosed before the run, and output is constrained to the
+  five existing plan lanes.
 - Every draft remains `proposed` until a person accepts or dismisses it. Each
   proposal retains summary/source provenance, model/rule version, and missing
   context; medical diagnosis, treatment, triage, and fabricated certainty are
   rejected before persistence.
+- The exact summary/model/rule result replays from SQLite without a second
+  Codex call. The adapter uses an empty temporary directory, read-only sandbox,
+  ephemeral session, closed output schema, and disabled shell/browser/plugins.
 
 ## Later MVP slices
 
@@ -600,6 +606,6 @@ commit chain:
 5. Portable export, controlled deletion, backup, and verified restore.
 6. FHIR R4 mappings and Bundle import/export at the system edge.
 
-The complete MVP is not part of the first vertical slice. External OCR/LLM,
-clinical advice, and real-data readiness remain off until their production gates
-are met.
+The complete MVP is not part of the first vertical slice. External OCR, broader
+LLM access beyond the delivered bounded Codex proposal job, clinical advice,
+and real-data readiness remain off until their production gates are met.
