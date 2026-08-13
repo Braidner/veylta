@@ -220,6 +220,21 @@ export function registerFamilyRoutes(
     },
   );
 
+  app.get<{ Params: FamilyParams }>(
+    "/v1/families/:familyId/archived-profiles",
+    { schema: { params: familyParamsSchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        reply.send(await service.getArchivedProfiles(actor, request.params.familyId, request.id));
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
   app.get<{ Params: ProfileParams }>(
     "/v1/families/:familyId/profiles/:profileId/consent-grants",
     { schema: { params: profileParamsSchema } },
@@ -322,6 +337,38 @@ export function registerFamilyRoutes(
           request.id,
         );
         reply.code(201).send({ contractVersion: FAMILY_PROFILE_CONTRACT_VERSION, profile });
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: ProfileParams }>(
+    "/v1/families/:familyId/profiles/:profileId/archive",
+    { schema: { params: profileParamsSchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        reply.send(await service.archiveProfile(actor, request.params, request.id));
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.post<{ Params: ProfileParams }>(
+    "/v1/families/:familyId/profiles/:profileId/restore",
+    { schema: { params: profileParamsSchema } },
+    async (request, reply) => {
+      privateResponse(reply);
+      if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+      const actor = await requireActor(service, request, reply);
+      if (actor === null) return;
+      try {
+        reply.send(await service.restoreProfile(actor, request.params, request.id));
       } catch (error) {
         if (!sendDomainError(error, request, reply)) throw error;
       }

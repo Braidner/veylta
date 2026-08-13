@@ -117,6 +117,10 @@ required. Shared code is extracted only when two real consumers need it.
   `synthetic-profile-export/v1` TAR with every current source and confirmed
   observation for one profile. It rejects profiles beyond ten synthetic sources
   before emitting bytes; it remains a local artifact, not restore/backup logic.
+- Lets only a family owner archive a non-last profile through an inline explicit
+  confirmation and owner-only restore list. Archive hides the profile from
+  active navigation and all source access; it never instructs the client to
+  delete evidence or calls a backup/restore facility.
 - Presents an authorized catalog of known synthetic indicators and, only for an
   exact code/unit series, a compact numeric chart and deterministic source-value
   difference. The timeline and source links remain available beside the chart.
@@ -213,6 +217,15 @@ sequenceDiagram
   Note over B,D: Task 6 review decisions create optional observations; Task 7 reads confirmed observations with re-authorized source links
 ```
 
+When an owner archives a profile, the API transaction sets only
+`patient_profiles.archived_at` and appends a payload-free audit event. Every
+profile/document authorization query requires an active profile; candidate job
+claims and the worker source lookup apply the same predicate. A completion
+rechecks the predicate inside its write transaction, so an archive racing an
+in-flight worker cannot append pages, facts, or a successful job outcome after
+the profile becomes inactive. Restore clears only that timestamp; durable,
+unmodified queued work becomes eligible again.
+
 The storage/database boundary cannot provide a single distributed transaction.
 The upload path therefore stages and validates the stream, enters an SQLite
 `BEGIN IMMEDIATE` write transaction, rechecks request/blob state, finalizes the
@@ -290,6 +303,10 @@ server-side `actorUserId`. Authorization then checks:
 3. the actor owns the profile, manages their self-linked profile, or holds the
    valid capability required for the requested operation;
 4. the operation is allowed in the current resource state.
+
+An archived profile is not an active resource state for profile, document,
+history, export, or worker processing. Archive and restore require the owner
+role, use the trusted Origin mutation gate, and write payload-free audits.
 
 Queries include the authorized family boundary at their root. Cross-family and
 otherwise inaccessible resource IDs return `404` to avoid existence disclosure.

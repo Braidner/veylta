@@ -120,6 +120,12 @@ invitation creates no profile and no access to another profile.
 The first slice needs owner-created profiles. Broader demographic/clinical data
 is added only when a real use case needs it.
 
+`archived_at` is the current reversible archive state. Only a family owner can
+set or clear it through the audited `profile-archive/v1` routes; the last active
+profile cannot be archived. Active authorization and worker claims require it
+to be null, while documents, blobs, raw facts, observations, jobs, and audits
+remain immutable and retained. It is not a deletion, backup, or restore model.
+
 ### ProfileConsentGrant
 
 - `id`, `family_id`, `patient_profile_id`
@@ -390,6 +396,8 @@ with the slice that uses and tests them.
 - Foreign keys cannot cross family boundaries; use composite tenant-aware keys
   where needed.
 - A worker cannot claim or persist a job under a different family.
+- A worker cannot claim or persist extraction output for an archived profile;
+  restoring only its `archived_at` makes its existing durable job eligible again.
 - One available document version maps to one immutable storage key/checksum.
 - Job and extraction dedupe constraints survive concurrent retries.
 - One extracted fact has one immutable final review decision and cannot create

@@ -1362,19 +1362,17 @@ async function documentRow(
             b.storage_key,
             v.id AS document_version_id
      FROM documents d
+     JOIN patient_profiles p
+       ON p.family_id = d.family_id
+      AND p.id = d.patient_profile_id
+      AND p.archived_at IS NULL
      JOIN family_memberships m
        ON m.family_id = d.family_id
       AND m.user_id = $4
       AND m.status = 'active'
       AND (
         m.role = 'owner'
-        OR (m.role = 'adult_member' AND d.patient_profile_id = (
-          SELECT p.id
-            FROM patient_profiles p
-           WHERE p.family_id = d.family_id
-             AND p.id = d.patient_profile_id
-             AND p.linked_user_id = m.user_id
-        ))
+        OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
         OR (
           $5 = 'read'
           AND m.role IN ('adult_member', 'caregiver')

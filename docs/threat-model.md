@@ -91,6 +91,10 @@ the family's trust boundary merely because it exposes an API.
   opaque trusted key.
 - Original bytes are immutable. Duplicate detection never crosses tenant
   boundaries and never automatically deletes content.
+- An owner may reversibly archive a non-last profile, but archive is not
+  deletion: active profile/document authorization and worker claims reject it,
+  while the immutable source graph remains retained until a separately designed
+  production deletion/retention workflow exists.
 - Deterministic parsing has no network egress. OCR is local: only after a missing
   PDF text layer, or directly for PNG/JPEG after signature and header pixel-cap
   checks. It remains bounded before rendering/recognition and accepted only through

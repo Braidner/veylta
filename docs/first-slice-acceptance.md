@@ -1,7 +1,7 @@
 # First-slice acceptance evidence
 
 **Recorded:** 2026-08-13
-**Code baseline:** local Task 23 worktree atop `1407ed7 feat: compare immutable summary source sets`
+**Code baseline:** local Task 24 worktree atop `3e0340f feat: export complete synthetic profile archive`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
@@ -19,6 +19,7 @@ local original + SHA-256 → deterministic extraction → explicit review →
 confirmed observation → source-first history → immutable non-clinical summary →
 immutable summary-version selection → explicit source-set comparison →
 re-authorized source download → bounded complete synthetic profile export
+→ reversible owner-only profile archive/restore
 ```
 
 The path is intentionally narrow. The parser accepts one explicit synthetic
@@ -49,6 +50,7 @@ fact and represents the user-confirmed source value separately.
 | Task 21 worktree | Authorized newest-first immutable summary-version index and exact historical snapshot read. |
 | Task 22 worktree | Authorized immutable summary source-set comparison without a health assessment. |
 | Task 23 worktree | Owner/self-only bounded complete synthetic profile TAR with every current source or a fail-closed cap result. |
+| Task 24 worktree | Owner-only reversible profile archive that hides active sources and pauses worker claims without deleting evidence. |
 
 ## Fresh local verification
 
@@ -61,11 +63,11 @@ its output.
 | `pnpm license:check` | Passed: 8 license groups and 5 exact reviewed exceptions. |
 | `pnpm lint` | Passed: Biome checked 83 files; no fixes applied. |
 | `pnpm typecheck` | Passed: contracts, API, and web typechecks completed. |
-| `pnpm test` | Passed: 93 unit/contract tests (11 contracts, 82 API), 0 failed. |
+| `pnpm test` | Passed: 94 unit/contract tests (11 contracts, 83 API), 0 failed. |
 | `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0011_health_summaries`. |
-| `pnpm test:integration` | Passed: 46 isolated SQLite integration tests, 0 failed. |
+| `pnpm test:integration` | Passed: 48 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
-| `pnpm test:e2e` | Passed: 20 Chromium browser tests, 0 failed, including immutable current/historical summary selection, direct synthetic PNG upload/OCR/download, and owner/self source-snapshot/profile-export downloads. |
+| `pnpm test:e2e` | Passed: 21 Chromium browser tests, 0 failed, including owner-only profile archive/restore. |
 | `git diff --check` | Passed after this evidence documentation was prepared. |
 
 `tsx` needs a local IPC socket on this host, so its test and migration commands
@@ -106,6 +108,7 @@ gates on every push and pull request.
 | Profile landing view stays source-first | Integration tests cover bounded overview projections, payload-free audit, non-disclosing denial, and revocable read access; browser upload flow shows the review queue after returning to the profile. |
 | Local synthetic evidence snapshot is bounded and non-disclosing | Integration tests cover checksum-verified archive bytes, owner/self-only authorization, `profile.read` denial, five-source cap, cross-family denial, and payload-free audit; the browser flow downloads the TAR attachment. |
 | Complete synthetic profile export never silently drops a source | Integration tests cover every current source and confirmed observation below the ten-source cap, `profile.read` denial, a payload-free audit, and a fail-closed over-cap response; the browser flow downloads the separate TAR attachment. |
+| Archive hides active access without deleting evidence | Integration tests cover owner/Origin/last-profile/non-disclosure boundaries, direct source `404`, worker pause and resume after restore, preserved profile row, and payload-free audit; the Chromium flow covers inline confirmation and restoration. |
 | Local evidence snapshot can be checked without extraction | Unit tests accept PDF/PNG/JPEG bundles and confirmed-observation provenance; they fail closed on checksum mutation, traversal, unsupported TAR fields, non-zero padding, and manifest drift. The file command emits counts only. |
 | Caregiver remains default-deny until profile consent | Integration and browser tests `a caregiver joins without an implicit profile and reads only an explicitly shared profile` / `a caregiver starts without a profile and sees only a profile explicitly shared by the owner`; SQLite trigger regression prevents caregiver linkage to a personal profile. |
 | Failed writes leave no partial medical record | Integration test `an audit failure rolls back review decision, observation, reference range, and idempotency record together`; processing tests cover invalid-output rollback. |
@@ -143,8 +146,8 @@ medical data. In particular, it does **not** deliver:
 - real-user onboarding, account recovery, production authentication, full
   adult/caregiver consent management, a public deployment, or a compliance
   certification;
-- multi-host/high-availability persistence, backup/restore, production export, controlled
-  deletion, or a production migration/operations plan for real records;
+- multi-host/high-availability persistence, backup/restore, production export,
+  controlled account/data deletion, retention, or a production migration/operations plan for real records;
 - presigned delivery, cloud OCR, LLM extraction, LLM analysis, provider egress,
   or training on user data;
 - clinical summaries, clinical comparable-measurement trends, health scoring,

@@ -54,6 +54,10 @@ The full first slice remains deliberately narrow:
 15. explicitly inspect which confirmed source records entered or did not enter
     two saved summary versions, without turning that difference into a health
     assessment (Task 22, delivered).
+16. reversibly archive a non-last profile as the family owner, immediately
+    hiding its sources from active navigation and worker claims without deleting
+    originals, extracted facts, observations, or storage objects; the owner can
+    restore it later (Task 24, delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, clinical recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
@@ -172,6 +176,15 @@ disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.
 `DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
 state-changing requests require the exact configured `WEB_ORIGIN`.
+
+An owner can also use the explicit `profile-archive/v1` workflow to hide a
+non-last active profile. Archiving changes only the profile's reversible access
+state: it removes the profile and every direct document read from active
+authorization, and pending worker jobs are not claimed until the owner restores
+the profile. It does not delete or rewrite immutable sources, raw facts,
+confirmed observations, audit events, or storage objects. This narrow local
+feature is not account deletion, retention management, backup, disaster
+recovery, or production restoration.
 
 Once every fact in an extraction run has its explicit final decision, the
 profile can also open `health-summary/v1`. It is an immutable, bounded snapshot

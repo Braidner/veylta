@@ -19,6 +19,11 @@ export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bu
  * backup, restore, or real-data portability format.
  */
 export const SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION = "synthetic-profile-export/v1" as const;
+/**
+ * A reversible owner-only archive workflow for local demo profiles. Archiving
+ * hides a profile and its sources from active access; it never deletes them.
+ */
+export const PROFILE_ARCHIVE_CONTRACT_VERSION = "profile-archive/v1" as const;
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
 /**
  * The complete local profile export fails before sending bytes if a profile
@@ -131,6 +136,31 @@ export interface ProfileListResponse {
 export interface ProfileCreateResponse {
   contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
   profile: PatientProfileSummary;
+}
+
+export interface ProfileArchiveResponse {
+  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
+  readonly profileId: string;
+  readonly archivedAt: string;
+}
+
+export interface ProfileRestoreResponse {
+  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
+  readonly profileId: string;
+  readonly restoredAt: string;
+}
+
+export interface ArchivedProfileSummary {
+  readonly id: string;
+  readonly familyId: string;
+  readonly displayName: string;
+  readonly kind: PatientProfileKind;
+  readonly archivedAt: string;
+}
+
+export interface ArchivedProfileListResponse {
+  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
+  readonly items: readonly ArchivedProfileSummary[];
 }
 
 /**

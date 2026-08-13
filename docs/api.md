@@ -134,6 +134,52 @@ each currently granted `profile.read` profile, marked as `granted_read`; a
 caregiver receives only those explicitly granted profiles. Both remain
 default-deny for every other profile.
 
+### Profile archive and restore
+
+`profile-archive/v1` is an owner-only, reversible local-demo access workflow.
+It does not delete a profile, a source document, a blob, a raw extracted fact,
+an observation, an audit event, or an extraction job.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/archive`
+
+Requires the active owner and the configured trusted `Origin`; it accepts no
+body. The profile must be active and the family must retain at least one other
+active profile. On success it sets the profile's archive timestamp, returns
+`200`, and writes a payload-free `profile.archived` audit event with only the
+`profile-archive/v1` marker:
+
+```json
+{
+  "contractVersion": "profile-archive/v1",
+  "profileId": "profile_placeholder",
+  "archivedAt": "2026-08-13T00:00:00.000Z"
+}
+```
+
+The archived profile is removed from `/v1/session` and active profile lists.
+Every profile/document/history read for it uses the usual non-disclosing `404`.
+The worker does not claim a queued job for it, and an in-flight completion is
+rejected before it can persist extraction output. The original job remains
+durable and can resume only after restore. Missing, already archived,
+cross-family, adult-member, and caregiver selectors do not reveal state;
+attempting to archive the last active profile returns `409`.
+
+### `GET /v1/families/{familyId}/archived-profiles`
+
+Owner-only `profile-archive/v1` list for the family. It returns each archived
+profile's id, display name, kind, and `archivedAt`, newest first, and records
+only a payload-free `family.archived_profiles.opened` audit marker. Other roles
+and another family receive the same non-disclosing `404`.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/restore`
+
+Requires the active owner and trusted `Origin`; it accepts no body. It clears
+only `archived_at`, returns `200` with `{ contractVersion, profileId,
+restoredAt }`, and writes a payload-free `profile.restored` event. Existing
+sources and jobs are neither copied nor modified; an eligible queued job may be
+claimed again. A uniqueness conflict with a now-active linked profile returns
+`409`; inaccessible or non-archived selectors remain non-disclosing.
+
 ### `POST /v1/families/{familyId}/invitations`
 
 Local-demo only; requires the active owner session plus a trusted `Origin` and

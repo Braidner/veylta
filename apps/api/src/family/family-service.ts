@@ -1,5 +1,7 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
+  type ArchivedProfileListResponse,
+  type ArchivedProfileSummary,
   AUDIT_LOG_CONTRACT_VERSION,
   type DemoInvitationAcceptRequest,
   type DemoInvitationAcceptResponse,
@@ -18,10 +20,13 @@ import {
   type PatientProfileAccess,
   type PatientProfileKind,
   type PatientProfileSummary,
+  PROFILE_ARCHIVE_CONTRACT_VERSION,
   PROFILE_CONSENT_CONTRACT_VERSION,
+  type ProfileArchiveResponse,
   type ProfileConsentGrant,
   type ProfileConsentGrantCreateResponse,
   type ProfileConsentGrantListResponse,
+  type ProfileRestoreResponse,
   type SessionResponse,
 } from "@veylta/contracts";
 import {
@@ -71,6 +76,11 @@ export interface FamilyService {
     input: { displayName: string; kind: PatientProfileKind },
     correlationId: string,
   ): Promise<PatientProfileSummary>;
+  archiveProfile(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<ProfileArchiveResponse>;
   createInvitation(
     actor: SessionActor,
     familyId: string,
@@ -94,6 +104,11 @@ export interface FamilyService {
     query: FamilyAuditLogQuery,
     correlationId: string,
   ): Promise<FamilyAuditLogResponse>;
+  getArchivedProfiles(
+    actor: SessionActor,
+    familyId: string,
+    correlationId: string,
+  ): Promise<ArchivedProfileListResponse>;
   getProfileConsentGrants(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -115,6 +130,11 @@ export interface FamilyService {
     scope: { familyId: string; profileId: string; grantId: string },
     correlationId: string,
   ): Promise<void>;
+  restoreProfile(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<ProfileRestoreResponse>;
 }
 
 interface MembershipRow {
@@ -131,6 +151,14 @@ interface ProfileRow {
   kind: PatientProfileKind;
   access: PatientProfileAccess;
   created_at: string;
+}
+
+interface ArchivedProfileRow {
+  id: string;
+  family_id: string;
+  display_name: string;
+  kind: PatientProfileKind;
+  archived_at: string;
 }
 
 interface ConsentMemberRow {
@@ -264,6 +292,16 @@ function profileSummary(row: ProfileRow): PatientProfileSummary {
     kind: row.kind,
     access: row.access,
     createdAt: new Date(row.created_at).toISOString(),
+  };
+}
+
+function archivedProfileSummary(row: ArchivedProfileRow): ArchivedProfileSummary {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    displayName: row.display_name,
+    kind: row.kind,
+    archivedAt: new Date(row.archived_at).toISOString(),
   };
 }
 
@@ -455,6 +493,57 @@ export function createFamilyService(
         return row;
       });
       return profileSummary(created);
+    },
+
+    async archiveProfile(actor, requestedScope, correlationId) {
+      const scope = {
+        familyId: requestedScope.familyId.toLowerCase(),
+        profileId: requestedScope.profileId.toLowerCase(),
+      };
+      const now = new Date();
+      return inTransaction(database, async (client) => {
+        await requireOwner(client, actor, scope.familyId);
+        const target = await client.query<{ id: string }>(
+          `SELECT id
+             FROM patient_profiles
+            WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
+          [scope.familyId, scope.profileId],
+        );
+        if (target.rows[0] === undefined) throw new ResourceNotFoundError();
+        const active = await client.query<{ count: number }>(
+          `SELECT count(*) AS count
+             FROM patient_profiles
+            WHERE family_id = $1 AND archived_at IS NULL`,
+          [scope.familyId],
+        );
+        if (Number(active.rows[0]?.count) <= 1) {
+          throw new DomainConflictError("The last active profile cannot be archived");
+        }
+        const archived = await client.query<{ id: string; archived_at: string }>(
+          `UPDATE patient_profiles
+              SET archived_at = $1
+            WHERE family_id = $2 AND id = $3 AND archived_at IS NULL
+          RETURNING id, archived_at`,
+          [now, scope.familyId, scope.profileId],
+        );
+        const row = archived.rows[0];
+        if (row === undefined) throw new ResourceNotFoundError();
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.archived",
+          resourceType: "PatientProfile",
+          resourceId: row.id,
+          correlationId,
+          createdAt: now,
+          contractVersion: PROFILE_ARCHIVE_CONTRACT_VERSION,
+        });
+        return {
+          contractVersion: PROFILE_ARCHIVE_CONTRACT_VERSION,
+          profileId: row.id,
+          archivedAt: new Date(row.archived_at).toISOString(),
+        };
+      });
     },
 
     async createInvitation(actor, familyId, input, correlationId) {
@@ -764,6 +853,35 @@ export function createFamilyService(
       });
     },
 
+    async getArchivedProfiles(actor, familyId, correlationId) {
+      const normalizedFamilyId = familyId.toLowerCase();
+      return inTransaction(database, async (client) => {
+        await requireOwner(client, actor, normalizedFamilyId);
+        const profiles = await client.query<ArchivedProfileRow>(
+          `SELECT id, family_id, display_name, kind, archived_at
+             FROM patient_profiles
+            WHERE family_id = $1 AND archived_at IS NOT NULL
+            ORDER BY archived_at DESC, id DESC`,
+          [normalizedFamilyId],
+        );
+        const response: ArchivedProfileListResponse = {
+          contractVersion: PROFILE_ARCHIVE_CONTRACT_VERSION,
+          items: profiles.rows.map(archivedProfileSummary),
+        };
+        await audit(client, {
+          familyId: normalizedFamilyId,
+          actorUserId: actor.userId,
+          action: "family.archived_profiles.opened",
+          resourceType: "Family",
+          resourceId: normalizedFamilyId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: PROFILE_ARCHIVE_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
     async getProfileConsentGrants(actor, requestedScope, correlationId) {
       const scope = {
         familyId: requestedScope.familyId.toLowerCase(),
@@ -922,6 +1040,48 @@ export function createFamilyService(
           contractVersion: PROFILE_CONSENT_CONTRACT_VERSION,
         });
       });
+    },
+
+    async restoreProfile(actor, requestedScope, correlationId) {
+      const scope = {
+        familyId: requestedScope.familyId.toLowerCase(),
+        profileId: requestedScope.profileId.toLowerCase(),
+      };
+      const now = new Date();
+      try {
+        return await inTransaction(database, async (client) => {
+          await requireOwner(client, actor, scope.familyId);
+          const restored = await client.query<{ id: string }>(
+            `UPDATE patient_profiles
+                SET archived_at = NULL
+              WHERE family_id = $1 AND id = $2 AND archived_at IS NOT NULL
+            RETURNING id`,
+            [scope.familyId, scope.profileId],
+          );
+          const row = restored.rows[0];
+          if (row === undefined) throw new ResourceNotFoundError();
+          await audit(client, {
+            familyId: scope.familyId,
+            actorUserId: actor.userId,
+            action: "profile.restored",
+            resourceType: "PatientProfile",
+            resourceId: row.id,
+            correlationId,
+            createdAt: now,
+            contractVersion: PROFILE_ARCHIVE_CONTRACT_VERSION,
+          });
+          return {
+            contractVersion: PROFILE_ARCHIVE_CONTRACT_VERSION,
+            profileId: row.id,
+            restoredAt: now.toISOString(),
+          };
+        });
+      } catch (error) {
+        if (isSqliteConstraintError(error, "unique")) {
+          throw new DomainConflictError("The archived profile conflicts with an active profile");
+        }
+        throw error;
+      }
     },
 
     async registerDemo(input, correlationId) {

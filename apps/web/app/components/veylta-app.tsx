@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  ArchivedProfileListResponse,
   DemoInvitationAcceptResponse,
   DemoRegistrationResponse,
   DocumentFactsResponse,
@@ -25,11 +26,13 @@ import type {
   IndicatorSeriesResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
+  ProfileArchiveResponse,
   ProfileConsentGrant,
   ProfileConsentGrantCreateResponse,
   ProfileConsentGrantListResponse,
   ProfileCreateResponse,
   ProfileOverviewResponse,
+  ProfileRestoreResponse,
   SessionFamily,
   SessionResponse,
 } from "@veylta/contracts";
@@ -164,6 +167,18 @@ function familyConsentMembersPath(familyId: string): string {
 
 function profileConsentGrantsPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/consent-grants`;
+}
+
+function archivedProfilesPath(familyId: string): string {
+  return `/v1/families/${encodeURIComponent(familyId)}/archived-profiles`;
+}
+
+function profileArchivePath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/archive`;
+}
+
+function profileRestorePath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/restore`;
 }
 
 interface VeyltaAppProps {
@@ -327,6 +342,28 @@ export function VeyltaApp({
     }
   }
 
+  async function refreshSessionAfterProfileArchive(): Promise<void> {
+    const refreshed = await readSession();
+    if (refreshed === null) {
+      setScreen({ kind: "unauthenticated" });
+      router.replace("/");
+      return;
+    }
+    setScreen({ kind: "authenticated", session: refreshed });
+    const fallback = firstProfile(refreshed);
+    router.replace(fallback === undefined ? "/" : profilePath(fallback.familyId, fallback.id));
+  }
+
+  async function refreshSessionAfterProfileRestore(): Promise<void> {
+    const refreshed = await readSession();
+    if (refreshed === null) {
+      setScreen({ kind: "unauthenticated" });
+      router.replace("/");
+      return;
+    }
+    setScreen({ kind: "authenticated", session: refreshed });
+  }
+
   const session = screen.kind === "authenticated" ? screen.session : undefined;
   const context =
     session !== undefined && requestedContext !== undefined
@@ -406,6 +443,8 @@ export function VeyltaApp({
               setAddProfileOpen((open) => !open);
             }}
             onAddProfile={handleAddProfile}
+            onProfileArchived={refreshSessionAfterProfileArchive}
+            onProfileRestored={refreshSessionAfterProfileRestore}
           />
         ) : null}
       </main>
@@ -671,6 +710,8 @@ interface ProfileWorkspaceProps {
   onProfileChange: (familyId: string, profileId: string) => void;
   onAddProfileToggle: () => void;
   onAddProfile: (event: FormEvent<HTMLFormElement>, family: SessionFamily) => void;
+  onProfileArchived: () => Promise<void>;
+  onProfileRestored: () => Promise<void>;
 }
 
 function ProfileWorkspace({
@@ -684,6 +725,8 @@ function ProfileWorkspace({
   onProfileChange,
   onAddProfileToggle,
   onAddProfile,
+  onProfileArchived,
+  onProfileRestored,
 }: ProfileWorkspaceProps) {
   const router = useRouter();
   const profiles = session.families.flatMap((sessionFamily) => sessionFamily.profiles);
@@ -896,6 +939,16 @@ function ProfileWorkspace({
               ) : null}
             </div>
           ) : null}
+          {family.role === "owner" ? (
+            <ProfileArchivePanel
+              key={`archive:${family.id}:${profile.id}`}
+              familyId={family.id}
+              profile={profile}
+              activeProfileCount={family.profiles.length}
+              onArchived={onProfileArchived}
+              onRestored={onProfileRestored}
+            />
+          ) : null}
           {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
           {family.role === "owner" ? (
             <ProfileConsentPanel
@@ -908,6 +961,165 @@ function ProfileWorkspace({
             <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
           ) : null}
         </aside>
+      </div>
+    </section>
+  );
+}
+
+type ProfileArchivePanelState =
+  | { kind: "idle" }
+  | { kind: "confirming" }
+  | { kind: "pending" }
+  | { kind: "error" };
+
+type ArchivedProfilesState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ready"; items: ArchivedProfileListResponse["items"] }
+  | { kind: "error" };
+
+function ProfileArchivePanel({
+  familyId,
+  profile,
+  activeProfileCount,
+  onArchived,
+  onRestored,
+}: {
+  familyId: string;
+  profile: PatientProfileSummary;
+  activeProfileCount: number;
+  onArchived: () => Promise<void>;
+  onRestored: () => Promise<void>;
+}) {
+  const [archiveState, setArchiveState] = useState<ProfileArchivePanelState>({ kind: "idle" });
+  const [archivedProfiles, setArchivedProfiles] = useState<ArchivedProfilesState>({ kind: "idle" });
+  const [restoringProfileId, setRestoringProfileId] = useState<string | null>(null);
+  const canArchive = activeProfileCount > 1;
+
+  async function loadArchivedProfiles(): Promise<void> {
+    setArchivedProfiles({ kind: "loading" });
+    try {
+      const response = await apiRequest<ArchivedProfileListResponse>(
+        archivedProfilesPath(familyId),
+      );
+      setArchivedProfiles({ kind: "ready", items: response.items });
+    } catch {
+      setArchivedProfiles({ kind: "error" });
+    }
+  }
+
+  async function archive(): Promise<void> {
+    setArchiveState({ kind: "pending" });
+    try {
+      await apiRequest<ProfileArchiveResponse>(profileArchivePath(familyId, profile.id), {
+        method: "POST",
+      });
+      await onArchived();
+    } catch {
+      setArchiveState({ kind: "error" });
+    }
+  }
+
+  async function restore(profileId: string): Promise<void> {
+    setRestoringProfileId(profileId);
+    try {
+      await apiRequest<ProfileRestoreResponse>(profileRestorePath(familyId, profileId), {
+        method: "POST",
+      });
+      await loadArchivedProfiles();
+      await onRestored();
+    } catch {
+      setArchivedProfiles({ kind: "error" });
+    } finally {
+      setRestoringProfileId(null);
+    }
+  }
+
+  return (
+    <section className="profile-archive rail-section" aria-labelledby="profile-archive-title">
+      <p className="context-line">Обратимое ограничение доступа</p>
+      <h2 id="profile-archive-title">Архив профиля</h2>
+      <p>
+        Архив скроет этот профиль и его источники из активного доступа. Исходники, значения и
+        объекты хранения не удаляются; восстановить профиль может только владелец.
+      </p>
+
+      {!canArchive ? (
+        <p className="profile-archive__note">Последний активный профиль нельзя архивировать.</p>
+      ) : archiveState.kind === "confirming" ? (
+        <div className="profile-archive__confirmation" role="alert">
+          <strong>Подтвердите архивирование</strong>
+          <span>Профиль исчезнет из активной навигации, но исходники не будут удалены.</span>
+          <div>
+            <button className="button button--danger" type="button" onClick={() => void archive()}>
+              Подтвердить архивирование
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => setArchiveState({ kind: "idle" })}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="button button--danger"
+          type="button"
+          onClick={() => setArchiveState({ kind: "confirming" })}
+          disabled={archiveState.kind === "pending"}
+        >
+          Архивировать профиль
+        </button>
+      )}
+
+      {archiveState.kind === "error" ? (
+        <p className="form-error" role="alert">
+          Не удалось архивировать профиль. Проверьте активный доступ и повторите.
+        </p>
+      ) : null}
+
+      <div className="profile-archive__restore">
+        <h3>Восстановить из архива</h3>
+        {archivedProfiles.kind === "idle" ? (
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadArchivedProfiles()}
+          >
+            Показать архивные профили
+          </button>
+        ) : null}
+        {archivedProfiles.kind === "loading" ? <p aria-live="polite">Загружаем архив…</p> : null}
+        {archivedProfiles.kind === "error" ? (
+          <p className="form-error" role="alert">
+            Не удалось открыть или восстановить архивный профиль.
+          </p>
+        ) : null}
+        {archivedProfiles.kind === "ready" && archivedProfiles.items.length === 0 ? (
+          <p className="profile-archive__note">Архивных профилей пока нет.</p>
+        ) : null}
+        {archivedProfiles.kind === "ready" && archivedProfiles.items.length > 0 ? (
+          <ul className="profile-archive__list">
+            {archivedProfiles.items.map((item) => (
+              <li key={item.id}>
+                <strong>{item.displayName}</strong>
+                <span>Архивирован {formatDate(item.archivedAt)}</span>
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  disabled={restoringProfileId !== null}
+                  onClick={() => void restore(item.id)}
+                >
+                  {restoringProfileId === item.id
+                    ? "Восстанавливаем…"
+                    : `Восстановить ${item.displayName}`}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </section>
   );
@@ -1174,6 +1386,9 @@ function familyAuditActionCopy(action: string): string {
     "indicator.series.opened": "Открыта динамика показателя",
     "observation.history.opened": "Открыта история подтверждённых значений",
     "profile.created": "Создан профиль",
+    "profile.archived": "Архивирован профиль",
+    "profile.restored": "Восстановлен профиль",
+    "family.archived_profiles.opened": "Открыт список архивных профилей",
     "review.fact.confirmed": "Подтверждено извлечённое значение",
     "review.fact.corrected": "Исправлено извлечённое значение",
     "review.fact.rejected": "Отклонено извлечённое значение",

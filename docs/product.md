@@ -115,8 +115,13 @@ The first slice proves one complete and safe path with synthetic data:
     confirmed observation for one profile into a separately versioned local TAR.
     The export fails rather than silently omitting data above its ten-source cap;
     it is not a backup or restore flow (Task 23, delivered).
+19. A family owner can reversibly archive any non-last active profile. The
+    profile and its direct source/document reads disappear from active access,
+    and pending extraction is paused until that owner restores it. Archive
+    retains the immutable evidence graph and does not claim account deletion,
+    retention, backup, recovery, or production restore (Task 24, delivered).
 
-The implemented synthetic record path reaches step 18, and the separate
+The implemented synthetic record path reaches step 19, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
@@ -177,12 +182,15 @@ independently reviewed.
   immutable snapshot selectors. Opening an earlier version reuses the same
   source-first summary representation; the index and UI never compute a change
   or a health conclusion across versions.
+- A non-last active profile can be archived only by its family owner. Archiving
+  hides the profile and its sources immediately without deleting them; the
+  owner-only archive view can restore the same profile and resume pending work.
 
 ## Full MVP direction
 
 Later slices may add a broader document classifier and extraction schema,
 clinically reviewed summaries and recommendations, full role/consent management,
-production export, and backup/restore. The local
+production export, account deletion, and backup/restore. The local
 demo now supports one-time adult and caregiver joins. An adult receives one
 self-linked profile; a caregiver receives no profile until an owner explicitly
 issues the one revocable `profile.read` grant. That grant is read-only and does

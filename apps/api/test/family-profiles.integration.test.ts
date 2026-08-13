@@ -680,6 +680,194 @@ test("logout and session expiry fail closed", async () => {
   }
 });
 
+test("an owner archives and restores a non-last profile without deleting its record", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Archive Owner",
+      familyName: "Archive Family",
+      profileName: "Archive Primary",
+    });
+    const outsiderRegistration = await register(app, {
+      displayName: "Archive Outsider",
+      familyName: "Other Archive Family",
+      profileName: "Other Archive Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    assert.equal(outsiderRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { displayName: "Archive Dependent", kind: "dependent" },
+    });
+    assert.equal(created.statusCode, 201);
+    const dependentId = created.json().profile.id as string;
+
+    const missingOrigin = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${owner.profile.id}/archive`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(missingOrigin.statusCode, 403);
+
+    const crossFamily = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${owner.profile.id}/archive`,
+      headers: { cookie: outsiderCookie, origin: webOrigin },
+    });
+    const unknown = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${randomUUID()}/archive`,
+      headers: { cookie: outsiderCookie, origin: webOrigin },
+    });
+    assert.deepEqual(errorShape(crossFamily), errorShape(unknown));
+
+    const archived = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${owner.profile.id}/archive`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+    });
+    assert.equal(archived.statusCode, 200);
+    assert.equal(archived.json().contractVersion, "profile-archive/v1");
+    assert.equal(archived.json().profileId, owner.profile.id);
+    assert.match(archived.json().archivedAt, /^\d{4}-\d{2}-\d{2}T/);
+
+    const sessionAfterArchive = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(sessionAfterArchive.statusCode, 200);
+    assert.deepEqual(
+      sessionAfterArchive.json().families[0].profiles.map((profile: { id: string }) => profile.id),
+      [dependentId],
+    );
+
+    const archivedProfiles = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/archived-profiles`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(archivedProfiles.statusCode, 200);
+    assert.deepEqual(archivedProfiles.json().items, [
+      {
+        id: owner.profile.id,
+        familyId: owner.family.id,
+        displayName: "Archive Primary",
+        kind: "adult",
+        archivedAt: archived.json().archivedAt,
+      },
+    ]);
+
+    const stored = await database.query<{ archived_at: string | null; count: number }>(
+      `SELECT archived_at,
+              (SELECT count(*) FROM patient_profiles WHERE family_id = $1) AS count
+         FROM patient_profiles
+        WHERE family_id = $1 AND id = $2`,
+      [owner.family.id, owner.profile.id],
+    );
+    assert.equal(stored.rows[0]?.count, 2);
+    assert.equal(stored.rows[0]?.archived_at, archived.json().archivedAt);
+
+    const repeatArchive = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${owner.profile.id}/archive`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+    });
+    assert.equal(repeatArchive.statusCode, 404);
+
+    const restored = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${owner.profile.id}/restore`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+    });
+    assert.equal(restored.statusCode, 200);
+    assert.equal(restored.json().contractVersion, "profile-archive/v1");
+    assert.equal(restored.json().profileId, owner.profile.id);
+    assert.match(restored.json().restoredAt, /^\d{4}-\d{2}-\d{2}T/);
+
+    const sessionAfterRestore = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(sessionAfterRestore.statusCode, 200);
+    assert.deepEqual(
+      sessionAfterRestore.json().families[0].profiles.map((profile: { id: string }) => profile.id),
+      [owner.profile.id, dependentId],
+    );
+
+    const audit = await database.query<{ action: string; metadata: string }>(
+      `SELECT action, metadata
+         FROM audit_events
+        WHERE family_id = $1
+          AND action IN ('profile.archived', 'profile.restored', 'family.archived_profiles.opened')
+        ORDER BY created_at, id`,
+      [owner.family.id],
+    );
+    assert.deepEqual(
+      audit.rows.map((row) => row.action).sort(),
+      ["profile.archived", "family.archived_profiles.opened", "profile.restored"].sort(),
+    );
+    assert.equal(
+      audit.rows.every(
+        (row) =>
+          JSON.stringify(JSON.parse(row.metadata)) ===
+          JSON.stringify({ contractVersion: "profile-archive/v1" }),
+      ),
+      true,
+    );
+    assert.equal(JSON.stringify(audit.rows).includes("Archive Primary"), false);
+
+    const singleOwner = await register(app, {
+      displayName: "Last Profile Owner",
+      familyName: "Last Profile Family",
+      profileName: "Only Profile",
+    });
+    assert.equal(singleOwner.statusCode, 201);
+    const single = singleOwner.json();
+    const refused = await app.inject({
+      method: "POST",
+      url: `/v1/families/${single.family.id}/profiles/${single.profile.id}/archive`,
+      headers: { cookie: cookieFrom(singleOwner).pair, origin: webOrigin },
+    });
+    assert.equal(refused.statusCode, 409);
+    const lastActive = await database.query<{ archived_at: string | null }>(
+      "SELECT archived_at FROM patient_profiles WHERE id = $1",
+      [single.profile.id],
+    );
+    assert.equal(lastActive.rows[0]?.archived_at, null);
+
+    await database.exec(`CREATE TRIGGER reject_profile_archive_audit
+      BEFORE INSERT ON audit_events
+      WHEN NEW.action = 'profile.archived'
+      BEGIN
+        SELECT RAISE(ABORT, 'archive audit rejected for test');
+      END;`);
+    const auditFailure = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${owner.profile.id}/archive`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+    });
+    assert.equal(auditFailure.statusCode, 500);
+    const afterAuditFailure = await database.query<{ archived_at: string | null }>(
+      "SELECT archived_at FROM patient_profiles WHERE id = $1",
+      [owner.profile.id],
+    );
+    assert.equal(afterAuditFailure.rows[0]?.archived_at, null);
+    await database.exec("DROP TRIGGER reject_profile_archive_audit");
+  } finally {
+    await context.close();
+  }
+});
+
 test("an owner can issue a one-time local adult invitation without granting another profile", async () => {
   const context = await createTestContext();
   const { app, database } = context;

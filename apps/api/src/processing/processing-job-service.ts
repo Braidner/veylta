@@ -797,6 +797,19 @@ export function createProcessingJobService(
           await client.query<ProcessingJobRow>(
             `SELECT * FROM processing_jobs
               WHERE kind = $1 AND payload_version = $2 AND attempt_count < max_attempts
+                AND EXISTS (
+                  SELECT 1
+                    FROM document_versions v
+                    JOIN documents d
+                      ON d.family_id = v.family_id
+                     AND d.id = v.document_id
+                    JOIN patient_profiles p
+                      ON p.family_id = d.family_id
+                     AND p.id = d.patient_profile_id
+                     AND p.archived_at IS NULL
+                   WHERE v.family_id = processing_jobs.family_id
+                     AND v.id = processing_jobs.document_version_id
+                )
                 AND (
                   (state IN ('pending', 'retry_wait') AND available_at <= $3)
                   OR (state = 'leased' AND lease_expires_at <= $3)
@@ -899,6 +912,20 @@ export function createProcessingJobService(
         if (stored.current_stage !== "validation") {
           throw new InvalidProcessingStageTransitionError();
         }
+        const activeProfile = await client.query<{ id: string }>(
+          `SELECT p.id
+             FROM document_versions v
+             JOIN documents d
+               ON d.family_id = v.family_id
+              AND d.id = v.document_id
+             JOIN patient_profiles p
+               ON p.family_id = d.family_id
+              AND p.id = d.patient_profile_id
+              AND p.archived_at IS NULL
+            WHERE v.family_id = $1 AND v.id = $2`,
+          [claim.familyId, claim.documentVersionId],
+        );
+        if (activeProfile.rows[0] === undefined) throw new ProcessingPersistenceConflictError();
 
         const extractionStatus = "awaiting_review";
         await client.query(

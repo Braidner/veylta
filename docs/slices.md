@@ -293,6 +293,26 @@ Commit intent: `feat: export complete synthetic profile archive`
 - The local verifier recognizes both TAR contracts without extracting them.
   This is still neither restore, deletion, backup, nor production portability.
 
+## Task 24 — Reversible profile archive
+
+Commit intent: `feat: archive profiles without deleting evidence`
+
+- `profile-archive/v1` lets only an owner archive a non-last active profile
+  behind the trusted-Origin mutation gate and an explicit inline confirmation.
+- Archive sets only `patient_profiles.archived_at`; it immediately removes the
+  profile from active session/list access, makes direct document reads
+  non-disclosing, and stops the worker from claiming or persisting output for
+  its source versions. It keeps original documents, blobs, facts,
+  observations, jobs, and audit history intact.
+- The owner-only archive list returns archived profile identity and timestamp
+  and supports restore. Restore clears only `archived_at`; durable pending work
+  can resume without copying or rewriting evidence. Archive/list/restore are
+  payload-free audited.
+- It is deliberately neither account deletion, data-retention policy, backup,
+  recovery, nor production restore. Integration and Chromium tests cover
+  Origin/owner/last-profile/non-disclosure boundaries, source hiding,
+  worker pause/resume, and UI confirmation/restore.
+
 ## Task 9 — Comparable indicator catalog and chart
 
 Commit intent: `feat: compare compatible confirmed indicators`
