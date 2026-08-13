@@ -195,18 +195,18 @@
     "semantic_hash": ""
   },
   "docs/api.md": {
-    "mtime": 1786654743.4992595,
-    "ast_hash": "106d2482c5ac436fe394925c3b1cf8ae",
+    "mtime": 1786656387.7072394,
+    "ast_hash": "6b5fd86a97041c2b054e1fe1d577fb6b",
     "semantic_hash": ""
   },
   "docs/architecture.md": {
-    "mtime": 1786654743.5000257,
-    "ast_hash": "4c9c3b690e2604726342d938455cd1f6",
+    "mtime": 1786656387.7065206,
+    "ast_hash": "18295a4c582ef1e45f76933fbd67fd51",
     "semantic_hash": ""
   },
   "docs/er-model.md": {
-    "mtime": 1786654743.5004573,
-    "ast_hash": "46436fe5a8788e7ccc2c140abac3596d",
+    "mtime": 1786656387.7078083,
+    "ast_hash": "8ec2ba02e8802f55d8abc0bc996c1a9b",
     "semantic_hash": ""
   },
   "docs/license-policy.md": {
@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786654743.5009475,
-    "ast_hash": "a979ae6f205077b253cfbe35b1beddd6",
+    "mtime": 1786656387.708336,
+    "ast_hash": "329a986496c0e8c93d51d071b2b499c8",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
@@ -240,8 +240,8 @@
     "semantic_hash": ""
   },
   "apps/api/src/family/family-service.ts": {
-    "mtime": 1786651315.4684324,
-    "ast_hash": "c0e783805e5fce405dda27c4c856fa63",
+    "mtime": 1786656280.6969726,
+    "ast_hash": "6638dec64e818b2bb4b0af814fdbf05b",
     "semantic_hash": ""
   },
   "apps/api/src/family/routes.ts": {
@@ -745,8 +745,8 @@
     "semantic_hash": ""
   },
   "e2e/account-setup.spec.ts": {
-    "mtime": 1786654448.7057765,
-    "ast_hash": "59f01e971cf65c8a896d2f782c72ba45",
+    "mtime": 1786656310.3006372,
+    "ast_hash": "58239b5ebd7ab721857a84ee826c7e1b",
     "semantic_hash": ""
   },
   "e2e/support/synthetic-family.ts": {
@@ -770,8 +770,8 @@
     "semantic_hash": ""
   },
   "apps/api/src/settings/home-settings-service.ts": {
-    "mtime": 1786653844.9196513,
-    "ast_hash": "09245eac2ecdded954c1014c6f4f128b",
+    "mtime": 1786656280.6962376,
+    "ast_hash": "19d6a02e4d7d6960924816721609c4d1",
     "semantic_hash": ""
   },
   "apps/api/src/settings/routes.ts": {
@@ -785,8 +785,8 @@
     "semantic_hash": ""
   },
   "apps/api/test/home-settings.integration.test.ts": {
-    "mtime": 1786655994.2504082,
-    "ast_hash": "b0afb5eff6831e1908a069781481b342",
+    "mtime": 1786656607.7207663,
+    "ast_hash": "8cbb6b7bf961966de6b9d5fe222d9e8b",
     "semantic_hash": ""
   },
   "apps/web/app/settings/page.tsx": {

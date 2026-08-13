@@ -146,14 +146,15 @@ session token.
 ### `GET /v1/session`
 
 Resolves the cookie server-side and returns the current local user plus active
-families and profiles that actor may access. An owner receives all active
-profiles in their family; an invited adult receives their linked adult profile
-plus any currently granted `profile.read` profile. Each returned profile names
-its server-determined access as `owner`, `self`, or `granted_read`. Account-backed
-sessions additionally return normalized `username` and system `role`; legacy
-test sessions return `null` for those fields. A caregiver
-receives no profile list. It returns `401` for an absent, expired, revoked, or
-disabled session and is always `Cache-Control: no-store`.
+families and profiles that actor may access. An administrator/owner receives
+all active profiles in the home family, with their own linked profile sorted
+first; a regular user receives their linked adult profile plus any currently
+granted `profile.read` profile. Each returned profile names its server-determined
+access as `owner`, `self`, or `granted_read`. Account-backed sessions
+additionally return normalized `username` and system `role`; legacy test
+sessions return `null` for those fields. A caregiver receives no profile list.
+It returns `401` for an absent, expired, revoked, or disabled session and is
+always `Cache-Control: no-store`.
 
 ### `DELETE /v1/session`
 
@@ -210,8 +211,11 @@ reads or returns Codex OAuth tokens, API keys, or Codex-home contents.
 ### `POST /v1/settings/accounts`
 
 Creates an `admin` or `user` plus a linked adult profile in the administrator's
-home family. It uses the same normalized username and scrypt password boundary
-as setup, requires the configured `Origin`, and returns `409` for duplicates.
+home family. An `admin` receives owner membership and can manage every profile;
+a `user` receives adult membership and can open only their linked profile or an
+explicitly granted profile. It uses the same normalized username and scrypt
+password boundary as setup, requires the configured `Origin`, and returns `409`
+for duplicates.
 
 ```json
 {

@@ -389,13 +389,17 @@ async function requireOwner(
   if (access.rows[0]?.role !== "owner") throw new ResourceNotFoundError();
 }
 
-async function profilesFor(client: Queryable, familyId: string): Promise<PatientProfileSummary[]> {
+async function profilesFor(
+  client: Queryable,
+  familyId: string,
+  userId: string,
+): Promise<PatientProfileSummary[]> {
   const result = await client.query<ProfileRow>(
     `SELECT id, family_id, display_name, kind, 'owner' AS access, created_at
      FROM patient_profiles
      WHERE family_id = $1 AND archived_at IS NULL
-     ORDER BY created_at, id`,
-    [familyId],
+     ORDER BY CASE WHEN linked_user_id = $2 THEN 0 ELSE 1 END, created_at, id`,
+    [familyId, userId],
   );
   return result.rows.map(profileSummary);
 }
@@ -808,7 +812,7 @@ export function createFamilyService(
             createdAt: new Date(row.created_at).toISOString(),
             profiles:
               row.role === "owner"
-                ? await profilesFor(client, row.id)
+                ? await profilesFor(client, row.id, actor.userId)
                 : row.role === "adult_member" || row.role === "caregiver"
                   ? await profilesForGrantedUser(client, row.id, actor.userId)
                   : [],
@@ -998,7 +1002,7 @@ export function createFamilyService(
           [familyId, actor.userId],
         );
         const role = memberships.rows[0]?.role;
-        if (role === "owner") return profilesFor(client, familyId);
+        if (role === "owner") return profilesFor(client, familyId, actor.userId);
         if (role === "adult_member" || role === "caregiver") {
           return profilesForGrantedUser(client, familyId, actor.userId);
         }

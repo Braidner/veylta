@@ -180,8 +180,14 @@ export function createHomeSettingsService(
         await client.query(
           `INSERT INTO family_memberships
              (id, family_id, user_id, role, status, created_at)
-           VALUES ($1, $2, $3, 'adult_member', 'active', $4)`,
-          [ids.membership, family.family_id, ids.user, now],
+           VALUES ($1, $2, $3, $4, 'active', $5)`,
+          [
+            ids.membership,
+            family.family_id,
+            ids.user,
+            input.role === "admin" ? "owner" : "adult_member",
+            now,
+          ],
         );
         await client.query(
           `INSERT INTO patient_profiles
@@ -220,7 +226,7 @@ export function createHomeSettingsService(
             familyId: family.family_id,
             displayName,
             kind: "adult",
-            access: "self",
+            access: input.role === "admin" ? "owner" : "self",
             createdAt: now.toISOString(),
           },
         };

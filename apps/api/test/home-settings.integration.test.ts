@@ -173,6 +173,33 @@ test("administrator manages local accounts, Codex status, and verified storage r
     assert.equal(accountBody.profile.displayName, "Пользователь семьи");
     assert.doesNotMatch(JSON.stringify(accountBody), /another correct|password_hash/i);
 
+    const createdAdministrator = await app.inject({
+      method: "POST",
+      url: "/v1/settings/accounts",
+      headers: { cookie: adminCookie, origin: webOrigin },
+      payload: {
+        username: "second-admin",
+        password: "second administrator password",
+        displayName: "Второй администратор",
+        role: "admin",
+      },
+    });
+    assert.equal(createdAdministrator.statusCode, 201);
+    const administratorBody = createdAdministrator.json() as {
+      account: { role: string };
+      profile: { id: string; access: string };
+    };
+    assert.equal(administratorBody.account.role, "admin");
+    assert.equal(administratorBody.profile.access, "owner");
+
+    const administratorMembership = await database.query<{ role: string }>(
+      `SELECT m.role
+         FROM family_memberships m
+         JOIN app_accounts a ON a.user_id = m.user_id
+        WHERE a.username = 'second-admin'`,
+    );
+    assert.equal(administratorMembership.rows[0]?.role, "owner");
+
     const userLogin = await app.inject({
       method: "POST",
       url: "/v1/session",
@@ -180,6 +207,41 @@ test("administrator manages local accounts, Codex status, and verified storage r
       payload: { username: "family-user", password: "another correct local password" },
     });
     assert.equal(userLogin.statusCode, 200);
+    const userSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: cookie(userLogin) },
+    });
+    assert.equal(userSession.statusCode, 200);
+    const userProfiles = (userSession.json() as { families: Array<{ profiles: unknown[] }> })
+      .families[0]?.profiles;
+    assert.equal(userProfiles?.length, 1);
+
+    const administratorLogin = await app.inject({
+      method: "POST",
+      url: "/v1/session",
+      headers: { origin: webOrigin },
+      payload: { username: "second-admin", password: "second administrator password" },
+    });
+    assert.equal(administratorLogin.statusCode, 200);
+    const administratorSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: cookie(administratorLogin) },
+    });
+    assert.equal(administratorSession.statusCode, 200);
+    const administratorProfiles = (
+      administratorSession.json() as {
+        families: Array<{ profiles: Array<{ id: string; access: string }> }>;
+      }
+    ).families[0]?.profiles;
+    assert.equal(administratorProfiles?.length, 3);
+    assert.equal(administratorProfiles?.[0]?.id, administratorBody.profile.id);
+    assert.deepEqual(
+      administratorProfiles?.map((profile) => profile.access),
+      ["owner", "owner", "owner"],
+    );
+
     const denied = await app.inject({
       method: "GET",
       url: "/v1/settings",

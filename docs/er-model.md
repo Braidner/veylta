@@ -80,6 +80,9 @@ claim that they are migrated in the first slice.
 
 An empty installation creates the first `admin` account exactly once. Passwords
 and Codex credentials are never stored in `User`, `Session`, or audit metadata.
+Every administrator account has owner membership in the single home family;
+every regular account has adult membership and one self-linked adult profile.
+System role does not create a second profile permission store.
 
 ### Session
 

@@ -17,6 +17,7 @@ test("first launch creates the administrator, opens their profile, and later log
   await page.getByRole("button", { name: "Создать администратора" }).click();
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]+\/profiles\/[0-9a-f-]+$/);
+  const administratorProfileUrl = page.url();
   await expect(
     page.getByRole("heading", { level: 1, name: "Домашний администратор" }),
   ).toBeVisible();
@@ -50,9 +51,14 @@ test("first launch creates the administrator, opens their profile, and later log
   await page.getByRole("button", { name: "Войти" }).click();
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]+\/profiles\/[0-9a-f-]+$/);
+  const userProfileUrl = page.url();
   await expect(page.getByRole("heading", { level: 1, name: "Пользователь семьи" })).toBeVisible();
   await expect(page.getByText("Пользователь системы")).toBeVisible();
   await expect(page.getByRole("link", { name: "Настройки" })).toHaveCount(0);
+
+  await page.goto(administratorProfileUrl);
+  await expect(page.getByRole("heading", { level: 1, name: "Профиль недоступен" })).toBeVisible();
+  await expect(page.getByText("Домашний администратор")).toHaveCount(0);
 
   await page.goto("/settings");
   await expect(page.getByRole("heading", { level: 1, name: "Настройки недоступны" })).toBeVisible();
@@ -70,4 +76,8 @@ test("first launch creates the administrator, opens their profile, and later log
   await expect(
     page.getByRole("heading", { level: 1, name: "Домашний администратор" }),
   ).toBeVisible();
+
+  await page.goto(userProfileUrl);
+  await expect(page.getByRole("heading", { level: 1, name: "Пользователь семьи" })).toBeVisible();
+  await expect(page.getByText("Администратор системы")).toBeVisible();
 });

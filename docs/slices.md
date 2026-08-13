@@ -553,7 +553,9 @@ Commit intent: `feat: enforce home profile access`
 - Stable profile link and server-side authorization for administrator, linked
   owner, or explicit revocable grant only.
 - No inherited read/write access from merely knowing a URL or sharing a family.
-- Two-account integration and browser tests for grant/revoke/non-disclosure.
+- An administrator receives owner membership and their own linked card first;
+  a regular user receives only self or explicit `profile.read` access.
+- Multi-account integration and browser tests cover direct-link non-disclosure.
 
 ### Task 33 — Evidence-backed home health cockpit
 
