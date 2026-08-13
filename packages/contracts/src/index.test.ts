@@ -18,7 +18,9 @@ import {
   type FamilyAuditLogResponse,
   type FamilyInvitationCreateResponse,
   HEALTH_SUMMARY_CONTRACT_VERSION,
+  HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
   HEALTH_SUMMARY_RECOMMENDATION_CODES,
+  type HealthSummaryHistoryResponse,
   type HealthSummaryResponse,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
@@ -28,6 +30,7 @@ import {
   LAB_FACT_VALIDATION_ISSUES,
   type LabExtractionResult,
   MAX_AUDIT_LOG_PAGE_SIZE,
+  MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_DOCUMENT_BYTES,
@@ -53,8 +56,10 @@ test("public contracts carry explicit versions", () => {
   assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
   assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v1");
   assert.equal(HEALTH_SUMMARY_CONTRACT_VERSION, "health-summary/v1");
+  assert.equal(HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION, "health-summary-history/v1");
   assert.equal(SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION, "synthetic-evidence-bundle/v1");
   assert.equal(MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS, 5);
+  assert.equal(MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE, 50);
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
@@ -72,6 +77,13 @@ test("health summary is an explicit evidence snapshot, not a clinical assessment
   } as const satisfies HealthSummaryResponse;
 
   assert.equal(response.summary, null);
+
+  const history = {
+    contractVersion: HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+    versions: [],
+    nextBeforeVersion: null,
+  } as const satisfies HealthSummaryHistoryResponse;
+  assert.equal(history.versions.length, 0);
 });
 
 test("family audit log omits internal metadata and exposes explicit pagination", () => {

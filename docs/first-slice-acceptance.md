@@ -1,13 +1,13 @@
 # First-slice acceptance evidence
 
 **Recorded:** 2026-08-13
-**Code baseline:** local Task 20 worktree atop `e13355a feat: verify local synthetic evidence bundle`
+**Code baseline:** local Task 21 worktree atop `d3674e2 feat: add evidence-backed profile summary`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
 vertical slice. It is not a production-readiness, clinical-safety, privacy, or
-legal-compliance certification. It records acceptance through Task 20; the
-Task 20 changes remain subject to the fresh command results below.
+legal-compliance certification. It records acceptance through Task 21; the
+Task 21 changes remain subject to the fresh command results below.
 
 ## Accepted path
 
@@ -17,7 +17,7 @@ With checked-in synthetic PDF and generated synthetic PNG/JPEG fixtures, the acc
 opaque demo session → owner-scoped family/profile → PDF/PNG/JPEG upload → immutable
 local original + SHA-256 → deterministic extraction → explicit review →
 confirmed observation → source-first history → immutable non-clinical summary →
-re-authorized source download
+immutable summary-version selection → re-authorized source download
 ```
 
 The path is intentionally narrow. The parser accepts one explicit synthetic
@@ -45,6 +45,7 @@ fact and represents the user-confirmed source value separately.
 | Task 18 worktree | Owner/self-only local synthetic evidence TAR with bounded, checksummed source bytes. |
 | Task 19 worktree | Offline, no-extraction verifier for the narrow local synthetic evidence TAR. |
 | Task 20 worktree | Versioned non-clinical evidence summary after final human review. |
+| Task 21 worktree | Authorized newest-first immutable summary-version index and exact historical snapshot read. |
 
 ## Fresh local verification
 
@@ -61,7 +62,7 @@ its output.
 | `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0011_health_summaries`. |
 | `pnpm test:integration` | Passed: 44 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
-| `pnpm test:e2e` | Passed: 19 Chromium browser tests, 0 failed, including the post-review evidence summary, direct synthetic PNG upload/OCR/download, and owner/self evidence-bundle download. |
+| `pnpm test:e2e` | Passed: 20 Chromium browser tests, 0 failed, including immutable current/historical summary selection, direct synthetic PNG upload/OCR/download, and owner/self evidence-bundle download. |
 | `git diff --check` | Passed after this evidence documentation was prepared. |
 
 `tsx` needs a local IPC socket on this host, so its test and migration commands
@@ -98,7 +99,7 @@ gates on every push and pull request.
 | Uncertain data cannot bypass human review | Parser and processing tests keep high-confidence facts unconfirmed and route uncertain facts to review; browser review tests require an explicit decision. |
 | A correction preserves raw extraction | Integration test `a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation`; browser review and history scenarios verify the displayed source distinction. |
 | Confirmed data appears in history with its source | Integration test `observation history is source-first, paginated, re-authorized, and audited without payloads`; browser test `profile history shows confirmed and corrected observations with their authorized sources only`. |
-| Summary remains evidence-backed and non-clinical | Integration tests cover atomic creation after final review, immutable successors, source-only evidence, missing context, authorization, and payload-free audit; browser test `profile summary is a source-first immutable version after final human review`. |
+| Summary remains evidence-backed and non-clinical | Integration tests cover atomic creation after final review, immutable successors, exact historical snapshot reads, source-only evidence, missing context, authorization, and payload-free audits; browser tests cover current and older immutable summary selection without a derived change claim. |
 | Profile landing view stays source-first | Integration tests cover bounded overview projections, payload-free audit, non-disclosing denial, and revocable read access; browser upload flow shows the review queue after returning to the profile. |
 | Local synthetic evidence snapshot is bounded and non-disclosing | Integration tests cover checksum-verified archive bytes, owner/self-only authorization, `profile.read` denial, five-source cap, cross-family denial, and payload-free audit; the browser flow downloads the TAR attachment. |
 | Local evidence snapshot can be checked without extraction | Unit tests accept PDF/PNG/JPEG bundles and confirmed-observation provenance; they fail closed on checksum mutation, traversal, unsupported TAR fields, non-zero padding, and manifest drift. The file command emits counts only. |

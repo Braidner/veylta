@@ -103,8 +103,12 @@ The first slice proves one complete and safe path with synthetic data:
     next actions to prepare sources for a clinician or complete pending review;
     it never diagnoses, triages, assigns risk/red flags, or advises treatment
     (Task 20, delivered).
+16. The profile can reopen any earlier immutable summary version through a
+    newest-first version index. Each selection returns the exact saved evidence
+    set; the product does not derive a difference, trend, or recommendation from
+    versions (Task 21, delivered).
 
-The implemented synthetic record path reaches step 15, and the separate
+The implemented synthetic record path reaches step 16, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
@@ -161,6 +165,10 @@ independently reviewed.
 - The health summary is a bounded, profile-authorized, versioned snapshot of
   confirmed observations. It distinguishes new evidence from carried-forward
   evidence, has no clinical interpretation, and re-authorizes each source link.
+- The summary version index is a separately audited, profile-authorized read of
+  immutable snapshot selectors. Opening an earlier version reuses the same
+  source-first summary representation; the index and UI never compute a change
+  or a health conclusion across versions.
 
 ## Full MVP direction
 
@@ -185,7 +193,8 @@ has one final review decision; Task 7 exposes those confirmed observations as a
 source-first history; and Task 9 calculates a bounded compatible-value
 difference without adding a processing state. The implementation does not fake
 OCR, clinical trends, or clinical summaries. Task 20 materializes a post-review
-evidence snapshot without adding a clinical processing state.
+evidence snapshot without adding a clinical processing state; Task 21 only
+indexes and reopens those immutable snapshots.
 
 ## Explicitly deferred
 

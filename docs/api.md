@@ -544,7 +544,8 @@ fragments, source bytes, or cursor data.
 ### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary`
 
 Returns the latest immutable `health-summary/v1` snapshot for an authorized
-profile, or:
+profile. An optional strict `?version=N` (`N` is a positive decimal version)
+returns exactly that immutable version. The latest form may return:
 
 ```json
 { "contractVersion": "health-summary/v1", "summary": null }
@@ -638,6 +639,39 @@ the relative document path is only a selector and is authorized again by the
 content endpoint. A successful read writes `profile.health_summary.opened` and
 generation writes `profile.health_summary.generated`, each carrying only the
 contract marker and no medical payload.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary/versions`
+
+Returns the newest page of immutable summary selectors under the same
+owner/self/granted `profile.read` boundary. Optional `beforeVersion` is a
+positive decimal version and returns only earlier versions; optional `limit` is
+`1` through `50` (default `25`). A cursor-like `nextBeforeVersion` is either the
+last returned version for the next page or `null`.
+
+```json
+{
+  "contractVersion": "health-summary-history/v1",
+  "versions": [
+    {
+      "id": "summary_placeholder",
+      "version": 2,
+      "createdAt": "2026-08-12T00:00:00.000Z",
+      "includedEvidenceCount": 2,
+      "totalConfirmedObservationCount": 2,
+      "newEvidenceCount": 1,
+      "carriedForwardEvidenceCount": 1
+    }
+  ],
+  "nextBeforeVersion": 2
+}
+```
+
+The index is `Cache-Control: private, no-store`; unknown, cross-family, and
+ungranted profile selectors are the same non-disclosing `404`. It writes the
+payload-free `profile.health_summary_history.opened` audit event with only the
+`health-summary-history/v1` marker. Selecting a version calls the first endpoint
+with `?version=N`: it returns the exact source snapshot, never a derived
+comparison, trend, diagnosis, or recommendation.
 
 ## Local synthetic evidence snapshot (Task 18)
 

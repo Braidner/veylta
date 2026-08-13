@@ -49,6 +49,8 @@ The full first slice remains deliberately narrow:
     explicit fact review; it labels missing context and offers only source
     preparation or pending-review actions, never diagnosis, triage, or treatment
     advice (Task 20, delivered).
+14. browse any earlier immutable version of that evidence-backed summary, with
+    its original source set and no derived "change" claim (Task 21, delivered).
 
 Cloud OCR, LLM processing, clinical trend summaries, clinical recommendations, FHIR
 exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
@@ -170,7 +172,9 @@ of confirmed observations with re-authorized links back to their source. It
 marks evidence new since the prior snapshot and missing context, but does not
 infer a condition, risk, red flag, trend, or treatment. Its only deterministic
 next actions are to prepare sources for a clinician or complete another pending
-review.
+review. `health-summary-history/v1` lists those immutable versions newest-first;
+selecting one reopens its exact stored source set. It never compares versions or
+derives a clinical or non-clinical health conclusion from their difference.
 
 An artifact can be checked without extracting it to disk:
 

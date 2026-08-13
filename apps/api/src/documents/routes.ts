@@ -16,6 +16,8 @@ import {
 } from "../http/route-helpers.js";
 import {
   type DocumentService,
+  type HealthSummaryHistoryQuery,
+  type HealthSummaryQuery,
   IdempotencyConflictError,
   type IndicatorSeriesQuery,
   InvalidDocumentSignatureError,
@@ -95,6 +97,23 @@ const observationHistoryQuerySchema = {
     },
     limit: { type: "string", pattern: "^(?:[1-9][0-9]?|100)$" },
     cursor: { type: "string", minLength: 1, maxLength: 500, pattern: "^[A-Za-z0-9_-]+$" },
+  },
+} as const;
+
+const healthSummaryQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    version: { type: "string", pattern: "^[1-9][0-9]{0,8}$" },
+  },
+} as const;
+
+const healthSummaryHistoryQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    beforeVersion: { type: "string", pattern: "^[1-9][0-9]{0,8}$" },
+    limit: { type: "string", pattern: "^(?:[1-9]|[1-4][0-9]|50)$" },
   },
 } as const;
 
@@ -291,15 +310,34 @@ export function registerDocumentRoutes(
       },
     );
 
-    scope.get<{ Params: ProfileParams }>(
+    scope.get<{ Params: ProfileParams; Querystring: HealthSummaryQuery }>(
       "/v1/families/:familyId/profiles/:profileId/health-summary",
-      { schema: { params: profileParamsSchema } },
+      { schema: { params: profileParamsSchema, querystring: healthSummaryQuerySchema } },
       async (request, reply) => {
         privateResponse(reply);
         const actor = await requireActor(familyService, request, reply);
         if (actor === null) return;
         try {
-          reply.send(await service.getHealthSummary(actor, request.params, request.id));
+          reply.send(
+            await service.getHealthSummary(actor, request.params, request.query, request.id),
+          );
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams; Querystring: HealthSummaryHistoryQuery }>(
+      "/v1/families/:familyId/profiles/:profileId/health-summary/versions",
+      { schema: { params: profileParamsSchema, querystring: healthSummaryHistoryQuerySchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(
+            await service.getHealthSummaryHistory(actor, request.params, request.query, request.id),
+          );
         } catch (error) {
           if (!sendDocumentError(error, request, reply)) throw error;
         }

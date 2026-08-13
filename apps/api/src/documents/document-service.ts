@@ -11,7 +11,9 @@ import {
   type FactReviewOutcome,
   type FactReviewResponse,
   HEALTH_SUMMARY_CONTRACT_VERSION,
+  HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
   type HealthSummary,
+  type HealthSummaryHistoryResponse,
   type HealthSummaryResponse,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorCatalogResponse,
@@ -21,6 +23,7 @@ import {
   type LabFactReferenceRange,
   type LabFactValidationIssue,
   MAX_HEALTH_SUMMARY_EVIDENCE,
+  MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
@@ -82,6 +85,15 @@ export interface ObservationHistoryQuery {
   cursor?: string;
 }
 
+export interface HealthSummaryQuery {
+  version?: string;
+}
+
+export interface HealthSummaryHistoryQuery {
+  beforeVersion?: string;
+  limit?: string;
+}
+
 export interface IndicatorSeriesQuery {
   unit: string;
   limit?: string;
@@ -136,8 +148,15 @@ export interface DocumentService {
   getHealthSummary(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
+    query: HealthSummaryQuery,
     correlationId: string,
   ): Promise<HealthSummaryResponse>;
+  getHealthSummaryHistory(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    query: HealthSummaryHistoryQuery,
+    correlationId: string,
+  ): Promise<HealthSummaryHistoryResponse>;
   getIndicatorCatalog(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -424,6 +443,16 @@ interface HealthSummaryRow {
   reference_conversion_version: string | null;
 }
 
+interface HealthSummaryVersionRow {
+  id: string;
+  version: number;
+  created_at: string;
+  included_evidence_count: number;
+  available_confirmed_observation_count: number;
+  actual_evidence_count: number;
+  new_evidence_count: number;
+}
+
 interface RetryRequestRow {
   document_version_id: string;
   created_at: string;
@@ -527,6 +556,24 @@ function indicatorSeriesLimit(value: string | undefined): number {
   if (!/^(?:[1-9][0-9]?|100)$/.test(value)) throw new DomainValidationError();
   const limit = Number(value);
   if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_INDICATOR_SERIES_PAGE_SIZE) {
+    throw new DomainValidationError();
+  }
+  return limit;
+}
+
+function healthSummaryVersion(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  if (!/^[1-9][0-9]{0,8}$/.test(value)) throw new DomainValidationError();
+  const version = Number(value);
+  if (!Number.isSafeInteger(version) || version < 1) throw new DomainValidationError();
+  return version;
+}
+
+function healthSummaryHistoryLimit(value: string | undefined): number {
+  if (value === undefined) return 25;
+  if (!/^(?:[1-9]|[1-4][0-9]|50)$/.test(value)) throw new DomainValidationError();
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE) {
     throw new DomainValidationError();
   }
   return limit;
@@ -2805,8 +2852,9 @@ export function createDocumentService(
       });
     },
 
-    async getHealthSummary(actor, requestedScope, correlationId) {
+    async getHealthSummary(actor, requestedScope, requestedQuery, correlationId) {
       const scope = canonicalProfileScope(requestedScope);
+      const requestedVersion = healthSummaryVersion(requestedQuery.version);
       return database.transaction(async (client) => {
         await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
         const storedSummary = (
@@ -2814,11 +2862,14 @@ export function createDocumentService(
             `SELECT id
                FROM health_summaries
               WHERE family_id = $1 AND patient_profile_id = $2
+                AND ($3 IS NULL OR version = $3)
               ORDER BY version DESC
               LIMIT 1`,
-            [scope.familyId, scope.profileId],
+            [scope.familyId, scope.profileId, requestedVersion],
           )
         ).rows[0];
+        if (requestedVersion !== null && storedSummary === undefined)
+          throw new ResourceNotFoundError();
         const rows = await client.query<HealthSummaryRow>(
           `SELECT observation.id,
                   summary.id AS summary_id,
@@ -2881,16 +2932,10 @@ export function createDocumentService(
               AND reference_range.observation_id = observation.id
             WHERE summary.family_id = $1
               AND summary.patient_profile_id = $2
-              AND summary.id = (
-                SELECT latest.id
-                  FROM health_summaries latest
-                 WHERE latest.family_id = $1 AND latest.patient_profile_id = $2
-                 ORDER BY latest.version DESC
-                 LIMIT 1
-              )
+              AND summary.id = $3
             ORDER BY evidence.position ASC
-            LIMIT $3`,
-          [scope.familyId, scope.profileId, MAX_HEALTH_SUMMARY_EVIDENCE],
+            LIMIT $4`,
+          [scope.familyId, scope.profileId, storedSummary?.id ?? null, MAX_HEALTH_SUMMARY_EVIDENCE],
         );
         if (storedSummary !== undefined && rows.rows.length === 0) {
           throw new ObjectStorageIntegrityError(
@@ -2907,6 +2952,95 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
           contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getHealthSummaryHistory(actor, requestedScope, requestedQuery, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const beforeVersion = healthSummaryVersion(requestedQuery.beforeVersion);
+      const limit = healthSummaryHistoryLimit(requestedQuery.limit);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const rows = await client.query<HealthSummaryVersionRow>(
+          `SELECT summary.id,
+                  summary.version,
+                  summary.created_at,
+                  summary.included_evidence_count,
+                  summary.available_confirmed_observation_count,
+                  COUNT(evidence.observation_id) AS actual_evidence_count,
+                  SUM(CASE WHEN evidence.is_new_since_previous_summary = 1 THEN 1 ELSE 0 END)
+                    AS new_evidence_count
+             FROM health_summaries summary
+             JOIN health_summary_evidence evidence
+               ON evidence.family_id = summary.family_id AND evidence.health_summary_id = summary.id
+            WHERE summary.family_id = $1
+              AND summary.patient_profile_id = $2
+              AND ($3 IS NULL OR summary.version < $3)
+            GROUP BY summary.id, summary.version, summary.created_at, summary.included_evidence_count,
+                     summary.available_confirmed_observation_count
+            ORDER BY summary.version DESC
+            LIMIT $4`,
+          [scope.familyId, scope.profileId, beforeVersion, limit + 1],
+        );
+        const pageRows = rows.rows.slice(0, limit);
+        const versions = pageRows.map((row) => {
+          const includedEvidenceCount = asCount(
+            row.included_evidence_count,
+            "health summary history evidence count",
+          );
+          const totalConfirmedObservationCount = asCount(
+            row.available_confirmed_observation_count,
+            "health summary history confirmed observation count",
+          );
+          const newEvidenceCount = asCount(
+            row.new_evidence_count,
+            "health summary history new evidence",
+          );
+          const actualEvidenceCount = asCount(
+            row.actual_evidence_count,
+            "health summary history actual evidence count",
+          );
+          if (
+            includedEvidenceCount < 1 ||
+            actualEvidenceCount !== includedEvidenceCount ||
+            totalConfirmedObservationCount < includedEvidenceCount ||
+            newEvidenceCount > includedEvidenceCount
+          ) {
+            throw new ObjectStorageIntegrityError("Stored health summary history is invalid");
+          }
+          const version = asCount(row.version, "health summary history version");
+          if (version < 1) {
+            throw new ObjectStorageIntegrityError(
+              "Stored health summary history version is invalid",
+            );
+          }
+          return {
+            id: requiredCanonicalUuid(row.id, "health summary history id"),
+            version,
+            createdAt: canonicalTimestamp(row.created_at),
+            includedEvidenceCount,
+            totalConfirmedObservationCount,
+            newEvidenceCount,
+            carriedForwardEvidenceCount: includedEvidenceCount - newEvidenceCount,
+          };
+        });
+        const last = versions.at(-1);
+        const response: HealthSummaryHistoryResponse = {
+          contractVersion: HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+          versions,
+          nextBeforeVersion: rows.rows.length > limit && last !== undefined ? last.version : null,
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.health_summary_history.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
         });
         return response;
       });

@@ -247,6 +247,22 @@ Commit intent: `feat: add evidence-backed profile summary`
 - The safe, profile-authorized read is `private, no-store`, re-authorizes every
   source path on follow-up, and records payload-free opened/generated audits.
 
+## Task 21 — Immutable summary version history
+
+Commit intent: `feat: browse immutable summary versions`
+
+- `health-summary-history/v1` is a `private, no-store`, profile-authorized,
+  newest-first index over existing immutable `HealthSummary` rows. It exposes
+  only the version selector, creation time, and bounded evidence counts.
+- `GET health-summary?version=N` reopens exactly version `N`; an unavailable
+  version is a non-disclosing `404`. The version index uses `beforeVersion` and
+  a 1–50 page size, with no write or schema change.
+- Each current or historical summary read re-authorizes follow-up source links.
+  The index writes its own payload-free audit event and carries neither source
+  values nor any computed comparison.
+- The UI selects a version explicitly and labels its immutable source snapshot.
+  It does not call the prior/newer version a trend, a change, or a recommendation.
+
 ## Task 9 — Comparable indicator catalog and chart
 
 Commit intent: `feat: compare compatible confirmed indicators`

@@ -23,6 +23,9 @@ metadata or medical/document payloads.
 only confirmed observations, source selectors, new-versus-carried evidence,
 closed missing-context labels, and two operational next-action codes. It does
 not calculate a diagnosis, triage, risk, red flag, trend, or treatment advice.
+`health-summary-history/v1` is its separate read-only index: it exposes bounded
+immutable version selectors newest-first and permits reopening one exact stored
+snapshot, but never compares versions or derives a change.
 
 The local synthetic demo additionally supports a one-time adult or caregiver
 invitation. The code is returned only at issuance and stored only as a SHA-256
@@ -98,6 +101,9 @@ required. Shared code is extracted only when two real consumers need it.
 - Reads `health-summary/v1` after the same profile authorization. It renders a
   bounded immutable evidence snapshot, its missing-context labels, and
   re-authorized document selectors; it never synthesizes clinical advice.
+- Reads `health-summary-history/v1` under the same profile authorization and
+  lets a user reopen an immutable earlier source snapshot without calculating a
+  version-to-version conclusion.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.

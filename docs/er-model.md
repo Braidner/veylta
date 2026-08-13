@@ -328,6 +328,11 @@ missing-context labels and the two non-clinical actions `prepare_source_for_clin
 and `complete_pending_review`. It has no diagnosis, risk, red-flag,
 interpretation, or treatment-advice field.
 
+Task 21 adds no table or mutable projection: `health-summary-history/v1` is a
+profile-authorized, newest-first index over those existing immutable summary
+rows. Its version selector only reopens the exact `HealthSummary` evidence
+snapshot; it neither computes nor persists a comparison between versions.
+
 `Recommendation` remains deferred until a separately reviewed deterministic
 safety boundary can distinguish facts, assumptions, advice, red flags,
 confidence, missing data, and evidence links.
@@ -370,7 +375,8 @@ and `ProcessingRetryRequest`. Task 6 adds `ReviewDecision`, `ReviewRequest`,
 tables: `observation-history/v1` is an authorized profile-scoped read over
 confirmed `Observation` rows, their optional source range, reviewer, and
 document/page provenance. Task 20 adds only `HealthSummary` and
-`HealthSummaryEvidence`, both used by `health-summary/v1`. Add broader consent
+`HealthSummaryEvidence`, used by `health-summary/v1` and its Task 21 immutable
+version index. Add broader consent
 capabilities, extended clinical entities, recommendations, and agent runs only
 with the slice that uses and tests them.
 

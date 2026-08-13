@@ -59,6 +59,10 @@ function summaryPath(identity: Identity): string {
   return `${profilePath(identity)}/health-summary`;
 }
 
+function summaryHistoryPath(identity: Identity): string {
+  return `${summaryPath(identity)}/versions`;
+}
+
 function multipartFile(bytes: Buffer, filename: string) {
   const boundary = `veylta-summary-${randomUUID()}`;
   return {
@@ -377,6 +381,121 @@ test("a later completed review creates an immutable successor and identifies new
       { id: firstSummary.id, version: 1, previous_summary_id: null, evidence_count: 1 },
       { id: latest.id, version: 2, previous_summary_id: firstSummary.id, evidence_count: 2 },
     ]);
+
+    const history = await context.app.inject({
+      method: "GET",
+      url: summaryHistoryPath(owner),
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(history.statusCode, 200, history.rawPayload.toString());
+    assert.deepEqual(history.json(), {
+      contractVersion: "health-summary-history/v1",
+      versions: [
+        {
+          id: latest.id,
+          version: 2,
+          createdAt: latest.createdAt,
+          includedEvidenceCount: 2,
+          totalConfirmedObservationCount: 2,
+          newEvidenceCount: 1,
+          carriedForwardEvidenceCount: 1,
+        },
+        {
+          id: firstSummary.id,
+          version: 1,
+          createdAt: firstSummary.createdAt,
+          includedEvidenceCount: 1,
+          totalConfirmedObservationCount: 1,
+          newEvidenceCount: 1,
+          carriedForwardEvidenceCount: 0,
+        },
+      ],
+      nextBeforeVersion: null,
+    });
+
+    const firstPage = await context.app.inject({
+      method: "GET",
+      url: `${summaryHistoryPath(owner)}?limit=1`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(firstPage.statusCode, 200, firstPage.rawPayload.toString());
+    assert.deepEqual(firstPage.json(), {
+      contractVersion: "health-summary-history/v1",
+      versions: [
+        {
+          id: latest.id,
+          version: 2,
+          createdAt: latest.createdAt,
+          includedEvidenceCount: 2,
+          totalConfirmedObservationCount: 2,
+          newEvidenceCount: 1,
+          carriedForwardEvidenceCount: 1,
+        },
+      ],
+      nextBeforeVersion: 2,
+    });
+
+    const secondPage = await context.app.inject({
+      method: "GET",
+      url: `${summaryHistoryPath(owner)}?limit=1&beforeVersion=2`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(secondPage.statusCode, 200, secondPage.rawPayload.toString());
+    assert.deepEqual(secondPage.json(), {
+      contractVersion: "health-summary-history/v1",
+      versions: [
+        {
+          id: firstSummary.id,
+          version: 1,
+          createdAt: firstSummary.createdAt,
+          includedEvidenceCount: 1,
+          totalConfirmedObservationCount: 1,
+          newEvidenceCount: 1,
+          carriedForwardEvidenceCount: 0,
+        },
+      ],
+      nextBeforeVersion: null,
+    });
+
+    const historical = await context.app.inject({
+      method: "GET",
+      url: `${summaryPath(owner)}?version=1`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(historical.statusCode, 200, historical.rawPayload.toString());
+    const firstVersion = (historical.json() as HealthSummaryResponse).summary;
+    if (firstVersion === null) throw new Error("Expected requested summary version");
+    assert.equal(firstVersion.id, firstSummary.id);
+    assert.equal(firstVersion.version, 1);
+    assert.equal(firstVersion.previous, null);
+    assert.deepEqual(firstVersion.evidenceScope, {
+      includedCount: 1,
+      totalConfirmedObservationCount: 1,
+    });
+
+    const absentVersion = await context.app.inject({
+      method: "GET",
+      url: `${summaryPath(owner)}?version=3`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(absentVersion.statusCode, 404);
+    assert.equal(absentVersion.rawPayload.includes(owner.body.profile.id), false);
+
+    const invalidVersion = await context.app.inject({
+      method: "GET",
+      url: `${summaryPath(owner)}?version=0`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(invalidVersion.statusCode, 400);
+
+    const outsider = await registerOwner(context.app, "summary-history-outsider");
+    const deniedHistory = await context.app.inject({
+      method: "GET",
+      url: summaryHistoryPath(owner),
+      headers: { cookie: outsider.cookie },
+    });
+    assert.equal(deniedHistory.statusCode, 404);
+    assert.equal(deniedHistory.rawPayload.includes(firstSummary.id), false);
 
     const rejectedOnly = await uploadAndExtract(context, owner, "rejected-only");
     for (const fact of rejectedOnly.facts) {

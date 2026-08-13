@@ -10,9 +10,11 @@ export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as cons
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
 export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
 export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
+export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
 export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
 export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
+export const MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE = 50;
 export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
 /** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
 export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
@@ -412,6 +414,28 @@ export interface HealthSummaryResponse {
   readonly contractVersion: typeof HEALTH_SUMMARY_CONTRACT_VERSION;
   /** Null until at least one extraction run reaches its final human review. */
   readonly summary: HealthSummary | null;
+}
+
+/**
+ * A compact, newest-first index of immutable summary snapshots. It contains
+ * counts only, so selecting an older version never introduces a health score
+ * or an interpretation of change.
+ */
+export interface HealthSummaryVersion {
+  readonly id: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly includedEvidenceCount: number;
+  readonly totalConfirmedObservationCount: number;
+  readonly newEvidenceCount: number;
+  readonly carriedForwardEvidenceCount: number;
+}
+
+export interface HealthSummaryHistoryResponse {
+  readonly contractVersion: typeof HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION;
+  readonly versions: readonly HealthSummaryVersion[];
+  /** Pass this immutable version number as `beforeVersion` for the next older page. */
+  readonly nextBeforeVersion: number | null;
 }
 
 /**

@@ -16,6 +16,7 @@ import type {
   FamilyConsentMemberListResponse,
   FamilyInvitationCreateResponse,
   FamilyInvitationRole,
+  HealthSummaryHistoryResponse,
   HealthSummaryMissingData,
   HealthSummaryRecommendationCode,
   HealthSummaryResponse,
@@ -126,6 +127,10 @@ function profileOverviewPath(familyId: string, profileId: string): string {
 
 function healthSummaryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/health-summary`;
+}
+
+function healthSummaryHistoryPath(familyId: string, profileId: string): string {
+  return `${healthSummaryPath(familyId, profileId)}/versions`;
 }
 
 function evidenceBundlePath(familyId: string, profileId: string): string {
@@ -1608,7 +1613,14 @@ function ProfileOverviewPanel({
 
 type HealthSummaryState =
   | { kind: "loading" }
-  | { kind: "ready"; response: HealthSummaryResponse }
+  | {
+      kind: "ready";
+      response: HealthSummaryResponse;
+      history: HealthSummaryHistoryResponse;
+      versionPending: boolean;
+      historyPending: boolean;
+      versionError: string | null;
+    }
   | { kind: "error"; copy: string };
 
 function healthSummaryErrorCopy(error: unknown): string {
@@ -1649,11 +1661,26 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
     async (signal?: AbortSignal): Promise<void> => {
       setState({ kind: "loading" });
       try {
-        const response = await apiRequest<HealthSummaryResponse>(
-          healthSummaryPath(familyId, profileId),
-          signal === undefined ? undefined : { signal },
-        );
-        if (!signal?.aborted) setState({ kind: "ready", response });
+        const [response, history] = await Promise.all([
+          apiRequest<HealthSummaryResponse>(
+            healthSummaryPath(familyId, profileId),
+            signal === undefined ? undefined : { signal },
+          ),
+          apiRequest<HealthSummaryHistoryResponse>(
+            healthSummaryHistoryPath(familyId, profileId),
+            signal === undefined ? undefined : { signal },
+          ),
+        ]);
+        if (!signal?.aborted) {
+          setState({
+            kind: "ready",
+            response,
+            history,
+            versionPending: false,
+            historyPending: false,
+            versionError: null,
+          });
+        }
       } catch (error) {
         if (!signal?.aborted) setState({ kind: "error", copy: healthSummaryErrorCopy(error) });
       }
@@ -1666,6 +1693,76 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
     void loadSummary(controller.signal);
     return () => controller.abort();
   }, [loadSummary]);
+
+  async function selectVersion(version: number): Promise<void> {
+    if (state.kind !== "ready" || state.response.summary?.version === version) return;
+    setState((current) =>
+      current.kind !== "ready" ? current : { ...current, versionPending: true, versionError: null },
+    );
+    try {
+      const response = await apiRequest<HealthSummaryResponse>(
+        `${healthSummaryPath(familyId, profileId)}?version=${encodeURIComponent(String(version))}`,
+      );
+      if (response.summary === null) throw new Error("Missing selected summary version");
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { ...current, response, versionPending: false, versionError: null },
+      );
+    } catch (error) {
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              versionPending: false,
+              versionError: healthSummaryErrorCopy(error),
+            },
+      );
+    }
+  }
+
+  async function loadOlderVersions(): Promise<void> {
+    if (
+      state.kind !== "ready" ||
+      state.history.nextBeforeVersion === null ||
+      state.historyPending
+    ) {
+      return;
+    }
+    setState((current) =>
+      current.kind !== "ready" ? current : { ...current, historyPending: true, versionError: null },
+    );
+    try {
+      const next = await apiRequest<HealthSummaryHistoryResponse>(
+        `${healthSummaryHistoryPath(familyId, profileId)}?beforeVersion=${encodeURIComponent(String(state.history.nextBeforeVersion))}`,
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              history: {
+                contractVersion: current.history.contractVersion,
+                versions: [...current.history.versions, ...next.versions],
+                nextBeforeVersion: next.nextBeforeVersion,
+              },
+              historyPending: false,
+              versionError: null,
+            },
+      );
+    } catch (error) {
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              historyPending: false,
+              versionError: healthSummaryErrorCopy(error),
+            },
+      );
+    }
+  }
 
   return (
     <section
@@ -1718,15 +1815,48 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
       {state.kind === "ready" && state.response.summary !== null ? (
         <div className="health-summary__content">
           <div className="health-summary__meta">
-            <p>
-              Версия {state.response.summary.version} ·{" "}
-              {formatDate(state.response.summary.createdAt)}
-            </p>
+            <div className="health-summary__version-control">
+              <label>
+                <span>Фиксированная версия</span>
+                <select
+                  aria-label="Версия сводки"
+                  value={state.response.summary.version}
+                  disabled={state.versionPending}
+                  onChange={(event) => void selectVersion(Number(event.target.value))}
+                >
+                  {state.history.versions.map((version) => (
+                    <option key={version.id} value={version.version}>
+                      Версия {version.version} · {formatDate(version.createdAt)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {state.history.nextBeforeVersion === null ? null : (
+                <button
+                  className="text-button health-summary__older"
+                  type="button"
+                  disabled={state.historyPending}
+                  onClick={() => void loadOlderVersions()}
+                >
+                  {state.historyPending ? "Загружаем старые версии…" : "Показать старые версии"}
+                </button>
+              )}
+              <p>
+                Версия {state.response.summary.version} ·{" "}
+                {formatDate(state.response.summary.createdAt)}
+              </p>
+            </div>
             <p>
               Источников в версии: {state.response.summary.evidenceScope.includedCount} из{" "}
               {state.response.summary.evidenceScope.totalConfirmedObservationCount} подтверждённых
             </p>
           </div>
+
+          {state.versionError === null ? null : (
+            <p className="form-error" role="alert">
+              {state.versionError}
+            </p>
+          )}
 
           {state.response.summary.previous !== null ? (
             <p className="health-summary__change" role="status">
