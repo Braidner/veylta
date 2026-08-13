@@ -196,7 +196,7 @@ const errorMessages: Record<ProcessingErrorCode, string> = {
   UNSUPPORTED_DOCUMENT: "Document format is unsupported",
   VALIDATION_FAILED: "Extraction output validation failed",
 };
-const versionPattern = /^[a-z0-9][a-z0-9._/-]{0,99}$/;
+const versionPattern = /^[a-z0-9][a-z0-9._/+:-]{0,99}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const maxRetryDelayMs = 24 * 60 * 60 * 1_000;
 

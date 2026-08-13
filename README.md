@@ -15,12 +15,13 @@ change treatment, or replace a clinician or an electronic health record.
 
 The repository is implementing its first vertical slice. The completed local
 path creates an opaque synthetic demo session, one owner-scoped family,
-adult/dependent profiles, immutable synthetic PDF records, review-ready
+adult/dependent profiles, immutable synthetic PDF/PNG/JPEG records, review-ready
 extracted facts, and explicit review decisions in persistent local storage.
 The full first slice remains deliberately narrow:
 
 1. create a family and a patient profile;
-2. upload a fully synthetic Russian-language PDF with a text layer;
+2. upload a fully synthetic Russian-language text-layer report or a bounded
+   image-only scan using the fixed local-English synthetic fallback grammar;
 3. persist the immutable original and calculate its SHA-256 while streaming;
 4. detect a possible duplicate within that family;
 5. deterministically extract a small, versioned set of laboratory facts with
@@ -29,12 +30,32 @@ The full first slice remains deliberately narrow:
    correction creates a source-linked observation without changing the raw
    extraction (Task 6, delivered);
 7. show confirmed observations as indicator history with provenance back to
-   the document and page (Task 7, delivered).
+   the document and page (Task 7, delivered);
+8. compare compatible, confirmed synthetic indicators by exact code and source
+   unit, with an accessible chart and no clinical assessment (Task 9,
+   delivered).
+9. let the family owner inspect a paginated, payload-free activity log; it
+   exposes only action, result, time, actor, and resource selector (Task 12,
+   delivered).
+10. open a compact profile overview of bounded recent source documents, pending
+    explicit reviews, and confirmed values, without a health score, diagnosis,
+    or recommendation (Task 17, delivered).
+11. download a local TAR snapshot of at most five latest synthetic source files
+    plus their checksummed manifest, only as the owner/self profile actor (Task 18,
+    delivered).
+12. verify a downloaded local synthetic snapshot offline, before any manual
+    handling of its contents (Task 19, delivered).
 
-S3-compatible storage, OCR, LLM processing, trend summaries, recommendations,
-FHIR exchange, export/backup, and the rest of the full MVP are explicitly
-deferred. They must not be represented as implemented until their own slices
-are complete.
+Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
+exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
+In the loopback-local synthetic demo, an owner can issue a one-time invitation
+to an adult or caregiver. An adult receives only a personal linked profile;
+a caregiver receives no profile at all until the owner explicitly grants the
+single, revocable `profile.read` capability for one profile. The grant never
+transfers upload, review, invitation, or family-audit powers. This is not
+production identity or consent management. The optional S3-compatible storage
+adapter is implemented only for synthetic operator testing and is not a
+real-data readiness claim.
 
 ## Product principles
 
@@ -53,11 +74,15 @@ are complete.
 - Fastify API and worker process.
 - Embedded SQLite through Node.js `node:sqlite` for domain state, audit events,
   explicit migrations, and—beginning with Task 5—durable idempotent jobs.
-- Versioned `ObjectStorage/v1` contract, initially backed by a persistent local
-  filesystem directory. Controlled reads take a bounded, checksum-verified
-  snapshot (the current PDF cap is 5 MiB) before returning bytes.
-- Versioned deterministic parser for the first synthetic document format; no
-  LLM or OCR is used in the first slice.
+- Versioned `ObjectStorage/v1` contract, backed by a persistent local filesystem
+  directory by default and an explicit S3-compatible encrypted adapter for
+  synthetic deployments. Controlled reads take a bounded, checksum-verified
+  snapshot (the current synthetic-document cap is 5 MiB) before returning bytes.
+- Versioned deterministic parser for the first synthetic document format. When
+  a PDF text layer is absent, the worker may run a local, bounded English OCR
+  model on rendered PDF pages; direct PNG/JPEG inputs use that same bounded
+  local path after signature and header-pixel checks. It never calls an
+  OCR/LLM provider.
 
 See [product](docs/product.md), [architecture](docs/architecture.md),
 [threat model](docs/threat-model.md), [API](docs/api.md), [ER model](docs/er-model.md),
@@ -101,27 +126,52 @@ pnpm license:check
 `pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
 The browser flow at <http://127.0.0.1:4300> creates a local demo family and
 keeps the active profile explicit in both the route and heading. It accepts one
-synthetic PDF up to 5 MiB, streams it through signature/size/SHA-256 checks, and
+synthetic PDF, PNG, or JPEG up to 5 MiB, streams it through matching
+MIME/signature, size, and SHA-256 checks, and
 keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
 reported only inside the same family; it creates another logical document but
 not another blob. Source download is authorized again and returned as a safe
 attachment. The worker polls the same SQLite file and processes the checked-in
-synthetic text-PDF format through PDF.js and a strict deterministic parser. It
-does not call OCR, an LLM, or a network provider. Extracted facts are proposals
+synthetic PDF grammar through PDF.js and a strict deterministic parser. For an
+image-only PDF it renders at most three bounded pages; direct PNG/JPEG uses the
+same local English OCR model after a header pixel-cap check. Every OCR output
+still has to satisfy the exact synthetic grammar; there is no OCR/LLM network call or provider
+URL. Extracted facts are proposals
 for review, never confirmed medical observations by themselves. A user
 confirmation or correction creates one immutable review decision and confirmed
 observation in the same transaction; a rejection creates no observation. The
 raw extracted fact is never edited. The profile page then lists confirmed
 observations source-first, with their document-specific provenance and an
-authorized link back to the immutable original; it is a history table, not a
-trend or clinical interpretation.
+authorized link back to the immutable original. Its separate compatible-
+indicator view keeps exact source units apart and can show the arithmetic
+difference between the latest two numeric sources; it never assigns a
+reference-range meaning, clinical trend, or recommendation.
 
-The demo never asks for a real email. The opaque session token exists only in
+The profile landing view is an authorized `profile-overview/v1` read: it shows
+at most three recent immutable sources, three pending-review sources, and three
+explicitly confirmed values with links back to the original document. It is an
+operational overview, never a clinical summary, and its successful read is
+payload-free audited. Its owner/self-only `synthetic-evidence-bundle/v1` download
+is a bounded TAR snapshot of five latest synthetic sources and their checksummed
+manifest, never a backup, restore format, or production portability claim. The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
 disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.
 `DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
 state-changing requests require the exact configured `WEB_ORIGIN`.
+
+An artifact can be checked without extracting it to disk:
+
+```bash
+pnpm --filter @veylta/api verify:evidence-bundle ./veylta-synthetic-evidence.tar
+```
+
+The verifier accepts only the local `synthetic-evidence-bundle/v1` USTAR shape,
+generated document paths, supported source signatures, and matching SHA-256/size
+metadata. It proves structural consistency of the captured local archive, not
+its origin, clinical correctness, or a production export guarantee. It prints
+counts only; it never calls the API, writes archive entries, or logs profile
+names, filenames, values, or source bytes.
 
 This demo session has no login or account recovery and is not production
 authentication. Integration tests create isolated temporary SQLite databases;

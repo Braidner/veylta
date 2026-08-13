@@ -97,7 +97,7 @@ function syntheticPdf(label: string, minimumBytes = 0): Buffer {
 function createTestApp(
   database: Database,
   storageRoot: string,
-  maxPdfBytes = MAX_SYNTHETIC_PDF_BYTES,
+  maxDocumentBytes = MAX_SYNTHETIC_PDF_BYTES,
   storage: ObjectStorage = createLocalObjectStorage(storageRoot),
 ) {
   const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
@@ -113,8 +113,8 @@ function createTestApp(
   registerDocumentRoutes(
     app,
     familyService,
-    createDocumentService(database, storage, { maxPdfBytes }),
-    { allowedMutationOrigins: [webOrigin], maxPdfBytes },
+    createDocumentService(database, storage, { maxDocumentBytes }),
+    { allowedMutationOrigins: [webOrigin], maxDocumentBytes },
   );
   return app;
 }
@@ -171,7 +171,7 @@ async function registerOwner(app: FastifyInstance, suffix: string): Promise<Iden
 
 async function upload(
   app: FastifyInstance,
-  identity: Identity,
+  identity: { body: Pick<DemoRegistrationResponse, "family" | "profile">; cookie: string },
   bytes: Buffer,
   idempotencyKey: string,
   options: MultipartOptions = {},
@@ -220,14 +220,14 @@ async function withTestContext(
     database: Database;
     storageRoot: string;
   }) => Promise<void>,
-  maxPdfBytes = MAX_SYNTHETIC_PDF_BYTES,
+  maxDocumentBytes = MAX_SYNTHETIC_PDF_BYTES,
   storageFactory: (root: string) => ObjectStorage = createLocalObjectStorage,
 ): Promise<void> {
   const testRoot = await mkdtemp(join(tmpdir(), "veylta-upload-"));
   const storageRoot = join(testRoot, "storage");
   const database = createDatabase(join(testRoot, "test.sqlite"));
   await migrateUp(database);
-  const app = createTestApp(database, storageRoot, maxPdfBytes, storageFactory(storageRoot));
+  const app = createTestApp(database, storageRoot, maxDocumentBytes, storageFactory(storageRoot));
   try {
     await operation({ app, database, storageRoot });
   } finally {
@@ -408,7 +408,17 @@ test("upload validation rejects bad type, signature, size, and multipart shape w
 
     const badSignature = await upload(app, owner, Buffer.from("NOT A PDF"), "bad-signature");
     assert.equal(badSignature.statusCode, 415);
-    assert.equal(badSignature.json().error.code, "INVALID_PDF_SIGNATURE");
+    assert.equal(badSignature.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
+
+    const pngDeclaredAsJpeg = await upload(
+      app,
+      owner,
+      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+      "image-signature-mismatch",
+      { contentType: "image/jpeg", filename: "declared-jpeg.jpg" },
+    );
+    assert.equal(pngDeclaredAsJpeg.statusCode, 415);
+    assert.equal(pngDeclaredAsJpeg.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
 
     const wrongMediaType = await app.inject({
       method: "POST",
@@ -658,5 +668,110 @@ test("a finalized orphan is recovered by retry after a database rollback", async
       requests: 1,
       versions: 1,
     });
+  });
+});
+
+test("an invited adult receives only a revocable document read grant, never document write", async () => {
+  await withTestContext(async ({ app }) => {
+    const owner = await registerOwner(app, "Adult Access");
+    const uploaded = await upload(
+      app,
+      owner,
+      syntheticPdf("OWNER_PRIVATE_DOCUMENT"),
+      "owner-private",
+    );
+    assert.equal(uploaded.statusCode, 202);
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.body.family.id}/invitations`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(invitation.statusCode, 201);
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitation.json().invitation.code,
+        displayName: "Invited Adult",
+        profileName: "Invited Adult Profile",
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    const adultCookie = cookieFrom(accepted);
+    const adultSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: adultCookie },
+    });
+    assert.equal(adultSession.statusCode, 200);
+    const adultUserId = adultSession.json().user.id as string;
+
+    const ownerDocumentPath = `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${uploaded.json().document.id}`;
+    const randomPath = `/v1/families/${owner.body.family.id}/profiles/${randomUUID()}/documents/${randomUUID()}`;
+    for (const suffix of ["", "/content"] as const) {
+      const foreign = await app.inject({
+        method: "GET",
+        url: `${ownerDocumentPath}${suffix}`,
+        headers: { cookie: adultCookie },
+      });
+      const missing = await app.inject({
+        method: "GET",
+        url: `${randomPath}${suffix}`,
+        headers: { cookie: adultCookie },
+      });
+      assert.deepEqual(
+        { statusCode: foreign.statusCode, code: foreign.json().error.code },
+        { statusCode: missing.statusCode, code: missing.json().error.code },
+      );
+      assert.equal(foreign.statusCode, 404);
+      assert.equal(foreign.rawPayload.includes("OWNER_PRIVATE_DOCUMENT"), false);
+      assert.equal(foreign.rawPayload.includes("synthetic-result.pdf"), false);
+    }
+
+    const granted = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/consent-grants`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { granteeUserId: adultUserId, capability: "profile.read" },
+    });
+    assert.equal(granted.statusCode, 201);
+    const grantId = granted.json().grant.id as string;
+
+    for (const suffix of ["", "/content"] as const) {
+      const grantedRead = await app.inject({
+        method: "GET",
+        url: `${ownerDocumentPath}${suffix}`,
+        headers: { cookie: adultCookie },
+      });
+      assert.equal(grantedRead.statusCode, 200);
+    }
+
+    const rejectedWrite = await upload(
+      app,
+      {
+        body: { family: owner.body.family, profile: owner.body.profile },
+        cookie: adultCookie,
+      },
+      syntheticPdf("GRANTED_ADULT_MUST_NOT_WRITE"),
+      "granted-adult-write",
+    );
+    assert.equal(rejectedWrite.statusCode, 404);
+
+    const revoked = await app.inject({
+      method: "DELETE",
+      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/consent-grants/${grantId}`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+    });
+    assert.equal(revoked.statusCode, 204);
+    const revokedRead = await app.inject({
+      method: "GET",
+      url: ownerDocumentPath,
+      headers: { cookie: adultCookie },
+    });
+    assert.equal(revokedRead.statusCode, 404);
+    assert.equal(revokedRead.rawPayload.includes("OWNER_PRIVATE_DOCUMENT"), false);
   });
 });

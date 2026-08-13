@@ -17,7 +17,8 @@ import {
 import {
   type DocumentService,
   IdempotencyConflictError,
-  InvalidPdfSignatureError,
+  type IndicatorSeriesQuery,
+  InvalidDocumentSignatureError,
   type ObservationHistoryQuery,
   type StagedDocument,
   UnsupportedDocumentTypeError,
@@ -37,9 +38,13 @@ interface FactParams extends DocumentParams {
   factId: string;
 }
 
+interface IndicatorParams extends ProfileParams {
+  canonicalCode: string;
+}
+
 export interface DocumentRouteOptions {
   allowedMutationOrigins: readonly string[];
-  maxPdfBytes: number;
+  maxDocumentBytes: number;
 }
 
 class InvalidMultipartUploadError extends Error {}
@@ -93,6 +98,33 @@ const observationHistoryQuerySchema = {
   },
 } as const;
 
+const indicatorParamsSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["familyId", "profileId", "canonicalCode"],
+  properties: {
+    familyId: canonicalUuidSchema,
+    profileId: canonicalUuidSchema,
+    canonicalCode: {
+      type: "string",
+      minLength: 1,
+      maxLength: 100,
+      pattern: "^[a-z0-9][a-z0-9._-]{0,99}$",
+    },
+  },
+} as const;
+
+const indicatorSeriesQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["unit"],
+  properties: {
+    unit: { type: "string", minLength: 1, maxLength: 100 },
+    limit: { type: "string", pattern: "^(?:[1-9][0-9]?|100)$" },
+    cursor: { type: "string", minLength: 1, maxLength: 500, pattern: "^[A-Za-z0-9_-]+$" },
+  },
+} as const;
+
 function idempotencyKey(request: FastifyRequest): string {
   const value = request.headers["idempotency-key"];
   if (typeof value !== "string" || !/^[\x21-\x7e]{16,200}$/.test(value)) {
@@ -136,19 +168,19 @@ function sendDocumentError(error: unknown, request: FastifyRequest, reply: Fasti
       .send(
         errorEnvelope(
           "UNSUPPORTED_DOCUMENT_TYPE",
-          "Only a synthetic PDF is supported.",
+          "Only a synthetic PDF, PNG, or JPEG is supported.",
           request.id,
         ),
       );
     return true;
   }
-  if (error instanceof InvalidPdfSignatureError) {
+  if (error instanceof InvalidDocumentSignatureError) {
     reply
       .code(415)
       .send(
         errorEnvelope(
-          "INVALID_PDF_SIGNATURE",
-          "The file content is not a supported PDF.",
+          "INVALID_DOCUMENT_SIGNATURE",
+          "The file content does not match a supported document type.",
           request.id,
         ),
       );
@@ -157,7 +189,9 @@ function sendDocumentError(error: unknown, request: FastifyRequest, reply: Fasti
   if (error instanceof UploadTooLargeError) {
     reply
       .code(413)
-      .send(errorEnvelope("UPLOAD_TOO_LARGE", "The PDF exceeds the upload limit.", request.id));
+      .send(
+        errorEnvelope("UPLOAD_TOO_LARGE", "The document exceeds the upload limit.", request.id),
+      );
     return true;
   }
   if (error instanceof IdempotencyConflictError) {
@@ -194,7 +228,7 @@ function sendDocumentError(error: unknown, request: FastifyRequest, reply: Fasti
       .send(
         errorEnvelope(
           "INVALID_MULTIPART_UPLOAD",
-          "Exactly one PDF file part is required.",
+          "Exactly one supported document file part is required.",
           request.id,
         ),
       );
@@ -219,7 +253,7 @@ export function registerDocumentRoutes(
         files: 2,
         fields: 1,
         parts: 3,
-        fileSize: options.maxPdfBytes,
+        fileSize: options.maxDocumentBytes,
         fieldNameSize: 32,
         headerPairs: 32,
       },
@@ -242,10 +276,80 @@ export function registerDocumentRoutes(
       },
     );
 
+    scope.get<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/overview",
+      { schema: { params: profileParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(await service.getProfileOverview(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/evidence-bundle",
+      { schema: { params: profileParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          const bundle = await service.getEvidenceBundle(actor, request.params, request.id);
+          return reply
+            .type("application/x-tar")
+            .header("content-length", bundle.byteSize)
+            .header("content-disposition", 'attachment; filename="veylta-synthetic-evidence.tar"')
+            .header("x-content-type-options", "nosniff")
+            .header("cache-control", "private, no-store")
+            .header("content-security-policy", "sandbox")
+            .send(bundle.body);
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams }>(
+      "/v1/families/:familyId/profiles/:profileId/indicators",
+      { schema: { params: profileParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(await service.getIndicatorCatalog(actor, request.params, request.id));
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.get<{ Params: IndicatorParams; Querystring: IndicatorSeriesQuery }>(
+      "/v1/families/:familyId/profiles/:profileId/indicators/:canonicalCode",
+      { schema: { params: indicatorParamsSchema, querystring: indicatorSeriesQuerySchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(
+            await service.getIndicatorSeries(actor, request.params, request.query, request.id),
+          );
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
     scope.post<{ Params: ProfileParams }>(
       "/v1/families/:familyId/profiles/:profileId/documents",
       {
-        bodyLimit: options.maxPdfBytes + 128 * 1024,
+        bodyLimit: options.maxDocumentBytes + 128 * 1024,
         schema: { params: profileParamsSchema },
       },
       async (request, reply) => {
@@ -256,7 +360,7 @@ export function registerDocumentRoutes(
           const actor = await requireActor(familyService, request, reply);
           if (actor === null) return;
           const commandKey = idempotencyKey(request);
-          await service.requireProfileAccess(actor, request.params);
+          await service.requireProfileWriteAccess(actor, request.params);
 
           let invalidShape = false;
           for await (const part of request.parts()) {
@@ -269,7 +373,7 @@ export function registerDocumentRoutes(
               await drain(part.file);
               continue;
             }
-            staged = await service.stagePdf({
+            staged = await service.stageDocument({
               body: part.file,
               contentType: part.mimetype,
               filename: part.filename,
@@ -319,10 +423,16 @@ export function registerDocumentRoutes(
         if (actor === null) return;
         try {
           const content = await service.getContent(actor, request.params, request.id);
+          const filename =
+            content.contentType === "application/pdf"
+              ? "document.pdf"
+              : content.contentType === "image/png"
+                ? "document.png"
+                : "document.jpg";
           return reply
-            .type("application/pdf")
+            .type(content.contentType)
             .header("content-length", content.byteSize)
-            .header("content-disposition", 'attachment; filename="document.pdf"')
+            .header("content-disposition", `attachment; filename="${filename}"`)
             .header("x-content-type-options", "nosniff")
             .header("cache-control", "private, no-store")
             .header("content-security-policy", "sandbox")

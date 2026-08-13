@@ -53,7 +53,7 @@ test("parses the narrow synthetic format into a strict fact with page provenance
       sourceName: "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
       sourceValue: "7.0",
       sourceUnit: "synthetic-unit",
-      proposedCanonicalCode: null,
+      proposedCanonicalCode: "synthetic-analyte-a",
       proposedNormalizedValue: null,
       proposedNormalizedUnit: null,
       referenceRange: {
@@ -75,6 +75,21 @@ test("parses the narrow synthetic format into a strict fact with page provenance
   const firstFact = extraction.items[0];
   assert.ok(firstFact !== undefined);
   assert.equal(reviewStatusForFact(firstFact), "needs_review");
+});
+
+test("accepts a versioned local OCR provenance marker without widening the synthetic grammar", () => {
+  const parsed = parseSyntheticLabPages([
+    syntheticPage({
+      extractionMethod: "local_synthetic_ocr",
+      extractionVersion: "pdfjs-dist/6.2.108+tesseract.js/7.0.0+eng/1.0.0",
+    }),
+  ]);
+
+  assert.equal(parsed.pages[0]?.extractionMethod, "local_synthetic_ocr");
+  assert.equal(
+    parsed.pages[0]?.extractionVersion,
+    "pdfjs-dist/6.2.108+tesseract.js/7.0.0+eng/1.0.0",
+  );
 });
 
 test("routes a low-confidence fact to review even without another issue", () => {

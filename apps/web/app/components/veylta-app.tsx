@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  DemoInvitationAcceptResponse,
   DemoRegistrationResponse,
   DocumentFactsResponse,
   DocumentProcessingResponse,
@@ -11,16 +12,26 @@ import type {
   ExtractedFactReviewStatus,
   FactReviewCommand,
   FactReviewResponse,
+  FamilyAuditLogResponse,
+  FamilyConsentMemberListResponse,
+  FamilyInvitationCreateResponse,
+  FamilyInvitationRole,
+  IndicatorCatalogResponse,
+  IndicatorSeriesResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
+  ProfileConsentGrant,
+  ProfileConsentGrantCreateResponse,
+  ProfileConsentGrantListResponse,
   ProfileCreateResponse,
+  ProfileOverviewResponse,
   SessionFamily,
   SessionResponse,
 } from "@veylta/contracts";
-import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
+import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { SystemStatus } from "./system-status";
 
 const apiPrefix = "/health-api";
@@ -106,8 +117,32 @@ function documentFactsPath(familyId: string, profileId: string, documentId: stri
   return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
 }
 
+function profileOverviewPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/overview`;
+}
+
+function evidenceBundlePath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/evidence-bundle`;
+}
+
 function observationHistoryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/observations`;
+}
+
+function indicatorsPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/indicators`;
+}
+
+function familyAuditLogPath(familyId: string): string {
+  return `/v1/families/${encodeURIComponent(familyId)}/audit-events`;
+}
+
+function familyConsentMembersPath(familyId: string): string {
+  return `/v1/families/${encodeURIComponent(familyId)}/members`;
+}
+
+function profileConsentGrantsPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/consent-grants`;
 }
 
 interface VeyltaAppProps {
@@ -123,7 +158,9 @@ export function VeyltaApp({
 }: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
-  const [action, setAction] = useState<"register" | "add-profile" | "logout" | null>(null);
+  const [action, setAction] = useState<
+    "register" | "accept-invitation" | "add-profile" | "logout" | null
+  >(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
   const requestedContext =
@@ -146,9 +183,12 @@ export function VeyltaApp({
         }
 
         setScreen({ kind: "authenticated", session });
-        if (!hasRequestedProfile) {
-          const profile = firstProfile(session);
-          if (profile !== undefined) router.replace(profilePath(profile.familyId, profile.id));
+        const profile = firstProfile(session);
+        if (!hasRequestedProfile && profile !== undefined) {
+          router.replace(profilePath(profile.familyId, profile.id));
+        }
+        if (hasRequestedProfile && profile === undefined) {
+          router.replace("/");
         }
       })
       .catch(() => {
@@ -181,6 +221,41 @@ export function VeyltaApp({
       router.replace(profilePath(registration.family.id, registration.profile.id));
     } catch {
       setActionError("Не удалось создать пространство. Проверьте поля и попробуйте ещё раз.");
+    } finally {
+      setAction(null);
+    }
+  }
+
+  async function handleInvitationAcceptance(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setAction("accept-invitation");
+    setActionError(null);
+
+    const form = new FormData(event.currentTarget);
+    try {
+      const accepted = await apiRequest<DemoInvitationAcceptResponse>(
+        "/v1/demo/invitations/accept",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            code: String(form.get("code") ?? "").trim(),
+            displayName: String(form.get("displayName") ?? "").trim(),
+            ...(String(form.get("profileName") ?? "").trim().length > 0
+              ? { profileName: String(form.get("profileName") ?? "").trim() }
+              : {}),
+          }),
+        },
+      );
+      const session = await readSession();
+      if (session === null) throw new Error("Session was not created");
+      setScreen({ kind: "authenticated", session });
+      router.replace(
+        accepted.profile === null ? "/" : profilePath(accepted.family.id, accepted.profile.id),
+      );
+    } catch {
+      setActionError(
+        "Не удалось принять приглашение. Проверьте одноразовый код и попробуйте ещё раз.",
+      );
     } finally {
       setAction(null);
     }
@@ -273,16 +348,21 @@ export function VeyltaApp({
         {screen.kind === "error" ? <ErrorScreen onRetry={() => window.location.reload()} /> : null}
         {screen.kind === "unauthenticated" && !hasRequestedProfile ? (
           <OnboardingScreen
-            pending={action === "register"}
+            acceptPending={action === "accept-invitation"}
             error={actionError}
+            pending={action === "register"}
+            onAccept={handleInvitationAcceptance}
             onSubmit={handleRegistration}
           />
         ) : null}
         {screen.kind === "unauthenticated" && hasRequestedProfile ? (
           <LoadingScreen copy="Возвращаем к началу…" />
         ) : null}
-        {session !== undefined && !hasRequestedProfile ? (
+        {session !== undefined && !hasRequestedProfile && redirectProfile !== undefined ? (
           <LoadingScreen copy="Открываем профиль…" />
+        ) : null}
+        {session !== undefined && !hasRequestedProfile && redirectProfile === undefined ? (
+          <NoAuthorizedProfilesScreen />
         ) : null}
         {session !== undefined && hasRequestedProfile && context === undefined ? (
           <MissingProfileScreen fallbackProfile={redirectProfile} />
@@ -294,7 +374,7 @@ export function VeyltaApp({
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
             addProfileOpen={addProfileOpen}
-            action={action}
+            action={action === "accept-invitation" ? null : action}
             error={actionError}
             onProfileChange={(familyId, profileId) => {
               setActionError(null);
@@ -366,13 +446,38 @@ function MissingProfileScreen({
   );
 }
 
+function NoAuthorizedProfilesScreen() {
+  return (
+    <section className="state-shell" aria-labelledby="no-authorized-profiles-title">
+      <p className="context-line">Доступ ожидает согласия</p>
+      <h1 id="no-authorized-profiles-title">Пока нет доступных профилей</h1>
+      <p className="lede">
+        Владелец семьи должен явно открыть вам чтение конкретного профиля. Имена и данные профилей
+        до этого не показываются.
+      </p>
+      <p className="state-copy">После выдачи согласия обновите эту страницу.</p>
+    </section>
+  );
+}
+
 interface OnboardingScreenProps {
+  acceptPending: boolean;
   pending: boolean;
   error: string | null;
+  onAccept: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-function OnboardingScreen({ pending, error, onSubmit }: OnboardingScreenProps) {
+function OnboardingScreen({
+  acceptPending,
+  pending,
+  error,
+  onAccept,
+  onSubmit,
+}: OnboardingScreenProps) {
+  const [mode, setMode] = useState<"register" | "accept">("register");
+  const formPending = mode === "register" ? pending : acceptPending;
+
   return (
     <section className="onboarding-shell" aria-labelledby="onboarding-title">
       <div className="onboarding-intro">
@@ -399,56 +504,101 @@ function OnboardingScreen({ pending, error, onSubmit }: OnboardingScreenProps) {
 
       <form
         className="onboarding-form"
-        onSubmit={onSubmit}
-        aria-busy={pending}
+        onSubmit={mode === "register" ? onSubmit : onAccept}
+        aria-busy={formPending}
         aria-describedby="demo-form-note"
       >
         <div className="form-heading">
-          <p>Шаг 1 из 1</p>
-          <h2>Владелец и семья</h2>
+          <p>Локальный demo-доступ</p>
+          <h2>{mode === "register" ? "Владелец и семья" : "Принять приглашение"}</h2>
         </div>
 
-        <label className="field">
-          <span>Имя владельца</span>
-          <input
-            name="displayName"
-            type="text"
-            required
-            minLength={1}
-            maxLength={120}
-            autoComplete="off"
-            placeholder="Например, Владелец 01"
-            disabled={pending}
-          />
-        </label>
+        {mode === "register" ? (
+          <>
+            <label className="field">
+              <span>Имя владельца</span>
+              <input
+                name="displayName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Владелец 01"
+                disabled={formPending}
+              />
+            </label>
 
-        <label className="field">
-          <span>Название семьи</span>
-          <input
-            name="familyName"
-            type="text"
-            required
-            minLength={1}
-            maxLength={120}
-            autoComplete="off"
-            placeholder="Например, Семья 01"
-            disabled={pending}
-          />
-        </label>
+            <label className="field">
+              <span>Название семьи</span>
+              <input
+                name="familyName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Семья 01"
+                disabled={formPending}
+              />
+            </label>
 
-        <label className="field">
-          <span>Имя профиля</span>
-          <input
-            name="profileName"
-            type="text"
-            required
-            minLength={1}
-            maxLength={120}
-            autoComplete="off"
-            placeholder="Например, Профиль 01"
-            disabled={pending}
-          />
-        </label>
+            <label className="field">
+              <span>Имя профиля</span>
+              <input
+                name="profileName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Профиль 01"
+                disabled={formPending}
+              />
+            </label>
+          </>
+        ) : (
+          <>
+            <label className="field">
+              <span>Одноразовый код</span>
+              <input
+                name="code"
+                type="text"
+                required
+                minLength={46}
+                maxLength={46}
+                autoComplete="off"
+                placeholder="vi_…"
+                disabled={formPending}
+              />
+            </label>
+            <label className="field">
+              <span>Ваше имя</span>
+              <input
+                name="displayName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Например, Участник 01"
+                disabled={formPending}
+              />
+            </label>
+            <label className="field">
+              <span>Имя вашего профиля, если приглашены как взрослый</span>
+              <input
+                name="profileName"
+                type="text"
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                placeholder="Не заполняйте для помощника по уходу"
+                disabled={formPending}
+              />
+            </label>
+          </>
+        )}
 
         {error !== null ? (
           <p className="form-error" role="alert">
@@ -456,11 +606,33 @@ function OnboardingScreen({ pending, error, onSubmit }: OnboardingScreenProps) {
           </p>
         ) : null}
 
-        <button className="button button--primary button--wide" type="submit" disabled={pending}>
-          {pending ? "Создаём…" : "Создать пространство"}
+        <button
+          className="button button--primary button--wide"
+          type="submit"
+          disabled={formPending}
+        >
+          {formPending
+            ? mode === "register"
+              ? "Создаём…"
+              : "Присоединяем…"
+            : mode === "register"
+              ? "Создать пространство"
+              : "Присоединиться к семье"}
+        </button>
+        <button
+          className="text-button onboarding-form__mode"
+          type="button"
+          disabled={formPending}
+          onClick={() => {
+            setMode((current) => (current === "register" ? "accept" : "register"));
+          }}
+        >
+          {mode === "register" ? "У меня есть код приглашения" : "Создать новое пространство"}
         </button>
         <p id="demo-form-note" className="form-note">
-          Демо-сессия хранится в защищённой HttpOnly cookie. В браузере нет токена доступа.
+          Код действует один раз 24 часа. Для взрослого укажите имя личного профиля; помощник по
+          уходу оставляет его пустым. Demo-сессия хранится в защищённой HttpOnly cookie; в браузере
+          нет токена доступа.
         </p>
       </form>
     </section>
@@ -495,6 +667,7 @@ function ProfileWorkspace({
   const router = useRouter();
   const profiles = session.families.flatMap((sessionFamily) => sessionFamily.profiles);
   const ownerCanAddProfile = family.role === "owner";
+  const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const uploadAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
@@ -506,11 +679,11 @@ function ProfileWorkspace({
     const form = new FormData(event.currentTarget);
     const file = form.get("file");
     if (!(file instanceof File) || file.size === 0) {
-      setDocumentError("Выберите один синтетический PDF-файл.");
+      setDocumentError("Выберите один синтетический PDF, PNG или JPEG-файл.");
       return;
     }
-    if (file.size > MAX_SYNTHETIC_PDF_BYTES) {
-      setDocumentError("Файл больше 5 МБ. Выберите синтетический PDF меньшего размера.");
+    if (file.size > MAX_SYNTHETIC_DOCUMENT_BYTES) {
+      setDocumentError("Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.");
       return;
     }
 
@@ -553,7 +726,13 @@ function ProfileWorkspace({
             <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
           </p>
           <h1 id="profile-title">{profile.displayName}</h1>
-          <p className="profile-owner">Пространство владельца: {session.user.displayName}</p>
+          <p className="profile-owner">
+            {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}:{" "}
+            {session.user.displayName}
+          </p>
+          {profile.access === "granted_read" ? (
+            <p className="profile-access">Доступ по согласию: только чтение</p>
+          ) : null}
         </div>
 
         <label className="profile-switcher">
@@ -584,19 +763,46 @@ function ProfileWorkspace({
         <div className="profile-workspace__main">
           {requestedDocumentId === undefined ? (
             <>
-              <DocumentInbox
-                pending={uploadPending}
-                error={documentError}
-                onSubmit={handleDocumentUpload}
+              <ProfileOverviewPanel
+                key={`overview:${family.id}:${profile.id}`}
+                familyId={family.id}
+                profileId={profile.id}
+                canWriteProfile={canWriteProfile}
               />
+              {canWriteProfile ? (
+                <DocumentInbox
+                  pending={uploadPending}
+                  error={documentError}
+                  onSubmit={handleDocumentUpload}
+                />
+              ) : (
+                <section className="read-only-profile" aria-labelledby="read-only-profile-title">
+                  <p className="context-line">Только чтение</p>
+                  <h2 id="read-only-profile-title">Доступ выдан владельцем профиля</h2>
+                  <p>
+                    Здесь можно читать источник и подтверждённую историю. Загрузка, повторная
+                    обработка и проверка извлечений остаются только у владельца или личного профиля.
+                  </p>
+                </section>
+              )}
               <ObservationHistoryPanel
                 key={`${family.id}:${profile.id}`}
                 familyId={family.id}
                 profileId={profile.id}
               />
+              <IndicatorCatalogPanel
+                key={`indicators:${family.id}:${profile.id}`}
+                familyId={family.id}
+                profileId={profile.id}
+              />
             </>
           ) : (
-            <DocumentView family={family} profile={profile} documentId={requestedDocumentId} />
+            <DocumentView
+              family={family}
+              profile={profile}
+              documentId={requestedDocumentId}
+              canWriteProfile={canWriteProfile}
+            />
           )}
         </div>
 
@@ -604,7 +810,7 @@ function ProfileWorkspace({
           {requestedDocumentId !== undefined ? (
             <div className="rail-section">
               <h2>Другой документ</h2>
-              <p>Вернитесь в профиль, чтобы загрузить следующий синтетический PDF.</p>
+              <p>Вернитесь в профиль, чтобы загрузить следующий синтетический исходник.</p>
               <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
                 Загрузить ещё документ
               </Link>
@@ -664,8 +870,443 @@ function ProfileWorkspace({
               ) : null}
             </div>
           ) : null}
+          {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
+          {family.role === "owner" ? (
+            <ProfileConsentPanel
+              key={`consent:${family.id}:${profile.id}`}
+              familyId={family.id}
+              profileId={profile.id}
+            />
+          ) : null}
+          {family.role === "owner" ? (
+            <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
+          ) : null}
         </aside>
       </div>
+    </section>
+  );
+}
+
+function FamilyInvitationPanel({ familyId }: { familyId: string }) {
+  const [role, setRole] = useState<FamilyInvitationRole>("adult_member");
+  const [state, setState] = useState<
+    | { kind: "idle" }
+    | { kind: "pending" }
+    | { kind: "ready"; code: string; expiresAt: string }
+    | { kind: "error" }
+  >({ kind: "idle" });
+
+  async function createInvitation(): Promise<void> {
+    setState({ kind: "pending" });
+    try {
+      const response = await apiRequest<FamilyInvitationCreateResponse>(
+        `/v1/families/${encodeURIComponent(familyId)}/invitations`,
+        { method: "POST", body: JSON.stringify({ role }) },
+      );
+      setState({
+        kind: "ready",
+        code: response.invitation.code,
+        expiresAt: response.invitation.expiresAt,
+      });
+    } catch {
+      setState({ kind: "error" });
+    }
+  }
+
+  return (
+    <section className="family-invitation rail-section" aria-labelledby="family-invitation-title">
+      <p className="context-line">Локальный доступ</p>
+      <h2 id="family-invitation-title">Пригласить участника</h2>
+      <p>
+        Одноразовый код не открывает ни один профиль. Взрослый получает личный профиль; помощник по
+        уходу не получает профиль, пока владелец отдельно не разрешит чтение.
+      </p>
+      {state.kind === "ready" ? (
+        <div className="family-invitation__code" role="status">
+          <strong>Скопируйте код сейчас</strong>
+          <code>{state.code}</code>
+          <span>Действует до {formatDate(state.expiresAt)} и не будет показан снова.</span>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => setState({ kind: "idle" })}
+          >
+            Готово
+          </button>
+        </div>
+      ) : (
+        <>
+          <label className="field family-invitation__role">
+            <span>Роль приглашения</span>
+            <select
+              value={role}
+              disabled={state.kind === "pending"}
+              onChange={(event) => setRole(event.target.value as FamilyInvitationRole)}
+            >
+              <option value="adult_member">Взрослый участник</option>
+              <option value="caregiver">Помощник по уходу</option>
+            </select>
+          </label>
+          <button
+            className="button button--secondary"
+            type="button"
+            disabled={state.kind === "pending"}
+            onClick={() => void createInvitation()}
+          >
+            {state.kind === "pending"
+              ? "Создаём код…"
+              : role === "caregiver"
+                ? "Создать код для помощника"
+                : "Создать код для взрослого"}
+          </button>
+          {state.kind === "error" ? (
+            <p className="form-error" role="alert">
+              Не удалось создать приглашение. Данные семьи не изменились.
+            </p>
+          ) : null}
+        </>
+      )}
+    </section>
+  );
+}
+
+type ConsentPanelState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      members: readonly FamilyConsentMemberListResponse["items"][number][];
+      grants: readonly ProfileConsentGrant[];
+    }
+  | { kind: "error" };
+
+function ProfileConsentPanel({ familyId, profileId }: { familyId: string; profileId: string }) {
+  const [state, setState] = useState<ConsentPanelState>({ kind: "loading" });
+  const [pendingUserId, setPendingUserId] = useState<string | null>(null);
+  const [revokePendingId, setRevokePendingId] = useState<string | null>(null);
+
+  const load = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const [members, grants] = await Promise.all([
+          apiRequest<FamilyConsentMemberListResponse>(
+            familyConsentMembersPath(familyId),
+            signal === undefined ? undefined : { signal },
+          ),
+          apiRequest<ProfileConsentGrantListResponse>(
+            profileConsentGrantsPath(familyId, profileId),
+            signal === undefined ? undefined : { signal },
+          ),
+        ]);
+        if (!signal?.aborted)
+          setState({ kind: "ready", members: members.items, grants: grants.items });
+      } catch {
+        if (!signal?.aborted) setState({ kind: "error" });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  async function grant(memberId: string): Promise<void> {
+    setPendingUserId(memberId);
+    try {
+      const response = await apiRequest<ProfileConsentGrantCreateResponse>(
+        profileConsentGrantsPath(familyId, profileId),
+        {
+          method: "POST",
+          body: JSON.stringify({ granteeUserId: memberId, capability: "profile.read" }),
+        },
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { ...current, grants: [...current.grants, response.grant] },
+      );
+    } catch {
+      setState({ kind: "error" });
+    } finally {
+      setPendingUserId(null);
+    }
+  }
+
+  async function revoke(grantId: string): Promise<void> {
+    setRevokePendingId(grantId);
+    try {
+      await apiRequest<void>(
+        `${profileConsentGrantsPath(familyId, profileId)}/${encodeURIComponent(grantId)}`,
+        { method: "DELETE" },
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { ...current, grants: current.grants.filter((grant) => grant.id !== grantId) },
+      );
+    } catch {
+      setState({ kind: "error" });
+    } finally {
+      setRevokePendingId(null);
+    }
+  }
+
+  const activeGranteeIds =
+    state.kind === "ready"
+      ? new Set(state.grants.map((grant) => grant.grantee.id))
+      : new Set<string>();
+
+  return (
+    <section className="profile-consent rail-section" aria-labelledby="profile-consent-title">
+      <p className="context-line">Явное согласие</p>
+      <h2 id="profile-consent-title">Доступ к этому профилю</h2>
+      <p>
+        Взрослый участник или помощник по уходу получает только чтение этого профиля. Загрузка,
+        редактирование и решения по извлечениям не передаются.
+      </p>
+      {state.kind === "loading" ? <p aria-live="polite">Проверяем доступ…</p> : null}
+      {state.kind === "error" ? (
+        <div className="profile-consent__error" role="status">
+          <p>Не удалось загрузить или изменить доступ. Данные и действующие права не изменены.</p>
+          <button className="button button--secondary" type="button" onClick={() => void load()}>
+            Повторить
+          </button>
+        </div>
+      ) : null}
+      {state.kind === "ready" && state.members.length === 0 ? (
+        <p className="profile-consent__empty">
+          Сначала создайте локальное приглашение и подключите взрослого участника или помощника по
+          уходу.
+        </p>
+      ) : null}
+      {state.kind === "ready" && state.members.length > 0 ? (
+        <ul className="profile-consent__list" aria-label="Приглашённые участники и доступ">
+          {state.members.map((member) => {
+            const existing = state.grants.find((grant) => grant.grantee.id === member.id);
+            return (
+              <li key={member.id}>
+                <strong>
+                  {member.displayName}
+                  <span className="profile-consent__role">
+                    {member.role === "caregiver" ? "Помощник по уходу" : "Взрослый участник"}
+                  </span>
+                </strong>
+                <span>{existing === undefined ? "Нет доступа" : "Только чтение"}</span>
+                {existing === undefined ? (
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    disabled={pendingUserId === member.id}
+                    onClick={() => void grant(member.id)}
+                  >
+                    {pendingUserId === member.id ? "Выдаём…" : "Разрешить чтение"}
+                  </button>
+                ) : (
+                  <button
+                    className="button button--secondary"
+                    type="button"
+                    disabled={revokePendingId === existing.id}
+                    onClick={() => void revoke(existing.id)}
+                  >
+                    {revokePendingId === existing.id ? "Отзываем…" : "Отозвать доступ"}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+      {state.kind === "ready" && activeGranteeIds.size > 0 ? (
+        <p className="profile-consent__note">Доступ проверяется сервером при каждом открытии.</p>
+      ) : null}
+    </section>
+  );
+}
+
+type FamilyAuditLogItem = FamilyAuditLogResponse["items"][number];
+type FamilyAuditLogState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: readonly FamilyAuditLogItem[]; nextCursor: string | null }
+  | { kind: "error"; copy: string };
+
+function familyAuditActionCopy(action: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    "document.downloaded": "Открыт исходный документ",
+    "document.facts.opened": "Открыты извлечённые значения",
+    "document.processing.opened": "Открыт статус обработки",
+    "document.uploaded": "Добавлен документ",
+    "profile.evidence_bundle.exported": "Скачан локальный пакет источников",
+    "family.audit_log.opened": "Открыт журнал действий",
+    "family.created": "Создана семья",
+    "family.invitation.accepted": "Принято приглашение в семью",
+    "family.invitation.created": "Создано приглашение в семью",
+    "indicator.catalog.opened": "Открыт каталог показателей",
+    "indicator.series.opened": "Открыта динамика показателя",
+    "observation.history.opened": "Открыта история подтверждённых значений",
+    "profile.created": "Создан профиль",
+    "review.fact.confirmed": "Подтверждено извлечённое значение",
+    "review.fact.corrected": "Исправлено извлечённое значение",
+    "review.fact.rejected": "Отклонено извлечённое значение",
+  };
+  return labels[action] ?? "Выполнено действие в семейном пространстве";
+}
+
+function familyAuditResultCopy(result: FamilyAuditLogItem["result"]): string {
+  if (result === "success") return "Готово";
+  if (result === "denied") return "Отклонено";
+  return "Не завершено";
+}
+
+function familyAuditLogErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Журнал этого семейного пространства недоступен.";
+  }
+  return "Не удалось загрузить журнал. Данные семьи и документы не изменены.";
+}
+
+function FamilyAuditLogPanel({ familyId }: { familyId: string }) {
+  const [auditLog, setAuditLog] = useState<FamilyAuditLogState>({ kind: "loading" });
+  const [loadMorePending, setLoadMorePending] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+  const loadMoreController = useRef<AbortController | null>(null);
+
+  const loadFirstPage = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setAuditLog({ kind: "loading" });
+      setLoadMoreError(null);
+      try {
+        const response = await apiRequest<FamilyAuditLogResponse>(
+          familyAuditLogPath(familyId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) {
+          setAuditLog({ kind: "ready", items: response.items, nextCursor: response.nextCursor });
+        }
+      } catch (error) {
+        if (!signal?.aborted) setAuditLog({ kind: "error", copy: familyAuditLogErrorCopy(error) });
+      }
+    },
+    [familyId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadFirstPage(controller.signal);
+    return () => {
+      controller.abort();
+      loadMoreController.current?.abort();
+      loadMoreController.current = null;
+    };
+  }, [loadFirstPage]);
+
+  async function loadNextPage(): Promise<void> {
+    if (auditLog.kind !== "ready" || auditLog.nextCursor === null || loadMorePending) return;
+    const controller = new AbortController();
+    loadMoreController.current = controller;
+    setLoadMorePending(true);
+    setLoadMoreError(null);
+    try {
+      const response = await apiRequest<FamilyAuditLogResponse>(
+        `${familyAuditLogPath(familyId)}?cursor=${encodeURIComponent(auditLog.nextCursor)}`,
+        { signal: controller.signal },
+      );
+      if (!controller.signal.aborted) {
+        setAuditLog((current) =>
+          current.kind !== "ready"
+            ? current
+            : {
+                kind: "ready",
+                items: [...current.items, ...response.items],
+                nextCursor: response.nextCursor,
+              },
+        );
+      }
+    } catch (error) {
+      if (!controller.signal.aborted) setLoadMoreError(familyAuditLogErrorCopy(error));
+    } finally {
+      if (loadMoreController.current === controller) {
+        loadMoreController.current = null;
+        setLoadMorePending(false);
+      }
+    }
+  }
+
+  return (
+    <section
+      className="family-audit-log rail-section"
+      aria-labelledby="family-audit-log-title"
+      aria-busy={auditLog.kind === "loading" || loadMorePending}
+    >
+      <p className="context-line">Прозрачность доступа</p>
+      <h2 id="family-audit-log-title">Журнал действий семьи</h2>
+      <p>
+        Только краткие технические события: без значений, текста документов, имён файлов и скрытых
+        служебных метаданных.
+      </p>
+
+      {auditLog.kind === "loading" ? (
+        <div className="family-audit-log__loading" aria-live="polite">
+          <div className="skeleton skeleton--audit-row" aria-hidden="true" />
+          <p>Загружаем журнал действий…</p>
+        </div>
+      ) : null}
+
+      {auditLog.kind === "error" ? (
+        <div className="family-audit-log__empty" role="status">
+          <p>{auditLog.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadFirstPage()}
+          >
+            Повторить
+          </button>
+        </div>
+      ) : null}
+
+      {auditLog.kind === "ready" && auditLog.items.length === 0 ? (
+        <div className="family-audit-log__empty" role="status">
+          <p>
+            Пока нет доступных событий. Новые безопасные действия появятся здесь без их содержимого.
+          </p>
+        </div>
+      ) : null}
+
+      {auditLog.kind === "ready" && auditLog.items.length > 0 ? (
+        <>
+          <ol className="family-audit-log__list" aria-label="Последние действия семьи">
+            {auditLog.items.map((item) => (
+              <li key={item.id}>
+                <strong>{familyAuditActionCopy(item.action)}</strong>
+                <span>
+                  {familyAuditResultCopy(item.result)} · {item.actor.displayName}
+                </span>
+                <time dateTime={item.occurredAt}>{formatDate(item.occurredAt)}</time>
+              </li>
+            ))}
+          </ol>
+          {auditLog.nextCursor !== null ? (
+            <div className="family-audit-log__more">
+              <button
+                className="button button--secondary"
+                type="button"
+                disabled={loadMorePending}
+                onClick={() => void loadNextPage()}
+              >
+                {loadMorePending ? "Загружаем…" : "Показать ещё"}
+              </button>
+              {loadMoreError === null ? null : (
+                <p className="form-error" role="alert">
+                  {loadMoreError}
+                </p>
+              )}
+            </div>
+          ) : null}
+        </>
+      ) : null}
     </section>
   );
 }
@@ -675,21 +1316,282 @@ function uploadErrorCopy(error: unknown): string {
     return "Не удалось загрузить документ. Проверьте соединение и повторите попытку.";
   }
   if (error.status === 415) {
-    return "Файл не похож на поддерживаемый PDF. Проверьте его формат и содержимое.";
+    return "Файл не похож на поддерживаемый PDF, PNG или JPEG. Проверьте формат и содержимое.";
   }
   if (error.status === 413) {
-    return "Файл больше 5 МБ. Выберите синтетический PDF меньшего размера.";
+    return "Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.";
   }
   if (error.status === 409) {
     return "Эта попытка загрузки уже относится к другому файлу. Выберите файл заново.";
   }
   if (error.status === 400) {
-    return "Нужен ровно один синтетический PDF-файл.";
+    return "Нужен ровно один синтетический PDF, PNG или JPEG-файл.";
   }
   if (error.status === 401 || error.status === 404) {
     return "Профиль недоступен. Обновите страницу и проверьте активный профиль.";
   }
   return "Не удалось загрузить документ. Данные не изменились; попробуйте ещё раз.";
+}
+
+type ProfileOverviewState =
+  | { kind: "loading" }
+  | { kind: "ready"; overview: ProfileOverviewResponse }
+  | { kind: "error"; copy: string };
+
+function profileOverviewErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Обзор этого профиля недоступен. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось загрузить обзор. Исходники и подтверждённые значения не изменены.";
+}
+
+function profileOverviewProcessingCopy(
+  status: ProfileOverviewResponse["recentDocuments"][number]["processing"],
+): string {
+  switch (status.state) {
+    case "not_started":
+      return "Обработка ещё не началась";
+    case "queued":
+      return "В очереди обработки";
+    case "security_check":
+      return "Проверяем исходник";
+    case "text_extraction":
+      return "Извлекаем текст";
+    case "document_classification":
+      return "Проверяем тип документа";
+    case "structured_extraction":
+      return "Готовим черновые значения";
+    case "validation":
+      return "Проверяем черновой результат";
+    case "awaiting_review":
+      return `${factCountCopy(status.factCount)} ждут явной проверки`;
+    case "completed":
+      return `${factCountCopy(status.factCount)} подтверждены пользователем`;
+    case "failed":
+      return "Обработка не завершилась";
+  }
+}
+
+function ProfileOverviewPanel({
+  familyId,
+  profileId,
+  canWriteProfile,
+}: {
+  familyId: string;
+  profileId: string;
+  canWriteProfile: boolean;
+}) {
+  const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
+
+  const loadOverview = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const overview = await apiRequest<ProfileOverviewResponse>(
+          profileOverviewPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", overview });
+      } catch (error) {
+        if (!signal?.aborted) setState({ kind: "error", copy: profileOverviewErrorCopy(error) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadOverview(controller.signal);
+    return () => controller.abort();
+  }, [loadOverview]);
+
+  return (
+    <section
+      className="profile-overview"
+      aria-labelledby="profile-overview-title"
+      aria-busy={state.kind === "loading"}
+    >
+      <div className="profile-overview__heading">
+        <p className="context-line">Профиль · источники и решения</p>
+        <h2 id="profile-overview-title">Обзор профиля</h2>
+        <p className="profile-overview__description">
+          Здесь только состояние исходников, явные решения и подтверждённые значения. Медицинские
+          выводы, оценки и рекомендации не формируются.
+        </p>
+        {canWriteProfile ? (
+          <p className="profile-overview__export">
+            <a
+              className="text-link"
+              href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+              download
+            >
+              Скачать локальный пакет источников
+            </a>
+            <span>До 5 последних synthetic-источников; это не резервная копия.</span>
+          </p>
+        ) : null}
+      </div>
+
+      {state.kind === "loading" ? (
+        <div className="profile-overview__loading" aria-live="polite">
+          <div className="skeleton skeleton--overview-row" aria-hidden="true" />
+          <div className="skeleton skeleton--overview-row" aria-hidden="true" />
+          <p>Сверяем последние источники и решения…</p>
+        </div>
+      ) : null}
+
+      {state.kind === "error" ? (
+        <div className="profile-overview__empty" role="status">
+          <p>{state.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadOverview()}
+          >
+            Обновить обзор
+          </button>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" ? (
+        <div className="profile-overview__sections">
+          <section className="profile-overview__section" aria-labelledby="overview-review-title">
+            <div className="profile-overview__section-heading">
+              <div>
+                <p className="context-line">Следующее действие</p>
+                <h3 id="overview-review-title">Проверка исходников</h3>
+              </div>
+              <span className="profile-overview__count">
+                <span className="visually-hidden">Документов в очереди: </span>
+                {state.overview.reviewQueue.documentCount}
+              </span>
+            </div>
+            {state.overview.reviewQueue.documentCount === 0 ? (
+              <div className="profile-overview__empty">
+                <p>
+                  Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                </p>
+              </div>
+            ) : (
+              <ol className="profile-overview__list">
+                {state.overview.reviewQueue.documents.map((document) => (
+                  <li key={document.id} className="profile-overview__row">
+                    <div>
+                      <strong>{document.originalFilename}</strong>
+                      <span>
+                        {factCountCopy(document.pendingFactCount)} ждут решения
+                        {document.needsAttentionFactCount > 0
+                          ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                          : ""}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, document.id)}
+                    >
+                      Открыть проверку
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            )}
+            {state.overview.reviewQueue.documentCount >
+            state.overview.reviewQueue.documents.length ? (
+              <p className="profile-overview__more">
+                Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
+                очереди.
+              </p>
+            ) : null}
+          </section>
+
+          <section className="profile-overview__section" aria-labelledby="overview-documents-title">
+            <div className="profile-overview__section-heading">
+              <div>
+                <p className="context-line">Неизменяемые байты</p>
+                <h3 id="overview-documents-title">Последние исходники</h3>
+              </div>
+            </div>
+            {state.overview.recentDocuments.length === 0 ? (
+              <div className="profile-overview__empty">
+                <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
+                {canWriteProfile ? (
+                  <a className="text-link" href="#document-inbox-title">
+                    Добавить исходник
+                  </a>
+                ) : null}
+              </div>
+            ) : (
+              <ol className="profile-overview__list">
+                {state.overview.recentDocuments.map((document) => (
+                  <li key={document.id} className="profile-overview__row">
+                    <div>
+                      <strong>{document.originalFilename}</strong>
+                      <span>
+                        {documentKindLabel(document.contentType)} ·{" "}
+                        {formatDate(document.uploadedAt)} ·{" "}
+                        {profileOverviewProcessingCopy(document.processing)}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, document.id)}
+                    >
+                      Открыть источник
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          <section
+            className="profile-overview__section"
+            aria-labelledby="overview-observations-title"
+          >
+            <div className="profile-overview__section-heading">
+              <div>
+                <p className="context-line">Явно подтверждено</p>
+                <h3 id="overview-observations-title">Последние значения</h3>
+              </div>
+              <a className="text-link" href="#observation-history">
+                Вся история
+              </a>
+            </div>
+            {state.overview.recentObservations.length === 0 ? (
+              <div className="profile-overview__empty">
+                <p>
+                  Подтверждённых значений пока нет. Они появятся здесь только после явного решения.
+                </p>
+              </div>
+            ) : (
+              <ol className="profile-overview__list">
+                {state.overview.recentObservations.map((observation) => (
+                  <li key={observation.id} className="profile-overview__row">
+                    <div>
+                      <strong>
+                        {observation.source.name}: {observation.source.value}{" "}
+                        {observation.source.unit}
+                      </strong>
+                      <span>
+                        Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
+                        {observation.sourceDocument.pageNumber}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                    >
+                      Открыть источник
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+        </div>
+      ) : null}
+    </section>
+  );
 }
 
 interface DocumentInboxProps {
@@ -702,10 +1604,10 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
   return (
     <section className="document-inbox" aria-labelledby="document-inbox-title">
       <span className="source-mark" aria-hidden="true">
-        PDF
+        PDF · PNG · JPEG
       </span>
       <p className="context-line">Исходные документы</p>
-      <h2 id="document-inbox-title">Добавьте синтетический PDF</h2>
+      <h2 id="document-inbox-title">Добавьте синтетический исходник</h2>
       <p className="document-intro">
         Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Затем локальная
         детерминированная обработка поставит в очередь черновое извлечение значений для проверки.
@@ -713,23 +1615,23 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
 
       <div className="synthetic-reminder" role="note">
         <strong>Не загружайте реальные медицинские данные.</strong>
-        <span> Контур принимает только вымышленные PDF до 5 МБ.</span>
+        <span> Контур принимает только вымышленные PDF, PNG и JPEG до 5 МБ.</span>
       </div>
 
       <form className="upload-form" onSubmit={onSubmit} aria-busy={pending}>
         <label className="file-field">
-          <span>Синтетический PDF</span>
+          <span>Синтетический документ</span>
           <input
             name="file"
             type="file"
-            accept="application/pdf,.pdf"
+            accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
             required
             disabled={pending}
-            aria-describedby="pdf-requirements"
+            aria-describedby="document-requirements"
           />
         </label>
-        <p id="pdf-requirements" className="form-note">
-          Один PDF, не больше 5 МБ. Имя файла используется только для отображения.
+        <p id="document-requirements" className="form-note">
+          Один PDF, PNG или JPEG, не больше 5 МБ. Имя файла используется только для отображения.
         </p>
         {error !== null ? (
           <p className="form-error" role="alert">
@@ -737,11 +1639,11 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
           </p>
         ) : null}
         <button className="button button--primary" type="submit" disabled={pending}>
-          {pending ? "Сохраняем исходник…" : "Загрузить PDF"}
+          {pending ? "Сохраняем исходник…" : "Загрузить исходник"}
         </button>
         {pending ? (
           <p className="form-note" role="status">
-            Загружаем и проверяем PDF…
+            Загружаем и проверяем исходник…
           </p>
         ) : null}
       </form>
@@ -895,7 +1797,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
         <h2 id="observation-history-title">История подтверждённых значений</h2>
         <p>
           Здесь показаны только значения, которые пользователь явно подтвердил или исправил.
-          Исходный фрагмент и ссылка на PDF остаются рядом с каждым значением. Тенденции и
+          Исходный фрагмент и ссылка на исходник остаются рядом с каждым значением. Тенденции и
           медицинские выводы не формируются.
         </p>
       </div>
@@ -1070,7 +1972,7 @@ function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {
                 </>
               ) : null}
             </dl>
-            <p className="observation-history__fragment-label">Фрагмент из исходного PDF</p>
+            <p className="observation-history__fragment-label">Фрагмент из исходника</p>
             <pre className="observation-history__fragment">
               <code>{item.sourceDocument.fragment}</code>
             </pre>
@@ -1079,12 +1981,417 @@ function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {
               href={observationSourceHref(item.sourceDocument.contentPath)}
               download
             >
-              Открыть исходный PDF
+              Открыть исходник
             </a>
           </div>
         </details>
       </td>
     </tr>
+  );
+}
+
+type IndicatorCatalogItem = IndicatorCatalogResponse["items"][number];
+type IndicatorCatalogState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: readonly IndicatorCatalogItem[] }
+  | { kind: "error"; copy: string };
+
+function indicatorCatalogErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Показатели этого профиля недоступны. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось загрузить каталог. Подтверждённые значения и исходные документы не изменены.";
+}
+
+function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelProps) {
+  const [catalog, setCatalog] = useState<IndicatorCatalogState>({ kind: "loading" });
+  const [selected, setSelected] = useState<{ canonicalCode: string; unit: string } | null>(null);
+
+  const loadCatalog = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setCatalog({ kind: "loading" });
+      try {
+        const response = await apiRequest<IndicatorCatalogResponse>(
+          indicatorsPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (signal?.aborted) return;
+        setCatalog({ kind: "ready", items: response.items });
+        setSelected((current) => {
+          if (
+            current !== null &&
+            response.items.some(
+              (item) =>
+                item.canonicalCode === current.canonicalCode &&
+                item.units.some((unit) => unit.unit === current.unit),
+            )
+          ) {
+            return current;
+          }
+          const first = response.items[0];
+          const firstUnit = first?.units[0];
+          return first === undefined || firstUnit === undefined
+            ? null
+            : { canonicalCode: first.canonicalCode, unit: firstUnit.unit };
+        });
+      } catch (error) {
+        if (!signal?.aborted) setCatalog({ kind: "error", copy: indicatorCatalogErrorCopy(error) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadCatalog(controller.signal);
+    return () => controller.abort();
+  }, [loadCatalog]);
+
+  return (
+    <section
+      id="indicator-catalog"
+      className="indicator-catalog"
+      aria-labelledby="indicator-catalog-title"
+      aria-busy={catalog.kind === "loading"}
+    >
+      <div className="indicator-catalog__heading">
+        <p className="context-line">Сопоставимые показатели</p>
+        <h2 id="indicator-catalog-title">Подтверждённая динамика</h2>
+        <p>
+          Сравнение доступно только внутри одного кода и точно совпадающей единицы. Оно описывает
+          изменение между источниками, но не даёт медицинской оценки.
+        </p>
+      </div>
+
+      {catalog.kind === "loading" ? (
+        <div className="indicator-catalog__loading" aria-live="polite">
+          <div className="skeleton skeleton--indicator-heading" aria-hidden="true" />
+          <div className="skeleton skeleton--indicator-row" aria-hidden="true" />
+          <p>Готовим сопоставимые подтверждённые показатели…</p>
+        </div>
+      ) : null}
+
+      {catalog.kind === "error" ? (
+        <div className="indicator-catalog__empty" role="status">
+          <p>{catalog.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadCatalog()}
+          >
+            Обновить каталог
+          </button>
+        </div>
+      ) : null}
+
+      {catalog.kind === "ready" && catalog.items.length === 0 ? (
+        <div className="indicator-catalog__empty" role="status">
+          <p>
+            Пока нет подтверждённых показателей с известным синтетическим кодом. Сначала подтвердите
+            факт в источнике — он появится здесь без автоматической интерпретации.
+          </p>
+        </div>
+      ) : null}
+
+      {catalog.kind === "ready" && catalog.items.length > 0 ? (
+        <div className="indicator-catalog__workspace">
+          <ul className="indicator-catalog__list" aria-label="Показатели профиля">
+            {catalog.items.flatMap((item) =>
+              item.units.map((summary) => {
+                const active =
+                  selected?.canonicalCode === item.canonicalCode && selected.unit === summary.unit;
+                return (
+                  <li key={`${item.canonicalCode}:${summary.unit}`}>
+                    <button
+                      className="indicator-catalog__item"
+                      data-active={active ? "true" : undefined}
+                      type="button"
+                      onClick={() =>
+                        setSelected({ canonicalCode: item.canonicalCode, unit: summary.unit })
+                      }
+                    >
+                      <span className="indicator-catalog__item-name">{item.displayName}</span>
+                      <span className="indicator-catalog__item-latest">
+                        {summary.latest.value} {summary.unit}
+                      </span>
+                      <span className="indicator-catalog__item-meta">
+                        {summary.observationCount === 1
+                          ? "1 подтверждённое значение"
+                          : `${summary.observationCount} подтверждённых значения`}
+                      </span>
+                    </button>
+                  </li>
+                );
+              }),
+            )}
+          </ul>
+          {selected !== null ? (
+            <IndicatorSeriesPanel
+              familyId={familyId}
+              profileId={profileId}
+              canonicalCode={selected.canonicalCode}
+              unit={selected.unit}
+            />
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+type IndicatorSeriesState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      items: readonly IndicatorSeriesResponse["items"][number][];
+      series: IndicatorSeriesResponse;
+    }
+  | { kind: "error"; copy: string };
+
+function indicatorSeriesErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Этот ряд больше недоступен для активного профиля.";
+  }
+  return "Не удалось загрузить ряд. Подтверждённые значения и исходные документы не изменены.";
+}
+
+function differenceCopy(comparison: IndicatorSeriesResponse["comparison"]): string {
+  if (comparison.state === "insufficient_data") {
+    return "Нужно хотя бы два подтверждённых значения в этой же единице, чтобы показать изменение.";
+  }
+  if (comparison.state === "unavailable") {
+    return "Значения сохранены как источник, но их формат нельзя безопасно сравнить автоматически.";
+  }
+  const direction =
+    comparison.delta.direction === "increased"
+      ? "выше"
+      : comparison.delta.direction === "decreased"
+        ? "ниже"
+        : "без изменения";
+  return `Последнее значение ${direction} предыдущего на ${comparison.delta.value} в той же единице.`;
+}
+
+interface IndicatorChartPoint {
+  item: IndicatorSeriesResponse["items"][number];
+  value: number;
+}
+
+function indicatorChartPoints(
+  items: readonly IndicatorSeriesResponse["items"][number][],
+): readonly IndicatorChartPoint[] | null {
+  const points = [...items].reverse().map((item) => {
+    if (!/^[+-]?\d+(?:\.\d+)?$/.test(item.source.value)) return null;
+    const value = Number(item.source.value);
+    return Number.isFinite(value) && Math.abs(value) <= Number.MAX_SAFE_INTEGER
+      ? { item, value }
+      : null;
+  });
+  return points.some((point) => point === null) || points.length < 2
+    ? null
+    : (points as IndicatorChartPoint[]);
+}
+
+function IndicatorSeriesChart({
+  points,
+  unit,
+}: {
+  points: readonly IndicatorChartPoint[];
+  unit: string;
+}) {
+  const titleId = useId();
+  const descriptionId = useId();
+  const chartWidth = 560;
+  const chartHeight = 220;
+  const padding = 34;
+  const values = points.map((point) => point.value);
+  const lower = Math.min(...values);
+  const upper = Math.max(...values);
+  const range = upper - lower || 1;
+  const positioned = points.map((point, index) => ({
+    ...point,
+    x: padding + (index / (points.length - 1)) * (chartWidth - padding * 2),
+    y: chartHeight - padding - ((point.value - lower) / range) * (chartHeight - padding * 2),
+  }));
+  const polyline = positioned.map((point) => `${point.x},${point.y}`).join(" ");
+
+  return (
+    <figure className="indicator-series__chart">
+      <svg
+        viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        role="img"
+        aria-labelledby={`${titleId} ${descriptionId}`}
+      >
+        <title id={titleId}>Расположение подтверждённых значений по времени</title>
+        <desc id={descriptionId}>
+          {points
+            .map(
+              (point) => `${formatDate(point.item.timelineAt)}: ${point.item.source.value} ${unit}`,
+            )
+            .join("; ")}
+        </desc>
+        <line x1={padding} y1={padding} x2={padding} y2={chartHeight - padding} />
+        <line
+          x1={padding}
+          y1={chartHeight - padding}
+          x2={chartWidth - padding}
+          y2={chartHeight - padding}
+        />
+        <polyline points={polyline} />
+        {positioned.map((point) => (
+          <circle cx={point.x} cy={point.y} key={point.item.id} r="5">
+            <title>
+              {formatDate(point.item.timelineAt)}: {point.item.source.value} {unit}
+            </title>
+          </circle>
+        ))}
+        <text x={padding} y={padding - 10} textAnchor="start">
+          {upper}
+        </text>
+        <text x={padding} y={chartHeight - 12} textAnchor="start">
+          {lower}
+        </text>
+      </svg>
+      <figcaption>
+        Расположение точек помогает читать последовательность. Точные значения, даты и источники
+        приведены ниже; шкала не означает референсный диапазон.
+      </figcaption>
+    </figure>
+  );
+}
+
+function IndicatorSeriesPanel({
+  familyId,
+  profileId,
+  canonicalCode,
+  unit,
+}: {
+  familyId: string;
+  profileId: string;
+  canonicalCode: string;
+  unit: string;
+}) {
+  const [state, setState] = useState<IndicatorSeriesState>({ kind: "loading" });
+  const [loadMorePending, setLoadMorePending] = useState(false);
+  const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
+
+  const loadSeries = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      setLoadMoreError(null);
+      try {
+        const response = await apiRequest<IndicatorSeriesResponse>(
+          `${indicatorsPath(familyId, profileId)}/${encodeURIComponent(canonicalCode)}?unit=${encodeURIComponent(unit)}`,
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", items: response.items, series: response });
+      } catch (error) {
+        if (!signal?.aborted) setState({ kind: "error", copy: indicatorSeriesErrorCopy(error) });
+      }
+    },
+    [canonicalCode, familyId, profileId, unit],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadSeries(controller.signal);
+    return () => controller.abort();
+  }, [loadSeries]);
+
+  async function loadNextPage(): Promise<void> {
+    if (state.kind !== "ready" || state.series.nextCursor === null || loadMorePending) return;
+    setLoadMorePending(true);
+    setLoadMoreError(null);
+    try {
+      const response = await apiRequest<IndicatorSeriesResponse>(
+        `${indicatorsPath(familyId, profileId)}/${encodeURIComponent(canonicalCode)}?unit=${encodeURIComponent(unit)}&cursor=${encodeURIComponent(state.series.nextCursor)}`,
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { kind: "ready", items: [...current.items, ...response.items], series: response },
+      );
+    } catch (error) {
+      setLoadMoreError(indicatorSeriesErrorCopy(error));
+    } finally {
+      setLoadMorePending(false);
+    }
+  }
+
+  const chartPoints = useMemo(
+    () => (state.kind === "ready" ? indicatorChartPoints(state.items) : null),
+    [state],
+  );
+
+  if (state.kind === "loading") {
+    return (
+      <div className="indicator-series indicator-series--loading" aria-live="polite">
+        <div className="skeleton skeleton--indicator-plot" aria-hidden="true" />
+        <p>Загружаем ряд источников…</p>
+      </div>
+    );
+  }
+  if (state.kind === "error") {
+    return (
+      <div className="indicator-series indicator-series--empty" role="status">
+        <p>{state.copy}</p>
+        <button
+          className="button button--secondary"
+          type="button"
+          onClick={() => void loadSeries()}
+        >
+          Повторить
+        </button>
+      </div>
+    );
+  }
+
+  const chronological = [...state.items].reverse();
+  return (
+    <div className="indicator-series" aria-live="polite">
+      <div className="indicator-series__title">
+        <div>
+          <h3>{state.series.indicator.displayName}</h3>
+          <p>
+            {state.series.indicator.canonicalCode} · {state.series.indicator.unit}
+          </p>
+        </div>
+        <strong>{state.items.length} источника</strong>
+      </div>
+      <p className="indicator-series__comparison">{differenceCopy(state.series.comparison)}</p>
+      {chartPoints === null ? null : (
+        <IndicatorSeriesChart points={chartPoints} unit={state.series.indicator.unit} />
+      )}
+      <ol className="indicator-series__timeline" aria-label="Подтверждённые значения по времени">
+        {chronological.map((item) => (
+          <li key={item.id}>
+            <div>
+              <strong>
+                {item.source.value} {item.source.unit}
+              </strong>
+              <time dateTime={item.timelineAt}>{formatDate(item.timelineAt)}</time>
+            </div>
+            <a href={observationSourceHref(item.sourceDocument.contentPath)}>Источник</a>
+          </li>
+        ))}
+      </ol>
+      {state.series.nextCursor === null ? null : (
+        <div className="indicator-series__more">
+          <button
+            className="button button--secondary"
+            type="button"
+            disabled={loadMorePending}
+            onClick={() => void loadNextPage()}
+          >
+            {loadMorePending ? "Загружаем…" : "Показать следующие значения"}
+          </button>
+          {loadMoreError === null ? null : (
+            <p className="form-error" role="alert">
+              {loadMoreError}
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1098,9 +2405,10 @@ interface DocumentViewProps {
   family: SessionFamily;
   profile: PatientProfileSummary;
   documentId: string;
+  canWriteProfile: boolean;
 }
 
-function DocumentView({ family, profile, documentId }: DocumentViewProps) {
+function DocumentView({ family, profile, documentId, canWriteProfile }: DocumentViewProps) {
   const [state, setState] = useState<DocumentViewState>({ kind: "loading" });
 
   useEffect(() => {
@@ -1190,7 +2498,8 @@ function DocumentView({ family, profile, documentId }: DocumentViewProps) {
       </p>
       <h2 id="document-title">{savedDocument.originalFilename}</h2>
       <p className="document-meta">
-        PDF · {formatBytes(savedDocument.byteSize)} · {formatDate(savedDocument.uploadedAt)}
+        {documentKindLabel(savedDocument.contentType)} · {formatBytes(savedDocument.byteSize)} ·{" "}
+        {formatDate(savedDocument.uploadedAt)}
       </p>
 
       {savedDocument.duplicate.possible ? (
@@ -1202,7 +2511,7 @@ function DocumentView({ family, profile, documentId }: DocumentViewProps) {
 
       <div className="document-actions">
         <a className="button button--primary" href={contentUrl} download>
-          Скачать исходный PDF
+          {downloadLabel(savedDocument.contentType)}
         </a>
       </div>
 
@@ -1210,6 +2519,7 @@ function DocumentView({ family, profile, documentId }: DocumentViewProps) {
         familyId={family.id}
         profileId={profile.id}
         document={savedDocument}
+        canWriteProfile={canWriteProfile}
       />
     </section>
   );
@@ -1219,6 +2529,7 @@ interface DocumentProcessingPanelProps {
   familyId: string;
   profileId: string;
   document: DocumentSummary;
+  canWriteProfile: boolean;
 }
 
 interface ProcessingPresentation {
@@ -1292,16 +2603,38 @@ function factCountCopy(value: number): string {
   return `${value} ${russianPlural(value, "значение", "значения", "значений")}`;
 }
 
+function documentKindLabel(contentType: DocumentSummary["contentType"]): string {
+  switch (contentType) {
+    case "application/pdf":
+      return "PDF";
+    case "image/png":
+      return "PNG";
+    case "image/jpeg":
+      return "JPEG";
+  }
+}
+
+function downloadLabel(contentType: DocumentSummary["contentType"]): string {
+  switch (contentType) {
+    case "application/pdf":
+      return "Скачать исходный PDF";
+    case "image/png":
+      return "Скачать исходный PNG";
+    case "image/jpeg":
+      return "Скачать исходный JPEG";
+  }
+}
+
 function processingFailureCopy(
   status: Extract<DocumentProcessingStatus, { state: "failed" }>,
 ): string {
   switch (status.category) {
     case "document_unavailable":
-      return "Исходный PDF сейчас недоступен обработчику. Сам файл не менялся.";
+      return "Исходник сейчас недоступен обработчику. Сам файл не менялся.";
     case "invalid_document":
-      return "Документ нельзя обработать безопасно. Исходный PDF сохранён без изменений.";
+      return "Документ нельзя обработать безопасно. Исходник сохранён без изменений.";
     case "unsupported_document":
-      return "Этот вариант PDF пока не поддерживается детерминированным извлечением.";
+      return "Этот вариант исходника пока не поддерживается детерминированным извлечением.";
     case "extraction_failed":
       return "Не удалось надёжно извлечь текст. Никаких значений не интерпретировано.";
     case "validation_failed":
@@ -1316,7 +2649,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "not_started":
       return {
         heading: "Извлечение ещё не поставлено в очередь",
-        copy: "Исходный PDF сохранён без изменений. Статус появится после следующего обновления.",
+        copy: "Исходник сохранён без изменений. Статус появится после следующего обновления.",
         integrityLabel: "Не поставлено в очередь",
         mark: "—",
         tone: "idle",
@@ -1339,7 +2672,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
       };
     case "text_extraction":
       return {
-        heading: "Извлекаем текст из PDF",
+        heading: "Извлекаем текст из исходника",
         copy: "Используем детерминированный локальный обработчик. Медицинские выводы не формируются.",
         integrityLabel: "Извлечение текста",
         mark: "…",
@@ -1356,7 +2689,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "structured_extraction":
       return {
         heading: "Готовим черновые значения",
-        copy: "Связываем каждое значение со страницей и фрагментом исходного PDF.",
+        copy: "Связываем каждое значение со страницей и фрагментом исходника.",
         integrityLabel: "Структурирование",
         mark: "…",
         tone: "active",
@@ -1400,6 +2733,7 @@ function DocumentProcessingPanel({
   familyId,
   profileId,
   document: savedDocument,
+  canWriteProfile,
 }: DocumentProcessingPanelProps) {
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
   const [refreshFailed, setRefreshFailed] = useState(false);
@@ -1474,16 +2808,14 @@ function DocumentProcessingPanel({
       retryKey.current = null;
     } catch (error) {
       if (error instanceof ApiError && error.status < 500) retryKey.current = null;
-      setRetryError(
-        "Не удалось запустить повторную обработку. Статус и исходный PDF не изменились.",
-      );
+      setRetryError("Не удалось запустить повторную обработку. Статус и исходник не изменились.");
     } finally {
       setRetryPending(false);
     }
   }
 
   const presentation = processingPresentation(processing);
-  const showRetry = processing.state === "failed" && processing.retryAllowed;
+  const showRetry = canWriteProfile && processing.state === "failed" && processing.retryAllowed;
 
   return (
     <>
@@ -1506,7 +2838,7 @@ function DocumentProcessingPanel({
           ) : null}
           {refreshFailed ? (
             <p className="processing-state__refresh-note" role="status">
-              Не удалось обновить статус. Исходный PDF не изменён.
+              Не удалось обновить статус. Исходник не изменён.
             </p>
           ) : null}
           {showRetry ? (
@@ -1527,7 +2859,8 @@ function DocumentProcessingPanel({
         </div>
       </section>
 
-      {processing.state === "awaiting_review" || processing.state === "completed" ? (
+      {canWriteProfile &&
+      (processing.state === "awaiting_review" || processing.state === "completed") ? (
         <DocumentReviewPanel
           familyId={familyId}
           profileId={profileId}
@@ -1776,7 +3109,7 @@ function DocumentReviewPanel({
 
       {facts.kind === "error" ? (
         <div className="review-empty" role="status">
-          <p>Черновые значения сейчас не загрузились. Исходный PDF и решения не изменены.</p>
+          <p>Черновые значения сейчас не загрузились. Исходник и решения не изменены.</p>
           <button
             className="button button--secondary"
             type="button"
@@ -1897,7 +3230,7 @@ function ReviewFactCard({
               </div>
             ) : null}
           </dl>
-          <p className="review-fact__provenance">Фрагмент из исходного PDF</p>
+          <p className="review-fact__provenance">Фрагмент из исходника</p>
           <pre className="review-fact__fragment">
             <code>{fact.source.fragment}</code>
           </pre>

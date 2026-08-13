@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -155,7 +155,7 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
       false,
     );
     assert.equal(
-      metadata.every((value) => value.contractVersion === "family-profile/v1"),
+      metadata.every((value) => value.contractVersion === "family-profile/v2"),
       true,
     );
 
@@ -224,6 +224,163 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
       "SELECT count(*) AS count FROM users",
     );
     assert.equal(unchanged.rows[0]?.count, 1);
+  } finally {
+    await context.close();
+  }
+});
+
+test("an owner reads a paginated payload-free family audit log without a cross-family oracle", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Audit Owner",
+      familyName: "Audit Family",
+      profileName: "Audit Profile",
+    });
+    const outsiderRegistration = await register(app, {
+      displayName: "Audit Outsider",
+      familyName: "Other Audit Family",
+      profileName: "Other Audit Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    assert.equal(outsiderRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+    const session = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(session.statusCode, 200);
+    const ownerUserId = session.json().user.id as string;
+
+    for (const [index, result] of ["success", "denied", "failed"].entries()) {
+      await database.query(
+        `INSERT INTO audit_events
+           (id, family_id, actor_user_id, action, resource_type, resource_id, result,
+            correlation_id, metadata, created_at)
+         VALUES ($1, $2, $3, $4, 'SyntheticResource', $5, $6, $7, $8, $9)`,
+        [
+          randomUUID(),
+          owner.family.id,
+          ownerUserId,
+          `synthetic.audit.${index + 1}`,
+          `resource-${index + 1}`,
+          result,
+          `correlation-secret-${index + 1}`,
+          { secret: `audit-secret-${index + 1}` },
+          `2099-01-0${index + 1}T00:00:00.000Z`,
+        ],
+      );
+    }
+
+    const first = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?limit=2`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(first.statusCode, 200);
+    assert.equal(first.headers["cache-control"], "no-store");
+    assert.equal(first.rawPayload.includes("audit-secret-"), false);
+    assert.equal(first.rawPayload.includes("correlation-secret-"), false);
+    const firstPage = first.json() as {
+      contractVersion: string;
+      items: Array<{
+        id: string;
+        action: string;
+        result: string;
+        actor: { id: string; displayName: string };
+        resource: { type: string; id: string };
+        occurredAt: string;
+      }>;
+      nextCursor: string | null;
+    };
+    assert.equal(firstPage.contractVersion, "audit-log/v1");
+    assert.equal(firstPage.items.length, 2);
+    assert.equal(typeof firstPage.nextCursor, "string");
+    assert.deepEqual(
+      firstPage.items.map((item) => item.action),
+      ["synthetic.audit.3", "synthetic.audit.2"],
+    );
+    assert.deepEqual(firstPage.items[0]?.resource, {
+      type: "SyntheticResource",
+      id: "resource-3",
+    });
+    assert.equal(firstPage.items[0]?.actor.displayName, "Audit Owner");
+    assert.equal("metadata" in (firstPage.items[0] ?? {}), false);
+    assert.equal("correlationId" in (firstPage.items[0] ?? {}), false);
+
+    const second = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?limit=2&cursor=${encodeURIComponent(firstPage.nextCursor ?? "")}`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(second.statusCode, 200);
+    assert.equal(second.json().items[0].action, "synthetic.audit.1");
+
+    const malformedCursor = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?cursor=not-a-canonical-cursor`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(malformedCursor.statusCode, 422);
+    assert.equal(malformedCursor.json().error.code, "DOMAIN_VALIDATION_ERROR");
+
+    const unknownQuery = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events?unexpected=1`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(unknownQuery.statusCode, 400);
+
+    const crossFamily = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events`,
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(crossFamily.statusCode, 404);
+    assert.equal(crossFamily.rawPayload.includes("Audit Owner"), false);
+
+    const outsiderSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(outsiderSession.statusCode, 200);
+    await database.query(
+      `INSERT INTO family_memberships
+         (id, family_id, user_id, role, status, created_at)
+       VALUES ($1, $2, $3, 'caregiver', 'active', $4)`,
+      [
+        randomUUID(),
+        owner.family.id,
+        outsiderSession.json().user.id as string,
+        "2098-12-31T00:00:00.000Z",
+      ],
+    );
+    const ungrantedMember = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/audit-events`,
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(ungrantedMember.statusCode, 404);
+    assert.equal(ungrantedMember.rawPayload.includes("Audit Owner"), false);
+
+    const auditReads = await database.query<{ metadata: string }>(
+      `SELECT metadata
+         FROM audit_events
+        WHERE family_id = $1 AND action = 'family.audit_log.opened'
+        ORDER BY created_at, id`,
+      [owner.family.id],
+    );
+    assert.equal(auditReads.rows.length, 2);
+    assert.deepEqual(
+      auditReads.rows.map((row) => JSON.parse(row.metadata)),
+      [{ contractVersion: "audit-log/v1" }, { contractVersion: "audit-log/v1" }],
+    );
   } finally {
     await context.close();
   }
@@ -518,6 +675,526 @@ test("logout and session expiry fail closed", async () => {
       headers: { cookie: thirdCookie },
     });
     assert.equal(disabled.statusCode, 401);
+  } finally {
+    await context.close();
+  }
+});
+
+test("an owner can issue a one-time local adult invitation without granting another profile", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Invitation Owner",
+      familyName: "Invitation Family",
+      profileName: "Owner Profile",
+    });
+    const unrelatedRegistration = await register(app, {
+      displayName: "Invitation Outsider",
+      familyName: "Other Invitation Family",
+      profileName: "Other Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    assert.equal(unrelatedRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const outsiderCookie = cookieFrom(unrelatedRegistration).pair;
+    const ownerSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(ownerSession.statusCode, 200);
+    const ownerUserId = ownerSession.json().user.id as string;
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(invitation.statusCode, 201);
+    const invitationBody = invitation.json() as {
+      contractVersion: string;
+      invitation: { id: string; familyId: string; role: string; code: string; expiresAt: string };
+    };
+    assert.equal(invitationBody.contractVersion, "family-invitation/v2");
+    assert.equal(invitationBody.invitation.familyId, owner.family.id);
+    assert.equal(invitationBody.invitation.role, "adult_member");
+    assert.match(invitationBody.invitation.code, /^vi_[A-Za-z0-9_-]{43}$/);
+
+    const crossFamilyCreation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: outsiderCookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(crossFamilyCreation.statusCode, 404);
+    assert.equal(crossFamilyCreation.rawPayload.includes("Invitation Owner"), false);
+
+    const noOrigin = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: ownerCookie },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(noOrigin.statusCode, 403);
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitationBody.invitation.code,
+        displayName: "Invited Adult",
+        profileName: "Adult Profile",
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    const joined = accepted.json() as {
+      family: { id: string; role: string };
+      profile: { id: string; familyId: string; kind: string };
+    };
+    assert.equal(joined.family.id, owner.family.id);
+    assert.equal(joined.family.role, "adult_member");
+    assert.equal(joined.profile.familyId, owner.family.id);
+    assert.equal(joined.profile.kind, "adult");
+    const memberCookie = cookieFrom(accepted).pair;
+
+    const memberSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberSession.statusCode, 200);
+    assert.deepEqual(memberSession.json().families, [
+      {
+        ...joined.family,
+        displayName: "Invitation Family",
+        createdAt: owner.family.createdAt,
+        profiles: [joined.profile],
+      },
+    ]);
+
+    const ownProfiles = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(ownProfiles.statusCode, 200);
+    assert.deepEqual(ownProfiles.json().items, [joined.profile]);
+
+    const ownerProfiles = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(ownerProfiles.statusCode, 200);
+    assert.equal(ownerProfiles.json().items.length, 2);
+
+    const reused = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitationBody.invitation.code,
+        displayName: "Second Adult",
+        profileName: "Second Profile",
+      },
+    });
+    assert.equal(reused.statusCode, 404);
+    assert.equal(reused.rawPayload.includes("Invitation Family"), false);
+    await assert.rejects(
+      database.query("UPDATE family_invitations SET accepted_by_user_id = $1 WHERE id = $2", [
+        ownerUserId,
+        invitationBody.invitation.id,
+      ]),
+      (error: unknown) => isSqliteConstraintError(error, "trigger"),
+    );
+
+    const expiredCode = `vi_${"z".repeat(43)}`;
+    const expiredAt = new Date(Date.now() - 1_000);
+    await database.query(
+      `INSERT INTO family_invitations
+         (id, family_id, issued_by_user_id, token_hash, role, expires_at, created_at)
+       VALUES ($1, $2, $3, $4, 'adult_member', $5, $6)`,
+      [
+        randomUUID(),
+        owner.family.id,
+        ownerUserId,
+        createHash("sha256").update(expiredCode).digest("hex"),
+        expiredAt,
+        new Date(expiredAt.getTime() - 1_000),
+      ],
+    );
+    const usersBeforeExpiredAcceptance = await database.query<{ count: number }>(
+      "SELECT count(*) AS count FROM users",
+    );
+    const expired = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: { code: expiredCode, displayName: "Expired Adult", profileName: "Expired Profile" },
+    });
+    assert.equal(expired.statusCode, 404);
+    const usersAfterExpiredAcceptance = await database.query<{ count: number }>(
+      "SELECT count(*) AS count FROM users",
+    );
+    assert.deepEqual(usersAfterExpiredAcceptance.rows, usersBeforeExpiredAcceptance.rows);
+
+    const storedToken = await database.query<{ token_hash: string }>(
+      "SELECT token_hash FROM family_invitations WHERE id = $1",
+      [invitationBody.invitation.id],
+    );
+    assert.match(storedToken.rows[0]?.token_hash ?? "", /^[0-9a-f]{64}$/);
+    assert.equal(storedToken.rows[0]?.token_hash === invitationBody.invitation.code, false);
+
+    const events = await database.query<{ action: string; metadata: string }>(
+      `SELECT action, metadata
+         FROM audit_events
+        WHERE family_id = $1
+          AND action IN ('family.invitation.created', 'family.invitation.accepted')
+        ORDER BY action`,
+      [owner.family.id],
+    );
+    assert.deepEqual(
+      events.rows.map((event) => event.action),
+      ["family.invitation.accepted", "family.invitation.created"],
+    );
+    assert.equal(
+      events.rows.every(
+        (event) =>
+          JSON.parse(event.metadata).contractVersion === "family-invitation/v2" &&
+          !event.metadata.includes(invitationBody.invitation.code),
+      ),
+      true,
+    );
+  } finally {
+    await context.close();
+  }
+});
+
+test("an owner grants and revokes explicit profile read access for an invited adult", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Consent Owner",
+      familyName: "Consent Family",
+      profileName: "Owner Profile",
+    });
+    const outsiderRegistration = await register(app, {
+      displayName: "Consent Outsider",
+      familyName: "Other Consent Family",
+      profileName: "Other Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    assert.equal(outsiderRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+
+    const dependent = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { displayName: "Shared Dependent", kind: "dependent" },
+    });
+    assert.equal(dependent.statusCode, 201);
+    const sharedProfile = dependent.json().profile as { id: string; familyId: string };
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { role: "adult_member" },
+    });
+    assert.equal(invitation.statusCode, 201);
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: {
+        code: invitation.json().invitation.code,
+        displayName: "Consent Adult",
+        profileName: "Adult Personal Profile",
+      },
+    });
+    assert.equal(accepted.statusCode, 201);
+    const memberCookie = cookieFrom(accepted).pair;
+    const memberSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberSession.statusCode, 200);
+    const memberUserId = memberSession.json().user.id as string;
+
+    const memberCatalog = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/members`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(memberCatalog.statusCode, 200);
+    assert.deepEqual(memberCatalog.json().items, [
+      { id: memberUserId, displayName: "Consent Adult", role: "adult_member" },
+    ]);
+
+    const memberCatalogDenied = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/members`,
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberCatalogDenied.statusCode, 404);
+
+    const noOrigin = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie },
+      payload: { granteeUserId: memberUserId, capability: "profile.read" },
+    });
+    assert.equal(noOrigin.statusCode, 403);
+
+    const granted = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { granteeUserId: memberUserId, capability: "profile.read" },
+    });
+    assert.equal(granted.statusCode, 201);
+    const grant = granted.json() as {
+      contractVersion: string;
+      grant: {
+        id: string;
+        familyId: string;
+        profileId: string;
+        capability: string;
+        grantee: { id: string; displayName: string; role: string };
+        createdAt: string;
+      };
+    };
+    assert.equal(grant.contractVersion, "profile-consent/v2");
+    assert.equal(grant.grant.familyId, owner.family.id);
+    assert.equal(grant.grant.profileId, sharedProfile.id);
+    assert.equal(grant.grant.capability, "profile.read");
+    assert.deepEqual(grant.grant.grantee, {
+      id: memberUserId,
+      displayName: "Consent Adult",
+      role: "adult_member",
+    });
+
+    const duplicateGrant = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { granteeUserId: memberUserId, capability: "profile.read" },
+    });
+    assert.equal(duplicateGrant.statusCode, 409);
+
+    const memberAfterGrant = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberAfterGrant.statusCode, 200);
+    assert.equal(
+      memberAfterGrant
+        .json()
+        .families[0].profiles.some((profile: { id: string }) => profile.id === sharedProfile.id),
+      true,
+    );
+
+    const listed = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(listed.statusCode, 200);
+    assert.deepEqual(listed.json().items, [grant.grant]);
+
+    const outsiderSession = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: outsiderCookie },
+    });
+    assert.equal(outsiderSession.statusCode, 200);
+    const crossFamilyGrant = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: {
+        granteeUserId: outsiderSession.json().user.id,
+        capability: "profile.read",
+      },
+    });
+    assert.equal(crossFamilyGrant.statusCode, 404);
+
+    const revoked = await app.inject({
+      method: "DELETE",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants/${grant.grant.id}`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+    });
+    assert.equal(revoked.statusCode, 204);
+
+    const memberAfterRevocation = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: memberCookie },
+    });
+    assert.equal(memberAfterRevocation.statusCode, 200);
+    assert.equal(
+      memberAfterRevocation
+        .json()
+        .families[0].profiles.some((profile: { id: string }) => profile.id === sharedProfile.id),
+      false,
+    );
+
+    const events = await database.query<{ action: string; metadata: string }>(
+      `SELECT action, metadata
+         FROM audit_events
+        WHERE family_id = $1
+          AND action LIKE 'profile.consent_%'
+        ORDER BY action`,
+      [owner.family.id],
+    );
+    assert.deepEqual(
+      events.rows.map((event) => event.action),
+      [
+        "profile.consent_granted",
+        "profile.consent_grants.opened",
+        "profile.consent_members.opened",
+        "profile.consent_revoked",
+      ],
+    );
+    assert.equal(
+      events.rows.every(
+        (event) =>
+          JSON.parse(event.metadata).contractVersion === "profile-consent/v2" &&
+          !event.metadata.includes("Consent Adult"),
+      ),
+      true,
+    );
+  } finally {
+    await context.close();
+  }
+});
+
+test("a caregiver joins without an implicit profile and reads only an explicitly shared profile", async () => {
+  const context = await createTestContext();
+  const { app, database } = context;
+
+  try {
+    const ownerRegistration = await register(app, {
+      displayName: "Caregiver Owner",
+      familyName: "Caregiver Family",
+      profileName: "Owner Profile",
+    });
+    assert.equal(ownerRegistration.statusCode, 201);
+    const owner = ownerRegistration.json();
+    const ownerCookie = cookieFrom(ownerRegistration).pair;
+
+    const shared = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { displayName: "Care Recipient", kind: "dependent" },
+    });
+    assert.equal(shared.statusCode, 201);
+    const sharedProfile = shared.json().profile as { id: string };
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/invitations`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { role: "caregiver" },
+    });
+    assert.equal(invitation.statusCode, 201);
+    const invitationBody = invitation.json() as {
+      contractVersion: string;
+      invitation: { id: string; role: string; code: string };
+    };
+    assert.equal(invitationBody.contractVersion, "family-invitation/v2");
+    assert.equal(invitationBody.invitation.role, "caregiver");
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/v1/demo/invitations/accept",
+      headers: { origin: webOrigin },
+      payload: { code: invitationBody.invitation.code, displayName: "Local Caregiver" },
+    });
+    assert.equal(accepted.statusCode, 201);
+    const caregiver = accepted.json() as {
+      family: { id: string; role: string };
+      profile: null;
+    };
+    assert.equal(caregiver.family.id, owner.family.id);
+    assert.equal(caregiver.family.role, "caregiver");
+    assert.equal(caregiver.profile, null);
+    const caregiverCookie = cookieFrom(accepted).pair;
+
+    const caregiverSessionBeforeGrant = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: caregiverCookie },
+    });
+    assert.equal(caregiverSessionBeforeGrant.statusCode, 200);
+    assert.deepEqual(caregiverSessionBeforeGrant.json().families[0].profiles, []);
+    const caregiverUserId = caregiverSessionBeforeGrant.json().user.id as string;
+
+    const consentMembers = await app.inject({
+      method: "GET",
+      url: `/v1/families/${owner.family.id}/members`,
+      headers: { cookie: ownerCookie },
+    });
+    assert.equal(consentMembers.statusCode, 200);
+    assert.deepEqual(consentMembers.json().items, [
+      { id: caregiverUserId, displayName: "Local Caregiver", role: "caregiver" },
+    ]);
+
+    const grant = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+      payload: { granteeUserId: caregiverUserId, capability: "profile.read" },
+    });
+    assert.equal(grant.statusCode, 201);
+    assert.equal(grant.json().contractVersion, "profile-consent/v2");
+    assert.equal(grant.json().grant.grantee.role, "caregiver");
+
+    const caregiverSessionAfterGrant = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: caregiverCookie },
+    });
+    assert.equal(caregiverSessionAfterGrant.statusCode, 200);
+    assert.deepEqual(caregiverSessionAfterGrant.json().families[0].profiles, [
+      { ...shared.json().profile, access: "granted_read" },
+    ]);
+
+    const grantId = grant.json().grant.id as string;
+    const revoked = await app.inject({
+      method: "DELETE",
+      url: `/v1/families/${owner.family.id}/profiles/${sharedProfile.id}/consent-grants/${grantId}`,
+      headers: { cookie: ownerCookie, origin: webOrigin },
+    });
+    assert.equal(revoked.statusCode, 204);
+    const caregiverSessionAfterRevocation = await app.inject({
+      method: "GET",
+      url: "/v1/session",
+      headers: { cookie: caregiverCookie },
+    });
+    assert.equal(caregiverSessionAfterRevocation.statusCode, 200);
+    assert.deepEqual(caregiverSessionAfterRevocation.json().families[0].profiles, []);
+
+    const caregiverRows = await database.query<{ profile_count: number }>(
+      `SELECT count(*) AS profile_count
+         FROM patient_profiles
+        WHERE family_id = $1 AND linked_user_id = $2`,
+      [owner.family.id, caregiverUserId],
+    );
+    assert.equal(caregiverRows.rows[0]?.profile_count, 0);
   } finally {
     await context.close();
   }

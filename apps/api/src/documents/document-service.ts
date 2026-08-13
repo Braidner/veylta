@@ -10,13 +10,26 @@ import {
   type FactReviewCommand,
   type FactReviewOutcome,
   type FactReviewResponse,
+  INDICATOR_SERIES_CONTRACT_VERSION,
+  type IndicatorCatalogResponse,
+  type IndicatorComparison,
+  type IndicatorSeriesResponse,
   LAB_EXTRACTION_SCHEMA_VERSION,
   type LabFactReferenceRange,
   type LabFactValidationIssue,
+  MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
+  MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
+  type PatientProfileSummary,
+  PROFILE_OVERVIEW_CONTRACT_VERSION,
+  type ProfileOverviewResponse,
+  SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+  SYNTHETIC_INDICATOR_CATALOG,
+  type SyntheticDocumentContentType,
+  type SyntheticEvidenceBundleManifest,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
@@ -35,9 +48,10 @@ import {
   ObjectStorageSizeLimitError,
   type StagedObjectMetadata,
 } from "../storage/object-storage.js";
+import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
 
 export class UnsupportedDocumentTypeError extends Error {}
-export class InvalidPdfSignatureError extends Error {}
+export class InvalidDocumentSignatureError extends Error {}
 export class UploadTooLargeError extends Error {}
 export class IdempotencyConflictError extends Error {}
 export class ProcessingNotAvailableError extends DomainConflictError {}
@@ -50,10 +64,22 @@ export interface StagedDocument {
 export interface DocumentContent {
   body: Readable;
   byteSize: number;
+  contentType: SyntheticDocumentContentType;
+}
+
+export interface EvidenceBundleContent {
+  body: Readable;
+  byteSize: number;
 }
 
 export interface ObservationHistoryQuery {
   canonicalCode?: string;
+  limit?: string;
+  cursor?: string;
+}
+
+export interface IndicatorSeriesQuery {
+  unit: string;
   limit?: string;
   cursor?: string;
 }
@@ -72,6 +98,11 @@ export interface DocumentService {
     scope: { familyId: string; profileId: string; documentId: string },
     correlationId: string,
   ): Promise<DocumentContent>;
+  getEvidenceBundle(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<EvidenceBundleContent>;
   getDocument(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string },
@@ -93,6 +124,22 @@ export interface DocumentService {
     query: ObservationHistoryQuery,
     correlationId: string,
   ): Promise<ObservationHistoryResponse>;
+  getProfileOverview(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<ProfileOverviewResponse>;
+  getIndicatorCatalog(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<IndicatorCatalogResponse>;
+  getIndicatorSeries(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; canonicalCode: string },
+    query: IndicatorSeriesQuery,
+    correlationId: string,
+  ): Promise<IndicatorSeriesResponse>;
   reviewFact(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string; factId: string },
@@ -106,11 +153,11 @@ export interface DocumentService {
     idempotencyKey: string,
     correlationId: string,
   ): Promise<DocumentProcessingRetryResponse>;
-  requireProfileAccess(
+  requireProfileWriteAccess(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
   ): Promise<void>;
-  stagePdf(input: {
+  stageDocument(input: {
     body: Readable;
     contentType: string;
     filename: string | undefined;
@@ -118,7 +165,7 @@ export interface DocumentService {
 }
 
 export interface DocumentServiceOptions {
-  maxPdfBytes: number;
+  maxDocumentBytes: number;
 }
 
 interface Queryable {
@@ -134,7 +181,7 @@ interface DocumentRow {
   uploaded_at: string;
   duplicate_of_document_id: string | null;
   duplicate_profile_id: string | null;
-  content_type: "application/pdf";
+  content_type: SyntheticDocumentContentType;
   byte_size: number;
   sha256: string;
   storage_key: string;
@@ -268,6 +315,59 @@ interface ObservationHistoryCursor {
   timelineAt: string;
 }
 
+interface IndicatorCatalogRow {
+  canonical_code: string;
+  source_unit: string;
+  source_value: string;
+  timeline_at: string;
+  id: string;
+}
+
+interface IndicatorSeriesCursor {
+  canonicalCode: string;
+  unit: string;
+  id: string;
+  timelineAt: string;
+}
+
+interface ProfileOverviewDocumentRow extends DocumentRow {
+  job_id: string | null;
+  job_state: string | null;
+  job_current_stage: string | null;
+  job_last_error_code: string | null;
+  job_updated_at: string | null;
+  extraction_run_id: string | null;
+  extraction_status: string | null;
+  fact_count: number | null;
+  pending_fact_count: number | null;
+  needs_attention_fact_count: number | null;
+}
+
+interface ProfileOverviewProfileRow {
+  id: string;
+  family_id: string;
+  display_name: string;
+  kind: string;
+  access: string;
+  created_at: string;
+}
+
+interface ProfileOverviewQueueRow {
+  document_count: number;
+  pending_fact_count: number;
+  needs_attention_fact_count: number;
+}
+
+interface EvidenceBundleProfileRow {
+  id: string;
+  family_id: string;
+  display_name: string;
+  kind: string;
+  created_at: string;
+}
+
+interface EvidenceBundleDocumentRow extends DocumentRow {}
+
 interface RetryRequestRow {
   document_version_id: string;
   created_at: string;
@@ -284,12 +384,20 @@ interface UploadRequestRow {
 interface BlobRow {
   id: string;
   storage_key: string;
-  content_type: "application/pdf";
+  content_type: SyntheticDocumentContentType;
   byte_size: number;
   sha256: string;
 }
 
 const pdfSignature = Buffer.from("%PDF-");
+const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+const jpegSignature = Buffer.from([255, 216, 255]);
+
+const syntheticDocumentContentTypes = new Set<SyntheticDocumentContentType>([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+]);
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
@@ -338,6 +446,9 @@ const canonicalUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const historyCursorPattern = /^[A-Za-z0-9_-]{1,500}$/;
 const defaultObservationHistoryPageSize = 50;
+const defaultIndicatorSeriesPageSize = 100;
+const syntheticIndicatorCatalog: ReadonlyMap<string, (typeof SYNTHETIC_INDICATOR_CATALOG)[number]> =
+  new Map(SYNTHETIC_INDICATOR_CATALOG.map((indicator) => [indicator.canonicalCode, indicator]));
 
 function historyCanonicalCode(value: string | undefined): string | null {
   if (value === undefined) return null;
@@ -353,6 +464,32 @@ function observationHistoryLimit(value: string | undefined): number {
     throw new DomainValidationError();
   }
   return limit;
+}
+
+function indicatorSeriesLimit(value: string | undefined): number {
+  if (value === undefined) return defaultIndicatorSeriesPageSize;
+  if (!/^(?:[1-9][0-9]?|100)$/.test(value)) throw new DomainValidationError();
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_INDICATOR_SERIES_PAGE_SIZE) {
+    throw new DomainValidationError();
+  }
+  return limit;
+}
+
+function indicatorUnit(value: string): string {
+  if (
+    value.length === 0 ||
+    value.length > 100 ||
+    value !== value.trim() ||
+    value.includes("|") ||
+    [...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint < 32 || codePoint === 127);
+    })
+  ) {
+    throw new DomainValidationError();
+  }
+  return value;
 }
 
 function cursorTimestamp(value: unknown): string {
@@ -400,7 +537,90 @@ function encodeObservationHistoryCursor(cursor: ObservationHistoryCursor): strin
   ).toString("base64url");
 }
 
-function safeFilename(value: string | undefined): string {
+function decodeIndicatorSeriesCursor(
+  value: string | undefined,
+  canonicalCode: string,
+  unit: string,
+): IndicatorSeriesCursor | null {
+  if (value === undefined) return null;
+  if (!historyCursorPattern.test(value)) throw new DomainValidationError();
+  try {
+    const decoded = Buffer.from(value, "base64url");
+    if (decoded.toString("base64url") !== value) throw new Error("Non-canonical cursor");
+    const parsed: unknown = JSON.parse(decoded.toString("utf8"));
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      throw new Error("Invalid cursor object");
+    }
+    const record = parsed as Record<string, unknown>;
+    if (Object.keys(record).sort().join(",") !== "c,id,t,u,v" || record.v !== 1) {
+      throw new Error("Invalid cursor shape");
+    }
+    if (record.c !== canonicalCode || record.u !== unit || typeof record.id !== "string") {
+      throw new Error("Cursor query mismatch");
+    }
+    if (!canonicalUuidPattern.test(record.id)) throw new Error("Invalid cursor id");
+    return { canonicalCode, unit, id: record.id, timelineAt: cursorTimestamp(record.t) };
+  } catch (error) {
+    if (error instanceof DomainValidationError) throw error;
+    throw new DomainValidationError();
+  }
+}
+
+function encodeIndicatorSeriesCursor(cursor: IndicatorSeriesCursor): string {
+  return Buffer.from(
+    JSON.stringify({
+      v: 1,
+      t: cursor.timelineAt,
+      id: cursor.id,
+      c: cursor.canonicalCode,
+      u: cursor.unit,
+    }),
+    "utf8",
+  ).toString("base64url");
+}
+
+interface ParsedDecimal {
+  readonly unscaled: bigint;
+  readonly scale: number;
+}
+
+function parseSourceDecimal(value: string): ParsedDecimal | null {
+  const match = /^([+-]?)(\d+)(?:\.(\d+))?$/.exec(value);
+  if (match === null) return null;
+  const sign = match[1] === "-" ? -1n : 1n;
+  const integer = match[2] ?? "";
+  const fraction = match[3] ?? "";
+  const digits = `${integer}${fraction}`.replace(/^0+(?=\d)/, "");
+  return { unscaled: sign * BigInt(digits.length === 0 ? "0" : digits), scale: fraction.length };
+}
+
+function decimalDelta(
+  current: string,
+  previous: string,
+): Extract<IndicatorComparison, { state: "available" }>["delta"] | null {
+  const currentDecimal = parseSourceDecimal(current);
+  const previousDecimal = parseSourceDecimal(previous);
+  if (currentDecimal === null || previousDecimal === null) return null;
+  const scale = Math.max(currentDecimal.scale, previousDecimal.scale);
+  const currentUnscaled = currentDecimal.unscaled * 10n ** BigInt(scale - currentDecimal.scale);
+  const previousUnscaled = previousDecimal.unscaled * 10n ** BigInt(scale - previousDecimal.scale);
+  const signedDelta = currentUnscaled - previousUnscaled;
+  const magnitude = signedDelta < 0n ? -signedDelta : signedDelta;
+  const digits = magnitude.toString().padStart(scale + 1, "0");
+  const formatted =
+    scale === 0
+      ? digits
+      : `${digits.slice(0, -scale)}.${digits.slice(-scale)}`.replace(/\.?0+$/, "");
+  return {
+    value: formatted === "" ? "0" : formatted,
+    direction: signedDelta > 0n ? "increased" : signedDelta < 0n ? "decreased" : "unchanged",
+  };
+}
+
+function safeFilename(
+  value: string | undefined,
+  contentType: SyntheticDocumentContentType,
+): string {
   const leaf = (value ?? "").split(/[\\/]/).at(-1) ?? "";
   const cleaned = [...leaf]
     .filter((character) => {
@@ -410,7 +630,12 @@ function safeFilename(value: string | undefined): string {
     .join("")
     .trim();
   const bounded = [...cleaned].slice(0, 255).join("");
-  return bounded.length === 0 ? "document.pdf" : bounded;
+  if (bounded.length > 0) return bounded;
+  return contentType === "application/pdf"
+    ? "document.pdf"
+    : contentType === "image/png"
+      ? "document.png"
+      : "document.jpg";
 }
 
 function byteSize(value: number): number {
@@ -507,6 +732,130 @@ function processingStatus(
   }
 }
 
+function profileOverviewProcessing(row: ProfileOverviewDocumentRow): DocumentProcessingStatus {
+  if (row.job_id === null || row.job_state === null || row.job_updated_at === null) {
+    return { state: "not_started" };
+  }
+  const job: ProcessingJobRow = {
+    id: requiredBoundedString(row.job_id, 200, "overview processing job"),
+    state: row.job_state,
+    current_stage: row.job_current_stage,
+    last_error_code: row.job_last_error_code,
+    updated_at: row.job_updated_at,
+  };
+  const counts =
+    row.extraction_run_id === null ||
+    row.extraction_status === null ||
+    row.fact_count === null ||
+    row.needs_attention_fact_count === null
+      ? undefined
+      : ({
+          extraction_run_id: requiredBoundedString(
+            row.extraction_run_id,
+            200,
+            "overview extraction run",
+          ),
+          status: row.extraction_status,
+          fact_count: row.fact_count,
+          needs_review_count: row.needs_attention_fact_count,
+        } satisfies ProcessingCountsRow);
+  return processingStatus(job, counts);
+}
+
+function profileOverviewProfile(row: ProfileOverviewProfileRow): PatientProfileSummary {
+  if (row.kind !== "adult" && row.kind !== "dependent") {
+    throw new ObjectStorageIntegrityError("Stored profile kind is invalid");
+  }
+  if (row.access !== "owner" && row.access !== "self" && row.access !== "granted_read") {
+    throw new ObjectStorageIntegrityError("Stored profile access is invalid");
+  }
+  return {
+    id: requiredCanonicalUuid(row.id, "overview profile"),
+    familyId: requiredCanonicalUuid(row.family_id, "overview family"),
+    displayName: requiredBoundedString(row.display_name, 120, "overview profile name"),
+    kind: row.kind,
+    access: row.access,
+    createdAt: canonicalTimestamp(row.created_at),
+  };
+}
+
+function profileOverviewDocument(
+  row: ProfileOverviewDocumentRow,
+): ProfileOverviewResponse["recentDocuments"][number] {
+  const document = summary(row, profileOverviewProcessing(row));
+  return {
+    id: document.id,
+    originalFilename: document.originalFilename,
+    contentType: document.contentType,
+    uploadedAt: document.uploadedAt,
+    processing: document.processing,
+  };
+}
+
+function profileOverviewReviewDocument(
+  row: ProfileOverviewDocumentRow,
+): ProfileOverviewResponse["reviewQueue"]["documents"][number] {
+  const pendingFactCount = asCount(row.pending_fact_count ?? -1, "overview pending fact count");
+  const needsAttentionFactCount = asCount(
+    row.needs_attention_fact_count ?? -1,
+    "overview attention fact count",
+  );
+  if (needsAttentionFactCount > pendingFactCount) {
+    throw new ObjectStorageIntegrityError("Stored overview attention count is invalid");
+  }
+  const document = summary(row, profileOverviewProcessing(row));
+  return {
+    id: document.id,
+    originalFilename: document.originalFilename,
+    contentType: document.contentType,
+    uploadedAt: document.uploadedAt,
+    pendingFactCount,
+    needsAttentionFactCount,
+  };
+}
+
+function evidenceBundleProfile(
+  row: EvidenceBundleProfileRow,
+): SyntheticEvidenceBundleManifest["profile"] {
+  if (row.kind !== "adult" && row.kind !== "dependent") {
+    throw new ObjectStorageIntegrityError("Stored export profile kind is invalid");
+  }
+  return {
+    id: requiredCanonicalUuid(row.id, "export profile"),
+    familyId: requiredCanonicalUuid(row.family_id, "export family"),
+    displayName: requiredBoundedString(row.display_name, 120, "export profile name"),
+    kind: row.kind,
+    createdAt: canonicalTimestamp(row.created_at),
+  };
+}
+
+function evidenceBundleExtension(contentType: SyntheticDocumentContentType): "pdf" | "png" | "jpg" {
+  switch (contentType) {
+    case "application/pdf":
+      return "pdf";
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+  }
+}
+
+function evidenceBundleDocument(
+  row: EvidenceBundleDocumentRow,
+): SyntheticEvidenceBundleManifest["documents"][number] {
+  const id = requiredCanonicalUuid(row.id, "export document");
+  return {
+    id,
+    versionId: requiredCanonicalUuid(row.document_version_id, "export document version"),
+    originalFilename: requiredBoundedString(row.original_filename, 255, "export filename"),
+    contentType: row.content_type,
+    byteSize: byteSize(row.byte_size),
+    sha256: canonicalChecksum(row.sha256, "export checksum"),
+    uploadedAt: canonicalTimestamp(row.uploaded_at),
+    archivePath: `documents/${id}.${evidenceBundleExtension(row.content_type)}`,
+  };
+}
+
 function summary(
   row: DocumentRow,
   processing: DocumentProcessingStatus = { state: "not_started" },
@@ -542,7 +891,29 @@ function metadataMatches(
   );
 }
 
-async function* verifiedPdfBytes(body: Readable): AsyncGenerator<Buffer> {
+function documentContentType(value: string): SyntheticDocumentContentType | null {
+  const normalized = value.toLowerCase();
+  return syntheticDocumentContentTypes.has(normalized as SyntheticDocumentContentType)
+    ? (normalized as SyntheticDocumentContentType)
+    : null;
+}
+
+function signatureFor(contentType: SyntheticDocumentContentType): Buffer {
+  switch (contentType) {
+    case "application/pdf":
+      return pdfSignature;
+    case "image/png":
+      return pngSignature;
+    case "image/jpeg":
+      return jpegSignature;
+  }
+}
+
+async function* verifiedDocumentBytes(
+  body: Readable,
+  contentType: SyntheticDocumentContentType,
+): AsyncGenerator<Buffer> {
+  const signature = signatureFor(contentType);
   let prefix = Buffer.alloc(0);
   let verified = false;
 
@@ -552,22 +923,22 @@ async function* verifiedPdfBytes(body: Readable): AsyncGenerator<Buffer> {
       yield bytes;
       continue;
     }
-    const needed = pdfSignature.byteLength - prefix.byteLength;
+    const needed = signature.byteLength - prefix.byteLength;
     prefix = Buffer.concat([prefix, bytes.subarray(0, needed)]);
-    if (prefix.byteLength < pdfSignature.byteLength) continue;
-    if (!prefix.equals(pdfSignature)) {
+    if (prefix.byteLength < signature.byteLength) continue;
+    if (!prefix.equals(signature)) {
       body.resume();
-      throw new InvalidPdfSignatureError();
+      throw new InvalidDocumentSignatureError();
     }
     verified = true;
     yield prefix;
     const remainder = bytes.subarray(needed);
     if (remainder.byteLength > 0) yield remainder;
   }
-  if (!verified) throw new InvalidPdfSignatureError();
+  if (!verified) throw new InvalidDocumentSignatureError();
 }
 
-async function requireProfileAccess(
+async function requireProfileReadAccess(
   client: Queryable,
   actor: SessionActor,
   familyId: string,
@@ -583,7 +954,47 @@ async function requireProfileAccess(
        AND p.id = $2
        AND p.archived_at IS NULL
        AND m.status = 'active'
-       AND m.role = 'owner'`,
+       AND (
+         m.role = 'owner'
+         OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
+         OR (
+           m.role IN ('adult_member', 'caregiver')
+           AND EXISTS (
+             SELECT 1
+               FROM profile_consent_grants g
+              WHERE g.family_id = p.family_id
+                AND g.patient_profile_id = p.id
+                AND g.grantee_user_id = m.user_id
+                AND g.capability = 'profile.read'
+                AND g.revoked_at IS NULL
+           )
+         )
+       )`,
+    [familyId, profileId, actor.userId],
+  );
+  if (result.rows[0] === undefined) throw new ResourceNotFoundError();
+}
+
+async function requireProfileWriteAccess(
+  client: Queryable,
+  actor: SessionActor,
+  familyId: string,
+  profileId: string,
+): Promise<void> {
+  const result = await client.query<{ id: string }>(
+    `SELECT p.id
+       FROM patient_profiles p
+       JOIN family_memberships m
+         ON m.family_id = p.family_id
+        AND m.user_id = $3
+       WHERE p.family_id = $1
+         AND p.id = $2
+         AND p.archived_at IS NULL
+         AND m.status = 'active'
+         AND (
+           m.role = 'owner'
+           OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
+         )`,
     [familyId, profileId, actor.userId],
   );
   if (result.rows[0] === undefined) throw new ResourceNotFoundError();
@@ -625,6 +1036,7 @@ async function documentRow(
   client: Queryable,
   actor: SessionActor,
   scope: { familyId: string; profileId: string; documentId: string },
+  access: "read" | "write" = "read",
 ): Promise<DocumentRow> {
   const result = await client.query<DocumentRow>(
     `SELECT d.id,
@@ -635,7 +1047,7 @@ async function documentRow(
             d.uploaded_at,
             d.duplicate_of_document_id,
             duplicate.patient_profile_id AS duplicate_profile_id,
-            b.content_type,
+            COALESCE(bt.content_type, b.content_type) AS content_type,
             b.byte_size,
             b.sha256,
             b.storage_key,
@@ -645,7 +1057,29 @@ async function documentRow(
        ON m.family_id = d.family_id
       AND m.user_id = $4
       AND m.status = 'active'
-      AND m.role = 'owner'
+      AND (
+        m.role = 'owner'
+        OR (m.role = 'adult_member' AND d.patient_profile_id = (
+          SELECT p.id
+            FROM patient_profiles p
+           WHERE p.family_id = d.family_id
+             AND p.id = d.patient_profile_id
+             AND p.linked_user_id = m.user_id
+        ))
+        OR (
+          $5 = 'read'
+          AND m.role IN ('adult_member', 'caregiver')
+          AND EXISTS (
+            SELECT 1
+              FROM profile_consent_grants g
+             WHERE g.family_id = d.family_id
+               AND g.patient_profile_id = d.patient_profile_id
+               AND g.grantee_user_id = m.user_id
+               AND g.capability = 'profile.read'
+               AND g.revoked_at IS NULL
+          )
+        )
+      )
      JOIN document_versions v
        ON v.family_id = d.family_id
       AND v.document_id = d.id
@@ -653,13 +1087,16 @@ async function documentRow(
      JOIN document_blobs b
        ON b.family_id = v.family_id
       AND b.id = v.blob_id
+     LEFT JOIN document_blob_content_types bt
+       ON bt.family_id = b.family_id
+      AND bt.blob_id = b.id
      LEFT JOIN documents duplicate
        ON duplicate.family_id = d.family_id
       AND duplicate.id = d.duplicate_of_document_id
      WHERE d.family_id = $1
        AND d.patient_profile_id = $2
        AND d.id = $3`,
-    [scope.familyId, scope.profileId, scope.documentId, actor.userId],
+    [scope.familyId, scope.profileId, scope.documentId, actor.userId, access],
   );
   const row = result.rows[0];
   if (row === undefined) throw new ResourceNotFoundError();
@@ -755,6 +1192,14 @@ function requiredBoundedString(value: unknown, maximum: number, label: string): 
   const parsed = nullableBoundedString(value, maximum, label);
   if (parsed === null) throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
   return parsed;
+}
+
+function canonicalChecksum(value: unknown, label: string): string {
+  const checksum = requiredBoundedString(value, 64, label);
+  if (!/^[a-f0-9]{64}$/.test(checksum)) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return checksum;
 }
 
 function nullableCanonicalTimestamp(value: unknown, label: string): string | null {
@@ -1276,29 +1721,33 @@ export function createDocumentService(
   storage: ObjectStorage,
   options: DocumentServiceOptions,
 ): DocumentService {
-  if (!Number.isSafeInteger(options.maxPdfBytes) || options.maxPdfBytes < pdfSignature.byteLength) {
-    throw new Error("maxPdfBytes must fit a PDF signature");
+  if (
+    !Number.isSafeInteger(options.maxDocumentBytes) ||
+    options.maxDocumentBytes < pngSignature.byteLength
+  ) {
+    throw new Error("maxDocumentBytes must fit a document signature");
   }
 
   return {
-    async requireProfileAccess(actor, requestedScope) {
+    async requireProfileWriteAccess(actor, requestedScope) {
       const scope = canonicalProfileScope(requestedScope);
-      await requireProfileAccess(database, actor, scope.familyId, scope.profileId);
+      await requireProfileWriteAccess(database, actor, scope.familyId, scope.profileId);
     },
 
-    async stagePdf(input) {
-      if (input.contentType.toLowerCase() !== "application/pdf") {
+    async stageDocument(input) {
+      const contentType = documentContentType(input.contentType);
+      if (contentType === null) {
         input.body.resume();
         throw new UnsupportedDocumentTypeError();
       }
       try {
         const metadata = await storage.putStaging({
           key: stagingObjectKey(),
-          body: Readable.from(verifiedPdfBytes(input.body)),
-          contentType: "application/pdf",
-          maxBytes: options.maxPdfBytes,
+          body: Readable.from(verifiedDocumentBytes(input.body, contentType)),
+          contentType,
+          maxBytes: options.maxDocumentBytes,
         });
-        return { metadata, originalFilename: safeFilename(input.filename) };
+        return { metadata, originalFilename: safeFilename(input.filename, contentType) };
       } catch (error) {
         if (error instanceof ObjectStorageSizeLimitError) throw new UploadTooLargeError();
         throw error;
@@ -1315,18 +1764,21 @@ export function createDocumentService(
       try {
         return await database
           .transaction(async (client) => {
-            await requireProfileAccess(client, actor, scope.familyId, scope.profileId);
+            await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
 
             const replay = await client.query<UploadRequestRow>(
               `SELECT document_id,
                     patient_profile_id,
                     request_byte_size,
-                    request_content_type,
+                    COALESCE(rt.content_type, request_content_type) AS request_content_type,
                     request_sha256
              FROM document_upload_requests
-             WHERE family_id = $1
-               AND actor_user_id = $2
-               AND idempotency_key_hash = $3`,
+             LEFT JOIN document_upload_request_content_types rt
+               ON rt.family_id = document_upload_requests.family_id
+              AND rt.upload_request_id = document_upload_requests.id
+             WHERE document_upload_requests.family_id = $1
+               AND document_upload_requests.actor_user_id = $2
+               AND document_upload_requests.idempotency_key_hash = $3`,
               [scope.familyId, actor.userId, keyHash],
             );
             const previous = replay.rows[0];
@@ -1339,10 +1791,15 @@ export function createDocumentService(
               ) {
                 throw new IdempotencyConflictError();
               }
-              const replayed = await documentRow(client, actor, {
-                ...scope,
-                documentId: previous.document_id,
-              });
+              const replayed = await documentRow(
+                client,
+                actor,
+                {
+                  ...scope,
+                  documentId: previous.document_id,
+                },
+                "write",
+              );
               await audit(client, {
                 familyId: scope.familyId,
                 actorUserId: actor.userId,
@@ -1355,9 +1812,13 @@ export function createDocumentService(
             }
 
             const existingBlobs = await client.query<BlobRow>(
-              `SELECT id, storage_key, content_type, byte_size, sha256
-             FROM document_blobs
-             WHERE family_id = $1 AND sha256 = $2`,
+              `SELECT b.id, b.storage_key, COALESCE(bt.content_type, b.content_type) AS content_type,
+                      b.byte_size, b.sha256
+                 FROM document_blobs b
+                 LEFT JOIN document_blob_content_types bt
+                   ON bt.family_id = b.family_id
+                  AND bt.blob_id = b.id
+             WHERE b.family_id = $1 AND b.sha256 = $2`,
               [scope.familyId, staged.metadata.sha256],
             );
             let blob = existingBlobs.rows[0];
@@ -1372,7 +1833,7 @@ export function createDocumentService(
               blob = {
                 id: randomUUID(),
                 storage_key: finalKey,
-                content_type: "application/pdf",
+                content_type: staged.metadata.contentType as SyntheticDocumentContentType,
                 byte_size: staged.metadata.byteSize,
                 sha256: staged.metadata.sha256,
               };
@@ -1386,11 +1847,19 @@ export function createDocumentService(
                   scope.familyId,
                   OBJECT_STORAGE_CONTRACT_VERSION,
                   blob.storage_key,
-                  blob.content_type,
+                  "application/pdf",
                   staged.metadata.byteSize,
                   blob.sha256,
                 ],
               );
+              if (blob.content_type !== "application/pdf") {
+                await client.query(
+                  `INSERT INTO document_blob_content_types
+                     (blob_id, family_id, content_type, created_at)
+                   VALUES ($1, $2, $3, $4)`,
+                  [blob.id, scope.familyId, blob.content_type, new Date()],
+                );
+              }
             } else {
               const metadata = await storage.stat(createObjectStorageKey(blob.storage_key));
               if (
@@ -1461,12 +1930,30 @@ export function createDocumentService(
                 scope.profileId,
                 keyHash,
                 staged.metadata.sha256,
-                staged.metadata.contentType,
+                "application/pdf",
                 staged.metadata.byteSize,
                 documentId,
                 uploadedAt,
               ],
             );
+            if (staged.metadata.contentType !== "application/pdf") {
+              const uploadRequest = await client.query<{ id: string }>(
+                `SELECT id
+                   FROM document_upload_requests
+                  WHERE family_id = $1
+                    AND actor_user_id = $2
+                    AND idempotency_key_hash = $3`,
+                [scope.familyId, actor.userId, keyHash],
+              );
+              const uploadRequestId = uploadRequest.rows[0]?.id;
+              if (uploadRequestId === undefined) throw new ObjectStorageIntegrityError();
+              await client.query(
+                `INSERT INTO document_upload_request_content_types
+                   (upload_request_id, family_id, content_type, created_at)
+                 VALUES ($1, $2, $3, $4)`,
+                [uploadRequestId, scope.familyId, staged.metadata.contentType, uploadedAt],
+              );
+            }
             await audit(client, {
               familyId: scope.familyId,
               actorUserId: actor.userId,
@@ -1589,7 +2076,7 @@ export function createDocumentService(
       const canonicalCode = historyCanonicalCode(requestedQuery.canonicalCode);
       const limit = observationHistoryLimit(requestedQuery.limit);
       return database.transaction(async (client) => {
-        await requireProfileAccess(client, actor, scope.familyId, scope.profileId);
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
         const cursor = decodeObservationHistoryCursor(requestedQuery.cursor, canonicalCode);
         const observations = await client.query<ObservationHistoryRow>(
           `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
@@ -1670,13 +2157,506 @@ export function createDocumentService(
       });
     },
 
+    async getProfileOverview(actor, requestedScope, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+
+        const profile = (
+          await client.query<ProfileOverviewProfileRow>(
+            `SELECT p.id,
+                    p.family_id,
+                    p.display_name,
+                    p.kind,
+                    p.created_at,
+                    CASE
+                      WHEN m.role = 'owner' THEN 'owner'
+                      WHEN m.role = 'adult_member' AND p.linked_user_id = m.user_id THEN 'self'
+                      ELSE 'granted_read'
+                    END AS access
+               FROM patient_profiles p
+               JOIN family_memberships m
+                 ON m.family_id = p.family_id
+                AND m.user_id = $3
+                AND m.status = 'active'
+              WHERE p.family_id = $1
+                AND p.id = $2
+                AND p.archived_at IS NULL
+                AND (
+                  m.role = 'owner'
+                  OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
+                  OR (
+                    m.role IN ('adult_member', 'caregiver')
+                    AND EXISTS (
+                      SELECT 1
+                        FROM profile_consent_grants g
+                       WHERE g.family_id = p.family_id
+                         AND g.patient_profile_id = p.id
+                         AND g.grantee_user_id = m.user_id
+                         AND g.capability = 'profile.read'
+                         AND g.revoked_at IS NULL
+                    )
+                  )
+                )`,
+            [scope.familyId, scope.profileId, actor.userId],
+          )
+        ).rows[0];
+        if (profile === undefined) throw new ResourceNotFoundError();
+
+        const recentDocuments = await client.query<ProfileOverviewDocumentRow>(
+          `SELECT d.id,
+                  d.family_id,
+                  d.patient_profile_id,
+                  d.status,
+                  d.original_filename,
+                  d.uploaded_at,
+                  d.duplicate_of_document_id,
+                  duplicate.patient_profile_id AS duplicate_profile_id,
+                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
+                  b.byte_size,
+                  b.sha256,
+                  b.storage_key,
+                  v.id AS document_version_id,
+                  j.id AS job_id,
+                  j.state AS job_state,
+                  j.current_stage AS job_current_stage,
+                  j.last_error_code AS job_last_error_code,
+                  j.updated_at AS job_updated_at,
+                  r.id AS extraction_run_id,
+                  r.status AS extraction_status,
+                  COUNT(f.id) AS fact_count,
+                  COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS pending_fact_count,
+                  COALESCE(SUM(CASE
+                    WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
+                    ELSE 0
+                  END), 0) AS needs_attention_fact_count
+             FROM documents d
+             JOIN document_versions v
+               ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+             JOIN document_blobs b
+               ON b.family_id = v.family_id AND b.id = v.blob_id
+             LEFT JOIN document_blob_content_types blob_type
+               ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
+             LEFT JOIN documents duplicate
+               ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+             LEFT JOIN processing_jobs j
+               ON j.family_id = d.family_id
+              AND j.document_version_id = v.id
+              AND j.kind = 'document_extraction'
+             LEFT JOIN extraction_runs r
+               ON r.id = (
+                 SELECT latest_run.id
+                   FROM extraction_runs latest_run
+                  WHERE latest_run.family_id = d.family_id
+                    AND latest_run.document_version_id = v.id
+                  ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                  LIMIT 1
+               )
+             LEFT JOIN extracted_facts f
+               ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+             LEFT JOIN review_decisions d_review
+               ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            GROUP BY d.id, d.family_id, d.patient_profile_id, d.status, d.original_filename,
+                     d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
+                     blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
+                     v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
+                     r.id, r.status
+            ORDER BY d.uploaded_at DESC, d.id DESC
+            LIMIT 3`,
+          [scope.familyId, scope.profileId],
+        );
+
+        const reviewQueue = (
+          await client.query<ProfileOverviewQueueRow>(
+            `SELECT COUNT(DISTINCT d.id) AS document_count,
+                    COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                      AS pending_fact_count,
+                    COALESCE(SUM(CASE
+                      WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
+                      ELSE 0
+                    END), 0) AS needs_attention_fact_count
+               FROM documents d
+               JOIN document_versions v
+                 ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+               JOIN extraction_runs r
+                 ON r.family_id = v.family_id
+                AND r.document_version_id = v.id
+                AND r.status = 'awaiting_review'
+               LEFT JOIN extracted_facts f
+                 ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+               LEFT JOIN review_decisions d_review
+                 ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
+              WHERE d.family_id = $1 AND d.patient_profile_id = $2`,
+            [scope.familyId, scope.profileId],
+          )
+        ).rows[0];
+        if (reviewQueue === undefined) {
+          throw new ObjectStorageIntegrityError("Profile overview review queue is unavailable");
+        }
+
+        const reviewDocuments = await client.query<ProfileOverviewDocumentRow>(
+          `SELECT d.id,
+                  d.family_id,
+                  d.patient_profile_id,
+                  d.status,
+                  d.original_filename,
+                  d.uploaded_at,
+                  d.duplicate_of_document_id,
+                  duplicate.patient_profile_id AS duplicate_profile_id,
+                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
+                  b.byte_size,
+                  b.sha256,
+                  b.storage_key,
+                  v.id AS document_version_id,
+                  j.id AS job_id,
+                  j.state AS job_state,
+                  j.current_stage AS job_current_stage,
+                  j.last_error_code AS job_last_error_code,
+                  j.updated_at AS job_updated_at,
+                  r.id AS extraction_run_id,
+                  r.status AS extraction_status,
+                  COUNT(f.id) AS fact_count,
+                  COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                    AS pending_fact_count,
+                  COALESCE(SUM(CASE
+                    WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
+                    ELSE 0
+                  END), 0) AS needs_attention_fact_count
+             FROM documents d
+             JOIN document_versions v
+               ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+             JOIN document_blobs b
+               ON b.family_id = v.family_id AND b.id = v.blob_id
+             LEFT JOIN document_blob_content_types blob_type
+               ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
+             LEFT JOIN documents duplicate
+               ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+             JOIN extraction_runs r
+               ON r.family_id = v.family_id
+              AND r.document_version_id = v.id
+              AND r.status = 'awaiting_review'
+             LEFT JOIN processing_jobs j
+               ON j.family_id = d.family_id
+              AND j.document_version_id = v.id
+              AND j.kind = 'document_extraction'
+             LEFT JOIN extracted_facts f
+               ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+             LEFT JOIN review_decisions d_review
+               ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            GROUP BY d.id, d.family_id, d.patient_profile_id, d.status, d.original_filename,
+                     d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
+                     blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
+                     v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
+                     r.id, r.status
+            ORDER BY d.uploaded_at DESC, d.id DESC
+            LIMIT 3`,
+          [scope.familyId, scope.profileId],
+        );
+
+        const recentObservations = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+            LIMIT 3`,
+          [scope.familyId, scope.profileId],
+        );
+
+        const response: ProfileOverviewResponse = {
+          contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
+          profile: profileOverviewProfile(profile),
+          recentDocuments: recentDocuments.rows.map(profileOverviewDocument),
+          reviewQueue: {
+            documentCount: asCount(reviewQueue.document_count, "overview review document count"),
+            pendingFactCount: asCount(
+              reviewQueue.pending_fact_count,
+              "overview pending fact count",
+            ),
+            needsAttentionFactCount: asCount(
+              reviewQueue.needs_attention_fact_count,
+              "overview attention fact count",
+            ),
+            documents: reviewDocuments.rows.map(profileOverviewReviewDocument),
+          },
+          recentObservations: recentObservations.rows.map((row) =>
+            observationHistoryItem(row, scope),
+          ),
+        };
+        if (response.reviewQueue.needsAttentionFactCount > response.reviewQueue.pendingFactCount) {
+          throw new ObjectStorageIntegrityError("Stored overview review counts are invalid");
+        }
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.overview.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getIndicatorCatalog(actor, requestedScope, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const rows = await client.query<IndicatorCatalogRow>(
+          `SELECT o.canonical_code, o.source_unit, o.source_value,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at, o.id
+             FROM observations o
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.canonical_code IS NOT NULL
+            ORDER BY o.canonical_code, o.source_unit,
+                     COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC`,
+          [scope.familyId, scope.profileId],
+        );
+        const grouped = new Map<
+          string,
+          Map<string, { observationCount: number; latest: { value: string; timelineAt: string } }>
+        >();
+        for (const row of rows.rows) {
+          if (!canonicalCodePattern.test(row.canonical_code)) {
+            throw new ObjectStorageIntegrityError("Stored observation canonical code is invalid");
+          }
+          const indicator = syntheticIndicatorCatalog.get(row.canonical_code);
+          if (indicator === undefined) continue;
+          const unit = indicatorUnit(row.source_unit);
+          const value = requiredBoundedString(row.source_value, 100, "observation source value");
+          const timelineAt = canonicalTimestamp(row.timeline_at);
+          const units = grouped.get(row.canonical_code) ?? new Map();
+          const current = units.get(unit);
+          units.set(unit, {
+            observationCount: (current?.observationCount ?? 0) + 1,
+            latest: current?.latest ?? { value, timelineAt },
+          });
+          grouped.set(row.canonical_code, units);
+        }
+        const response: IndicatorCatalogResponse = {
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+          items: [...grouped.entries()].map(([canonicalCode, units]) => {
+            const indicator = syntheticIndicatorCatalog.get(canonicalCode);
+            if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
+            return {
+              canonicalCode,
+              displayName: indicator.displayName,
+              units: [...units.entries()].map(([unit, summary]) => ({ unit, ...summary })),
+            };
+          }),
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "indicator.catalog.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getIndicatorSeries(actor, requestedScope, requestedQuery, correlationId) {
+      const profileScope = canonicalProfileScope(requestedScope);
+      const canonicalCode = historyCanonicalCode(requestedScope.canonicalCode);
+      if (canonicalCode === null || syntheticIndicatorCatalog.get(canonicalCode) === undefined) {
+        throw new ResourceNotFoundError();
+      }
+      const unit = indicatorUnit(requestedQuery.unit);
+      const limit = indicatorSeriesLimit(requestedQuery.limit);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(
+          client,
+          actor,
+          profileScope.familyId,
+          profileScope.profileId,
+        );
+        const cursor = decodeIndicatorSeriesCursor(requestedQuery.cursor, canonicalCode, unit);
+        const comparisonRows = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.canonical_code = $3
+              AND o.source_unit = $4
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+            LIMIT 2`,
+          [profileScope.familyId, profileScope.profileId, canonicalCode, unit],
+        );
+        const observations = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.canonical_code = $3
+              AND o.source_unit = $4
+              AND (
+                $5 IS NULL
+                OR COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) < $5
+                OR (
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) = $5
+                  AND o.id < $6
+                )
+              )
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+            LIMIT $7`,
+          [
+            profileScope.familyId,
+            profileScope.profileId,
+            canonicalCode,
+            unit,
+            cursor?.timelineAt ?? null,
+            cursor?.id ?? null,
+            limit + 1,
+          ],
+        );
+        const pageRows = observations.rows.slice(0, limit);
+        const items = pageRows.map((row) => observationHistoryItem(row, profileScope));
+        const lastItem = items.at(-1);
+        const nextCursor =
+          observations.rows.length > limit && lastItem !== undefined
+            ? encodeIndicatorSeriesCursor({
+                canonicalCode,
+                unit,
+                id: lastItem.id,
+                timelineAt: lastItem.timelineAt,
+              })
+            : null;
+        const first = comparisonRows.rows[0]
+          ? observationHistoryItem(comparisonRows.rows[0], profileScope)
+          : undefined;
+        const second = comparisonRows.rows[1]
+          ? observationHistoryItem(comparisonRows.rows[1], profileScope)
+          : undefined;
+        const comparison: IndicatorComparison =
+          first === undefined || second === undefined
+            ? { state: "insufficient_data" }
+            : (() => {
+                const delta = decimalDelta(first.source.value, second.source.value);
+                if (delta === null)
+                  return { state: "unavailable", reason: "non_numeric_source_value" };
+                return {
+                  state: "available",
+                  previous: {
+                    id: second.id,
+                    value: second.source.value,
+                    timelineAt: second.timelineAt,
+                  },
+                  delta,
+                };
+              })();
+        const indicator = syntheticIndicatorCatalog.get(canonicalCode);
+        if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
+        const response: IndicatorSeriesResponse = {
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+          indicator: { canonicalCode, displayName: indicator.displayName, unit },
+          items,
+          comparison,
+          nextCursor,
+        };
+        await audit(client, {
+          familyId: profileScope.familyId,
+          actorUserId: actor.userId,
+          action: "indicator.series.opened",
+          resourceType: "PatientProfile",
+          resourceId: profileScope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
     async reviewFact(actor, requestedScope, input, idempotencyKey, correlationId) {
       const scope = canonicalFactScope(requestedScope);
       const command = validateFactReviewCommand(input);
       const keyHash = sha256(idempotencyKey);
       const commandHash = reviewRequestHash(scope.factId, command);
       return database.transaction(async (client) => {
-        const document = await documentRow(client, actor, scope);
+        const document = await documentRow(client, actor, scope, "write");
         const fact = (
           await client.query<FactForReviewRow>(
             `SELECT f.id, f.document_version_id, f.document_page_id, f.extraction_run_id,
@@ -1927,7 +2907,7 @@ export function createDocumentService(
       const scope = canonicalDocumentScope(requestedScope);
       const keyHash = sha256(idempotencyKey);
       return database.transaction(async (client) => {
-        const row = await documentRow(client, actor, scope);
+        const row = await documentRow(client, actor, scope, "write");
         const replay = await client.query<RetryRequestRow>(
           `SELECT document_version_id, created_at
              FROM processing_retry_requests
@@ -2026,7 +3006,150 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
         });
-        return { body: stored.body, byteSize: stored.metadata.byteSize };
+        return {
+          body: stored.body,
+          byteSize: stored.metadata.byteSize,
+          contentType: row.content_type,
+        };
+      });
+    },
+
+    async getEvidenceBundle(actor, requestedScope, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      return database.transaction(async (client) => {
+        await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
+        const profile = (
+          await client.query<EvidenceBundleProfileRow>(
+            `SELECT id, family_id, display_name, kind, created_at
+               FROM patient_profiles
+              WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
+            [scope.familyId, scope.profileId],
+          )
+        ).rows[0];
+        if (profile === undefined) throw new ResourceNotFoundError();
+        const documentRows = await client.query<EvidenceBundleDocumentRow>(
+          `SELECT d.id,
+                  d.family_id,
+                  d.patient_profile_id,
+                  d.status,
+                  d.original_filename,
+                  d.uploaded_at,
+                  d.duplicate_of_document_id,
+                  duplicate.patient_profile_id AS duplicate_profile_id,
+                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
+                  b.byte_size,
+                  b.sha256,
+                  b.storage_key,
+                  v.id AS document_version_id
+             FROM documents d
+             JOIN document_versions v
+               ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+             JOIN document_blobs b ON b.family_id = v.family_id AND b.id = v.blob_id
+             LEFT JOIN document_blob_content_types blob_type
+               ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
+             LEFT JOIN documents duplicate
+               ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            ORDER BY d.uploaded_at DESC, d.id DESC
+            LIMIT $3`,
+          [scope.familyId, scope.profileId, MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS],
+        );
+        const documents = documentRows.rows.map(evidenceBundleDocument);
+        const documentByVersion = new Map(
+          documents.map((document) => [document.versionId, document]),
+        );
+        const selectedVersionIds = documents.map((document) => document.versionId);
+        const observations: SyntheticEvidenceBundleManifest["observations"][number][] = [];
+        if (selectedVersionIds.length > 0) {
+          const selectedVersionPlaceholders = selectedVersionIds
+            .map((_, index) => `$${index + 3}`)
+            .join(", ");
+          const observationRows = await client.query<ObservationHistoryRow>(
+            `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.document_version_id IN (${selectedVersionPlaceholders})
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) ASC, o.id ASC`,
+            [scope.familyId, scope.profileId, ...selectedVersionIds],
+          );
+          for (const row of observationRows.rows) {
+            const item = observationHistoryItem(row, scope);
+            const document = documentByVersion.get(item.sourceDocument.versionId);
+            if (document === undefined) {
+              throw new ObjectStorageIntegrityError("Export observation source is inconsistent");
+            }
+            const { contentPath: _contentPath, ...sourceDocument } = item.sourceDocument;
+            observations.push({
+              ...item,
+              sourceDocument: { ...sourceDocument, archivePath: document.archivePath },
+            });
+          }
+        }
+        const manifest: SyntheticEvidenceBundleManifest = {
+          contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+          exportedAt: new Date().toISOString(),
+          profile: evidenceBundleProfile(profile),
+          documents,
+          observations,
+        };
+        const sources = await Promise.all(
+          documentRows.rows.map(async (row, index) => {
+            const document = documents[index];
+            if (document === undefined)
+              throw new ObjectStorageIntegrityError("Export document missing");
+            const expected = {
+              contentType: row.content_type,
+              byteSize: byteSize(row.byte_size),
+              sha256: canonicalChecksum(row.sha256, "export checksum"),
+            };
+            const stored = await storage.get(createObjectStorageKey(row.storage_key), expected);
+            if (!metadataMatches(stored.metadata, expected)) {
+              throw new ObjectStorageIntegrityError("Export storage metadata is inconsistent");
+            }
+            const chunks: Buffer[] = [];
+            for await (const chunk of stored.body) {
+              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+            }
+            return { path: document.archivePath, bytes: Buffer.concat(chunks) };
+          }),
+        );
+        const archive = createSyntheticEvidenceBundle({ manifest, sources });
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.evidence_bundle.exported",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+        });
+        return { body: Readable.from([archive]), byteSize: archive.length };
       });
     },
   };

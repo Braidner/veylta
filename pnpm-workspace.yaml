@@ -1,3 +1,6 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+allowBuilds:
+  tesseract.js: false

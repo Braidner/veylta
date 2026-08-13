@@ -1,0 +1,2 @@
+DROP TRIGGER audit_events_delete_forbidden;
+DROP TRIGGER audit_events_update_forbidden;

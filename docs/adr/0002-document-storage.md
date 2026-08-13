@@ -22,12 +22,12 @@ Define a versioned `ObjectStorage/v1` port with operations for:
 - deletion as a low-level capability callable only by a separate, confirmed
   deletion workflow.
 
-The first adapter is a persistent local filesystem root. Object keys are opaque,
-tenant-scoped trusted identifiers/checksums and never use a user-supplied path or
-filename. The adapter enforces containment under its configured root and the API
-proxies downloads after authorization.
+The default adapter is a persistent local filesystem root. Object keys are
+opaque, tenant-scoped trusted identifiers/checksums and never use a
+user-supplied path or filename. The adapter enforces containment under its
+configured root and the API proxies downloads after authorization.
 
-The Task 4 local adapter bounds accepted PDFs to 5 MiB and returns controlled
+The local adapter bounds accepted synthetic documents to 5 MiB and returns controlled
 reads from a checksum-verified byte snapshot. This deliberately spends at most
 the upload cap in memory on download so a local same-inode write cannot change
 the bytes between verification and response. A future large-object adapter must
@@ -68,15 +68,43 @@ retention workflow exists.
 - Finalizing local storage while an SQLite write transaction is open increases
   write-lock time; the bounded 5 MiB local upload keeps this trade-off explicit.
 
+## S3-compatible adapter
+
+Task 10 adds an optional S3-compatible implementation of the same port. It is
+selected only by `OBJECT_STORAGE_DRIVER=s3`; local storage remains the default.
+The adapter derives provider object names and key-binding metadata from a digest
+of the already opaque port key, so the plaintext family/checksum key is not sent
+to S3 as an object path or provider metadata.
+It writes first to a staged object, seals trusted content type/size/SHA-256 port
+metadata, and copies to the final key with conditional `If-None-Match: *`.
+Finalization treats a conditional race as an already-existing immutable object,
+not an overwrite.
+
+Every PUT/COPY requires either SSE-S3 (`AES256`) or SSE-KMS (`aws:kms` plus a
+configured key identifier), and HEAD/GET responses must attest to that exact
+setting. Controlled reads pin the provider ETag, require port metadata to match
+the database expectation, then retain and SHA-256 verify a snapshot bounded by
+the current 5 MiB contract before returning it. This keeps the proven
+same-bytes-read guarantee rather than assuming an S3 ETag is a SHA-256 digest.
+
+The SDK uses its standard server-side credential provider chain. Application
+configuration has no access-key fields, and `.env.example` deliberately omits
+credentials. Operators must provide least-privilege credentials, bucket policy
+enforcement, TLS, key policy/rotation, logging redaction, and lifecycle policy
+outside the repository. The checked-in contract suite uses an in-memory S3
+protocol fake; no cloud account, real provider endpoint, or real medical data
+was used to validate this slice.
+
 ## Deferred work
 
-- S3-compatible adapter, server-side encryption configuration, and short-lived
-  presigned URLs.
+- Short-lived presigned URLs. Downloads remain API-proxied and freshly
+  authorized.
 - Explicit backup/restore and export manifests.
 - Confirmed retention/deletion workflow and orphan cleanup automation.
-- JPEG/PNG handling and OCR-related derived artifacts.
+- OCR language/model expansion, alternate grammar formats, and derived
+  artifacts beyond the bounded direct image support.
 
-None is represented as implemented by the first local/text-PDF slice.
+None is represented as implemented by the first local document slice.
 
 ## Rejected alternatives
 
@@ -87,5 +115,6 @@ None is represented as implemented by the first local/text-PDF slice.
 - **Global checksum deduplication:** leaks cross-tenant document equality.
 - **Immediate duplicate deletion:** contradicts source-first behavior and can
   destroy a legitimately separate record.
-- **S3 first:** increases credentials/network/test complexity before the domain
-  path is proven.
+- **S3 first:** increased credentials/network/test complexity before the domain
+  path was proven. It is now a bounded optional adapter after the local path and
+  reusable contract tests were established.

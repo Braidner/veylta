@@ -13,9 +13,9 @@
 
 ## First vertical slice
 
-The product path is: owner → family/profile → synthetic text-PDF → immutable
-local document → deterministic extracted facts → explicit review → confirmed
-observation → history/source.
+The product path is: owner → family/profile → synthetic PDF/PNG/JPEG →
+immutable local document → deterministic extracted facts → explicit review →
+confirmed observation → history/source.
 
 ### Task 1 — Product, architecture, safety, and license foundation
 
@@ -63,7 +63,7 @@ Commit intent: `feat: create tenant-scoped family profiles`
 Commit intent: `feat: persist immutable documents with sha256 deduplication`
 
 - Reusable `ObjectStorage/v1` contract tests and local adapter.
-- Streamed bounded PDF upload with signature/type validation and SHA-256.
+- Streamed bounded document upload with signature/type validation and SHA-256.
 - Persistent original, safe authorized proxy download, and restart test.
 - Family-scoped possible-duplicate response, no automatic deletion, no second
   blob, and negative cross-family duplicate/disclosure tests.
@@ -182,21 +182,217 @@ not claim a remote CI run or production readiness.
 | Only synthetic fixtures | Fixture inventory and log/telemetry assertion |
 | CI quality and license gates pass | Recorded CI/local command output |
 
+## Task 17 — Source-first profile overview
+
+Commit intent: `feat: add source-first profile overview`
+
+- `profile-overview/v1` returns one authorized profile plus at most three recent
+  immutable sources, three sources awaiting final review, and three explicitly
+  confirmed observations.
+- Review counts include only facts without a final decision; the displayed
+  `needsAttention` count remains distinct from all pending facts.
+- The overview is a safe `GET`, returns `no-store`, uses the existing
+  owner/self/granted-read profile boundary, and produces the same non-disclosing
+  `404` outside that boundary.
+- Each successful read records only `profile.overview.opened` with its contract
+  version. It logs no medical value, fragment, filename, storage key, or cursor.
+- The web landing view makes pending review the next visible action and keeps
+  documents and confirmed values linked to their source. It deliberately does
+  not show a health score, clinical state, diagnosis, or recommendation.
+
+## Task 18 — Local synthetic evidence snapshot
+
+Commit intent: `feat: export local synthetic evidence bundle`
+
+- `synthetic-evidence-bundle/v1` produces a local TAR with a
+  manifest and no more than five latest immutable sources. Archive paths are
+  generated from document IDs; user filenames remain authorized manifest data,
+  never filesystem selectors or storage keys.
+- Each archive entry is rechecked against its stored SHA-256, byte size, and
+  content type. An inconsistency fails closed before a bundle is returned.
+- Only an owner or self-linked adult can read the route. A `profile.read` grant
+  is intentionally insufficient; inaccessible selectors remain non-disclosing.
+- The download is `private, no-store`, attachment-only, and payload-free
+  audited as `profile.evidence_bundle.exported` with the contract marker only.
+- This is a synthetic, bounded local snapshot — not a backup, restore format,
+  account export, or production portability feature.
+
+## Task 19 — Offline synthetic evidence verification
+
+Commit intent: `feat: verify local synthetic evidence bundle`
+
+- A dependency-free local command reads a Task 18 TAR without extracting its
+  contents or calling an API.
+- It fail-closes on malformed USTAR headers, duplicate/traversal entries,
+  unbounded archive/manifest/source data, wrong content signatures, or a
+  checksum/size mismatch.
+- It validates only the narrow `synthetic-evidence-bundle/v1` shape and prints
+  safe aggregate counts, never profile data, filenames, extracted values, or
+  source bytes. It establishes local structural consistency, not cryptographic
+  origin or clinical correctness, and is not import, restore, or backup.
+
+## Task 9 — Comparable indicator catalog and chart
+
+Commit intent: `feat: compare compatible confirmed indicators`
+
+- The deterministic parser assigns canonical codes only to its two explicit
+  synthetic analytes; unknown facts remain unclassified rather than being
+  guessed into a clinical vocabulary.
+- Tenant- and profile-authorized `indicator-series/v1` catalog and detail reads
+  are payload-free audited and never expose a cross-family indicator oracle.
+- A catalog keeps each exact source unit separate. A series permits one known
+  canonical code plus one exact unit; no unit conversion, reference-range
+  inference, or clinical interpretation occurs.
+- The detail response has keyset pagination, source-first timeline items, and
+  an explicit comparison state. The arithmetic difference uses exact decimal
+  parsing only; nonnumeric source values fail closed to an unavailable state.
+- The profile UI shows the compact accessible line chart only when there are at
+  least two finite numeric source values. The timeline and re-authorized source
+  links remain the authoritative detailed view, and copy states that the chart
+  is not a reference range or health assessment.
+
+Delivered in `feat: compare compatible confirmed indicators`: the catalog and
+chart work only for confirmed, compatible synthetic observations. Corrections
+remain immutable source-first observations; a second unit creates a distinct
+row rather than a mixed comparison. Tests cover the two-value path, pagination,
+separate units, unknown codes, audit events, tenant denial, and browser flow.
+
+## Task 10 — Optional S3-compatible immutable storage
+
+Commit intent: `feat: add encrypted S3-compatible object storage`
+
+- Adds an exact-version Apache-2.0 AWS SDK v3 S3 client behind existing
+  `ObjectStorage/v1`; domain and HTTP APIs remain provider-agnostic.
+- `OBJECT_STORAGE_DRIVER=s3` is an explicit opt-in. It requires bucket, region,
+  opaque prefix, and SSE-S3 or SSE-KMS configuration; local storage remains the
+  default.
+- Object paths use a digest of the trusted port key. Staging, metadata sealing,
+  conditional immutable finalize, and controlled bounded checksum reads uphold
+  the same contract as the local adapter.
+- The API continues to proxy a freshly authorized download. No presigned URL,
+  provider credential endpoint, retention worker, cloud account test, or
+  real-data approval is claimed.
+
+Delivered in `feat: add encrypted S3-compatible object storage`: reusable
+contract tests run the S3 adapter against a deterministic protocol fake and
+cover staging, restart, concurrency, cleanup, size cap, opaque keys, encryption
+attestation, and altered-byte rejection. The provider network remains opt-in
+and credentials are left to the SDK's external server-side provider chain.
+
+## Task 11 — Local synthetic scanned-PDF OCR fallback
+
+Commit intent: `feat: add local synthetic OCR fallback`
+
+- Text-layer extraction remains the first path. Only its explicit
+  `TEXT_LAYER_MISSING` result may enter this fallback; malformed, oversized, or
+  otherwise unsupported PDFs never do.
+- The worker renders at most three PDF pages, caps each page at two million
+  pixels and the job at four million pixels, and limits rendered PNG and OCR
+  output sizes. It then invokes the exact local English Tesseract package with
+  no provider URL, no cache write, and a bounded timeout.
+- OCR output is accepted only if it satisfies the same strict synthetic fixture
+  header and fact grammar as a text-layer PDF. It is never treated as a medical
+  observation without the existing review flow.
+- Direct JPEG/PNG ingestion, language/model selection, cloud OCR, provider
+  configuration, real-document support, and browser exposure remained out of
+  scope for this task.
+
+Delivered in `feat: add local synthetic OCR fallback`: unit and integration
+tests prove a bounded image-only synthetic PDF reaches the existing immutable
+page/fact provenance path, that a non-missing text-extraction error cannot call
+OCR, and that local recognition makes no network request. Provenance records
+the local OCR method/version. Exact engine, trained-data, renderer, and install
+script policy are reviewed under the MIT boundary.
+
+## Task 16 — Direct synthetic PNG/JPEG ingestion
+
+Commit intent: `feat: add direct synthetic image ingestion`
+
+- Extends the immutable upload contract from PDF-only to `application/pdf`,
+  `image/png`, and `image/jpeg`, sharing the existing 5 MiB streaming,
+  SHA-256, same-family deduplication, safe-download, and authorization path.
+- Validates exact magic bytes before staging. PNG/JPEG inputs are additionally
+  preflighted with a bounded header parser before decode, then pass through the
+  existing local English OCR and the exact synthetic fact grammar.
+- SQLite migration `0010_direct_image_documents` records the true immutable
+  content type without changing historic PDF rows; rollback refuses to discard
+  image provenance.
+- Integration and browser tests cover direct PNG and JPEG ingestion, MIME
+  mismatch rejection, pixel caps, provenance, no-network OCR, and type-correct
+  source download. This is still a synthetic demo convention, not a technical
+  detector for real medical content.
+
+## Task 12 — Owner-only payload-free audit log
+
+Commit intent: `feat: add owner-only family audit log`
+
+- `audit-log/v1` projects only existing event id/action/result/time plus actor
+  and resource selectors; metadata, correlation IDs, filenames, text, and
+  medical values remain internal.
+- Owner-only family authorization, strict query parsing, opaque keyset cursor,
+  private response caching, and a payload-free read audit are covered by
+  integration tests.
+- The profile UI places a compact, paginated activity log in the owner rail,
+  with loading, empty, error, and mobile layouts.
+
+## Task 13 — Local one-time adult invitation
+
+Commit intent: `feat: add local one-time adult invitations`
+
+- An active owner can issue one high-entropy, SHA-256-stored, 24-hour
+  `family-invitation/v1` code in the loopback synthetic demo.
+- Accepting it atomically makes a new `adult_member`, linked adult profile, and
+  HttpOnly session; replay and expiry are non-disclosing.
+- A joined adult can see and use only that personal linked profile. No caregiver
+  capability, family-wide profile access, or consent grant is implied.
+- Integration, migration, and browser tests cover one-time consumption, expiry,
+  CSRF origin gate, owner-only issuance, and the self-profile boundary.
+
+## Task 14 — Explicit revocable profile read grant
+
+Commit intent: `feat: add explicit profile read consent`
+
+- An active owner can grant and revoke the single `profile.read` capability for
+  one active invited adult and one active profile through `profile-consent/v1`.
+- Grant evaluation is server-side on every profile/document/history/indicator
+  read; session state carries the visible access label but never caches authority.
+- The capability excludes upload, retry, extracted-fact review, invitation,
+  audit-log, and caregiver powers. A one-way revoke returns the same
+  non-disclosing boundary as an unknown resource.
+- SQLite constraints/triggers, integration tests, and a two-session browser
+  scenario cover owner-only lifecycle, cross-family denial, one-time revoke,
+  and absence of write access.
+
+## Task 15 — Local caregiver invitation and explicit read access
+
+Commit intent: `feat: add local caregiver read access`
+
+- `family-invitation/v2` extends the loopback synthetic invitation only with
+  `caregiver`; accepting it creates an active caregiver session but never a
+  self-linked profile.
+- `profile-consent/v2` permits the existing singular `profile.read` capability
+  for an active invited adult or caregiver. Both roles remain default-deny and
+  write-denied for every other profile.
+- SQLite triggers prevent caregiver linkage to an adult profile; rollback
+  fails closed while caregiver records exist rather than deleting them.
+- A two-session browser scenario proves the caregiver sees no profile name
+  before the owner grants access, then only the shared read-only profile, and
+  returns to the empty state after revocation.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
 commit chain:
 
-1. S3-compatible `ObjectStorage/v1` adapter, encryption configuration, and
-   short-lived authorized delivery.
-2. JPEG/PNG and scanned-PDF OCR fallback, beginning with a reviewed local
-   permissive engine and trained-data license inventory.
-3. Broader classification/extraction with provider interfaces and strict schemas.
-4. Comparable indicator chart and deterministic trend recalculation.
-5. Evidence-backed versioned summary and carefully bounded recommendations.
-6. Full role/consent UX and audit-log view.
-7. Portable export, controlled deletion, backup, and verified restore.
-8. FHIR R4 mappings and Bundle import/export at the system edge.
+1. Alternate synthetic fixtures and any OCR language/model expansion beyond the
+   delivered local English PDF/image fallback.
+2. Broader classification/extraction with provider interfaces and strict schemas.
+3. Evidence-backed versioned summary and carefully bounded recommendations.
+4. Broader role/consent UX: additional capability sets, expiry, delegation, and
+   production identity. Task 15 delivers only local adult/caregiver invitation
+   plus a single owner-issued `profile.read` grant.
+5. Portable export, controlled deletion, backup, and verified restore.
+6. FHIR R4 mappings and Bundle import/export at the system edge.
 
 The complete MVP is not part of the first vertical slice. External OCR/LLM,
 clinical advice, and real-data readiness remain off until their production gates

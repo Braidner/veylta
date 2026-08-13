@@ -1,7 +1,7 @@
 # First-slice acceptance evidence
 
 **Recorded:** 2026-08-12
-**Code baseline:** `c949b8f feat: show observation history with its source`
+**Code baseline:** local Task 19 worktree atop `a1f4104 feat: export local synthetic evidence bundle`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
@@ -11,19 +11,20 @@ documentation change; the baseline above is the last implementation commit.
 
 ## Accepted path
 
-With only the checked-in synthetic PDF fixture, the accepted path is:
+With checked-in synthetic PDF and generated synthetic PNG/JPEG fixtures, the accepted path is:
 
 ```text
-opaque demo session → owner-scoped family/profile → PDF upload → immutable
+opaque demo session → owner-scoped family/profile → PDF/PNG/JPEG upload → immutable
 local original + SHA-256 → deterministic extraction → explicit review →
 confirmed observation → source-first history → re-authorized source download
 ```
 
 The path is intentionally narrow. The parser accepts one explicit synthetic
-Russian-language, text-layer PDF grammar; an extracted fact is never silently
-promoted to an observation. Confirmation and correction create a source-linked
-observation atomically; rejection creates none. A correction preserves the
-raw extracted fact and represents the user-confirmed source value separately.
+report grammar from a PDF text layer, bounded rendered-PDF OCR, or bounded
+direct PNG/JPEG OCR; an extracted fact is never silently promoted to an
+observation. Confirmation and correction create a source-linked observation
+atomically; rejection creates none. A correction preserves the raw extracted
+fact and represents the user-confirmed source value separately.
 
 ## Implementation lineage
 
@@ -37,6 +38,11 @@ raw extracted fact and represents the user-confirmed source value separately.
 | `e603cc7` | Durable idempotent deterministic extraction of synthetic laboratory facts. |
 | `424b25f` | Explicit review decisions and atomic, immutable confirmed observations. |
 | `c949b8f` | Authorized source-first confirmed-observation history. |
+| Task 15 worktree | Local caregiver invitation with default-deny, explicit read-only profile sharing. |
+| `46de15e` | Direct synthetic PNG/JPEG ingestion, bounded local OCR, and immutable content-type provenance. |
+| Task 17 worktree | Authorized source-first profile overview with bounded document/review/observation projections. |
+| Task 18 worktree | Owner/self-only local synthetic evidence TAR with bounded, checksummed source bytes. |
+| Task 19 worktree | Offline, no-extraction verifier for the narrow local synthetic evidence TAR. |
 
 ## Fresh local verification
 
@@ -46,14 +52,14 @@ its output.
 
 | Command | Result |
 | --- | --- |
-| `pnpm license:check` | Passed: 7 license groups and 5 exact reviewed exceptions. |
-| `pnpm lint` | Passed: Biome checked 61 files; no fixes applied. |
+| `pnpm license:check` | Passed: 8 license groups and 5 exact reviewed exceptions. |
+| `pnpm lint` | Passed: Biome checked 81 files; no fixes applied. |
 | `pnpm typecheck` | Passed: contracts, API, and web typechecks completed. |
-| `pnpm test` | Passed: 55 unit/contract tests (7 contracts, 48 API), 0 failed. |
-| `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0005_review_observations`. |
-| `pnpm test:integration` | Passed: 22 isolated SQLite integration tests, 0 failed. |
+| `pnpm test` | Passed: 90 unit/contract tests (10 contracts, 80 API), 0 failed. |
+| `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0010_direct_image_documents`. |
+| `pnpm test:integration` | Passed: 41 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
-| `pnpm test:e2e` | Passed: 12 Chromium browser tests, 0 failed. |
+| `pnpm test:e2e` | Passed: 18 Chromium browser tests, 0 failed, including direct synthetic PNG upload/OCR/download and owner/self evidence-bundle download. |
 | `git diff --check` | Passed after this evidence documentation was prepared. |
 
 `tsx` needs a local IPC socket on this host, so its test and migration commands
@@ -83,17 +89,22 @@ gates on every push and pull request.
 | --- | --- |
 | A new developer can start the system with one documented sequence | [README local development](../README.md#local-development) and browser test `the runnable foundation exposes web, API, worker, and SQLite readiness`. |
 | Original document survives restart | Integration test `upload, replay, same-family deduplication, download, and restart stay consistent`; local storage restart unit coverage. |
+| Direct image stays type-correct and bounded | Integration tests cover exact PNG/JPEG signatures, header pixel cap, immutable MIME provenance, local OCR, and safe type-correct download; the Chromium flow uploads and downloads a direct synthetic PNG. |
 | Same-family repeat upload is a possible duplicate | The same integration test and the browser upload scenario show a visible possible duplicate without automatic deletion. |
 | Another family cannot use a duplicate or source as an oracle | Integration tests `identical bytes in another family do not disclose or share a blob`, processing/history cross-family reads, and browser test `another family session cannot see a document or its filename`. |
 | Extraction has page-level provenance | Processing integration asserts document page and source fragment; `observation-history/v1` integration returns page, fragment, version, and a relative authorized source path. |
 | Uncertain data cannot bypass human review | Parser and processing tests keep high-confidence facts unconfirmed and route uncertain facts to review; browser review tests require an explicit decision. |
 | A correction preserves raw extraction | Integration test `a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation`; browser review and history scenarios verify the displayed source distinction. |
 | Confirmed data appears in history with its source | Integration test `observation history is source-first, paginated, re-authorized, and audited without payloads`; browser test `profile history shows confirmed and corrected observations with their authorized sources only`. |
+| Profile landing view stays source-first | Integration tests cover bounded overview projections, payload-free audit, non-disclosing denial, and revocable read access; browser upload flow shows the review queue after returning to the profile. |
+| Local synthetic evidence snapshot is bounded and non-disclosing | Integration tests cover checksum-verified archive bytes, owner/self-only authorization, `profile.read` denial, five-source cap, cross-family denial, and payload-free audit; the browser flow downloads the TAR attachment. |
+| Local evidence snapshot can be checked without extraction | Unit tests accept PDF/PNG/JPEG bundles and confirmed-observation provenance; they fail closed on checksum mutation, traversal, unsupported TAR fields, non-zero padding, and manifest drift. The file command emits counts only. |
+| Caregiver remains default-deny until profile consent | Integration and browser tests `a caregiver joins without an implicit profile and reads only an explicitly shared profile` / `a caregiver starts without a profile and sees only a profile explicitly shared by the owner`; SQLite trigger regression prevents caregiver linkage to a personal profile. |
 | Failed writes leave no partial medical record | Integration test `an audit failure rolls back review decision, observation, reference range, and idempotency record together`; processing tests cover invalid-output rollback. |
 | Retry is idempotent and terminal failure remains visible | Job-service tests cover stable dedupe, exclusive lease/reclaim, replay-safe completion, retry schedule, and dead-letter exhaustion; processing integration covers a replay-safe terminal retry command. |
 | Migration rollback/reapply is verified | Isolated migration integration test described above; CI has an explicit `db:rollback` then `db:migrate` sequence. |
 | No external OCR/LLM is called | Deterministic processor test forbids network access; no OCR/LLM adapter or provider configuration is present in the first slice. |
-| Repository fixtures are synthetic | The sole medical fixture is [`fixtures/veylta-synthetic-lab-report.pdf`](../fixtures/veylta-synthetic-lab-report.pdf); test names, parser grammar, policy, and E2E flows label it synthetic. |
+| Repository fixtures are synthetic | The checked-in fixture is [`fixtures/veylta-synthetic-lab-report.pdf`](../fixtures/veylta-synthetic-lab-report.pdf); generated PNG/JPEG test fixtures, parser grammar, policy, and E2E flows label every source synthetic. |
 | Quality and licensing gates remain reproducible | Fresh command results above and [CI workflow](../.github/workflows/ci.yml). |
 
 ## Safety and MIT boundary verified by this slice
@@ -124,11 +135,10 @@ medical data. In particular, it does **not** deliver:
 - real-user onboarding, account recovery, production authentication, full
   adult/caregiver consent management, a public deployment, or a compliance
   certification;
-- multi-host/high-availability persistence, backup/restore, export, controlled
+- multi-host/high-availability persistence, backup/restore, production export, controlled
   deletion, or a production migration/operations plan for real records;
-- S3-compatible storage, presigned delivery, JPEG/PNG ingestion, scanned-PDF
-  OCR, cloud OCR, LLM extraction, LLM analysis, provider egress, or training on
-  user data;
+- presigned delivery, cloud OCR, LLM extraction, LLM analysis, provider egress,
+  or training on user data;
 - comparable-measurement trend calculation, charts, health scoring, summaries,
   diagnosis, prescriptions, treatment changes, recommendations, or red-flag
   clinical advice;

@@ -25,12 +25,12 @@ async function registerDemoFamily(page: Page): Promise<string> {
 }
 
 async function uploadAndOpenReview(page: Page, filename: string): Promise<void> {
-  await page.getByLabel("Синтетический PDF", { exact: true }).setInputFiles({
+  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
     name: filename,
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await page.getByRole("button", { name: "Загрузить PDF" }).click();
+  await page.getByRole("button", { name: "Загрузить исходник" }).click();
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
@@ -88,12 +88,12 @@ test("profile history shows confirmed and corrected observations with their auth
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
   await expect(history.getByText("СИНТЕТИЧЕСКИЙ АНАЛИТ B", { exact: true })).toHaveCount(0);
 
-  await page.getByLabel("Синтетический PDF", { exact: true }).setInputFiles({
+  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
     name: `history-correct-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await page.getByRole("button", { name: "Загрузить PDF" }).click();
+  await page.getByRole("button", { name: "Загрузить исходник" }).click();
   await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
   await correctAndReject(page, "7.1");
 
@@ -108,9 +108,51 @@ test("profile history shows confirmed and corrected observations with their auth
   await sourceDetails.locator("summary").click();
   await expect(sourceDetails.getByText("Нормализованное значение", { exact: true })).toBeVisible();
   await expect(sourceDetails.getByText("Не рассчитано", { exact: true })).toBeVisible();
-  await expect(sourceDetails.getByText("Фрагмент из исходного PDF", { exact: true })).toBeVisible();
+  await expect(sourceDetails.getByText("Фрагмент из исходника", { exact: true })).toBeVisible();
   await expect(sourceDetails.getByText(/FACT\|synthetic-analyte-a/)).toBeVisible();
   const downloadPromise = page.waitForEvent("download");
-  await sourceDetails.getByRole("link", { name: "Открыть исходный PDF" }).click();
+  await sourceDetails.getByRole("link", { name: "Открыть исходник" }).click();
   await expect(await downloadPromise).toBeTruthy();
+});
+
+test("profile catalog compares only matching confirmed synthetic units", async ({ page }) => {
+  await registerDemoFamily(page);
+
+  await uploadAndOpenReview(page, `indicator-first-${crypto.randomUUID().slice(0, 8)}.pdf`);
+  await confirmAndReject(page);
+  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+
+  const catalog = page.getByRole("region", { name: "Подтверждённая динамика" });
+  await expect(
+    catalog.getByText("Пока нет подтверждённых показателей", { exact: false }),
+  ).toHaveCount(0);
+  await expect(catalog.getByRole("button", { name: /Синтетический аналит A/ })).toBeVisible();
+  await expect(
+    catalog.getByText(
+      "Нужно хотя бы два подтверждённых значения в этой же единице, чтобы показать изменение.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
+    name: `indicator-second-${crypto.randomUUID().slice(0, 8)}.pdf`,
+    mimeType: "application/pdf",
+    buffer: syntheticLabBytes,
+  });
+  await page.getByRole("button", { name: "Загрузить исходник" }).click();
+  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
+  await correctAndReject(page, "7.5");
+  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+
+  await expect(
+    catalog.getByText("Последнее значение выше предыдущего на 0.5 в той же единице."),
+  ).toBeVisible();
+  const timeline = catalog.getByRole("list", { name: "Подтверждённые значения по времени" });
+  await expect(timeline.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
+  await expect(timeline.getByText("7.5 synthetic-unit", { exact: true })).toBeVisible();
+  await expect(
+    catalog.getByRole("img", { name: "Расположение подтверждённых значений по времени" }),
+  ).toBeVisible();
+  await expect(catalog.getByText(/шкала не означает референсный диапазон/i)).toBeVisible();
+  await expect(catalog.getByRole("link", { name: "Источник" })).toHaveCount(2);
 });

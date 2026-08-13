@@ -5,10 +5,14 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1098.0",
     "@fastify/multipart": "10.1.0",
+    "@napi-rs/canvas": "1.0.5",
+    "@tesseract.js-data/eng": "1.0.0",
     "@veylta/contracts": "workspace:*",
     "fastify": "5.11.3",
-    "pdfjs-dist": "6.2.108"
+    "pdfjs-dist": "6.2.108",
+    "tesseract.js": "7.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -20,6 +24,7 @@
     "start:worker": "node dist/src/worker.js",
     "test": "tsx --test \"src/**/*.test.ts\"",
     "test:integration": "tsx --test --test-concurrency=1 \"test/**/*.integration.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:evidence-bundle": "tsx src/documents/verify-evidence-bundle.ts"
   }
 }

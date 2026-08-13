@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
+import { createSyntheticLabImage } from "../apps/api/test/synthetic-lab-image.js";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
 const syntheticLabBytes = await readFile(syntheticLabFixture);
@@ -38,9 +39,9 @@ async function uploadPdf(
   mimeType = "application/pdf",
 ) {
   await page
-    .getByLabel("Синтетический PDF", { exact: true })
+    .getByLabel("Синтетический документ", { exact: true })
     .setInputFiles({ name: filename, mimeType, buffer });
-  await page.getByRole("button", { name: "Загрузить PDF" }).click();
+  await page.getByRole("button", { name: "Загрузить исходник" }).click();
 }
 
 test("a synthetic report is extracted, survives reload, downloads, and reports a family duplicate", async ({
@@ -73,6 +74,17 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
 
   await page.getByRole("link", { name: "Загрузить ещё документ" }).click();
   await expect(page).toHaveURL(profileUrl);
+  const overview = page.getByRole("region", { name: "Обзор профиля" });
+  await expect(
+    overview
+      .getByRole("region", { name: "Проверка исходников" })
+      .getByText(filename, { exact: true }),
+  ).toBeVisible();
+  await expect(overview.getByText("2 значения ждут решения")).toBeVisible();
+  await expect(overview.getByRole("link", { name: "Открыть проверку" })).toBeVisible();
+  const evidenceBundleDownload = page.waitForEvent("download");
+  await overview.getByRole("link", { name: "Скачать локальный пакет источников" }).click();
+  expect((await evidenceBundleDownload).suggestedFilename()).toBe("veylta-synthetic-evidence.tar");
   await uploadPdf(page, filename, bytes);
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
@@ -81,6 +93,45 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
   await expect(
     page.getByText("SHA-256 совпадает с ранее загруженным документом этой семьи."),
   ).toBeVisible();
+});
+
+test("a direct synthetic PNG is accepted, OCRed, and downloaded with its original type", async ({
+  page,
+}) => {
+  await registerDemoFamily(page);
+  const filename = `synthetic-lab-${crypto.randomUUID().slice(0, 8)}.png`;
+  await uploadPdf(
+    page,
+    filename,
+    createSyntheticLabImage(
+      [
+        "VEYLTA SYNTHETIC LAB REPORT v1",
+        "SYNTHETIC TEST DATA - NOT FOR MEDICAL USE",
+        "FACT|synthetic-analyte-a",
+        "NAME|SYNTHETIC ANALYTE A",
+        "VALUE|7.0",
+        "UNIT|synthetic-unit",
+        "RANGE|synthetic reference",
+        "CONFIDENCE|0.60",
+        "ISSUES|AMBIGUOUS_UNIT",
+        "END",
+      ],
+      "png",
+    ),
+    "image/png",
+  );
+
+  await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
+  await expect(page.getByText(/^PNG ·/)).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
+  ).toBeVisible();
+
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("link", { name: "Скачать исходный PNG" }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe("document.png");
 });
 
 test("a retry command reuses its idempotency key after a transient browser failure", async ({
@@ -150,9 +201,7 @@ test("a retry command reuses its idempotency key after a transient browser failu
   const retry = page.getByRole("button", { name: "Повторить обработку" });
   await retry.click();
   await expect(
-    page.getByText(
-      "Не удалось запустить повторную обработку. Статус и исходный PDF не изменились.",
-    ),
+    page.getByText("Не удалось запустить повторную обработку. Статус и исходник не изменились."),
   ).toBeVisible();
   await retry.click();
 
@@ -174,7 +223,7 @@ test("an invalid synthetic upload stays on the profile and explains the safe cor
 
   await expect(page).toHaveURL(profileUrl);
   await expect(page.locator(".form-error[role='alert']")).toHaveText(
-    "Файл не похож на поддерживаемый PDF. Проверьте его формат и содержимое.",
+    "Файл не похож на поддерживаемый PDF, PNG или JPEG. Проверьте формат и содержимое.",
   );
   await expect(page.getByText("Не загружайте реальные медицинские данные.")).toBeVisible();
 });

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { LAB_EXTRACTION_SCHEMA_VERSION } from "@veylta/contracts";
+import { LAB_EXTRACTION_SCHEMA_VERSION, SYNTHETIC_INDICATOR_CATALOG } from "@veylta/contracts";
 
 export const SYNTHETIC_LAB_PARSER_VERSION = "synthetic-lab-text/v1" as const;
 export const SYNTHETIC_LAB_FIXTURE_HEADER = "VEYLTA SYNTHETIC LAB REPORT v1" as const;
@@ -12,7 +12,10 @@ const maxTotalTextCharacters = 1_000_000;
 const maxFactCount = 100;
 const reviewConfidenceThreshold = 0.85;
 const factKeyPattern = /^synthetic-[a-z0-9]+(?:-[a-z0-9]+)*$/;
-const versionPattern = /^[a-z0-9][a-z0-9._/-]{0,99}$/;
+const versionPattern = /^[a-z0-9][a-z0-9._/+:-]{0,99}$/;
+const syntheticIndicatorCodes: ReadonlySet<string> = new Set(
+  SYNTHETIC_INDICATOR_CATALOG.map((indicator) => indicator.canonicalCode),
+);
 const allowedFixtureIssues = new Set<ValidationIssue>([
   "LOW_CONFIDENCE",
   "AMBIGUOUS_UNIT",
@@ -197,7 +200,7 @@ function parseFact(block: readonly string[], pageNumber: number): StrictLabExtra
     sourceName: boundedField(sourceName, 200),
     sourceValue: boundedField(sourceValue, 100),
     sourceUnit: boundedField(sourceUnit, 100),
-    proposedCanonicalCode: null,
+    proposedCanonicalCode: syntheticIndicatorCodes.has(factKey) ? factKey : null,
     proposedNormalizedValue: null,
     proposedNormalizedUnit: null,
     referenceRange: {

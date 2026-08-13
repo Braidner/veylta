@@ -1,11 +1,31 @@
 export const HTTP_API_VERSION = "v1" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
-export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v1" as const;
+export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
-export const MAX_SYNTHETIC_PDF_BYTES = 5 * 1024 * 1024;
+export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
+export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
+export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
+export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
+export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
+export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
+export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
+export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
+/** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
+export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
+export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
+export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
+
+/**
+ * The only canonical codes the deterministic synthetic parser can propose.
+ * They are demonstration identifiers, not clinical vocabularies or diagnoses.
+ */
+export const SYNTHETIC_INDICATOR_CATALOG = [
+  { canonicalCode: "synthetic-analyte-a", displayName: "Синтетический аналит A" },
+  { canonicalCode: "synthetic-analyte-b", displayName: "Синтетический аналит B" },
+] as const;
 
 export const DOCUMENT_PROCESSING_STATES = [
   "not_started",
@@ -49,7 +69,9 @@ export interface HealthStatus {
 }
 
 export type FamilyRole = "owner" | "adult_member" | "caregiver";
+export type FamilyInvitationRole = "adult_member" | "caregiver";
 export type PatientProfileKind = "adult" | "dependent";
+export type PatientProfileAccess = "owner" | "self" | "granted_read";
 
 export interface FamilySummary {
   id: string;
@@ -63,6 +85,8 @@ export interface PatientProfileSummary {
   familyId: string;
   displayName: string;
   kind: PatientProfileKind;
+  /** The server-authorized scope this session has for the profile. */
+  access: PatientProfileAccess;
   createdAt: string;
 }
 
@@ -88,6 +112,100 @@ export interface ProfileCreateResponse {
   profile: PatientProfileSummary;
 }
 
+/**
+ * Local-demo invitation flow. The code is returned exactly once to the owner;
+ * the database retains only its SHA-256 hash.
+ */
+export interface FamilyInvitationCreateRequest {
+  readonly role: FamilyInvitationRole;
+}
+
+export interface FamilyInvitationCreateResponse {
+  readonly contractVersion: typeof FAMILY_INVITATION_CONTRACT_VERSION;
+  readonly invitation: {
+    readonly id: string;
+    readonly familyId: string;
+    readonly role: FamilyInvitationRole;
+    readonly code: string;
+    readonly expiresAt: string;
+  };
+}
+
+export interface DemoInvitationAcceptRequest {
+  readonly code: string;
+  readonly displayName: string;
+  /** Required only for an adult-member invitation; caregivers leave it absent. */
+  readonly profileName?: string;
+}
+
+export interface DemoInvitationAcceptResponse {
+  readonly contractVersion: typeof FAMILY_INVITATION_CONTRACT_VERSION;
+  readonly family: FamilySummary;
+  /** Caregivers start with no profile until an owner explicitly grants one. */
+  readonly profile: PatientProfileSummary | null;
+}
+
+export interface FamilyConsentMember {
+  readonly id: string;
+  readonly displayName: string;
+  readonly role: FamilyInvitationRole;
+}
+
+export interface FamilyConsentMemberListResponse {
+  readonly contractVersion: typeof PROFILE_CONSENT_CONTRACT_VERSION;
+  readonly items: readonly FamilyConsentMember[];
+}
+
+export interface ProfileConsentGrantCreateRequest {
+  readonly granteeUserId: string;
+  readonly capability: "profile.read";
+}
+
+export interface ProfileConsentGrant {
+  readonly id: string;
+  readonly familyId: string;
+  readonly profileId: string;
+  readonly capability: "profile.read";
+  readonly grantee: FamilyConsentMember;
+  readonly createdAt: string;
+}
+
+export interface ProfileConsentGrantCreateResponse {
+  readonly contractVersion: typeof PROFILE_CONSENT_CONTRACT_VERSION;
+  readonly grant: ProfileConsentGrant;
+}
+
+export interface ProfileConsentGrantListResponse {
+  readonly contractVersion: typeof PROFILE_CONSENT_CONTRACT_VERSION;
+  readonly items: readonly ProfileConsentGrant[];
+}
+
+/**
+ * Minimal, payload-free family audit projection. Metadata and correlation IDs
+ * remain internal operational records and are intentionally never serialized.
+ */
+export interface FamilyAuditEvent {
+  readonly id: string;
+  readonly action: string;
+  readonly result: "success" | "denied" | "failed";
+  readonly occurredAt: string;
+  readonly actor: {
+    readonly id: string;
+    readonly displayName: string;
+  };
+  readonly resource: {
+    readonly type: string;
+    readonly id: string;
+  };
+}
+
+export interface FamilyAuditLogResponse {
+  readonly contractVersion: typeof AUDIT_LOG_CONTRACT_VERSION;
+  readonly items: readonly FamilyAuditEvent[];
+  /** Opaque cursor for the next page, or null on the final page. */
+  readonly nextCursor: string | null;
+}
+
 export interface SessionFamily extends FamilySummary {
   profiles: PatientProfileSummary[];
 }
@@ -102,6 +220,7 @@ export interface SessionResponse {
 }
 
 export type DocumentStatus = "uploaded";
+export type SyntheticDocumentContentType = "application/pdf" | "image/png" | "image/jpeg";
 export type DocumentProcessingState = (typeof DOCUMENT_PROCESSING_STATES)[number];
 export type DocumentProcessingFailureCategory =
   (typeof DOCUMENT_PROCESSING_FAILURE_CATEGORIES)[number];
@@ -159,7 +278,7 @@ export interface DocumentSummary {
   profileId: string;
   status: DocumentStatus;
   originalFilename: string;
-  contentType: "application/pdf";
+  contentType: SyntheticDocumentContentType;
   byteSize: number;
   sha256: string;
   uploadedAt: string;
@@ -186,6 +305,74 @@ export interface DocumentProcessingRetryResponse {
   readonly contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
   readonly documentId: string;
   readonly processing: DocumentProcessingQueued;
+}
+
+/**
+ * A bounded, source-first profile landing view. It deliberately contains no
+ * diagnosis, health score, recommendation, or inferred clinical status.
+ */
+export interface ProfileOverviewDocument {
+  readonly id: string;
+  readonly originalFilename: string;
+  readonly contentType: SyntheticDocumentContentType;
+  readonly uploadedAt: string;
+  readonly processing: DocumentProcessingStatus;
+}
+
+/** A document with raw facts that still require an explicit final decision. */
+export interface ProfileOverviewReviewDocument {
+  readonly id: string;
+  readonly originalFilename: string;
+  readonly contentType: SyntheticDocumentContentType;
+  readonly uploadedAt: string;
+  readonly pendingFactCount: number;
+  readonly needsAttentionFactCount: number;
+}
+
+export interface ProfileOverviewResponse {
+  readonly contractVersion: typeof PROFILE_OVERVIEW_CONTRACT_VERSION;
+  readonly profile: PatientProfileSummary;
+  /** Newest first; bounded to three immutable source documents. */
+  readonly recentDocuments: readonly ProfileOverviewDocument[];
+  readonly reviewQueue: {
+    readonly documentCount: number;
+    readonly pendingFactCount: number;
+    readonly needsAttentionFactCount: number;
+    /** Newest first; bounded to three source documents that need review. */
+    readonly documents: readonly ProfileOverviewReviewDocument[];
+  };
+  /** Newest first; bounded to three explicitly confirmed source values. */
+  readonly recentObservations: readonly ObservationHistoryItem[];
+}
+
+/**
+ * A local, owner/self-authorized portable bundle. It is deliberately limited
+ * to the checked-in synthetic demo boundary and is not a backup format.
+ */
+export interface SyntheticEvidenceBundleDocument {
+  readonly id: string;
+  readonly versionId: string;
+  readonly originalFilename: string;
+  readonly contentType: SyntheticDocumentContentType;
+  readonly byteSize: number;
+  readonly sha256: string;
+  readonly uploadedAt: string;
+  /** Safe bundle-relative path; never a storage key or a user filename. */
+  readonly archivePath: string;
+}
+
+export type SyntheticEvidenceBundleObservation = Omit<ObservationHistoryItem, "sourceDocument"> & {
+  readonly sourceDocument: Omit<ObservationHistoryItem["sourceDocument"], "contentPath"> & {
+    readonly archivePath: string;
+  };
+};
+
+export interface SyntheticEvidenceBundleManifest {
+  readonly contractVersion: typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION;
+  readonly exportedAt: string;
+  readonly profile: Omit<PatientProfileSummary, "access">;
+  readonly documents: readonly SyntheticEvidenceBundleDocument[];
+  readonly observations: readonly SyntheticEvidenceBundleObservation[];
 }
 
 export type LabFactValidationIssue = (typeof LAB_FACT_VALIDATION_ISSUES)[number];
@@ -346,6 +533,64 @@ export interface ObservationHistoryResponse {
   readonly contractVersion: typeof OBSERVATION_HISTORY_CONTRACT_VERSION;
   readonly items: readonly ObservationHistoryItem[];
   /** Opaque cursor for the next page, or null when this is the final page. */
+  readonly nextCursor: string | null;
+}
+
+/** The latest confirmed value for one exact source unit. */
+export interface IndicatorUnitSummary {
+  readonly unit: string;
+  readonly observationCount: number;
+  readonly latest: {
+    readonly value: string;
+    readonly timelineAt: string;
+  };
+}
+
+/** A catalog row only exists when the profile has confirmed observations for it. */
+export interface IndicatorCatalogItem {
+  readonly canonicalCode: string;
+  readonly displayName: string;
+  /** Units remain separate; the API never silently converts or mixes them. */
+  readonly units: readonly IndicatorUnitSummary[];
+}
+
+export interface IndicatorCatalogResponse {
+  readonly contractVersion: typeof INDICATOR_SERIES_CONTRACT_VERSION;
+  readonly items: readonly IndicatorCatalogItem[];
+}
+
+export type IndicatorComparison =
+  | { readonly state: "insufficient_data" }
+  | {
+      readonly state: "unavailable";
+      readonly reason: "non_numeric_source_value";
+    }
+  | {
+      readonly state: "available";
+      readonly previous: {
+        readonly id: string;
+        readonly value: string;
+        readonly timelineAt: string;
+      };
+      readonly delta: {
+        readonly value: string;
+        readonly direction: "increased" | "decreased" | "unchanged";
+      };
+    };
+
+/**
+ * A bounded, source-first series for one canonical code and one exact unit.
+ * `items` are newest first; UI may reverse the sequence for a temporal chart.
+ */
+export interface IndicatorSeriesResponse {
+  readonly contractVersion: typeof INDICATOR_SERIES_CONTRACT_VERSION;
+  readonly indicator: {
+    readonly canonicalCode: string;
+    readonly displayName: string;
+    readonly unit: string;
+  };
+  readonly items: readonly ObservationHistoryItem[];
+  readonly comparison: IndicatorComparison;
   readonly nextCursor: string | null;
 }
 

@@ -67,8 +67,11 @@ not included in the default local runtime or core distribution.
 
 ## Provider and data boundary
 
-LLM, OCR, and cloud storage integrations use independent adapters. Before adding
-one, review separately:
+LLM, OCR, and cloud storage integrations use independent adapters. The optional
+S3-compatible adapter uses exact `@aws-sdk/client-s3` 3.1098.0 (Apache-2.0),
+reviewed through the lockfile gate and third-party notice. It uses the SDK only
+on the API/worker server and never exposes its client or provider credentials to
+the browser. Before adding or changing a provider integration, review separately:
 
 - client SDK and transitive dependencies;
 - hosted service terms and data-use/privacy terms;
@@ -77,9 +80,15 @@ one, review separately:
 - container base image and included operating-system packages;
 - sample documents, fonts, icons, and other assets.
 
-For example, naming Tesseract as a future permissive OCR option does not approve
-a specific binary image or trained-data bundle. The first slice uses no OCR or
-LLM and therefore does not need either dependency.
+The implemented local synthetic PDF/image OCR boundary uses exact
+`tesseract.js` 7.0.0 and `tesseract.js-core` 7.0.0 (Apache-2.0), the exact
+`@tesseract.js-data/eng` 1.0.0 trained-data package (MIT), and
+`@napi-rs/canvas` 1.0.5 (MIT). They are server/worker-only, use a locked local
+English model path, and are recorded in `THIRD_PARTY_NOTICES.md`; no model file
+is copied into this repository. `tesseract.js` install scripts are explicitly
+disabled through pnpm's `allowBuilds` policy. Any engine, language package,
+runtime binary, model, or version change needs a fresh exact-version review.
+LLM and external OCR providers remain absent.
 
 ## Review workflow
 

@@ -4,13 +4,13 @@ import { type HealthStatus, HTTP_API_VERSION } from "@veylta/contracts";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./database/pool.js";
 import { createDocumentExtractionProcessor } from "./processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "./storage/local-object-storage.js";
+import { createObjectStorage } from "./storage/create-object-storage.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databasePath);
 const processor = createDocumentExtractionProcessor({
   database,
-  storage: createLocalObjectStorage(config.objectStorageRoot),
+  storage: createObjectStorage(config.objectStorage),
 });
 const workerId = randomUUID();
 let ready = false;

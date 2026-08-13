@@ -13,10 +13,13 @@ but the first slice can prove provenance/review without an LLM.
 ## Decision
 
 The first slice uses a deterministic parser for one narrow, synthetic Russian
-laboratory PDF format with a text layer. The parser emits strict,
-versioned `lab-extraction/v1` data and has no network access. OCR, LLM calls,
-diagnosis, longitudinal interpretation, summaries, and recommendations are not
-part of this slice.
+laboratory report format. The worker reads a PDF text layer first. Only a
+missing text layer activates a local, bounded English Tesseract model over
+rendered PDF pages; direct PNG/JPEG enters the same path after exact-signature
+and bounded header-pixel checks. All output must satisfy the same strict,
+versioned `lab-extraction/v1` grammar. This local OCR path has no provider URL
+or network access. External OCR, LLM calls, diagnosis, longitudinal
+interpretation, summaries, and recommendations are not part of this slice.
 
 Future OCR and LLM capabilities use independent provider ports supporting local
 and external implementations. External providers are disabled by default and
@@ -61,8 +64,9 @@ not enter general logs.
 ### Negative
 
 - A narrow parser supports only an explicitly documented fixture format.
-- OCR/LLM functionality arrives later and requires separate security, privacy,
-  medical-safety, accuracy, cost, and license evaluation.
+- External OCR/LLM functionality arrives later and requires separate security,
+  privacy, medical-safety, accuracy, cost, and license evaluation. Direct
+  PNG/JPEG remains bounded to the same local English OCR and strict grammar.
 - Strict evidence and review requirements can slow processing.
 
 ## Rejected alternatives

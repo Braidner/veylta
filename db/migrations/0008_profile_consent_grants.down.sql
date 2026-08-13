@@ -1,0 +1,7 @@
+DROP TRIGGER profile_consent_grants_revocation_immutable;
+DROP TRIGGER profile_consent_grants_immutable_fields;
+DROP TRIGGER profile_consent_grants_active_adult_grantee;
+DROP TRIGGER profile_consent_grants_owner_issuer;
+DROP INDEX profile_consent_grants_grantee_active;
+DROP INDEX profile_consent_grants_one_active_capability;
+DROP TABLE profile_consent_grants;

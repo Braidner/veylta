@@ -3,7 +3,7 @@
 ## Status and conventions
 
 This document defines the implemented `v1` surface for the first vertical slice,
-including the `observation-history/v1` read boundary.
+including the `observation-history/v1` and `audit-log/v1` read boundaries.
 
 - Base path: `/v1`
 - JSON for structured requests/responses; `multipart/form-data` only for upload.
@@ -73,7 +73,7 @@ Response `201`:
 
 ```json
 {
-  "contractVersion": "family-profile/v1",
+  "contractVersion": "family-profile/v2",
   "family": {
     "id": "family_placeholder",
     "displayName": "Synthetic demo family",
@@ -85,6 +85,7 @@ Response `201`:
     "familyId": "family_placeholder",
     "displayName": "Synthetic owner profile",
     "kind": "adult",
+    "access": "owner",
     "createdAt": "2026-08-11T00:00:00Z"
   }
 }
@@ -97,8 +98,12 @@ session token.
 ### `GET /v1/session`
 
 Resolves the cookie server-side and returns the current demo user plus active
-families and owner-accessible profiles. It returns `401` for an absent, expired,
-revoked, or disabled session and is always `Cache-Control: no-store`.
+families and profiles that actor may access. An owner receives all active
+profiles in their family; an invited adult receives their linked adult profile
+plus any currently granted `profile.read` profile. Each returned profile names
+its server-determined access as `owner`, `self`, or `granted_read`. A caregiver
+receives no profile list. It returns `401` for an absent, expired, revoked, or
+disabled session and is always `Cache-Control: no-store`.
 
 ### `DELETE /v1/session`
 
@@ -116,16 +121,104 @@ Creates an adult or dependent profile within an authorized family.
 }
 ```
 
-Response `201` contains the `family-profile/v1` contract version and a profile
-with `id`, `familyId`, display name, kind, and `createdAt`. Additional adult
+Response `201` contains the `family-profile/v2` contract version and a profile
+with `id`, `familyId`, display name, kind, access, and `createdAt`. Additional adult
 profiles are not implicitly linked to the owner identity.
 
 ### `GET /v1/families/{familyId}/profiles`
 
 Returns only profiles the actor may access. It is not an inventory of all
-profiles merely because the actor is a family member. Task 3 intentionally
-implements only the active owner capability. Adult/caregiver grants remain
-default-deny until their explicit consent lifecycle is implemented.
+profiles merely because the actor is a family member. The owner receives all
+active family profiles; an invited adult receives their linked profile plus
+each currently granted `profile.read` profile, marked as `granted_read`; a
+caregiver receives only those explicitly granted profiles. Both remain
+default-deny for every other profile.
+
+### `POST /v1/families/{familyId}/invitations`
+
+Local-demo only; requires the active owner session plus a trusted `Origin` and
+the exact JSON body `{ "role": "adult_member" }` or `{ "role": "caregiver" }`.
+It returns a `family-invitation/v2` one-time code exactly once. The server stores only its
+SHA-256 hash, the invitation expires after 24 hours, and a database trigger
+requires the issuer to be an active owner at issuance. The code is neither a family
+credential nor a profile grant.
+
+### `POST /v1/demo/invitations/accept`
+
+Local-demo only; requires a trusted `Origin`. `{ code, displayName, profileName }`
+accepts an `adult_member` invitation and atomically creates the linked adult
+profile. `{ code, displayName }` accepts a `caregiver` invitation and creates no
+profile at all. Both receive an opaque HttpOnly session; no invalid code reveals
+whether it was unknown, expired, or already used. Neither role gains
+family-wide access.
+
+### `GET /v1/families/{familyId}/members`
+
+Owner-only `profile-consent/v2` helper. Returns active invited adults and
+caregivers in this family as `{ id, displayName, role }`; it does not expose
+owners, sessions, or profile data. A member or another family gets the same
+non-disclosing `404`.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/consent-grants`
+
+Owner-only `profile-consent/v2` projection of active grants for exactly one
+profile. It returns only grant id, profile/family selectors, fixed capability,
+creation time, and the receiving adult's minimal member projection. It does not
+return revocation history or medical data; successful reads create a payload-free
+audit event.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/consent-grants`
+
+Owner-only and requires the trusted `Origin`:
+
+```json
+{ "granteeUserId": "user_uuid", "capability": "profile.read" }
+```
+
+The receiving user must be an active invited `adult_member` or `caregiver` in
+the same family. The response `201` is `profile-consent/v2` and returns the new
+grant. There can be one active `profile.read` grant per profile/member; a duplicate returns `409`.
+The server records a payload-free grant audit event. This capability permits only
+profile/document/history/indicator reads; it does not permit upload, retry,
+extraction review, invitations, or audit-log reads.
+
+### `DELETE /v1/families/{familyId}/profiles/{profileId}/consent-grants/{grantId}`
+
+Owner-only and requires the trusted `Origin`. It performs a one-way revoke and
+returns `204`. Every later authorized read evaluates active grants again, so the
+former recipient immediately receives the same non-disclosing `404` as for an
+unknown profile or document. Revoke is payload-free audited and cannot be undone
+by updating the immutable grant row.
+
+### `GET /v1/families/{familyId}/audit-events`
+
+Returns the owner-only `audit-log/v1` activity projection for one family. It is
+always `Cache-Control: no-store`, uses newest-first keyset pagination, and
+accepts only optional `limit` (`1`–`100`) and opaque `cursor` query parameters.
+An active adult member or caregiver receives the same non-disclosing `404` as a
+different family; this route does not grant profile or document access.
+
+```json
+{
+  "contractVersion": "audit-log/v1",
+  "items": [
+    {
+      "id": "audit_event_placeholder",
+      "action": "profile.created",
+      "result": "success",
+      "occurredAt": "2026-08-12T12:00:00.000Z",
+      "actor": { "id": "user_placeholder", "displayName": "Synthetic owner" },
+      "resource": { "type": "PatientProfile", "id": "profile_placeholder" }
+    }
+  ],
+  "nextCursor": null
+}
+```
+
+The response intentionally omits audit metadata, correlation IDs, filenames,
+document bytes/text, page fragments, and medical values. Every successful page
+read records one new payload-free `family.audit_log.opened` event with only the
+`audit-log/v1` contract version.
 
 ## Document upload and status
 
@@ -134,11 +227,11 @@ default-deny until their explicit consent lifecycle is implemented.
 Headers:
 
 - `Idempotency-Key: <opaque client-generated value>`
-- multipart part `file`; the first slice accepts only a bounded PDF whose magic
-  bytes and validated type agree.
+- multipart part `file`; the local slice accepts one bounded PDF, PNG, or JPEG
+  whose magic bytes agree with the declared MIME type.
 
 The idempotency key is 16–200 printable ASCII characters and only its SHA-256
-digest is stored. The current PDF limit is 5 MiB. The request must contain
+digest is stored. The current document limit is 5 MiB. The request must contain
 exactly one file part and no fields.
 
 The server streams the body through size/signature checks, SHA-256 hashing, and
@@ -247,11 +340,13 @@ select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content`
 
-After fresh authorization, proxies the original PDF stream from local storage.
-Uses `Content-Disposition: attachment`, `nosniff`, a sandbox policy, and
-`private, no-store`. Range behavior is not implemented in Task 4. The response
-never exposes the local path. Authorized access produces a payload-free audit
-event.
+After fresh authorization, proxies the original PDF, PNG, or JPEG stream from the configured
+`ObjectStorage/v1` adapter. The default is local storage; the optional
+S3-compatible adapter does not change this HTTP surface or turn the path into a
+provider bearer URL. Uses `Content-Disposition: attachment`, `nosniff`, a
+sandbox policy, and `private, no-store`. Range behavior is not implemented in
+Task 4. The response never exposes a local or provider path. Authorized access
+produces a payload-free audit event.
 
 ## Extracted facts and review (Tasks 5–6)
 
@@ -380,6 +475,112 @@ decision.
 
 ## Observation history and provenance (Task 7)
 
+## Source-first profile overview (Task 17)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/overview`
+
+Returns the authorized profile's compact operational landing projection. It is
+a safe `GET`, requires neither `Origin` nor an idempotency key, and returns
+`Cache-Control: no-store`. Owner, self-linked adult, and explicitly
+`profile.read`-granted adult/caregiver access use the same server-side profile
+boundary as documents and history. Inaccessible and cross-family selectors
+produce the same non-disclosing `404`.
+
+The response is deliberately bounded: `recentDocuments`,
+`reviewQueue.documents`, and `recentObservations` contain at most three entries
+each, newest first. `reviewQueue.pendingFactCount` counts raw facts without a
+final decision; `needsAttentionFactCount` is the subset marked
+`needs_review`. A review queue item contains no extracted medical value: the
+client follows the authorized document path to inspect evidence and choose an
+explicit decision.
+
+```json
+{
+  "contractVersion": "profile-overview/v1",
+  "profile": {
+    "id": "profile_placeholder",
+    "familyId": "family_placeholder",
+    "displayName": "Synthetic profile",
+    "kind": "adult",
+    "access": "owner",
+    "createdAt": "2026-08-12T00:00:00.000Z"
+  },
+  "recentDocuments": [
+    {
+      "id": "document_placeholder",
+      "originalFilename": "synthetic.pdf",
+      "contentType": "application/pdf",
+      "uploadedAt": "2026-08-12T00:00:00.000Z",
+      "processing": { "state": "awaiting_review", "updatedAt": "2026-08-12T00:01:00.000Z", "factCount": 2, "needsReviewCount": 1 }
+    }
+  ],
+  "reviewQueue": {
+    "documentCount": 1,
+    "pendingFactCount": 2,
+    "needsAttentionFactCount": 1,
+    "documents": [
+      {
+        "id": "document_placeholder",
+        "originalFilename": "synthetic.pdf",
+        "contentType": "application/pdf",
+        "uploadedAt": "2026-08-12T00:00:00.000Z",
+        "pendingFactCount": 2,
+        "needsAttentionFactCount": 1
+      }
+    ]
+  },
+  "recentObservations": []
+}
+```
+
+It is not a diagnosis, medical summary, health score, risk state, trend, or
+recommendation. Each successful read writes a payload-free
+`profile.overview.opened` audit event against the profile with only
+`profile-overview/v1` as metadata; it never records filenames, values, units,
+fragments, source bytes, or cursor data.
+
+## Local synthetic evidence snapshot (Task 18)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/evidence-bundle`
+
+Returns an attachment-only `application/x-tar` archive named
+`veylta-synthetic-evidence.tar`. It is a safe `GET`, does not require `Origin`
+or an idempotency key, and returns `Cache-Control: private, no-store`,
+`X-Content-Type-Options: nosniff`, and a sandbox CSP.
+
+This route deliberately uses the stricter owner/self profile boundary. A
+read-only `profile.read` grant can open source history but cannot download a
+portable artifact. Inaccessible and cross-family selectors produce the same
+non-disclosing `404`.
+
+The TAR contains `manifest.json` and no more than five newest immutable source
+entries under generated `documents/{documentId}.{pdf|png|jpg}` paths. The
+manifest is `synthetic-evidence-bundle/v1`, records each source's immutable
+checksum and byte size, and replaces API source URLs with that archive path.
+Only confirmed observations whose source is among those selected five are
+included. The service verifies every bundled byte sequence against its expected
+checksum/size/content type before writing the archive. It never exposes a
+storage key or makes user filenames into archive paths.
+
+It is intentionally a local synthetic snapshot, not a backup, restore format,
+account export, or real-data portability claim. A successful request writes
+`profile.evidence_bundle.exported` with only
+`synthetic-evidence-bundle/v1` as payload-free audit metadata.
+
+### Offline verification command (Task 19)
+
+Run `pnpm --filter @veylta/api verify:evidence-bundle <bundle.tar>` before
+manually handling a downloaded local archive. The command is completely local:
+it neither contacts the API nor extracts entries to disk. It accepts only the
+exact USTAR entry shape produced by Task 18, enforces archive/manifest/document
+byte limits, checks generated document paths and content-type signatures, and
+recomputes each source SHA-256. This proves structural consistency of the local
+snapshot, not cryptographic origin, clinical correctness, or production export
+validity. Successful output contains only the contract version and
+source/observation counts; failures reveal no archive payload.
+
+## Observation history and provenance (Task 7)
+
 ### `GET /v1/families/{familyId}/profiles/{profileId}/observations`
 
 Returns a source-first, profile-wide page of immutable confirmed observations.
@@ -479,14 +680,99 @@ fragments, document text, filenames, or cursor data. The browser presents the
 same data as a table and does not claim longitudinal comparability, trend
 analysis, or a meaningful graph from one point.
 
+## Comparable indicator catalog (Task 9)
+
+The deterministic parser recognizes exactly two **synthetic demonstration**
+codes: `synthetic-analyte-a` and `synthetic-analyte-b`. They are not a clinical
+terminology, diagnosis, or broad code-mapping claim. Unknown extracted facts
+remain unclassified and never appear in this catalog.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/indicators`
+
+Returns the authorized profile's known-code confirmed observations grouped by
+canonical code and exact source unit. It is a safe, strict `GET`; it requires
+no `Origin` or idempotency key. There are no query parameters. A code with two
+units yields two unit groups rather than an implicit conversion.
+
+```json
+{
+  "contractVersion": "indicator-series/v1",
+  "items": [
+    {
+      "canonicalCode": "synthetic-analyte-a",
+      "displayName": "Синтетический аналит A",
+      "units": [
+        {
+          "unit": "synthetic-unit",
+          "observationCount": 2,
+          "latest": {
+            "value": "7.5",
+            "timelineAt": "2026-08-12T00:00:00.000Z"
+          }
+        }
+      ]
+    }
+  ]
+}
+```
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/indicators/{canonicalCode}`
+
+Returns one source-first, keyset-paginated series only when `canonicalCode` is
+one of the known synthetic codes and the required exact `unit` query is present.
+The item shape is the same immutable source/provenance item used by
+`observation-history/v1`, ordered newest first.
+
+- `unit`: required 1–100 character exact source unit; it is not normalized or
+  converted.
+- `limit`: optional ASCII integer `1` through `100`, default `100`.
+- `cursor`: optional 1–500 character opaque URL-safe cursor bound to both the
+  code and unit.
+
+When at least two observations have finite decimal source values, `comparison`
+contains their unsigned absolute arithmetic difference and direction. The
+comparison is a data description only: it does not compare with a reference
+range, assess health, or recommend an action. Any nonnumeric value produces an
+explicit `unavailable` state; fewer than two values produce `insufficient_data`.
+
+```json
+{
+  "contractVersion": "indicator-series/v1",
+  "indicator": {
+    "canonicalCode": "synthetic-analyte-a",
+    "displayName": "Синтетический аналит A",
+    "unit": "synthetic-unit"
+  },
+  "items": ["same source-first observation items as observation-history/v1"],
+  "comparison": {
+    "state": "available",
+    "previous": {
+      "id": "observation_placeholder",
+      "value": "7.0",
+      "timelineAt": "2026-08-11T00:00:00.000Z"
+    },
+    "delta": { "value": "0.5", "direction": "increased" }
+  },
+  "nextCursor": null
+}
+```
+
+Unknown code and inaccessible profile paths have the same non-disclosing `404`.
+Every successful catalog or series read records a payload-free profile audit
+event (`indicator.catalog.opened` or `indicator.series.opened`) containing only
+the `indicator-series/v1` contract version.
+
 ## Processing jobs
 
 Jobs are internal and not accepted from arbitrary browser payloads. The worker
 polls SQLite for the single known `document_extraction` kind and versioned
 identifier-only payloads, claims a bounded lease, and persists an attempt with
 one of the implemented stages. It reads the authorized version through
-`ObjectStorage/v1`, bounds and verifies its bytes, extracts its PDF text layer,
-and accepts only the versioned synthetic grammar. There is no OCR, LLM, provider
+`ObjectStorage/v1`, bounds and verifies its bytes, and extracts a PDF text
+layer. Only when that layer is absent does it render at most three bounded pages
+for the checked-in local English OCR model. Direct PNG/JPEG uses the same model
+only after exact-signature and bounded header-pixel checks. Every path accepts
+only the versioned synthetic grammar. There is no external OCR/LLM provider
 SDK, arbitrary URL, or worker HTTP command surface.
 
 User-visible retry is the authorized endpoint above. It can requeue only the
@@ -512,7 +798,8 @@ stack traces.
 ## Deferred APIs
 
 No first-slice endpoint is defined for production authentication/account
-recovery, adult/caregiver consent management, S3 configuration, OCR, LLM
-providers, summaries, recommendations, FHIR, exports, backups, or account
-deletion. Those contracts follow their own product, threat-model, and license
-review.
+recovery, caregiver invitations, broader adult/caregiver consent capabilities
+beyond the delivered local `profile.read` grant, S3 configuration or presigned
+URLs, cloud OCR, LLM providers, summaries,
+recommendations, FHIR, production exports, backups, or account deletion. Those contracts
+follow their own product, threat-model, and license review.

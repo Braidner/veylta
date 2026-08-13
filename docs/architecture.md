@@ -5,18 +5,37 @@
 Veylta uses a small TypeScript monorepo with three deployable processes:
 a Next.js web application, a Fastify API, and a worker. Embedded SQLite through
 Node.js `node:sqlite` stores domain state, explicit schema migrations, audit
-events, and durable idempotent jobs. Original documents
-live behind versioned `ObjectStorage/v1`; the first adapter uses a persistent
-local filesystem directory.
+events, and durable idempotent jobs. Original documents live behind versioned
+`ObjectStorage/v1`; the default adapter uses a persistent local filesystem
+directory, and an optional S3-compatible adapter preserves the same contract
+for synthetic deployments.
 
 The public document surface is `document/v3`: immutable extracted facts remain
 separate from explicit, idempotent fact-review decisions. The separate read-only
 `observation-history/v1` boundary exposes only those immutable observations
-that were explicitly confirmed or corrected.
+that were explicitly confirmed or corrected. `indicator-series/v1` is a second
+read boundary that groups only the deterministic synthetic canonical codes and
+requires an exact source unit before it returns a comparable series.
+`audit-log/v1` is a third, owner-only and payload-free boundary: it projects
+only audit action/result/time/actor/resource selectors and never exposes event
+metadata or medical/document payloads.
+
+The local synthetic demo additionally supports a one-time adult or caregiver
+invitation. The code is returned only at issuance and stored only as a SHA-256
+hash. Adult acceptance creates a self-linked adult profile; caregiver acceptance
+creates no profile. An active owner may additionally create one explicit,
+revocable `profile.read` grant to an active invited adult or caregiver for one
+profile. Server-side authorization evaluates that grant on every read; it never
+implies upload, extraction review, retry, invitations, or audit-log access. This
+is not a production identity or full consent system.
 
 The first vertical slice uses a deterministic, versioned parser for one
-synthetic PDF format with a text layer. It does not invoke OCR, an LLM, or a
-cloud service. S3, OCR, and LLM providers remain adapter-level future work.
+synthetic report grammar. PDF reads the text layer first and, only when that layer is
+missing, applies bounded local English OCR to rendered PDF pages. Direct PNG/JPEG
+checks the encoded header and pixels before the same local OCR and strict grammar
+check. It does not invoke an external OCR provider or
+an LLM. The optional S3 adapter is a storage boundary, not document egress to
+an OCR/LLM provider; it remains disabled unless explicitly configured.
 
 ## System context
 
@@ -28,9 +47,10 @@ flowchart LR
   A --> O["ObjectStorage/v1"]
   J["Worker"] --> P
   J --> O
-  O --> L["Persistent local filesystem"]
-  A -. "future adapter" .-> S["S3-compatible storage"]
-  J -. "future, owner opt-in" .-> X["OCR / LLM providers"]
+  O --> L["Persistent local filesystem (default)"]
+  O -. "explicit adapter" .-> S["S3-compatible storage (optional)"]
+  J --> Q["Local bounded synthetic PDF/image OCR"]
+  J -. "future, owner opt-in" .-> X["External OCR / LLM providers"]
 ```
 
 The browser never accesses the database or a storage path directly. The API
@@ -68,6 +88,15 @@ required. Shared code is extracted only when two real consumers need it.
   sanitized failure category plus an authorized retry action.
 - Presents source-first fact decisions and correction/confirmation, then a
   profile-wide confirmed-observation history with source document provenance.
+- Reads `profile-overview/v1` after the same profile authorization and presents
+  only bounded source/document/review state; it does not synthesize a clinical
+  profile, score, diagnosis, or recommendation.
+- Offers owner/self profile actors a direct local TAR download of no more than
+  five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
+  not a backup, restore, or production export workflow.
+- Presents an authorized catalog of known synthetic indicators and, only for an
+  exact code/unit series, a compact numeric chart and deterministic source-value
+  difference. The timeline and source links remain available beside the chart.
 - Treats API errors and authorization failures as data, with no domain state
   transitions hidden in React components.
 
@@ -88,6 +117,20 @@ required. Shared code is extracted only when two real consumers need it.
   keyset pagination, and audits the payload-free history access. The returned
   source-document path remains a relative selector: the download endpoint
   performs authorization again.
+- Reads `profile-overview/v1` in one profile-authorized transaction, returning
+  only bounded recent document, unresolved-review, and confirmed-observation
+  projections. The `profile.overview.opened` audit event stores only the
+  versioned contract marker, never a filename, value, fragment, or cursor.
+- Builds `synthetic-evidence-bundle/v1` only after the stricter owner/self
+  profile boundary. It reads at most five current immutable sources through the
+  expected checksum/size/content-type storage boundary, writes generated-safe
+  archive paths, and records only the versioned payload-free export audit event.
+- Supplies a local, read-only evidence-bundle verifier. It parses the bounded
+  USTAR bytes in memory without extraction or API access, checks the manifest
+  and every source checksum/signature, and returns only safe aggregate counts.
+- Reads `audit-log/v1` only after an active owner check on the requested family;
+  it uses opaque keyset pagination, adds one payload-free access event per
+  successful page, and does not expose audit metadata or correlation IDs.
 - Proxies local document reads after authorization.
 
 ### Worker
@@ -130,7 +173,7 @@ sequenceDiagram
   participant D as SQLite
   participant W as Worker
 
-  B->>A: POST synthetic PDF for patient profile
+  B->>A: POST synthetic PDF, PNG, or JPEG for patient profile
   A->>A: Authenticate, authorize, validate limits/signature
   A->>S: putStream(staging key) while calculating SHA-256
   A->>D: BEGIN IMMEDIATE; recheck idempotency/blob
@@ -176,7 +219,10 @@ separate confirmed workflows and remain deferred.
   `awaiting_review` run has its final decision, that run becomes `completed`.
 - `observation-history/v1` reads confirmed observations only, orders by the
   deterministic sample/result/upload timeline with an ID tie-breaker, and does
-  not derive trends, comparisons, or clinical interpretations.
+  not derive clinical interpretations. `indicator-series/v1` separately admits
+  only explicitly known synthetic canonical codes and one exact source unit;
+  its comparison is arithmetic on the latest two finite decimal source strings,
+  with an explicit insufficient/unavailable state for every other case.
 - A terminal worker outcome is committed with its fact graph or failure
   transition and is not duplicated by acknowledgement replay.
 - State transitions are compare-and-set operations; retries cannot move a newer
@@ -193,9 +239,12 @@ Original `DocumentVersion` content is immutable after finalization.
 
 The local adapter stores opaque keys derived from trusted identifiers/checksum,
 not user filenames, under a configured persistent root. Reads cannot escape
-that root. The API proxies downloads for the first slice. S3-compatible storage,
-provider-side encryption, and short-lived presigned URLs are deferred to the
-next storage slice and must satisfy the same contract tests.
+that root. The API proxies downloads. The optional S3-compatible adapter maps
+each opaque key to a provider-side digest (including key-binding metadata),
+stages before finalizing with a
+conditional create, and requires/attests SSE-S3 or SSE-KMS on every stored
+object. Its controlled reads pin ETag and checksum-verify a bounded snapshot
+against database metadata. Short-lived presigned URLs remain deferred.
 
 ## Medical data boundary
 
@@ -214,7 +263,8 @@ server-side `actorUserId`. Authorization then checks:
 
 1. active `FamilyMembership` and role;
 2. requested `familyId` matches the resource's family;
-3. the actor owns the profile or has a valid `ConsentGrant` for the capability;
+3. the actor owns the profile, manages their self-linked profile, or holds the
+   valid capability required for the requested operation;
 4. the operation is allowed in the current resource state.
 
 Queries include the authorized family boundary at their root. Cross-family and

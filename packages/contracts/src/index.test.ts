@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  AUDIT_LOG_CONTRACT_VERSION,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
@@ -11,28 +12,121 @@ import {
   FACT_REVIEW_COMMAND_SCHEMA,
   FACT_REVIEW_DECISIONS,
   FACT_REVIEW_OUTCOMES,
+  FAMILY_INVITATION_CONTRACT_VERSION,
   FAMILY_PROFILE_CONTRACT_VERSION,
   type FactReviewResponse,
+  type FamilyAuditLogResponse,
+  type FamilyInvitationCreateResponse,
   HTTP_API_VERSION,
+  INDICATOR_SERIES_CONTRACT_VERSION,
+  type IndicatorSeriesResponse,
   LAB_EXTRACTION_RESULT_SCHEMA,
   LAB_EXTRACTION_SCHEMA_VERSION,
   LAB_FACT_VALIDATION_ISSUES,
   type LabExtractionResult,
+  MAX_AUDIT_LOG_PAGE_SIZE,
+  MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
+  MAX_SYNTHETIC_DOCUMENT_BYTES,
+  MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PDF_BYTES,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
+  PROFILE_CONSENT_CONTRACT_VERSION,
+  PROFILE_OVERVIEW_CONTRACT_VERSION,
+  SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+  SYNTHETIC_INDICATOR_CATALOG,
 } from "./index.js";
 
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
-  assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v1");
+  assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
+  assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
+  assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
+  assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
+  assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v1");
+  assert.equal(SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION, "synthetic-evidence-bundle/v1");
+  assert.equal(MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS, 5);
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
+  assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
+});
+
+test("family audit log omits internal metadata and exposes explicit pagination", () => {
+  assert.equal(MAX_AUDIT_LOG_PAGE_SIZE, 100);
+  const response = {
+    contractVersion: AUDIT_LOG_CONTRACT_VERSION,
+    items: [
+      {
+        id: "10000000-0000-4000-8000-000000000001",
+        action: "profile.created",
+        result: "success",
+        occurredAt: "2026-08-12T12:00:00.000Z",
+        actor: { id: "10000000-0000-4000-8000-000000000002", displayName: "Owner" },
+        resource: { type: "PatientProfile", id: "10000000-0000-4000-8000-000000000003" },
+      },
+    ],
+    nextCursor: null,
+  } as const satisfies FamilyAuditLogResponse;
+
+  assert.equal("metadata" in response.items[0], false);
+  assert.equal("correlationId" in response.items[0], false);
+});
+
+test("local invitation distinguishes adult and caregiver access before sharing a profile", () => {
+  assert.equal(FAMILY_INVITATION_CONTRACT_VERSION, "family-invitation/v2");
+  const response = {
+    contractVersion: FAMILY_INVITATION_CONTRACT_VERSION,
+    invitation: {
+      id: "10000000-0000-4000-8000-000000000001",
+      familyId: "10000000-0000-4000-8000-000000000002",
+      role: "adult_member",
+      code: `vi_${"A".repeat(43)}`,
+      expiresAt: "2026-08-13T12:00:00.000Z",
+    },
+  } as const satisfies FamilyInvitationCreateResponse;
+
+  assert.match(response.invitation.code, /^vi_[A-Za-z0-9_-]{43}$/);
+  assert.equal(response.invitation.role, "adult_member");
+
+  const caregiver = {
+    contractVersion: FAMILY_INVITATION_CONTRACT_VERSION,
+    invitation: {
+      id: "10000000-0000-4000-8000-000000000011",
+      familyId: "10000000-0000-4000-8000-000000000012",
+      role: "caregiver",
+      code: `vi_${"B".repeat(43)}`,
+      expiresAt: "2026-08-13T12:00:00.000Z",
+    },
+  } as const satisfies FamilyInvitationCreateResponse;
+  assert.equal(caregiver.invitation.role, "caregiver");
+});
+
+test("indicator series keeps exact units and its comparison state explicit", () => {
+  assert.equal(MAX_INDICATOR_SERIES_PAGE_SIZE, 100);
+  assert.deepEqual(SYNTHETIC_INDICATOR_CATALOG, [
+    { canonicalCode: "synthetic-analyte-a", displayName: "Синтетический аналит A" },
+    { canonicalCode: "synthetic-analyte-b", displayName: "Синтетический аналит B" },
+  ]);
+
+  const response = {
+    contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
+    indicator: {
+      canonicalCode: "synthetic-analyte-a",
+      displayName: "Синтетический аналит A",
+      unit: "synthetic-unit",
+    },
+    items: [],
+    comparison: { state: "insufficient_data" },
+    nextCursor: null,
+  } as const satisfies IndicatorSeriesResponse;
+
+  assert.equal(response.indicator.unit, "synthetic-unit");
+  assert.equal(response.comparison.state, "insufficient_data");
 });
 
 test("observation history keeps confirmed source evidence and pagination explicit", () => {
