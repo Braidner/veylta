@@ -9,6 +9,7 @@ import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
 import {
   EvidenceBundleVerificationError,
   verifySyntheticEvidenceBundle,
+  verifySyntheticProfileArchive,
 } from "./evidence-bundle-verifier.js";
 
 function bundleFor(
@@ -62,6 +63,34 @@ test("verifies a safe local evidence bundle without extracting it", () => {
     documentCount: 1,
     observationCount: 0,
   });
+});
+
+test("verifies a complete synthetic profile archive only through its dedicated contract", () => {
+  const archive = createSyntheticEvidenceBundle({
+    manifest: {
+      contractVersion: "synthetic-profile-export/v1",
+      exportedAt: "2026-08-13T00:00:00.000Z",
+      profile: {
+        id: "00000000-0000-4000-8000-000000000001",
+        familyId: "00000000-0000-4000-8000-000000000002",
+        displayName: "Synthetic profile",
+        kind: "adult",
+        createdAt: "2026-08-12T00:00:00.000Z",
+      },
+      documents: [],
+      observations: [],
+    },
+    sources: [],
+  });
+  assert.deepEqual(verifySyntheticProfileArchive(archive), {
+    contractVersion: "synthetic-profile-export/v1",
+    documentCount: 0,
+    observationCount: 0,
+  });
+  assert.throws(
+    () => verifySyntheticEvidenceBundle(archive),
+    (error: unknown) => error instanceof EvidenceBundleVerificationError,
+  );
 });
 
 test("verifies a source-first confirmed observation bound to an archived document", () => {

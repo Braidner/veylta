@@ -17,6 +17,13 @@ import {
   type FactReviewResponse,
   type FamilyAuditLogResponse,
   type FamilyInvitationCreateResponse,
+  HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
+  HEALTH_SUMMARY_CONTRACT_VERSION,
+  HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+  HEALTH_SUMMARY_RECOMMENDATION_CODES,
+  type HealthSummaryComparisonResponse,
+  type HealthSummaryHistoryResponse,
+  type HealthSummaryResponse,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorSeriesResponse,
@@ -25,18 +32,22 @@ import {
   LAB_FACT_VALIDATION_ISSUES,
   type LabExtractionResult,
   MAX_AUDIT_LOG_PAGE_SIZE,
+  MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PDF_BYTES,
+  MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
+  PROFILE_ARCHIVE_CONTRACT_VERSION,
   PROFILE_CONSENT_CONTRACT_VERSION,
   PROFILE_OVERVIEW_CONTRACT_VERSION,
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
+  SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
 } from "./index.js";
 
 test("public contracts carry explicit versions", () => {
@@ -49,11 +60,56 @@ test("public contracts carry explicit versions", () => {
   assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
   assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
   assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v1");
+  assert.equal(HEALTH_SUMMARY_CONTRACT_VERSION, "health-summary/v1");
+  assert.equal(HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION, "health-summary-history/v1");
+  assert.equal(HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION, "health-summary-comparison/v1");
   assert.equal(SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION, "synthetic-evidence-bundle/v1");
+  assert.equal(SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION, "synthetic-profile-export/v1");
+  assert.equal(PROFILE_ARCHIVE_CONTRACT_VERSION, "profile-archive/v1");
   assert.equal(MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS, 5);
+  assert.equal(MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS, 10);
+  assert.equal(MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE, 50);
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
+});
+
+test("health summary is an explicit evidence snapshot, not a clinical assessment", () => {
+  assert.deepEqual(HEALTH_SUMMARY_RECOMMENDATION_CODES, [
+    "prepare_source_for_clinician",
+    "complete_pending_review",
+  ]);
+
+  const response = {
+    contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+    summary: null,
+  } as const satisfies HealthSummaryResponse;
+
+  assert.equal(response.summary, null);
+
+  const history = {
+    contractVersion: HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+    versions: [],
+    nextBeforeVersion: null,
+  } as const satisfies HealthSummaryHistoryResponse;
+  assert.equal(history.versions.length, 0);
+
+  const comparison = {
+    contractVersion: HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
+    base: {
+      id: "10000000-0000-4000-8000-000000000001",
+      version: 1,
+      createdAt: "2026-08-13T00:00:00.000Z",
+    },
+    target: {
+      id: "10000000-0000-4000-8000-000000000002",
+      version: 2,
+      createdAt: "2026-08-13T00:01:00.000Z",
+    },
+    newlyIncluded: [],
+    noLongerIncluded: [],
+  } as const satisfies HealthSummaryComparisonResponse;
+  assert.equal(comparison.target.version, 2);
 });
 
 test("family audit log omits internal metadata and exposes explicit pagination", () => {

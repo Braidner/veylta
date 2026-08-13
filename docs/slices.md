@@ -226,10 +226,92 @@ Commit intent: `feat: verify local synthetic evidence bundle`
 - It fail-closes on malformed USTAR headers, duplicate/traversal entries,
   unbounded archive/manifest/source data, wrong content signatures, or a
   checksum/size mismatch.
-- It validates only the narrow `synthetic-evidence-bundle/v1` shape and prints
-  safe aggregate counts, never profile data, filenames, extracted values, or
-  source bytes. It establishes local structural consistency, not cryptographic
-  origin or clinical correctness, and is not import, restore, or backup.
+- It validates the narrow `synthetic-evidence-bundle/v1` and
+  `synthetic-profile-export/v1` shapes and prints safe aggregate counts, never
+  profile data, filenames, extracted values, or source bytes. It establishes
+  local structural consistency, not cryptographic origin or clinical
+  correctness, and is not import, restore, or backup.
+
+## Task 20 — Evidence-backed profile summary
+
+Commit intent: `feat: add evidence-backed profile summary`
+
+- `health-summary/v1` is created atomically only when the last final decision
+  completes an extraction run. It snapshots at most 50 confirmed observations;
+  rejected facts and unreviewed extraction proposals cannot enter it.
+- A version retains its predecessor and marks every evidence item as new or
+  carried forward. Summary rows and their evidence links are immutable.
+- The response exposes only evidence, bounded missing-context labels, and the
+  operational actions `prepare_source_for_clinician` and
+  `complete_pending_review`. It has no diagnosis, risk, red-flag, trend, or
+  treatment-advice field.
+- The safe, profile-authorized read is `private, no-store`, re-authorizes every
+  source path on follow-up, and records payload-free opened/generated audits.
+
+## Task 21 — Immutable summary version history
+
+Commit intent: `feat: browse immutable summary versions`
+
+- `health-summary-history/v1` is a `private, no-store`, profile-authorized,
+  newest-first index over existing immutable `HealthSummary` rows. It exposes
+  only the version selector, creation time, and bounded evidence counts.
+- `GET health-summary?version=N` reopens exactly version `N`; an unavailable
+  version is a non-disclosing `404`. The version index uses `beforeVersion` and
+  a 1–50 page size, with no write or schema change.
+- Each current or historical summary read re-authorizes follow-up source links.
+  The index writes its own payload-free audit event and carries neither source
+  values nor any computed comparison.
+- The UI selects a version explicitly and labels its immutable source snapshot.
+  It does not call the prior/newer version a trend, a change, or a recommendation.
+
+## Task 22 — Immutable summary source-set comparison
+
+Commit intent: `feat: compare immutable summary source sets`
+
+- `health-summary-comparison/v1` accepts two ordered existing versions and
+  returns only source observations newly included in the target or no longer
+  included from the base. It has no numeric delta, clinical label, trend,
+  recommendation, or write path.
+- The read is `private, no-store`, uses the same owner/self/granted
+  `profile.read` boundary, re-authorizes each follow-up source path, fails
+  closed for missing versions, and records a payload-free comparison audit.
+- The UI opens the comparison only on an explicit action and labels it as a
+  source-membership view rather than a health assessment.
+
+## Task 23 — Complete local synthetic profile export
+
+Commit intent: `feat: export complete synthetic profile archive`
+
+- `synthetic-profile-export/v1` is a separate owner/self-authorized TAR for
+  every current immutable source document and confirmed observation of one
+  profile; generated archive paths never expose a storage key.
+- It verifies source bytes against immutable checksum/size/content-type metadata
+  and records only a payload-free contract marker audit. `profile.read` remains
+  insufficient and inaccessible selectors are non-disclosing.
+- The export is explicitly capped at ten synthetic sources. Above that it fails
+  with no archive or audit event instead of silently omitting older records.
+- The local verifier recognizes both TAR contracts without extracting them.
+  This is still neither restore, deletion, backup, nor production portability.
+
+## Task 24 — Reversible profile archive
+
+Commit intent: `feat: archive profiles without deleting evidence`
+
+- `profile-archive/v1` lets only an owner archive a non-last active profile
+  behind the trusted-Origin mutation gate and an explicit inline confirmation.
+- Archive sets only `patient_profiles.archived_at`; it immediately removes the
+  profile from active session/list access, makes direct document reads
+  non-disclosing, and stops the worker from claiming or persisting output for
+  its source versions. It keeps original documents, blobs, facts,
+  observations, jobs, and audit history intact.
+- The owner-only archive list returns archived profile identity and timestamp
+  and supports restore. Restore clears only `archived_at`; durable pending work
+  can resume without copying or rewriting evidence. Archive/list/restore are
+  payload-free audited.
+- It is deliberately neither account deletion, data-retention policy, backup,
+  recovery, nor production restore. Integration and Chromium tests cover
+  Origin/owner/last-profile/non-disclosure boundaries, source hiding,
+  worker pause/resume, and UI confirmation/restore.
 
 ## Task 9 — Comparable indicator catalog and chart
 
@@ -387,7 +469,8 @@ commit chain:
 1. Alternate synthetic fixtures and any OCR language/model expansion beyond the
    delivered local English PDF/image fallback.
 2. Broader classification/extraction with provider interfaces and strict schemas.
-3. Evidence-backed versioned summary and carefully bounded recommendations.
+3. Clinically reviewed evidence summaries and recommendations beyond the
+   delivered non-clinical `health-summary/v1` snapshot.
 4. Broader role/consent UX: additional capability sets, expiry, delegation, and
    production identity. Task 15 delivers only local adult/caregiver invitation
    plus a single owner-issued `profile.read` grant.

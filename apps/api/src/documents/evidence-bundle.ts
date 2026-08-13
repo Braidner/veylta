@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import {
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+  SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
   type SyntheticEvidenceBundleManifest,
+  type SyntheticProfileExportManifest,
 } from "@veylta/contracts";
 import { ObjectStorageIntegrityError } from "../storage/object-storage.js";
 
@@ -11,7 +13,7 @@ export interface EvidenceBundleSource {
 }
 
 export interface EvidenceBundleInput {
-  manifest: SyntheticEvidenceBundleManifest;
+  manifest: SyntheticEvidenceBundleManifest | SyntheticProfileExportManifest;
   sources: readonly EvidenceBundleSource[];
 }
 
@@ -51,7 +53,10 @@ function tarEntry(path: string, bytes: Buffer): Buffer {
 }
 
 function validate(input: EvidenceBundleInput): void {
-  if (input.manifest.contractVersion !== SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION) {
+  if (
+    input.manifest.contractVersion !== SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION &&
+    input.manifest.contractVersion !== SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION
+  ) {
     throw new ObjectStorageIntegrityError("Evidence bundle manifest version is invalid");
   }
   const expected = new Map(

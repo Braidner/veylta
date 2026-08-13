@@ -9,8 +9,30 @@ export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
 export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
+export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
+export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
+export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
 export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
+/**
+ * A complete, profile-scoped synthetic export. It is intentionally distinct
+ * from the bounded five-source evidence snapshot and is not a production
+ * backup, restore, or real-data portability format.
+ */
+export const SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION = "synthetic-profile-export/v1" as const;
+/**
+ * A reversible owner-only archive workflow for local demo profiles. Archiving
+ * hides a profile and its sources from active access; it never deletes them.
+ */
+export const PROFILE_ARCHIVE_CONTRACT_VERSION = "profile-archive/v1" as const;
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
+/**
+ * The complete local profile export fails before sending bytes if a profile
+ * exceeds this explicit synthetic-demo cap. It must never silently omit older
+ * source documents.
+ */
+export const MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS = 10;
+export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
+export const MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE = 50;
 export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
 /** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
 export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
@@ -61,6 +83,10 @@ export const LAB_FACT_VALIDATION_ISSUES = [
 
 export const FACT_REVIEW_DECISIONS = ["confirm", "correct", "reject"] as const;
 export const FACT_REVIEW_OUTCOMES = ["confirmed", "corrected", "rejected"] as const;
+export const HEALTH_SUMMARY_RECOMMENDATION_CODES = [
+  "prepare_source_for_clinician",
+  "complete_pending_review",
+] as const;
 
 export interface HealthStatus {
   status: "ok" | "unavailable";
@@ -110,6 +136,31 @@ export interface ProfileListResponse {
 export interface ProfileCreateResponse {
   contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
   profile: PatientProfileSummary;
+}
+
+export interface ProfileArchiveResponse {
+  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
+  readonly profileId: string;
+  readonly archivedAt: string;
+}
+
+export interface ProfileRestoreResponse {
+  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
+  readonly profileId: string;
+  readonly restoredAt: string;
+}
+
+export interface ArchivedProfileSummary {
+  readonly id: string;
+  readonly familyId: string;
+  readonly displayName: string;
+  readonly kind: PatientProfileKind;
+  readonly archivedAt: string;
+}
+
+export interface ArchivedProfileListResponse {
+  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
+  readonly items: readonly ArchivedProfileSummary[];
 }
 
 /**
@@ -346,6 +397,114 @@ export interface ProfileOverviewResponse {
 }
 
 /**
+ * A deliberately narrow, immutable snapshot made after a completed source
+ * review. It groups only explicitly confirmed evidence; it never diagnoses,
+ * estimates risk, or evaluates urgent symptoms.
+ */
+export interface HealthSummaryGroup {
+  readonly id: "synthetic_laboratory" | "other_confirmed_source";
+  readonly label: string;
+  readonly evidence: readonly HealthSummaryEvidence[];
+}
+
+export interface HealthSummaryEvidence {
+  /** True only when this source was absent from the previous summary snapshot. */
+  readonly isNewSincePreviousSummary: boolean;
+  readonly observation: ObservationHistoryItem;
+}
+
+export type HealthSummaryMissingData =
+  | "confirmed_observations"
+  | "sample_date"
+  | "result_date"
+  | "laboratory"
+  | "canonical_indicator";
+
+export type HealthSummaryRecommendationCode = (typeof HEALTH_SUMMARY_RECOMMENDATION_CODES)[number];
+
+/**
+ * A recommendation code is intentionally operational, not medical advice.
+ * UI copy must preserve that distinction and link to its source evidence.
+ */
+export interface HealthSummaryRecommendation {
+  readonly code: HealthSummaryRecommendationCode;
+}
+
+export interface HealthSummary {
+  readonly id: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly previous: {
+    readonly id: string;
+    readonly version: number;
+    readonly createdAt: string;
+  } | null;
+  /** The immutable snapshot is bounded; the total makes any omitted history explicit. */
+  readonly evidenceScope: {
+    readonly includedCount: number;
+    readonly totalConfirmedObservationCount: number;
+  };
+  readonly groups: readonly HealthSummaryGroup[];
+  readonly newEvidenceCount: number;
+  readonly carriedForwardEvidenceCount: number;
+  readonly missingData: readonly HealthSummaryMissingData[];
+  readonly recommendations: readonly HealthSummaryRecommendation[];
+  /** A local synthetic summary never performs an urgent-symptom or red-flag evaluation. */
+  readonly redFlagStatus: "not_evaluated";
+}
+
+export interface HealthSummaryResponse {
+  readonly contractVersion: typeof HEALTH_SUMMARY_CONTRACT_VERSION;
+  /** Null until at least one extraction run reaches its final human review. */
+  readonly summary: HealthSummary | null;
+}
+
+/**
+ * A compact, newest-first index of immutable summary snapshots. It contains
+ * counts only, so selecting an older version never introduces a health score
+ * or an interpretation of change.
+ */
+export interface HealthSummaryVersion {
+  readonly id: string;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly includedEvidenceCount: number;
+  readonly totalConfirmedObservationCount: number;
+  readonly newEvidenceCount: number;
+  readonly carriedForwardEvidenceCount: number;
+}
+
+export interface HealthSummaryHistoryResponse {
+  readonly contractVersion: typeof HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION;
+  readonly versions: readonly HealthSummaryVersion[];
+  /** Pass this immutable version number as `beforeVersion` for the next older page. */
+  readonly nextBeforeVersion: number | null;
+}
+
+/**
+ * An explicit source-set delta between two immutable summary snapshots. It
+ * reports only what each fixed snapshot includes; it is never a health change,
+ * trend, diagnosis, or recommendation.
+ */
+export interface HealthSummaryComparisonResponse {
+  readonly contractVersion: typeof HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION;
+  readonly base: {
+    readonly id: string;
+    readonly version: number;
+    readonly createdAt: string;
+  };
+  readonly target: {
+    readonly id: string;
+    readonly version: number;
+    readonly createdAt: string;
+  };
+  /** Confirmed source observations present in target but absent from base. */
+  readonly newlyIncluded: readonly ObservationHistoryItem[];
+  /** Confirmed source observations present in base but absent from target. */
+  readonly noLongerIncluded: readonly ObservationHistoryItem[];
+}
+
+/**
  * A local, owner/self-authorized portable bundle. It is deliberately limited
  * to the checked-in synthetic demo boundary and is not a backup format.
  */
@@ -369,6 +528,19 @@ export type SyntheticEvidenceBundleObservation = Omit<ObservationHistoryItem, "s
 
 export interface SyntheticEvidenceBundleManifest {
   readonly contractVersion: typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION;
+  readonly exportedAt: string;
+  readonly profile: Omit<PatientProfileSummary, "access">;
+  readonly documents: readonly SyntheticEvidenceBundleDocument[];
+  readonly observations: readonly SyntheticEvidenceBundleObservation[];
+}
+
+/**
+ * A complete, local synthetic profile snapshot. Every retained source document
+ * and confirmed observation must appear together or the request fails; it is
+ * not a restore/backup or production portability format.
+ */
+export interface SyntheticProfileExportManifest {
+  readonly contractVersion: typeof SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION;
   readonly exportedAt: string;
   readonly profile: Omit<PatientProfileSummary, "access">;
   readonly documents: readonly SyntheticEvidenceBundleDocument[];

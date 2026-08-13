@@ -68,7 +68,7 @@ the family's trust boundary merely because it exposes an API.
 | Job retry/race | Duplicate or contradictory medical records | Stable job dedupe key; leased claims; compare-and-set transitions; immutable retry/review requests; DB uniqueness; transactional fact persistence and final review | Extraction and Task 6 review controls in first slice |
 | Poisoned extraction | Incorrect value presented as truth | `ExtractedFact` is untrusted and separate from `Observation`; strict schema; confidence/review gate; preserve raw value | First slice |
 | Prompt injection | Future LLM follows document instructions | Treat text as quoted data; fixed system policy; tool allowlist; strict schema; deterministic pre/post safety layer | Before any LLM |
-| Unsafe medical output | Diagnosis/treatment harm or missed urgency | Role-limited agents; confirmed data only for longitudinal use; rule-based red flags; evidence/confidence/missing-data labels; clinician escalation | Before recommendation features |
+| Unsafe medical output | Diagnosis/treatment harm or missed urgency | The delivered summary is a closed, non-clinical evidence snapshot: confirmed data only, source links, missing-context labels, no risk/red-flag/diagnosis/treatment field, and only operational next actions. Rule-based clinical red flags and any recommendation require a separately reviewed safety boundary | Before recommendation features |
 | Provider egress without consent | Sensitive document sent externally | Local OCR reads only the checked-in English model and has no provider URL; external OCR/LLM remains disabled by default and later needs owner configuration, a clear provider warning, minimum-data handling, and egress audit | Before any external provider |
 | SSRF through URL/provider config | Access to internal network or cloud metadata | No arbitrary URL ingest in first slice; allowlisted endpoints; URL parsing, DNS/IP checks, redirect limits, egress policy | Before URL/provider features |
 | Signed-link leakage | Temporary public access to a document | API still proxies authorized reads; later presigned URLs are single-purpose, short-lived, non-logged, and tenant-bound | Before presigned URLs |
@@ -77,7 +77,7 @@ the family's trust boundary merely because it exposes an API.
 | Dependency/license compromise | Code execution or prohibited distribution | Lockfile, minimal dependencies, license allowlist, vulnerability review, reproducible CI, update policy | From scaffold onward |
 | Audit tampering or overcollection | No accountability or new privacy leak | Append-only semantics and restricted reads; record identifiers/action/result/time, not medical payload; integrity/retention policy | Events in first slice; hardening before real data |
 | Backup loss/disclosure | Irrecoverable or leaked history | Encrypted backups, separate access, retention, checksum, documented restore drills, deletion propagation | Before real data |
-| Export/account deletion bug | Incomplete portability or unintended destruction | The delivered local synthetic TAR is bounded to five sources, verifies manifest checksums, uses owner/self authorization, and is payload-free audited; a local verifier fail-closes on malformed USTAR/manifest/checksum data without extraction. Verified production portability also needs deletion workflow, grace period, and backup-retention disclosure | Full MVP, before production |
+| Export/account deletion bug | Incomplete portability or unintended destruction | The delivered local source snapshot is bounded to five sources; the separate local profile export includes all sources/confirmed observations only up to a ten-source cap and fails closed rather than truncating. Both use owner/self authorization, verify checksums, write payload-free audits, and have a no-extraction verifier. Verified production portability still needs deletion, grace period, and backup-retention disclosure | Full MVP, before production |
 
 ## First-slice security invariants
 
@@ -91,6 +91,10 @@ the family's trust boundary merely because it exposes an API.
   opaque trusted key.
 - Original bytes are immutable. Duplicate detection never crosses tenant
   boundaries and never automatically deletes content.
+- An owner may reversibly archive a non-last profile, but archive is not
+  deletion: active profile/document authorization and worker claims reject it,
+  while the immutable source graph remains retained until a separately designed
+  production deletion/retention workflow exists.
 - Deterministic parsing has no network egress. OCR is local: only after a missing
   PDF text layer, or directly for PNG/JPEG after signature and header pixel-cap
   checks. It remains bounded before rendering/recognition and accepted only through

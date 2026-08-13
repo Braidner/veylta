@@ -19,6 +19,16 @@ requires an exact source unit before it returns a comparable series.
 `audit-log/v1` is a third, owner-only and payload-free boundary: it projects
 only audit action/result/time/actor/resource selectors and never exposes event
 metadata or medical/document payloads.
+`health-summary/v1` is an immutable, post-review profile snapshot: it contains
+only confirmed observations, source selectors, new-versus-carried evidence,
+closed missing-context labels, and two operational next-action codes. It does
+not calculate a diagnosis, triage, risk, red flag, trend, or treatment advice.
+`health-summary-history/v1` is its separate read-only index: it exposes bounded
+immutable version selectors newest-first and permits reopening one exact stored
+snapshot, but never compares versions or derives a change.
+`health-summary-comparison/v1` is an explicit read of two authorized immutable
+snapshots. It returns only their source-set membership delta, and therefore
+does not calculate values, direction, trend, diagnosis, or recommendation.
 
 The local synthetic demo additionally supports a one-time adult or caregiver
 invitation. The code is returned only at issuance and stored only as a SHA-256
@@ -91,9 +101,26 @@ required. Shared code is extracted only when two real consumers need it.
 - Reads `profile-overview/v1` after the same profile authorization and presents
   only bounded source/document/review state; it does not synthesize a clinical
   profile, score, diagnosis, or recommendation.
+- Reads `health-summary/v1` after the same profile authorization. It renders a
+  bounded immutable evidence snapshot, its missing-context labels, and
+  re-authorized document selectors; it never synthesizes clinical advice.
+- Reads `health-summary-history/v1` under the same profile authorization and
+  lets a user reopen an immutable earlier source snapshot without calculating a
+  version-to-version conclusion.
+- On explicit request, reads `health-summary-comparison/v1` under the same
+  authorization and shows only the source records added to or absent from the
+  target snapshot, with re-authorized document selectors.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.
+- Offers the same stricter actor boundary a separately versioned
+  `synthetic-profile-export/v1` TAR with every current source and confirmed
+  observation for one profile. It rejects profiles beyond ten synthetic sources
+  before emitting bytes; it remains a local artifact, not restore/backup logic.
+- Lets only a family owner archive a non-last profile through an inline explicit
+  confirmation and owner-only restore list. Archive hides the profile from
+  active navigation and all source access; it never instructs the client to
+  delete evidence or calls a backup/restore facility.
 - Presents an authorized catalog of known synthetic indicators and, only for an
   exact code/unit series, a compact numeric chart and deterministic source-value
   difference. The timeline and source links remain available beside the chart.
@@ -126,8 +153,9 @@ required. Shared code is extracted only when two real consumers need it.
   expected checksum/size/content-type storage boundary, writes generated-safe
   archive paths, and records only the versioned payload-free export audit event.
 - Supplies a local, read-only evidence-bundle verifier. It parses the bounded
-  USTAR bytes in memory without extraction or API access, checks the manifest
-  and every source checksum/signature, and returns only safe aggregate counts.
+  USTAR bytes in memory without extraction or API access, checks either local
+  archive manifest and every source checksum/signature, and returns only safe
+  aggregate counts.
 - Reads `audit-log/v1` only after an active owner check on the requested family;
   it uses opaque keyset pagination, adds one payload-free access event per
   successful page, and does not expose audit metadata or correlation IDs.
@@ -188,6 +216,15 @@ sequenceDiagram
   B->>A: GET processing / facts
   Note over B,D: Task 6 review decisions create optional observations; Task 7 reads confirmed observations with re-authorized source links
 ```
+
+When an owner archives a profile, the API transaction sets only
+`patient_profiles.archived_at` and appends a payload-free audit event. Every
+profile/document authorization query requires an active profile; candidate job
+claims and the worker source lookup apply the same predicate. A completion
+rechecks the predicate inside its write transaction, so an archive racing an
+in-flight worker cannot append pages, facts, or a successful job outcome after
+the profile becomes inactive. Restore clears only that timestamp; durable,
+unmodified queued work becomes eligible again.
 
 The storage/database boundary cannot provide a single distributed transaction.
 The upload path therefore stages and validates the stream, enters an SQLite
@@ -266,6 +303,10 @@ server-side `actorUserId`. Authorization then checks:
 3. the actor owns the profile, manages their self-linked profile, or holds the
    valid capability required for the requested operation;
 4. the operation is allowed in the current resource state.
+
+An archived profile is not an active resource state for profile, document,
+history, export, or worker processing. Archive and restore require the owner
+role, use the trusted Origin mutation gate, and write payload-free audits.
 
 Queries include the authorized family boundary at their root. Cross-family and
 otherwise inaccessible resource IDs return `404` to avoid existence disclosure.

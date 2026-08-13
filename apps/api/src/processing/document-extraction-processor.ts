@@ -132,6 +132,13 @@ async function sourceForClaim(
     `SELECT b.storage_key, COALESCE(bt.content_type, b.content_type) AS content_type,
             b.byte_size, b.sha256
        FROM document_versions AS v
+       JOIN documents AS d
+         ON d.family_id = v.family_id
+        AND d.id = v.document_id
+       JOIN patient_profiles AS p
+         ON p.family_id = d.family_id
+        AND p.id = d.patient_profile_id
+        AND p.archived_at IS NULL
        JOIN document_blobs AS b
          ON b.family_id = v.family_id
         AND b.id = v.blob_id

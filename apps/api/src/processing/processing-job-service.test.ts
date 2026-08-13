@@ -20,6 +20,7 @@ interface DocumentFixture {
   documentId: string;
   familyId: string;
   documentVersionId: string;
+  profileId: string;
   userId: string;
 }
 
@@ -145,7 +146,7 @@ async function createDocumentFixture(database: Database): Promise<DocumentFixtur
     );
   });
 
-  return { documentId, familyId, documentVersionId, userId };
+  return { documentId, familyId, documentVersionId, profileId, userId };
 }
 
 interface AuditEventRow {
@@ -577,6 +578,50 @@ test("missing or cross-tenant document source rolls back a processing outcome an
       );
     });
   }
+});
+
+test("an archive racing a leased job blocks its extraction graph and successful audit", async () => {
+  await withDatabase(async (database, fixture) => {
+    const jobs = createProcessingJobService(database);
+    await jobs.enqueueDocumentExtraction({ ...fixture, now: start });
+    const claim = await jobs.claimNext({
+      workerId: "worker-a",
+      now: start,
+      leaseDurationMs: 60_000,
+    });
+    assert.ok(claim !== null);
+    await advanceToValidation(jobs, claim);
+
+    await database.query(
+      "UPDATE patient_profiles SET archived_at = $1 WHERE id = $2 AND family_id = $3",
+      [after(400), fixture.profileId, fixture.familyId],
+    );
+
+    await assert.rejects(
+      jobs.completeExtraction(claim, parsedExtraction(), after(500)),
+      ProcessingPersistenceConflictError,
+    );
+    const job = await jobs.getJob({ familyId: fixture.familyId, jobId: claim.id });
+    assert.equal(job?.state, "leased");
+    const persisted = await database.query<{
+      audits: number;
+      facts: number;
+      pages: number;
+      runs: number;
+    }>(
+      `SELECT
+         (SELECT count(*) FROM audit_events) AS audits,
+         (SELECT count(*) FROM extraction_runs) AS runs,
+         (SELECT count(*) FROM document_pages) AS pages,
+         (SELECT count(*) FROM extracted_facts) AS facts`,
+    );
+    assert.deepEqual(
+      Object.fromEntries(
+        Object.entries(persisted.rows[0] ?? {}).map(([key, value]) => [key, Number(value)]),
+      ),
+      { audits: 0, facts: 0, pages: 0, runs: 0 },
+    );
+  });
 });
 
 test("invalid output cannot leave a partial medical graph or complete the job", async () => {

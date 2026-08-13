@@ -1,13 +1,13 @@
 # First-slice acceptance evidence
 
-**Recorded:** 2026-08-12
-**Code baseline:** local Task 19 worktree atop `a1f4104 feat: export local synthetic evidence bundle`
+**Recorded:** 2026-08-13
+**Code baseline:** local Task 24 worktree atop `3e0340f feat: export complete synthetic profile archive`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`
 
 This record is local, reproducible acceptance evidence for Veylta's first
 vertical slice. It is not a production-readiness, clinical-safety, privacy, or
-legal-compliance certification. The evidence document itself is the Task 8
-documentation change; the baseline above is the last implementation commit.
+legal-compliance certification. It records acceptance through Task 23; the
+Task 23 changes remain subject to the fresh command results below.
 
 ## Accepted path
 
@@ -16,7 +16,10 @@ With checked-in synthetic PDF and generated synthetic PNG/JPEG fixtures, the acc
 ```text
 opaque demo session → owner-scoped family/profile → PDF/PNG/JPEG upload → immutable
 local original + SHA-256 → deterministic extraction → explicit review →
-confirmed observation → source-first history → re-authorized source download
+confirmed observation → source-first history → immutable non-clinical summary →
+immutable summary-version selection → explicit source-set comparison →
+re-authorized source download → bounded complete synthetic profile export
+→ reversible owner-only profile archive/restore
 ```
 
 The path is intentionally narrow. The parser accepts one explicit synthetic
@@ -43,6 +46,11 @@ fact and represents the user-confirmed source value separately.
 | Task 17 worktree | Authorized source-first profile overview with bounded document/review/observation projections. |
 | Task 18 worktree | Owner/self-only local synthetic evidence TAR with bounded, checksummed source bytes. |
 | Task 19 worktree | Offline, no-extraction verifier for the narrow local synthetic evidence TAR. |
+| Task 20 worktree | Versioned non-clinical evidence summary after final human review. |
+| Task 21 worktree | Authorized newest-first immutable summary-version index and exact historical snapshot read. |
+| Task 22 worktree | Authorized immutable summary source-set comparison without a health assessment. |
+| Task 23 worktree | Owner/self-only bounded complete synthetic profile TAR with every current source or a fail-closed cap result. |
+| Task 24 worktree | Owner-only reversible profile archive that hides active sources and pauses worker claims without deleting evidence. |
 
 ## Fresh local verification
 
@@ -53,13 +61,13 @@ its output.
 | Command | Result |
 | --- | --- |
 | `pnpm license:check` | Passed: 8 license groups and 5 exact reviewed exceptions. |
-| `pnpm lint` | Passed: Biome checked 81 files; no fixes applied. |
+| `pnpm lint` | Passed: Biome checked 83 files; no fixes applied. |
 | `pnpm typecheck` | Passed: contracts, API, and web typechecks completed. |
-| `pnpm test` | Passed: 90 unit/contract tests (10 contracts, 80 API), 0 failed. |
-| `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0010_direct_image_documents`. |
-| `pnpm test:integration` | Passed: 41 isolated SQLite integration tests, 0 failed. |
+| `pnpm test` | Passed: 94 unit/contract tests (11 contracts, 83 API), 0 failed. |
+| `pnpm db:migrate` | Passed: applied/reported migrations `0001_foundation` through `0011_health_summaries`. |
+| `pnpm test:integration` | Passed: 48 isolated SQLite integration tests, 0 failed. |
 | `pnpm build` | Passed: contracts and API TypeScript builds plus Next.js production build. |
-| `pnpm test:e2e` | Passed: 18 Chromium browser tests, 0 failed, including direct synthetic PNG upload/OCR/download and owner/self evidence-bundle download. |
+| `pnpm test:e2e` | Passed: 21 Chromium browser tests, 0 failed, including owner-only profile archive/restore. |
 | `git diff --check` | Passed after this evidence documentation was prepared. |
 
 `tsx` needs a local IPC socket on this host, so its test and migration commands
@@ -96,8 +104,11 @@ gates on every push and pull request.
 | Uncertain data cannot bypass human review | Parser and processing tests keep high-confidence facts unconfirmed and route uncertain facts to review; browser review tests require an explicit decision. |
 | A correction preserves raw extraction | Integration test `a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation`; browser review and history scenarios verify the displayed source distinction. |
 | Confirmed data appears in history with its source | Integration test `observation history is source-first, paginated, re-authorized, and audited without payloads`; browser test `profile history shows confirmed and corrected observations with their authorized sources only`. |
+| Summary remains evidence-backed and non-clinical | Integration tests cover atomic creation after final review, immutable successors, exact historical snapshot reads, source-set deltas, missing context, authorization, and payload-free audits; browser tests cover current and older immutable summary selection plus source-set comparison without a health claim. |
 | Profile landing view stays source-first | Integration tests cover bounded overview projections, payload-free audit, non-disclosing denial, and revocable read access; browser upload flow shows the review queue after returning to the profile. |
 | Local synthetic evidence snapshot is bounded and non-disclosing | Integration tests cover checksum-verified archive bytes, owner/self-only authorization, `profile.read` denial, five-source cap, cross-family denial, and payload-free audit; the browser flow downloads the TAR attachment. |
+| Complete synthetic profile export never silently drops a source | Integration tests cover every current source and confirmed observation below the ten-source cap, `profile.read` denial, a payload-free audit, and a fail-closed over-cap response; the browser flow downloads the separate TAR attachment. |
+| Archive hides active access without deleting evidence | Integration tests cover owner/Origin/last-profile/non-disclosure boundaries, direct source `404`, worker pause and resume after restore, preserved profile row, and payload-free audit; the Chromium flow covers inline confirmation and restoration. |
 | Local evidence snapshot can be checked without extraction | Unit tests accept PDF/PNG/JPEG bundles and confirmed-observation provenance; they fail closed on checksum mutation, traversal, unsupported TAR fields, non-zero padding, and manifest drift. The file command emits counts only. |
 | Caregiver remains default-deny until profile consent | Integration and browser tests `a caregiver joins without an implicit profile and reads only an explicitly shared profile` / `a caregiver starts without a profile and sees only a profile explicitly shared by the owner`; SQLite trigger regression prevents caregiver linkage to a personal profile. |
 | Failed writes leave no partial medical record | Integration test `an audit failure rolls back review decision, observation, reference range, and idempotency record together`; processing tests cover invalid-output rollback. |
@@ -135,11 +146,11 @@ medical data. In particular, it does **not** deliver:
 - real-user onboarding, account recovery, production authentication, full
   adult/caregiver consent management, a public deployment, or a compliance
   certification;
-- multi-host/high-availability persistence, backup/restore, production export, controlled
-  deletion, or a production migration/operations plan for real records;
+- multi-host/high-availability persistence, backup/restore, production export,
+  controlled account/data deletion, retention, or a production migration/operations plan for real records;
 - presigned delivery, cloud OCR, LLM extraction, LLM analysis, provider egress,
   or training on user data;
-- comparable-measurement trend calculation, charts, health scoring, summaries,
+- clinical summaries, clinical comparable-measurement trends, health scoring,
   diagnosis, prescriptions, treatment changes, recommendations, or red-flag
   clinical advice;
 - FHIR R4 mapping/import/export, broad laboratory integration, clinic

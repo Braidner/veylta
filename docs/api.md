@@ -134,6 +134,52 @@ each currently granted `profile.read` profile, marked as `granted_read`; a
 caregiver receives only those explicitly granted profiles. Both remain
 default-deny for every other profile.
 
+### Profile archive and restore
+
+`profile-archive/v1` is an owner-only, reversible local-demo access workflow.
+It does not delete a profile, a source document, a blob, a raw extracted fact,
+an observation, an audit event, or an extraction job.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/archive`
+
+Requires the active owner and the configured trusted `Origin`; it accepts no
+body. The profile must be active and the family must retain at least one other
+active profile. On success it sets the profile's archive timestamp, returns
+`200`, and writes a payload-free `profile.archived` audit event with only the
+`profile-archive/v1` marker:
+
+```json
+{
+  "contractVersion": "profile-archive/v1",
+  "profileId": "profile_placeholder",
+  "archivedAt": "2026-08-13T00:00:00.000Z"
+}
+```
+
+The archived profile is removed from `/v1/session` and active profile lists.
+Every profile/document/history read for it uses the usual non-disclosing `404`.
+The worker does not claim a queued job for it, and an in-flight completion is
+rejected before it can persist extraction output. The original job remains
+durable and can resume only after restore. Missing, already archived,
+cross-family, adult-member, and caregiver selectors do not reveal state;
+attempting to archive the last active profile returns `409`.
+
+### `GET /v1/families/{familyId}/archived-profiles`
+
+Owner-only `profile-archive/v1` list for the family. It returns each archived
+profile's id, display name, kind, and `archivedAt`, newest first, and records
+only a payload-free `family.archived_profiles.opened` audit marker. Other roles
+and another family receive the same non-disclosing `404`.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/restore`
+
+Requires the active owner and trusted `Origin`; it accepts no body. It clears
+only `archived_at`, returns `200` with `{ contractVersion, profileId,
+restoredAt }`, and writes a payload-free `profile.restored` event. Existing
+sources and jobs are neither copied nor modified; an eligible queued job may be
+claimed again. A uniqueness conflict with a now-active linked profile returns
+`409`; inaccessible or non-archived selectors remain non-disclosing.
+
 ### `POST /v1/families/{familyId}/invitations`
 
 Local-demo only; requires the active owner session plus a trusted `Origin` and
@@ -539,6 +585,164 @@ recommendation. Each successful read writes a payload-free
 `profile-overview/v1` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
+## Evidence-backed profile summary (Task 20)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary`
+
+Returns the latest immutable `health-summary/v1` snapshot for an authorized
+profile. An optional strict `?version=N` (`N` is a positive decimal version)
+returns exactly that immutable version. The latest form may return:
+
+```json
+{ "contractVersion": "health-summary/v1", "summary": null }
+```
+
+when no extraction run has completed final review with at least one confirmed
+observation. The safe `GET` requires neither `Origin` nor an idempotency key;
+it returns `Cache-Control: private, no-store`. The normal owner/self/granted
+`profile.read` boundary applies. Unknown, cross-family, and ungranted selectors
+use the same non-disclosing `404`.
+
+```json
+{
+  "contractVersion": "health-summary/v1",
+  "summary": {
+    "id": "summary_placeholder",
+    "version": 2,
+    "createdAt": "2026-08-12T00:00:00.000Z",
+    "previous": {
+      "id": "summary_previous",
+      "version": 1,
+      "createdAt": "2026-08-11T00:00:00.000Z"
+    },
+    "evidenceScope": { "includedCount": 2, "totalConfirmedObservationCount": 2 },
+    "groups": [
+      {
+        "id": "synthetic_laboratory",
+        "label": "Синтетические лабораторные источники",
+        "evidence": [
+          {
+            "isNewSincePreviousSummary": true,
+            "observation": {
+              "id": "observation_placeholder",
+              "canonicalCode": "synthetic-analyte-a",
+              "source": {
+                "name": "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
+                "value": "7.0",
+                "unit": "synthetic-unit"
+              },
+              "normalized": {
+                "value": null,
+                "unit": null,
+                "conversionVersion": null
+              },
+              "referenceRange": null,
+              "dates": {
+                "sampledAt": null,
+                "resultedAt": null,
+                "uploadedAt": "2026-08-12T00:00:00.000Z"
+              },
+              "timelineAt": "2026-08-12T00:00:00.000Z",
+              "specimenType": null,
+              "laboratory": null,
+              "extractionConfidence": 1,
+              "confirmed": {
+                "at": "2026-08-12T00:00:00.000Z",
+                "by": { "id": "user_placeholder", "displayName": "Synthetic owner" }
+              },
+              "sourceDocument": {
+                "id": "document_placeholder",
+                "versionId": "version_placeholder",
+                "pageNumber": 1,
+                "fragment": "Synthetic source fragment",
+                "contentPath": "/v1/families/family_placeholder/documents/document_placeholder/content"
+              }
+            },
+          }
+        ]
+      }
+    ],
+    "newEvidenceCount": 1,
+    "carriedForwardEvidenceCount": 1,
+    "missingData": ["result_date"],
+    "recommendations": [
+      {
+        "code": "prepare_source_for_clinician"
+      }
+    ],
+    "redFlagStatus": "not_evaluated"
+  }
+}
+```
+
+`missingData` is closed to `confirmed_observations`, `sample_date`,
+`result_date`, `laboratory`, and `canonical_indicator`. The only possible
+operational recommendations are `prepare_source_for_clinician` and
+`complete_pending_review`. Neither field is clinical advice. The response
+does not calculate or state a diagnosis, treatment, urgency, risk, red flag,
+or trend. Every evidence item comes from an immutable confirmed observation;
+the relative document path is only a selector and is authorized again by the
+content endpoint. A successful read writes `profile.health_summary.opened` and
+generation writes `profile.health_summary.generated`, each carrying only the
+contract marker and no medical payload.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary/versions`
+
+Returns the newest page of immutable summary selectors under the same
+owner/self/granted `profile.read` boundary. Optional `beforeVersion` is a
+positive decimal version and returns only earlier versions; optional `limit` is
+`1` through `50` (default `25`). A cursor-like `nextBeforeVersion` is either the
+last returned version for the next page or `null`.
+
+```json
+{
+  "contractVersion": "health-summary-history/v1",
+  "versions": [
+    {
+      "id": "summary_placeholder",
+      "version": 2,
+      "createdAt": "2026-08-12T00:00:00.000Z",
+      "includedEvidenceCount": 2,
+      "totalConfirmedObservationCount": 2,
+      "newEvidenceCount": 1,
+      "carriedForwardEvidenceCount": 1
+    }
+  ],
+  "nextBeforeVersion": 2
+}
+```
+
+The index is `Cache-Control: private, no-store`; unknown, cross-family, and
+ungranted profile selectors are the same non-disclosing `404`. It writes the
+payload-free `profile.health_summary_history.opened` audit event with only the
+`health-summary-history/v1` marker. Selecting a version calls the first endpoint
+with `?version=N`: it returns the exact source snapshot, never a derived
+comparison, trend, diagnosis, or recommendation.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary/compare`
+
+Requires exact positive decimal `fromVersion` and `toVersion`, with
+`fromVersion < toVersion`. Both immutable snapshots must exist in the same
+authorized profile. It returns `health-summary-comparison/v1`:
+
+```json
+{
+  "contractVersion": "health-summary-comparison/v1",
+  "base": { "id": "summary_v1", "version": 1, "createdAt": "2026-08-12T00:00:00.000Z" },
+  "target": { "id": "summary_v2", "version": 2, "createdAt": "2026-08-13T00:00:00.000Z" },
+  "newlyIncluded": ["source-first ObservationHistoryItem"],
+  "noLongerIncluded": []
+}
+```
+
+Each list item is the same source-first, re-authorized observation projection
+used by profile history. The response is a set-membership delta only: it does
+not compare values, calculate direction, or say that health changed. It is
+`Cache-Control: private, no-store`; unknown, cross-family, and ungranted
+selectors use the same non-disclosing `404`. A successful read writes the
+payload-free `profile.health_summary_comparison.opened` event carrying only the
+`health-summary-comparison/v1` marker.
+
 ## Local synthetic evidence snapshot (Task 18)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/evidence-bundle`
@@ -567,12 +771,31 @@ account export, or real-data portability claim. A successful request writes
 `profile.evidence_bundle.exported` with only
 `synthetic-evidence-bundle/v1` as payload-free audit metadata.
 
+### `GET /v1/families/{familyId}/profiles/{profileId}/portable-export`
+
+Returns attachment-only `application/x-tar` as `veylta-synthetic-profile.tar`.
+It has the same owner/self-only boundary, `private, no-store`, `nosniff`, and
+sandbox response headers as the bounded source snapshot; a `profile.read` grant
+does not authorize it and inaccessible selectors remain non-disclosing `404`s.
+
+The generated TAR is `synthetic-profile-export/v1`. It includes **every** current
+immutable source document and every confirmed observation whose provenance points
+to those sources, with generated archive paths and reverified content type, size,
+and SHA-256. It cannot silently truncate: a profile with more than ten synthetic
+sources receives a `409 CONFLICT` before archive bytes or an export audit are
+created. A successful request writes the payload-free
+`profile.portable_export.exported` event with only the contract marker.
+
+This is a bounded local synthetic portability artifact, not a restore endpoint,
+account-deletion workflow, backup, production export, or proof of archive origin.
+
 ### Offline verification command (Task 19)
 
 Run `pnpm --filter @veylta/api verify:evidence-bundle <bundle.tar>` before
 manually handling a downloaded local archive. The command is completely local:
 it neither contacts the API nor extracts entries to disk. It accepts only the
-exact USTAR entry shape produced by Task 18, enforces archive/manifest/document
+exact USTAR entry shapes produced by Task 18 and the local profile export,
+enforces archive/manifest/document
 byte limits, checks generated document paths and content-type signatures, and
 recomputes each source SHA-256. This proves structural consistency of the local
 snapshot, not cryptographic origin, clinical correctness, or production export
@@ -800,6 +1023,6 @@ stack traces.
 No first-slice endpoint is defined for production authentication/account
 recovery, caregiver invitations, broader adult/caregiver consent capabilities
 beyond the delivered local `profile.read` grant, S3 configuration or presigned
-URLs, cloud OCR, LLM providers, summaries,
-recommendations, FHIR, production exports, backups, or account deletion. Those contracts
+URLs, cloud OCR, LLM providers, clinical summaries, clinical recommendations,
+FHIR, production exports, backups, or account deletion. Those contracts
 follow their own product, threat-model, and license review.

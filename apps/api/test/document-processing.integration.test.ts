@@ -429,6 +429,71 @@ test("an image-only PDF outside the synthetic grammar records no facts", async (
   });
 });
 
+test("an archived profile hides its sources and pauses queued extraction until an owner restores it", async () => {
+  await withTestContext(async ({ app, database, storageRoot }) => {
+    const owner = await registerOwner(app, "Archive document boundary");
+    const addedProfile = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.body.family.id}/profiles`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { displayName: "Archive companion", kind: "dependent" },
+    });
+    assert.equal(addedProfile.statusCode, 201);
+
+    const uploaded = await upload(
+      app,
+      owner,
+      await readFile(fixtureUrl),
+      "archive-document-upload",
+    );
+    assert.equal(uploaded.statusCode, 202);
+    const documentId = uploaded.json().document.id as string;
+
+    const archived = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/archive`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+    });
+    assert.equal(archived.statusCode, 200);
+
+    const hiddenContent = await app.inject({
+      method: "GET",
+      url: `${documentUrl(owner, documentId)}/content`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(hiddenContent.statusCode, 404);
+    assert.equal(hiddenContent.body.includes("synthetic-lab-report.pdf"), false);
+
+    const paused = await processOneDocument(database, storageRoot);
+    assert.deepEqual(paused, { status: "idle" });
+    const extractedWhileArchived = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM extracted_facts f
+         JOIN document_versions v ON v.family_id = f.family_id AND v.id = f.document_version_id
+        WHERE v.document_id = $1`,
+      [documentId],
+    );
+    assert.equal(Number(extractedWhileArchived.rows[0]?.count), 0);
+
+    const restored = await app.inject({
+      method: "POST",
+      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/restore`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+    });
+    assert.equal(restored.statusCode, 200);
+
+    const restoredContent = await app.inject({
+      method: "GET",
+      url: `${documentUrl(owner, documentId)}/content`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(restoredContent.statusCode, 200);
+
+    const processed = await processOneDocument(database, storageRoot);
+    assert.equal(processed.status, "completed");
+  });
+});
+
 test("processing status and extracted facts do not disclose another family document", async () => {
   await withTestContext(async ({ app, database, storageRoot }) => {
     const owner = await registerOwner(app, "Owner boundary");

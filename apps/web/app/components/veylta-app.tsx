@@ -1,6 +1,7 @@
 "use client";
 
 import type {
+  ArchivedProfileListResponse,
   DemoInvitationAcceptResponse,
   DemoRegistrationResponse,
   DocumentFactsResponse,
@@ -16,15 +17,22 @@ import type {
   FamilyConsentMemberListResponse,
   FamilyInvitationCreateResponse,
   FamilyInvitationRole,
+  HealthSummaryComparisonResponse,
+  HealthSummaryHistoryResponse,
+  HealthSummaryMissingData,
+  HealthSummaryRecommendationCode,
+  HealthSummaryResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
+  ProfileArchiveResponse,
   ProfileConsentGrant,
   ProfileConsentGrantCreateResponse,
   ProfileConsentGrantListResponse,
   ProfileCreateResponse,
   ProfileOverviewResponse,
+  ProfileRestoreResponse,
   SessionFamily,
   SessionResponse,
 } from "@veylta/contracts";
@@ -121,8 +129,24 @@ function profileOverviewPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/overview`;
 }
 
+function healthSummaryPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/health-summary`;
+}
+
+function healthSummaryHistoryPath(familyId: string, profileId: string): string {
+  return `${healthSummaryPath(familyId, profileId)}/versions`;
+}
+
+function healthSummaryComparisonPath(familyId: string, profileId: string): string {
+  return `${healthSummaryPath(familyId, profileId)}/compare`;
+}
+
 function evidenceBundlePath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/evidence-bundle`;
+}
+
+function portableProfileExportPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/portable-export`;
 }
 
 function observationHistoryPath(familyId: string, profileId: string): string {
@@ -143,6 +167,18 @@ function familyConsentMembersPath(familyId: string): string {
 
 function profileConsentGrantsPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/consent-grants`;
+}
+
+function archivedProfilesPath(familyId: string): string {
+  return `/v1/families/${encodeURIComponent(familyId)}/archived-profiles`;
+}
+
+function profileArchivePath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/archive`;
+}
+
+function profileRestorePath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/restore`;
 }
 
 interface VeyltaAppProps {
@@ -306,6 +342,28 @@ export function VeyltaApp({
     }
   }
 
+  async function refreshSessionAfterProfileArchive(): Promise<void> {
+    const refreshed = await readSession();
+    if (refreshed === null) {
+      setScreen({ kind: "unauthenticated" });
+      router.replace("/");
+      return;
+    }
+    setScreen({ kind: "authenticated", session: refreshed });
+    const fallback = firstProfile(refreshed);
+    router.replace(fallback === undefined ? "/" : profilePath(fallback.familyId, fallback.id));
+  }
+
+  async function refreshSessionAfterProfileRestore(): Promise<void> {
+    const refreshed = await readSession();
+    if (refreshed === null) {
+      setScreen({ kind: "unauthenticated" });
+      router.replace("/");
+      return;
+    }
+    setScreen({ kind: "authenticated", session: refreshed });
+  }
+
   const session = screen.kind === "authenticated" ? screen.session : undefined;
   const context =
     session !== undefined && requestedContext !== undefined
@@ -385,6 +443,8 @@ export function VeyltaApp({
               setAddProfileOpen((open) => !open);
             }}
             onAddProfile={handleAddProfile}
+            onProfileArchived={refreshSessionAfterProfileArchive}
+            onProfileRestored={refreshSessionAfterProfileRestore}
           />
         ) : null}
       </main>
@@ -650,6 +710,8 @@ interface ProfileWorkspaceProps {
   onProfileChange: (familyId: string, profileId: string) => void;
   onAddProfileToggle: () => void;
   onAddProfile: (event: FormEvent<HTMLFormElement>, family: SessionFamily) => void;
+  onProfileArchived: () => Promise<void>;
+  onProfileRestored: () => Promise<void>;
 }
 
 function ProfileWorkspace({
@@ -663,6 +725,8 @@ function ProfileWorkspace({
   onProfileChange,
   onAddProfileToggle,
   onAddProfile,
+  onProfileArchived,
+  onProfileRestored,
 }: ProfileWorkspaceProps) {
   const router = useRouter();
   const profiles = session.families.flatMap((sessionFamily) => sessionFamily.profiles);
@@ -769,6 +833,11 @@ function ProfileWorkspace({
                 profileId={profile.id}
                 canWriteProfile={canWriteProfile}
               />
+              <HealthSummaryPanel
+                key={`summary:${family.id}:${profile.id}`}
+                familyId={family.id}
+                profileId={profile.id}
+              />
               {canWriteProfile ? (
                 <DocumentInbox
                   pending={uploadPending}
@@ -870,6 +939,16 @@ function ProfileWorkspace({
               ) : null}
             </div>
           ) : null}
+          {family.role === "owner" ? (
+            <ProfileArchivePanel
+              key={`archive:${family.id}:${profile.id}`}
+              familyId={family.id}
+              profile={profile}
+              activeProfileCount={family.profiles.length}
+              onArchived={onProfileArchived}
+              onRestored={onProfileRestored}
+            />
+          ) : null}
           {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
           {family.role === "owner" ? (
             <ProfileConsentPanel
@@ -882,6 +961,165 @@ function ProfileWorkspace({
             <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
           ) : null}
         </aside>
+      </div>
+    </section>
+  );
+}
+
+type ProfileArchivePanelState =
+  | { kind: "idle" }
+  | { kind: "confirming" }
+  | { kind: "pending" }
+  | { kind: "error" };
+
+type ArchivedProfilesState =
+  | { kind: "idle" }
+  | { kind: "loading" }
+  | { kind: "ready"; items: ArchivedProfileListResponse["items"] }
+  | { kind: "error" };
+
+function ProfileArchivePanel({
+  familyId,
+  profile,
+  activeProfileCount,
+  onArchived,
+  onRestored,
+}: {
+  familyId: string;
+  profile: PatientProfileSummary;
+  activeProfileCount: number;
+  onArchived: () => Promise<void>;
+  onRestored: () => Promise<void>;
+}) {
+  const [archiveState, setArchiveState] = useState<ProfileArchivePanelState>({ kind: "idle" });
+  const [archivedProfiles, setArchivedProfiles] = useState<ArchivedProfilesState>({ kind: "idle" });
+  const [restoringProfileId, setRestoringProfileId] = useState<string | null>(null);
+  const canArchive = activeProfileCount > 1;
+
+  async function loadArchivedProfiles(): Promise<void> {
+    setArchivedProfiles({ kind: "loading" });
+    try {
+      const response = await apiRequest<ArchivedProfileListResponse>(
+        archivedProfilesPath(familyId),
+      );
+      setArchivedProfiles({ kind: "ready", items: response.items });
+    } catch {
+      setArchivedProfiles({ kind: "error" });
+    }
+  }
+
+  async function archive(): Promise<void> {
+    setArchiveState({ kind: "pending" });
+    try {
+      await apiRequest<ProfileArchiveResponse>(profileArchivePath(familyId, profile.id), {
+        method: "POST",
+      });
+      await onArchived();
+    } catch {
+      setArchiveState({ kind: "error" });
+    }
+  }
+
+  async function restore(profileId: string): Promise<void> {
+    setRestoringProfileId(profileId);
+    try {
+      await apiRequest<ProfileRestoreResponse>(profileRestorePath(familyId, profileId), {
+        method: "POST",
+      });
+      await loadArchivedProfiles();
+      await onRestored();
+    } catch {
+      setArchivedProfiles({ kind: "error" });
+    } finally {
+      setRestoringProfileId(null);
+    }
+  }
+
+  return (
+    <section className="profile-archive rail-section" aria-labelledby="profile-archive-title">
+      <p className="context-line">Обратимое ограничение доступа</p>
+      <h2 id="profile-archive-title">Архив профиля</h2>
+      <p>
+        Архив скроет этот профиль и его источники из активного доступа. Исходники, значения и
+        объекты хранения не удаляются; восстановить профиль может только владелец.
+      </p>
+
+      {!canArchive ? (
+        <p className="profile-archive__note">Последний активный профиль нельзя архивировать.</p>
+      ) : archiveState.kind === "confirming" ? (
+        <div className="profile-archive__confirmation" role="alert">
+          <strong>Подтвердите архивирование</strong>
+          <span>Профиль исчезнет из активной навигации, но исходники не будут удалены.</span>
+          <div>
+            <button className="button button--danger" type="button" onClick={() => void archive()}>
+              Подтвердить архивирование
+            </button>
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => setArchiveState({ kind: "idle" })}
+            >
+              Отмена
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          className="button button--danger"
+          type="button"
+          onClick={() => setArchiveState({ kind: "confirming" })}
+          disabled={archiveState.kind === "pending"}
+        >
+          Архивировать профиль
+        </button>
+      )}
+
+      {archiveState.kind === "error" ? (
+        <p className="form-error" role="alert">
+          Не удалось архивировать профиль. Проверьте активный доступ и повторите.
+        </p>
+      ) : null}
+
+      <div className="profile-archive__restore">
+        <h3>Восстановить из архива</h3>
+        {archivedProfiles.kind === "idle" ? (
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadArchivedProfiles()}
+          >
+            Показать архивные профили
+          </button>
+        ) : null}
+        {archivedProfiles.kind === "loading" ? <p aria-live="polite">Загружаем архив…</p> : null}
+        {archivedProfiles.kind === "error" ? (
+          <p className="form-error" role="alert">
+            Не удалось открыть или восстановить архивный профиль.
+          </p>
+        ) : null}
+        {archivedProfiles.kind === "ready" && archivedProfiles.items.length === 0 ? (
+          <p className="profile-archive__note">Архивных профилей пока нет.</p>
+        ) : null}
+        {archivedProfiles.kind === "ready" && archivedProfiles.items.length > 0 ? (
+          <ul className="profile-archive__list">
+            {archivedProfiles.items.map((item) => (
+              <li key={item.id}>
+                <strong>{item.displayName}</strong>
+                <span>Архивирован {formatDate(item.archivedAt)}</span>
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  disabled={restoringProfileId !== null}
+                  onClick={() => void restore(item.id)}
+                >
+                  {restoringProfileId === item.id
+                    ? "Восстанавливаем…"
+                    : `Восстановить ${item.displayName}`}
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </section>
   );
@@ -1139,6 +1377,7 @@ function familyAuditActionCopy(action: string): string {
     "document.processing.opened": "Открыт статус обработки",
     "document.uploaded": "Добавлен документ",
     "profile.evidence_bundle.exported": "Скачан локальный пакет источников",
+    "profile.portable_export.exported": "Скачан полный synthetic-экспорт профиля",
     "family.audit_log.opened": "Открыт журнал действий",
     "family.created": "Создана семья",
     "family.invitation.accepted": "Принято приглашение в семью",
@@ -1147,6 +1386,9 @@ function familyAuditActionCopy(action: string): string {
     "indicator.series.opened": "Открыта динамика показателя",
     "observation.history.opened": "Открыта история подтверждённых значений",
     "profile.created": "Создан профиль",
+    "profile.archived": "Архивирован профиль",
+    "profile.restored": "Восстановлен профиль",
+    "family.archived_profiles.opened": "Открыт список архивных профилей",
     "review.fact.confirmed": "Подтверждено извлечённое значение",
     "review.fact.corrected": "Исправлено извлечённое значение",
     "review.fact.rejected": "Отклонено извлечённое значение",
@@ -1419,16 +1661,31 @@ function ProfileOverviewPanel({
           выводы, оценки и рекомендации не формируются.
         </p>
         {canWriteProfile ? (
-          <p className="profile-overview__export">
-            <a
-              className="text-link"
-              href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-              download
-            >
-              Скачать локальный пакет источников
-            </a>
-            <span>До 5 последних synthetic-источников; это не резервная копия.</span>
-          </p>
+          <div className="profile-overview__exports">
+            <p className="profile-overview__export">
+              <a
+                className="text-link"
+                href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+                download
+              >
+                Скачать локальный пакет источников
+              </a>
+              <span>До 5 последних synthetic-источников; это не резервная копия.</span>
+            </p>
+            <p className="profile-overview__export">
+              <a
+                className="text-link"
+                href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
+                download
+              >
+                Скачать полный synthetic-экспорт профиля
+              </a>
+              <span>
+                Все источники и подтверждённые записи, если их не больше 10; это не восстановление и
+                не production backup.
+              </span>
+            </p>
+          </div>
         ) : null}
       </div>
 
@@ -1588,6 +1845,459 @@ function ProfileOverviewPanel({
               </ol>
             )}
           </section>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+type HealthSummaryState =
+  | { kind: "loading" }
+  | {
+      kind: "ready";
+      response: HealthSummaryResponse;
+      history: HealthSummaryHistoryResponse;
+      comparison:
+        | { kind: "idle" }
+        | { kind: "loading" }
+        | { kind: "ready"; response: HealthSummaryComparisonResponse }
+        | { kind: "error"; copy: string };
+      versionPending: boolean;
+      historyPending: boolean;
+      versionError: string | null;
+    }
+  | { kind: "error"; copy: string };
+
+function healthSummaryErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Сводка этого профиля недоступна. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось загрузить сводку. Подтверждённые источники и решения не изменены.";
+}
+
+function healthSummaryComparisonErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "Одна из фиксированных версий недоступна. Вернитесь к доступному профилю и попробуйте снова.";
+  }
+  return "Не удалось открыть состав источников между версиями. Сводки и подтверждённые значения не изменены.";
+}
+
+function recommendationCopy(code: HealthSummaryRecommendationCode): string {
+  switch (code) {
+    case "prepare_source_for_clinician":
+      return "Если вы обсуждаете эти данные со специалистом, откройте источник и возьмите его с собой.";
+    case "complete_pending_review":
+      return "Есть извлечённые значения без финального решения: подтвердите, исправьте или отклоните их до опоры на них.";
+  }
+}
+
+function missingDataCopy(value: HealthSummaryMissingData): string {
+  switch (value) {
+    case "confirmed_observations":
+      return "нет подтверждённых значений";
+    case "sample_date":
+      return "нет даты биоматериала";
+    case "result_date":
+      return "нет даты результата";
+    case "laboratory":
+      return "не указана лаборатория";
+    case "canonical_indicator":
+      return "не определён сопоставимый показатель";
+  }
+}
+
+function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profileId: string }) {
+  const [state, setState] = useState<HealthSummaryState>({ kind: "loading" });
+
+  const loadSummary = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const [response, history] = await Promise.all([
+          apiRequest<HealthSummaryResponse>(
+            healthSummaryPath(familyId, profileId),
+            signal === undefined ? undefined : { signal },
+          ),
+          apiRequest<HealthSummaryHistoryResponse>(
+            healthSummaryHistoryPath(familyId, profileId),
+            signal === undefined ? undefined : { signal },
+          ),
+        ]);
+        if (!signal?.aborted) {
+          setState({
+            kind: "ready",
+            response,
+            history,
+            comparison: { kind: "idle" },
+            versionPending: false,
+            historyPending: false,
+            versionError: null,
+          });
+        }
+      } catch (error) {
+        if (!signal?.aborted) setState({ kind: "error", copy: healthSummaryErrorCopy(error) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void loadSummary(controller.signal);
+    return () => controller.abort();
+  }, [loadSummary]);
+
+  async function selectVersion(version: number): Promise<void> {
+    if (state.kind !== "ready" || state.response.summary?.version === version) return;
+    setState((current) =>
+      current.kind !== "ready" ? current : { ...current, versionPending: true, versionError: null },
+    );
+    try {
+      const response = await apiRequest<HealthSummaryResponse>(
+        `${healthSummaryPath(familyId, profileId)}?version=${encodeURIComponent(String(version))}`,
+      );
+      if (response.summary === null) throw new Error("Missing selected summary version");
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              response,
+              comparison: { kind: "idle" },
+              versionPending: false,
+              versionError: null,
+            },
+      );
+    } catch (error) {
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              versionPending: false,
+              versionError: healthSummaryErrorCopy(error),
+            },
+      );
+    }
+  }
+
+  async function loadComparison(): Promise<void> {
+    if (
+      state.kind !== "ready" ||
+      state.response.summary === null ||
+      state.response.summary.previous === null ||
+      state.comparison.kind === "loading"
+    ) {
+      return;
+    }
+    const { version } = state.response.summary;
+    const { previous } = state.response.summary;
+    setState((current) =>
+      current.kind !== "ready" ? current : { ...current, comparison: { kind: "loading" } },
+    );
+    try {
+      const response = await apiRequest<HealthSummaryComparisonResponse>(
+        `${healthSummaryComparisonPath(familyId, profileId)}?fromVersion=${encodeURIComponent(String(previous.version))}&toVersion=${encodeURIComponent(String(version))}`,
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : { ...current, comparison: { kind: "ready", response } },
+      );
+    } catch (error) {
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              comparison: { kind: "error", copy: healthSummaryComparisonErrorCopy(error) },
+            },
+      );
+    }
+  }
+
+  async function loadOlderVersions(): Promise<void> {
+    if (
+      state.kind !== "ready" ||
+      state.history.nextBeforeVersion === null ||
+      state.historyPending
+    ) {
+      return;
+    }
+    setState((current) =>
+      current.kind !== "ready" ? current : { ...current, historyPending: true, versionError: null },
+    );
+    try {
+      const next = await apiRequest<HealthSummaryHistoryResponse>(
+        `${healthSummaryHistoryPath(familyId, profileId)}?beforeVersion=${encodeURIComponent(String(state.history.nextBeforeVersion))}`,
+      );
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              history: {
+                contractVersion: current.history.contractVersion,
+                versions: [...current.history.versions, ...next.versions],
+                nextBeforeVersion: next.nextBeforeVersion,
+              },
+              historyPending: false,
+              versionError: null,
+            },
+      );
+    } catch (error) {
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : {
+              ...current,
+              historyPending: false,
+              versionError: healthSummaryErrorCopy(error),
+            },
+      );
+    }
+  }
+
+  return (
+    <section
+      className="health-summary"
+      aria-labelledby="health-summary-title"
+      aria-busy={state.kind === "loading"}
+    >
+      <div className="health-summary__heading">
+        <p className="context-line">Подтверждённые источники · версия</p>
+        <h2 id="health-summary-title">Сводка для разговора об источниках</h2>
+        <p>
+          Это фиксированный список явно подтверждённых значений и недостающих полей. Здесь нет
+          диагноза, оценки риска, клинической интерпретации или проверки красных флагов.
+        </p>
+      </div>
+
+      {state.kind === "loading" ? (
+        <div className="health-summary__loading" aria-live="polite">
+          <div className="skeleton skeleton--summary-line" aria-hidden="true" />
+          <div className="skeleton skeleton--summary-line" aria-hidden="true" />
+          <p>Сверяем последнюю фиксированную версию…</p>
+        </div>
+      ) : null}
+
+      {state.kind === "error" ? (
+        <div className="health-summary__empty" role="status">
+          <p>{state.copy}</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => void loadSummary()}
+          >
+            Обновить сводку
+          </button>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" && state.response.summary === null ? (
+        <div className="health-summary__empty">
+          <p>
+            Сводка появится после завершения проверки хотя бы одного документа: все извлечённые
+            значения должны получить явное решение.
+          </p>
+          <a className="text-link" href="#document-inbox-title">
+            Добавить или проверить источник
+          </a>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" && state.response.summary !== null ? (
+        <div className="health-summary__content">
+          <div className="health-summary__meta">
+            <div className="health-summary__version-control">
+              <label>
+                <span>Фиксированная версия</span>
+                <select
+                  aria-label="Версия сводки"
+                  value={state.response.summary.version}
+                  disabled={state.versionPending}
+                  onChange={(event) => void selectVersion(Number(event.target.value))}
+                >
+                  {state.history.versions.map((version) => (
+                    <option key={version.id} value={version.version}>
+                      Версия {version.version} · {formatDate(version.createdAt)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {state.history.nextBeforeVersion === null ? null : (
+                <button
+                  className="text-button health-summary__older"
+                  type="button"
+                  disabled={state.historyPending}
+                  onClick={() => void loadOlderVersions()}
+                >
+                  {state.historyPending ? "Загружаем старые версии…" : "Показать старые версии"}
+                </button>
+              )}
+              <p>
+                Версия {state.response.summary.version} ·{" "}
+                {formatDate(state.response.summary.createdAt)}
+              </p>
+            </div>
+            <p>
+              Источников в версии: {state.response.summary.evidenceScope.includedCount} из{" "}
+              {state.response.summary.evidenceScope.totalConfirmedObservationCount} подтверждённых
+            </p>
+          </div>
+
+          {state.versionError === null ? null : (
+            <p className="form-error" role="alert">
+              {state.versionError}
+            </p>
+          )}
+
+          {state.response.summary.previous !== null ? (
+            <div className="health-summary__change">
+              <p role="status">
+                Новых подтверждённых источников: {state.response.summary.newEvidenceCount}
+                {"; "}перенесено из версии {state.response.summary.previous.version}:{" "}
+                {state.response.summary.carriedForwardEvidenceCount}.
+              </p>
+              <button
+                className="text-button"
+                type="button"
+                disabled={state.comparison.kind === "loading"}
+                onClick={() => void loadComparison()}
+              >
+                {state.comparison.kind === "loading"
+                  ? "Открываем состав источников…"
+                  : `Показать состав источников версии ${state.response.summary.version} относительно версии ${state.response.summary.previous.version}`}
+              </button>
+            </div>
+          ) : null}
+
+          {state.comparison.kind === "error" ? (
+            <p className="form-error" role="alert">
+              {state.comparison.copy}
+            </p>
+          ) : null}
+
+          {state.comparison.kind === "ready" ? (
+            <section
+              className="health-summary__comparison"
+              aria-labelledby="summary-comparison-title"
+            >
+              <h3 id="summary-comparison-title">Состав источников между версиями</h3>
+              <p>
+                Это сопоставление только сохранённых подтверждённых источников версии{" "}
+                {state.comparison.response.base.version} и версии{" "}
+                {state.comparison.response.target.version}. Оно не оценивает изменение здоровья.
+              </p>
+              <div className="health-summary__comparison-columns">
+                <section aria-labelledby="summary-comparison-added-title">
+                  <h4 id="summary-comparison-added-title">
+                    Добавлено в версию {state.comparison.response.target.version}
+                  </h4>
+                  {state.comparison.response.newlyIncluded.length === 0 ? (
+                    <p>Нет новых подтверждённых источников.</p>
+                  ) : (
+                    <ul>
+                      {state.comparison.response.newlyIncluded.map((observation) => (
+                        <li key={observation.id}>
+                          <strong>
+                            {observation.source.name}: {observation.source.value}{" "}
+                            {observation.source.unit}
+                          </strong>
+                          <Link
+                            className="text-link"
+                            href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                          >
+                            Открыть источник
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+                <section aria-labelledby="summary-comparison-removed-title">
+                  <h4 id="summary-comparison-removed-title">
+                    Не вошло в версию {state.comparison.response.target.version}
+                  </h4>
+                  {state.comparison.response.noLongerIncluded.length === 0 ? (
+                    <p>Все источники предыдущей версии сохранены в этой версии.</p>
+                  ) : (
+                    <ul>
+                      {state.comparison.response.noLongerIncluded.map((observation) => (
+                        <li key={observation.id}>
+                          <strong>
+                            {observation.source.name}: {observation.source.value}{" "}
+                            {observation.source.unit}
+                          </strong>
+                          <Link
+                            className="text-link"
+                            href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                          >
+                            Открыть источник
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              </div>
+            </section>
+          ) : null}
+
+          {state.response.summary.groups.map((group) => (
+            <section
+              key={group.id}
+              className="health-summary__group"
+              aria-labelledby={`summary-group-${group.id}`}
+            >
+              <h3 id={`summary-group-${group.id}`}>{group.label}</h3>
+              <ol>
+                {group.evidence.map(({ observation, isNewSincePreviousSummary }) => (
+                  <li key={observation.id}>
+                    <div>
+                      <strong>
+                        {observation.source.name}: {observation.source.value}{" "}
+                        {observation.source.unit}
+                      </strong>
+                      <span>
+                        {isNewSincePreviousSummary
+                          ? "Новый источник в этой версии"
+                          : "Перенесено из предыдущей версии"}
+                        {" · "}документ, страница {observation.sourceDocument.pageNumber}
+                      </span>
+                    </div>
+                    <Link
+                      className="text-link"
+                      href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                    >
+                      Открыть источник
+                    </Link>
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+
+          {state.response.summary.missingData.length > 0 ? (
+            <div className="health-summary__missing" role="note">
+              <strong>В источниках пока отсутствует</strong>
+              <ul>
+                {state.response.summary.missingData.map((item) => (
+                  <li key={item}>{missingDataCopy(item)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          <div className="health-summary__recommendations" role="note">
+            <strong>Осторожные следующие шаги</strong>
+            <ul>
+              {state.response.summary.recommendations.map(({ code }) => (
+                <li key={code}>{recommendationCopy(code)}</li>
+              ))}
+            </ul>
+            <p>Срочные симптомы и красные флаги этим локальным контуром не оцениваются.</p>
+          </div>
         </div>
       ) : null}
     </section>
@@ -1771,7 +2481,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
           ? current
           : {
               kind: "ready",
-              items: [...current.items, ...response.items],
+              items: appendDistinctObservations(current.items, response.items),
               nextCursor: response.nextCursor,
             },
       );
@@ -1874,6 +2584,14 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
       ) : null}
     </section>
   );
+}
+
+function appendDistinctObservations(
+  current: readonly ObservationHistoryItem[],
+  incoming: readonly ObservationHistoryItem[],
+): readonly ObservationHistoryItem[] {
+  const seen = new Set(current.map((item) => item.id));
+  return [...current, ...incoming.filter((item) => !seen.has(item.id))];
 }
 
 function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {

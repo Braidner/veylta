@@ -85,6 +85,11 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
   const evidenceBundleDownload = page.waitForEvent("download");
   await overview.getByRole("link", { name: "Скачать локальный пакет источников" }).click();
   expect((await evidenceBundleDownload).suggestedFilename()).toBe("veylta-synthetic-evidence.tar");
+  const portableProfileExportDownload = page.waitForEvent("download");
+  await overview.getByRole("link", { name: "Скачать полный synthetic-экспорт профиля" }).click();
+  expect((await portableProfileExportDownload).suggestedFilename()).toBe(
+    "veylta-synthetic-profile.tar",
+  );
   await uploadPdf(page, filename, bytes);
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);

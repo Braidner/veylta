@@ -34,6 +34,33 @@ interface ReviewGraph {
   requestId: string;
 }
 
+async function insertHealthSummary(
+  database: Database,
+  fixture: DocumentFixture,
+  observationId: string,
+): Promise<string> {
+  const summaryId = randomUUID();
+  const now = new Date().toISOString();
+  await database.transaction(async (client) => {
+    await client.query(
+      `INSERT INTO health_summaries
+         (id, family_id, patient_profile_id, version, previous_summary_id,
+          summary_contract_version, included_evidence_count, available_confirmed_observation_count,
+          missing_data, recommendation_codes, created_at)
+       VALUES ($1, $2, $3, 1, NULL, 'health-summary/v1', 1, 1, '[]',
+               '["prepare_source_for_clinician"]', $4)`,
+      [summaryId, fixture.familyId, fixture.profileId, now],
+    );
+    await client.query(
+      `INSERT INTO health_summary_evidence
+         (health_summary_id, family_id, observation_id, position, is_new_since_previous_summary, created_at)
+       VALUES ($1, $2, $3, 1, 1, $4)`,
+      [summaryId, fixture.familyId, observationId, now],
+    );
+  });
+  return summaryId;
+}
+
 async function tableExists(database: Database, name: string): Promise<boolean> {
   const result = await database.query<{ name: string }>(
     "SELECT name FROM sqlite_master WHERE type = 'table' AND name = $1",
@@ -365,6 +392,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "review_requests"), true);
     assert.equal(await tableExists(database, "observations"), true);
     assert.equal(await tableExists(database, "observation_reference_ranges"), true);
+    assert.equal(await tableExists(database, "health_summaries"), true);
+    assert.equal(await tableExists(database, "health_summary_evidence"), true);
     assert.equal(await tableExists(database, "family_invitations"), true);
     assert.equal(await tableExists(database, "profile_consent_grants"), true);
     assert.equal(await tableExists(database, "caregiver_rollback_guard"), false);
@@ -494,6 +523,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ]),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0011_health_summaries");
     assert.equal(await migrateDown(database), "0010_direct_image_documents");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     await database.query("DELETE FROM profile_consent_grants WHERE id = $1", [consentGrantId]);
@@ -568,6 +598,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0008_profile_consent_grants",
       "0009_caregiver_access",
       "0010_direct_image_documents",
+      "0011_health_summaries",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -609,6 +640,98 @@ test("audit events are append-only after the audit-log integrity migration", asy
       [eventId],
     );
     assert.deepEqual(stored.rows, [{ action: "synthetic.audit.created" }]);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("health summary schema preserves only confirmed profile evidence and fails closed on rollback", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-health-summary-schema-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const fixture = await createDocumentFixture(database, "Synthetic health summary");
+    const processing = await insertProcessingGraph(database, fixture, "health-summary");
+    const review = await insertConfirmedReviewGraph(
+      database,
+      fixture,
+      processing,
+      "health-summary",
+    );
+    const summaryId = await insertHealthSummary(database, fixture, review.observationId);
+
+    await rejectsConstraint(
+      () => database.query("UPDATE health_summaries SET version = 2 WHERE id = $1", [summaryId]),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          "UPDATE health_summary_evidence SET position = 2 WHERE health_summary_id = $1",
+          [summaryId],
+        ),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO health_summaries
+             (id, family_id, patient_profile_id, version, previous_summary_id,
+              summary_contract_version, included_evidence_count, available_confirmed_observation_count,
+              missing_data, recommendation_codes, created_at)
+           VALUES ($1, $2, $3, 2, $4, 'health-summary/v1', 1, 1,
+                   '["diagnosis"]', '["prepare_source_for_clinician"]', $5)`,
+          [randomUUID(), fixture.familyId, fixture.profileId, summaryId, new Date().toISOString()],
+        ),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO health_summaries
+             (id, family_id, patient_profile_id, version, previous_summary_id,
+              summary_contract_version, included_evidence_count, available_confirmed_observation_count,
+              missing_data, recommendation_codes, created_at)
+           VALUES ($1, $2, $3, 2, $4, 'health-summary/v1', 1, 2, '[]',
+                   '["prepare_source_for_clinician"]', $5)`,
+          [randomUUID(), fixture.familyId, fixture.profileId, summaryId, new Date().toISOString()],
+        ),
+      "trigger",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO health_summary_evidence
+             (health_summary_id, family_id, observation_id, position, is_new_since_previous_summary, created_at)
+           VALUES ($1, $2, $3, 2, 1, $4)`,
+          [summaryId, fixture.familyId, randomUUID(), new Date().toISOString()],
+        ),
+      "trigger",
+    );
+    const successorId = randomUUID();
+    await database.query(
+      `INSERT INTO health_summaries
+         (id, family_id, patient_profile_id, version, previous_summary_id,
+          summary_contract_version, included_evidence_count, available_confirmed_observation_count,
+          missing_data, recommendation_codes, created_at)
+       VALUES ($1, $2, $3, 2, $4, 'health-summary/v1', 1, 1, '[]',
+               '["prepare_source_for_clinician"]', $5)`,
+      [successorId, fixture.familyId, fixture.profileId, summaryId, new Date().toISOString()],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO health_summary_evidence
+             (health_summary_id, family_id, observation_id, position, is_new_since_previous_summary, created_at)
+           VALUES ($1, $2, $3, 1, 1, $4)`,
+          [successorId, fixture.familyId, review.observationId, new Date().toISOString()],
+        ),
+      "trigger",
+    );
+    await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
+    assert.equal(await tableExists(database, "health_summaries"), true);
+    assert.equal(await tableExists(database, "health_summary_evidence"), true);
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });

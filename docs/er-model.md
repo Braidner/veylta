@@ -48,7 +48,7 @@ erDiagram
   PatientProfile ||--o{ AllergyIntolerance : has
   PatientProfile ||--o{ Encounter : has
   PatientProfile ||--o{ HealthSummary : summarized_by
-  HealthSummary ||--o{ Recommendation : contains
+  HealthSummary ||--o{ HealthSummaryEvidence : contains
 
   ExtractionRun ||--o{ AgentRun : may_use
   Family ||--o{ AuditEvent : records
@@ -56,9 +56,9 @@ erDiagram
   ProcessingJob ||--o{ ProcessingRetryRequest : requeued_by
 ```
 
-`ProfileConsentGrant` is the current narrow migrated boundary. The extended
-clinical resources, `HealthSummary`, `Recommendation`, broader consent
-capabilities, and live `AgentRun` providers are designed boundaries, not a
+`ProfileConsentGrant` and Task 20 `HealthSummary` are current narrow migrated
+boundaries. Extended clinical resources, `Recommendation`, broader consent
+capabilities, and live `AgentRun` providers remain designed boundaries, not a
 claim that they are migrated in the first slice.
 
 ## Identity and access
@@ -119,6 +119,12 @@ invitation creates no profile and no access to another profile.
 
 The first slice needs owner-created profiles. Broader demographic/clinical data
 is added only when a real use case needs it.
+
+`archived_at` is the current reversible archive state. Only a family owner can
+set or clear it through the audited `profile-archive/v1` routes; the last active
+profile cannot be archived. Active authorization and worker claims require it
+to be null, while documents, blobs, raw facts, observations, jobs, and audits
+remain immutable and retained. It is not a deletion, backup, or restore model.
 
 ### ProfileConsentGrant
 
@@ -318,12 +324,29 @@ Each is tenant/profile scoped, status-bearing, source/provenance linked, and
 append-oriented. Their detailed schemas are deferred until a vertical slice
 uses them; the first slice must not create speculative empty physical tables.
 
-### HealthSummary and Recommendation
+### HealthSummary
 
-`HealthSummary` is versioned for a patient profile and identifies which new
-confirmed data changed it. `Recommendation` distinguishes facts, assumptions,
-advice, red flags, confidence, missing data, and evidence links. Both are
-deferred until deterministic safety and agent boundaries are implemented.
+Task 20 persists an immutable, versioned `HealthSummary` and ordered
+`HealthSummaryEvidence` snapshot for one patient profile. Evidence may point
+only to a confirmed `Observation`; each entry records whether it is new since
+the preceding summary. The summary's JSON metadata is closed to bounded
+missing-context labels and the two non-clinical actions `prepare_source_for_clinician`
+and `complete_pending_review`. It has no diagnosis, risk, red-flag,
+interpretation, or treatment-advice field.
+
+Task 21 adds no table or mutable projection: `health-summary-history/v1` is a
+profile-authorized, newest-first index over those existing immutable summary
+rows. Its version selector only reopens the exact `HealthSummary` evidence
+snapshot; it neither computes nor persists a comparison between versions.
+
+Task 22 likewise adds no table: `health-summary-comparison/v1` reads two
+authorized immutable snapshots and compares membership of their existing
+`HealthSummaryEvidence` links. It is not a value comparison and cannot persist
+or imply a health interpretation.
+
+`Recommendation` remains deferred until a separately reviewed deterministic
+safety boundary can distinguish facts, assumptions, advice, red flags,
+confidence, missing data, and evidence links.
 
 ### AgentRun
 
@@ -351,8 +374,7 @@ units, secrets, session tokens, or signed URLs.
 
 ## First-slice physical subset
 
-SQLite migrations through Task 4 create only rows required by executable
-behavior:
+SQLite migrations create only rows required by executable behavior:
 
 - `User`, `Session`, `Family`, `FamilyMembership`, `PatientProfile`;
 - `Document`, `DocumentBlob`, `DocumentVersion`, `DocumentUploadRequest`;
@@ -363,15 +385,19 @@ and `ProcessingRetryRequest`. Task 6 adds `ReviewDecision`, `ReviewRequest`,
 `Observation`, and `ObservationReferenceRange`. Task 7 adds no speculative
 tables: `observation-history/v1` is an authorized profile-scoped read over
 confirmed `Observation` rows, their optional source range, reviewer, and
-document/page provenance. Add broader consent capabilities, extended
-clinical entities, summaries, recommendations, and agent runs only with the
-slice that uses and tests them.
+document/page provenance. Task 20 adds only `HealthSummary` and
+`HealthSummaryEvidence`, used by `health-summary/v1` and its Task 21 immutable
+version index. Add broader consent
+capabilities, extended clinical entities, recommendations, and agent runs only
+with the slice that uses and tests them.
 
 ## Database invariants to test
 
 - Foreign keys cannot cross family boundaries; use composite tenant-aware keys
   where needed.
 - A worker cannot claim or persist a job under a different family.
+- A worker cannot claim or persist extraction output for an archived profile;
+  restoring only its `archived_at` makes its existing durable job eligible again.
 - One available document version maps to one immutable storage key/checksum.
 - Job and extraction dedupe constraints survive concurrent retries.
 - One extracted fact has one immutable final review decision and cannot create

@@ -97,8 +97,31 @@ The first slice proves one complete and safe path with synthetic data:
     manifest, source signature, size, and SHA-256 before it is handled. It
     reports aggregate counts only and never extracts entries; it is not a proof
     of origin or clinical correctness (Task 19, delivered).
+15. Once all facts in one run have an explicit final decision, the profile can
+    open an immutable, evidence-backed summary of confirmed observations. It
+    marks new evidence and missing context and contains only the operational
+    next actions to prepare sources for a clinician or complete pending review;
+    it never diagnoses, triages, assigns risk/red flags, or advises treatment
+    (Task 20, delivered).
+16. The profile can reopen any earlier immutable summary version through a
+    newest-first version index. Each selection returns the exact saved evidence
+    set; the product does not derive a difference, trend, or recommendation from
+    versions (Task 21, delivered).
+17. A user can explicitly compare two immutable summary source sets. The result
+    contains only newly included or no-longer-included confirmed records with
+    their sources; it never labels the difference as a health change, trend, or
+    recommendation (Task 22, delivered).
+18. An owner or self-linked adult can export every current synthetic source and
+    confirmed observation for one profile into a separately versioned local TAR.
+    The export fails rather than silently omitting data above its ten-source cap;
+    it is not a backup or restore flow (Task 23, delivered).
+19. A family owner can reversibly archive any non-last active profile. The
+    profile and its direct source/document reads disappear from active access,
+    and pending extraction is paused until that owner restores it. Archive
+    retains the immutable evidence graph and does not claim account deletion,
+    retention, backup, recovery, or production restore (Task 24, delivered).
 
-The implemented synthetic record path reaches step 10, and the separate
+The implemented synthetic record path reaches step 19, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
@@ -115,6 +138,9 @@ only deterministic, source-unit-compatible arithmetic: a display can state the
 difference between the latest two numeric values, but never a reference-range
 judgment, health conclusion, or recommendation. A nonnumeric value or another
 unit is a separate source record, not an implicit conversion.
+The Task 20 summary is a separate immutable read model built only from
+confirmed observations; it keeps evidence and missing context visible rather
+than deriving a health conclusion.
 
 The repository, fixtures, tests, and supported deterministic parser are
 synthetic-only. The local demo's upload boundary validates PDF/PNG/JPEG MIME/signature,
@@ -149,12 +175,22 @@ independently reviewed.
 - The profile overview is bounded, profile-authorized, source-first, and links
   only to already-authorized document detail paths; opening it neither creates
   a clinical summary nor changes a record.
+- The health summary is a bounded, profile-authorized, versioned snapshot of
+  confirmed observations. It distinguishes new evidence from carried-forward
+  evidence, has no clinical interpretation, and re-authorizes each source link.
+- The summary version index is a separately audited, profile-authorized read of
+  immutable snapshot selectors. Opening an earlier version reuses the same
+  source-first summary representation; the index and UI never compute a change
+  or a health conclusion across versions.
+- A non-last active profile can be archived only by its family owner. Archiving
+  hides the profile and its sources immediately without deleting them; the
+  owner-only archive view can restore the same profile and resume pending work.
 
 ## Full MVP direction
 
-Later slices may add a broader document classifier and
-extraction schema, evidence-backed summaries
-and safe recommendations, full role/consent management, production export, and backup/restore. The local
+Later slices may add a broader document classifier and extraction schema,
+clinically reviewed summaries and recommendations, full role/consent management,
+production export, account deletion, and backup/restore. The local
 demo now supports one-time adult and caregiver joins. An adult receives one
 self-linked profile; a caregiver receives no profile until an owner explicitly
 issues the one revocable `profile.read` grant. That grant is read-only and does
@@ -172,7 +208,10 @@ queue through `awaiting_review`; Task 6 completes a run only after every fact
 has one final review decision; Task 7 exposes those confirmed observations as a
 source-first history; and Task 9 calculates a bounded compatible-value
 difference without adding a processing state. The implementation does not fake
-OCR, clinical trends, or summaries.
+OCR, clinical trends, or clinical summaries. Task 20 materializes a post-review
+evidence snapshot without adding a clinical processing state; Task 21 only
+indexes and reopens those immutable snapshots; Task 22 compares their source
+membership without a processing or clinical state.
 
 ## Explicitly deferred
 
@@ -181,9 +220,9 @@ OCR, clinical trends, or summaries.
   readiness claim.
 - Any cloud OCR provider.
 - Any LLM extraction, analysis, explanation, nutrition, or training agent.
-- Automated trend summaries, recommendations, and red-flag UI.
-- Full role-management UX, FHIR R4 mapping/import/export, production portable export,
-  controlled account deletion, and backup/restore workflows.
+- Automated clinical trend summaries, clinical recommendations, and red-flag UI.
+- Full role-management UX, FHIR R4 mapping/import/export, controlled account deletion,
+  and production backup/restore workflows.
 - Broad laboratory integration, clinical diagnosis, prescriptions, treatment
   changes, clinic billing/scheduling, and native mobile apps.
 

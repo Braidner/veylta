@@ -45,9 +45,22 @@ The full first slice remains deliberately narrow:
     delivered).
 12. verify a downloaded local synthetic snapshot offline, before any manual
     handling of its contents (Task 19, delivered).
+13. open a versioned, evidence-backed profile summary assembled only after
+    explicit fact review; it labels missing context and offers only source
+    preparation or pending-review actions, never diagnosis, triage, or treatment
+    advice (Task 20, delivered).
+14. browse any earlier immutable version of that evidence-backed summary, with
+    its original source set and no derived "change" claim (Task 21, delivered).
+15. explicitly inspect which confirmed source records entered or did not enter
+    two saved summary versions, without turning that difference into a health
+    assessment (Task 22, delivered).
+16. reversibly archive a non-last profile as the family owner, immediately
+    hiding its sources from active navigation and worker claims without deleting
+    originals, extracted facts, observations, or storage objects; the owner can
+    restore it later (Task 24, delivered).
 
-Cloud OCR, LLM processing, clinical trend summaries, recommendations, FHIR
-exchange, production export/backup, and the rest of the full MVP are explicitly deferred.
+Cloud OCR, LLM processing, clinical trend summaries, clinical recommendations, FHIR
+exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
 In the loopback-local synthetic demo, an owner can issue a one-time invitation
 to an adult or caregiver. An adult receives only a personal linked profile;
 a caregiver receives no profile at all until the owner explicitly grants the
@@ -153,25 +166,52 @@ explicitly confirmed values with links back to the original document. It is an
 operational overview, never a clinical summary, and its successful read is
 payload-free audited. Its owner/self-only `synthetic-evidence-bundle/v1` download
 is a bounded TAR snapshot of five latest synthetic sources and their checksummed
-manifest, never a backup, restore format, or production portability claim. The demo never asks for a real email. The opaque session token exists only in
+manifest, never a backup, restore format, or production portability claim. The
+separate `synthetic-profile-export/v1` download contains every current source and
+confirmed observation for one profile when the profile has at most ten sources;
+it fails closed rather than omitting older data. It is a local synthetic export,
+not a restore or production backup. The demo never asks for a real email. The opaque session token exists only in
 an HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is
 disabled by default; the root `pnpm dev` and E2E runner enable it explicitly
 while both web and API bind only to loopback.
 `DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
 state-changing requests require the exact configured `WEB_ORIGIN`.
 
+An owner can also use the explicit `profile-archive/v1` workflow to hide a
+non-last active profile. Archiving changes only the profile's reversible access
+state: it removes the profile and every direct document read from active
+authorization, and pending worker jobs are not claimed until the owner restores
+the profile. It does not delete or rewrite immutable sources, raw facts,
+confirmed observations, audit events, or storage objects. This narrow local
+feature is not account deletion, retention management, backup, disaster
+recovery, or production restoration.
+
+Once every fact in an extraction run has its explicit final decision, the
+profile can also open `health-summary/v1`. It is an immutable, bounded snapshot
+of confirmed observations with re-authorized links back to their source. It
+marks evidence new since the prior snapshot and missing context, but does not
+infer a condition, risk, red flag, trend, or treatment. Its only deterministic
+next actions are to prepare sources for a clinician or complete another pending
+review. `health-summary-history/v1` lists those immutable versions newest-first;
+selecting one reopens its exact stored source set. It never compares versions or
+derives a clinical or non-clinical health conclusion from their difference.
+When two versions are selected for an explicit source-set comparison, Veylta
+lists only confirmed source records newly included or no longer included. It
+does not compute an improvement, decline, trend, diagnosis, or recommendation.
+
 An artifact can be checked without extracting it to disk:
 
 ```bash
 pnpm --filter @veylta/api verify:evidence-bundle ./veylta-synthetic-evidence.tar
+# The same command also recognizes veylta-synthetic-profile.tar.
 ```
 
-The verifier accepts only the local `synthetic-evidence-bundle/v1` USTAR shape,
-generated document paths, supported source signatures, and matching SHA-256/size
-metadata. It proves structural consistency of the captured local archive, not
-its origin, clinical correctness, or a production export guarantee. It prints
-counts only; it never calls the API, writes archive entries, or logs profile
-names, filenames, values, or source bytes.
+The verifier accepts only the local `synthetic-evidence-bundle/v1` and
+`synthetic-profile-export/v1` USTAR shapes, generated document paths, supported
+source signatures, and matching SHA-256/size metadata. It proves structural
+consistency of the captured local archive, not its origin, clinical correctness,
+or a production export guarantee. It prints counts only; it never calls the API,
+writes archive entries, or logs profile names, filenames, values, or source bytes.
 
 This demo session has no login or account recovery and is not production
 authentication. Integration tests create isolated temporary SQLite databases;

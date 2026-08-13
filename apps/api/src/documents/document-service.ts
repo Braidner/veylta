@@ -10,6 +10,13 @@ import {
   type FactReviewCommand,
   type FactReviewOutcome,
   type FactReviewResponse,
+  HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
+  HEALTH_SUMMARY_CONTRACT_VERSION,
+  HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+  type HealthSummary,
+  type HealthSummaryComparisonResponse,
+  type HealthSummaryHistoryResponse,
+  type HealthSummaryResponse,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorCatalogResponse,
   type IndicatorComparison,
@@ -17,9 +24,12 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
   type LabFactReferenceRange,
   type LabFactValidationIssue,
+  MAX_HEALTH_SUMMARY_EVIDENCE,
+  MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
+  MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
   OBJECT_STORAGE_CONTRACT_VERSION,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
@@ -28,8 +38,10 @@ import {
   type ProfileOverviewResponse,
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
+  SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
   type SyntheticDocumentContentType,
   type SyntheticEvidenceBundleManifest,
+  type SyntheticProfileExportManifest,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
@@ -78,6 +90,20 @@ export interface ObservationHistoryQuery {
   cursor?: string;
 }
 
+export interface HealthSummaryQuery {
+  version?: string;
+}
+
+export interface HealthSummaryHistoryQuery {
+  beforeVersion?: string;
+  limit?: string;
+}
+
+export interface HealthSummaryComparisonQuery {
+  fromVersion: string;
+  toVersion: string;
+}
+
 export interface IndicatorSeriesQuery {
   unit: string;
   limit?: string;
@@ -99,6 +125,11 @@ export interface DocumentService {
     correlationId: string,
   ): Promise<DocumentContent>;
   getEvidenceBundle(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    correlationId: string,
+  ): Promise<EvidenceBundleContent>;
+  getPortableProfileExport(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
     correlationId: string,
@@ -129,6 +160,24 @@ export interface DocumentService {
     scope: { familyId: string; profileId: string },
     correlationId: string,
   ): Promise<ProfileOverviewResponse>;
+  getHealthSummary(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    query: HealthSummaryQuery,
+    correlationId: string,
+  ): Promise<HealthSummaryResponse>;
+  getHealthSummaryHistory(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    query: HealthSummaryHistoryQuery,
+    correlationId: string,
+  ): Promise<HealthSummaryHistoryResponse>;
+  getHealthSummaryComparison(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    query: HealthSummaryComparisonQuery,
+    correlationId: string,
+  ): Promise<HealthSummaryComparisonResponse>;
   getIndicatorCatalog(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -166,6 +215,15 @@ export interface DocumentService {
 
 export interface DocumentServiceOptions {
   maxDocumentBytes: number;
+}
+
+interface ProfileArchiveOptions {
+  contractVersion:
+    | typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION
+    | typeof SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION;
+  action: "profile.evidence_bundle.exported" | "profile.portable_export.exported";
+  maximumDocuments: number;
+  failWhenOverLimit: boolean;
 }
 
 interface Queryable {
@@ -368,6 +426,70 @@ interface EvidenceBundleProfileRow {
 
 interface EvidenceBundleDocumentRow extends DocumentRow {}
 
+interface HealthSummaryRow {
+  id: string;
+  summary_id: string;
+  version: number;
+  created_at: string;
+  previous_summary_id: string | null;
+  previous_version: number | null;
+  previous_created_at: string | null;
+  included_evidence_count: number;
+  available_confirmed_observation_count: number;
+  missing_data: string;
+  recommendation_codes: string;
+  observation_id: string;
+  position: number;
+  is_new_since_previous_summary: number;
+  canonical_code: string | null;
+  source_name: string;
+  source_value: string;
+  source_unit: string;
+  normalized_value: string | null;
+  normalized_unit: string | null;
+  conversion_version: string | null;
+  sampled_at: string | null;
+  resulted_at: string | null;
+  uploaded_at: string;
+  specimen_type: string | null;
+  laboratory: string | null;
+  source_fragment: string;
+  extraction_confidence: number;
+  confirmed_at: string;
+  confirmed_by_user_id: string;
+  confirmed_by_display_name: string;
+  document_id: string;
+  document_version_id: string;
+  page_number: number;
+  timeline_at: string;
+  reference_source_text: string | null;
+  reference_source_low: string | null;
+  reference_source_high: string | null;
+  reference_source_unit: string | null;
+  reference_laboratory_out_of_range: number | null;
+  reference_normalized_low: string | null;
+  reference_normalized_high: string | null;
+  reference_normalized_unit: string | null;
+  reference_conversion_version: string | null;
+}
+
+interface HealthSummaryVersionRow {
+  id: string;
+  version: number;
+  created_at: string;
+  included_evidence_count: number;
+  available_confirmed_observation_count: number;
+  actual_evidence_count: number;
+  new_evidence_count: number;
+}
+
+interface HealthSummarySelectorRow {
+  id: string;
+  version: number;
+  created_at: string;
+  included_evidence_count: number;
+}
+
 interface RetryRequestRow {
   document_version_id: string;
   created_at: string;
@@ -474,6 +596,36 @@ function indicatorSeriesLimit(value: string | undefined): number {
     throw new DomainValidationError();
   }
   return limit;
+}
+
+function healthSummaryVersion(value: string | undefined): number | null {
+  if (value === undefined) return null;
+  if (!/^[1-9][0-9]{0,8}$/.test(value)) throw new DomainValidationError();
+  const version = Number(value);
+  if (!Number.isSafeInteger(version) || version < 1) throw new DomainValidationError();
+  return version;
+}
+
+function healthSummaryHistoryLimit(value: string | undefined): number {
+  if (value === undefined) return 25;
+  if (!/^(?:[1-9]|[1-4][0-9]|50)$/.test(value)) throw new DomainValidationError();
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE) {
+    throw new DomainValidationError();
+  }
+  return limit;
+}
+
+function healthSummaryComparisonVersions(query: HealthSummaryComparisonQuery): {
+  fromVersion: number;
+  toVersion: number;
+} {
+  const fromVersion = healthSummaryVersion(query.fromVersion);
+  const toVersion = healthSummaryVersion(query.toVersion);
+  if (fromVersion === null || toVersion === null || fromVersion >= toVersion) {
+    throw new DomainValidationError();
+  }
+  return { fromVersion, toVersion };
 }
 
 function indicatorUnit(value: string): string {
@@ -1032,6 +1184,163 @@ async function audit(
   );
 }
 
+async function createHealthSummaryIfNeeded(
+  client: Queryable,
+  input: {
+    familyId: string;
+    profileId: string;
+    extractionRunId: string;
+    actorUserId: string;
+    correlationId: string;
+    now: Date;
+  },
+): Promise<void> {
+  const finalizedRunHasConfirmedEvidence = await client.query<{ id: string }>(
+    `SELECT observation.id
+       FROM observations observation
+       JOIN extracted_facts fact
+         ON fact.family_id = observation.family_id
+        AND fact.id = observation.source_extracted_fact_id
+      WHERE observation.family_id = $1
+        AND fact.extraction_run_id = $2
+        AND observation.status = 'confirmed'
+      LIMIT 1`,
+    [input.familyId, input.extractionRunId],
+  );
+  if (finalizedRunHasConfirmedEvidence.rows[0] === undefined) return;
+  const evidenceRows = await client.query<{
+    id: string;
+    sampled_at: string | null;
+    resulted_at: string | null;
+    laboratory: string | null;
+    canonical_code: string | null;
+  }>(
+    `SELECT id, sampled_at, resulted_at, laboratory, canonical_code
+       FROM observations
+      WHERE family_id = $1 AND patient_profile_id = $2 AND status = 'confirmed'
+      ORDER BY COALESCE(sampled_at, resulted_at, uploaded_at) DESC, id DESC
+      LIMIT $3`,
+    [input.familyId, input.profileId, MAX_HEALTH_SUMMARY_EVIDENCE],
+  );
+  if (evidenceRows.rows.length === 0) return;
+
+  const total = await client.query<{ count: number }>(
+    `SELECT count(*) AS count
+       FROM observations
+      WHERE family_id = $1 AND patient_profile_id = $2 AND status = 'confirmed'`,
+    [input.familyId, input.profileId],
+  );
+  const totalConfirmedObservationCount = asCount(
+    total.rows[0]?.count ?? -1,
+    "confirmed observation count",
+  );
+  const previous = (
+    await client.query<{ id: string; version: number }>(
+      `SELECT id, version
+         FROM health_summaries
+        WHERE family_id = $1 AND patient_profile_id = $2
+        ORDER BY version DESC
+        LIMIT 1`,
+      [input.familyId, input.profileId],
+    )
+  ).rows[0];
+  const previousEvidence =
+    previous === undefined
+      ? new Set<string>()
+      : new Set(
+          (
+            await client.query<{ observation_id: string }>(
+              `SELECT observation_id
+                 FROM health_summary_evidence
+                WHERE family_id = $1 AND health_summary_id = $2`,
+              [input.familyId, previous.id],
+            )
+          ).rows.map((row) =>
+            requiredCanonicalUuid(row.observation_id, "previous summary evidence"),
+          ),
+        );
+  const missing = new Set<HealthSummary["missingData"][number]>();
+  for (const evidence of evidenceRows.rows) {
+    if (evidence.sampled_at === null) missing.add("sample_date");
+    if (evidence.resulted_at === null) missing.add("result_date");
+    if (evidence.laboratory === null) missing.add("laboratory");
+    if (evidence.canonical_code === null) missing.add("canonical_indicator");
+  }
+  const pendingReview = await client.query<{ count: number }>(
+    `SELECT count(DISTINCT r.id) AS count
+       FROM extraction_runs r
+       JOIN document_versions version
+         ON version.family_id = r.family_id AND version.id = r.document_version_id
+       JOIN documents document
+         ON document.family_id = version.family_id AND document.id = version.document_id
+       JOIN extracted_facts fact
+         ON fact.family_id = r.family_id AND fact.extraction_run_id = r.id
+       LEFT JOIN review_decisions decision
+         ON decision.family_id = fact.family_id AND decision.extracted_fact_id = fact.id
+      WHERE r.family_id = $1
+        AND document.patient_profile_id = $2
+        AND r.status = 'awaiting_review'
+        AND decision.id IS NULL`,
+    [input.familyId, input.profileId],
+  );
+  const recommendationCodes: HealthSummary["recommendations"][number]["code"][] = [
+    "prepare_source_for_clinician",
+    ...(asCount(pendingReview.rows[0]?.count ?? -1, "pending review count") > 0
+      ? (["complete_pending_review"] as const)
+      : []),
+  ];
+  const now = input.now.toISOString();
+  const summaryId = randomUUID();
+  const version =
+    previous === undefined ? 1 : asCount(previous.version, "previous summary version") + 1;
+  await client.query(
+    `INSERT INTO health_summaries
+       (id, family_id, patient_profile_id, version, previous_summary_id,
+        summary_contract_version, included_evidence_count, available_confirmed_observation_count,
+        missing_data, recommendation_codes, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+    [
+      summaryId,
+      input.familyId,
+      input.profileId,
+      version,
+      previous?.id ?? null,
+      HEALTH_SUMMARY_CONTRACT_VERSION,
+      evidenceRows.rows.length,
+      totalConfirmedObservationCount,
+      [...missing].sort(),
+      recommendationCodes,
+      now,
+    ],
+  );
+  for (const [index, evidence] of evidenceRows.rows.entries()) {
+    const observationId = requiredCanonicalUuid(evidence.id, "summary evidence observation");
+    await client.query(
+      `INSERT INTO health_summary_evidence
+         (health_summary_id, family_id, observation_id, position, is_new_since_previous_summary, created_at)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [
+        summaryId,
+        input.familyId,
+        observationId,
+        index + 1,
+        previousEvidence.has(observationId) ? 0 : 1,
+        now,
+      ],
+    );
+  }
+  await audit(client, {
+    familyId: input.familyId,
+    actorUserId: input.actorUserId,
+    action: "profile.health_summary.generated",
+    resourceType: "HealthSummary",
+    resourceId: summaryId,
+    correlationId: input.correlationId,
+    createdAt: input.now,
+    contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+  });
+}
+
 async function documentRow(
   client: Queryable,
   actor: SessionActor,
@@ -1053,19 +1362,17 @@ async function documentRow(
             b.storage_key,
             v.id AS document_version_id
      FROM documents d
+     JOIN patient_profiles p
+       ON p.family_id = d.family_id
+      AND p.id = d.patient_profile_id
+      AND p.archived_at IS NULL
      JOIN family_memberships m
        ON m.family_id = d.family_id
       AND m.user_id = $4
       AND m.status = 'active'
       AND (
         m.role = 'owner'
-        OR (m.role = 'adult_member' AND d.patient_profile_id = (
-          SELECT p.id
-            FROM patient_profiles p
-           WHERE p.family_id = d.family_id
-             AND p.id = d.patient_profile_id
-             AND p.linked_user_id = m.user_id
-        ))
+        OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
         OR (
           $5 = 'read'
           AND m.role IN ('adult_member', 'caregiver')
@@ -1698,6 +2005,171 @@ function observationHistoryItem(
   };
 }
 
+const healthSummaryMissingData = new Set([
+  "confirmed_observations",
+  "sample_date",
+  "result_date",
+  "laboratory",
+  "canonical_indicator",
+] as const);
+const healthSummaryRecommendationCodes = new Set([
+  "prepare_source_for_clinician",
+  "complete_pending_review",
+] as const);
+
+function healthSummaryStringArray<T extends string>(
+  value: string,
+  allowed: ReadonlySet<T>,
+  label: string,
+): readonly T[] {
+  const parsed = parseStoredObject<unknown>(value, label);
+  if (
+    !Array.isArray(parsed) ||
+    parsed.some((entry) => typeof entry !== "string" || !allowed.has(entry as T)) ||
+    new Set(parsed).size !== parsed.length
+  ) {
+    throw new ObjectStorageIntegrityError(`Stored ${label} is invalid`);
+  }
+  return parsed as readonly T[];
+}
+
+function healthSummaryResponse(
+  scope: { familyId: string; profileId: string },
+  rows: readonly HealthSummaryRow[],
+): HealthSummaryResponse {
+  const first = rows[0];
+  if (first === undefined) {
+    return { contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION, summary: null };
+  }
+  const summaryId = requiredCanonicalUuid(first.summary_id, "health summary");
+  const version = asCount(first.version, "health summary version");
+  if (version < 1)
+    throw new ObjectStorageIntegrityError("Stored health summary version is invalid");
+  const createdAt = canonicalTimestamp(first.created_at);
+  const includedEvidenceCount = asCount(
+    first.included_evidence_count,
+    "health summary evidence count",
+  );
+  const totalConfirmedObservationCount = asCount(
+    first.available_confirmed_observation_count,
+    "health summary confirmed observation count",
+  );
+  if (
+    includedEvidenceCount < 1 ||
+    includedEvidenceCount > MAX_HEALTH_SUMMARY_EVIDENCE ||
+    totalConfirmedObservationCount < includedEvidenceCount ||
+    rows.length !== includedEvidenceCount
+  ) {
+    throw new ObjectStorageIntegrityError("Stored health summary evidence count is invalid");
+  }
+  const previous =
+    first.previous_summary_id === null
+      ? (() => {
+          if (
+            version !== 1 ||
+            first.previous_version !== null ||
+            first.previous_created_at !== null
+          ) {
+            throw new ObjectStorageIntegrityError("Stored initial health summary is invalid");
+          }
+          return null;
+        })()
+      : (() => {
+          const previousVersion = asCount(first.previous_version ?? -1, "previous summary version");
+          if (previousVersion !== version - 1 || first.previous_created_at === null) {
+            throw new ObjectStorageIntegrityError("Stored previous health summary is invalid");
+          }
+          return {
+            id: requiredCanonicalUuid(first.previous_summary_id, "previous health summary"),
+            version: previousVersion,
+            createdAt: canonicalTimestamp(first.previous_created_at),
+          };
+        })();
+  const missingData = healthSummaryStringArray(
+    first.missing_data,
+    healthSummaryMissingData,
+    "health summary missing data",
+  );
+  const recommendations = healthSummaryStringArray(
+    first.recommendation_codes,
+    healthSummaryRecommendationCodes,
+    "health summary recommendation codes",
+  ).map((code) => ({ code }));
+  const evidence = rows.map((row, index) => {
+    if (
+      row.summary_id !== first.summary_id ||
+      row.version !== first.version ||
+      row.created_at !== first.created_at ||
+      row.previous_summary_id !== first.previous_summary_id ||
+      row.included_evidence_count !== first.included_evidence_count ||
+      row.available_confirmed_observation_count !== first.available_confirmed_observation_count ||
+      row.missing_data !== first.missing_data ||
+      row.recommendation_codes !== first.recommendation_codes
+    ) {
+      throw new ObjectStorageIntegrityError("Stored health summary rows are inconsistent");
+    }
+    if (row.is_new_since_previous_summary !== 0 && row.is_new_since_previous_summary !== 1) {
+      throw new ObjectStorageIntegrityError("Stored health summary evidence state is invalid");
+    }
+    if (asCount(row.position, "health summary evidence position") !== index + 1) {
+      throw new ObjectStorageIntegrityError("Stored health summary evidence order is invalid");
+    }
+    return {
+      isNewSincePreviousSummary: row.is_new_since_previous_summary === 1,
+      observation: observationHistoryItem(row, scope),
+    };
+  });
+  const syntheticEvidence = evidence.filter(
+    ({ observation }) =>
+      observation.canonicalCode !== null &&
+      syntheticIndicatorCatalog.has(observation.canonicalCode),
+  );
+  const otherEvidence = evidence.filter(
+    ({ observation }) =>
+      observation.canonicalCode === null ||
+      !syntheticIndicatorCatalog.has(observation.canonicalCode),
+  );
+  const groups: HealthSummary["groups"] = [
+    ...(syntheticEvidence.length > 0
+      ? [
+          {
+            id: "synthetic_laboratory" as const,
+            label: "Подтверждённые синтетические показатели",
+            evidence: syntheticEvidence,
+          },
+        ]
+      : []),
+    ...(otherEvidence.length > 0
+      ? [
+          {
+            id: "other_confirmed_source" as const,
+            label: "Другие подтверждённые источники",
+            evidence: otherEvidence,
+          },
+        ]
+      : []),
+  ];
+  const newEvidenceCount = evidence.filter(
+    ({ isNewSincePreviousSummary }) => isNewSincePreviousSummary,
+  ).length;
+  return {
+    contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+    summary: {
+      id: summaryId,
+      version,
+      createdAt,
+      previous,
+      evidenceScope: { includedCount: includedEvidenceCount, totalConfirmedObservationCount },
+      groups,
+      newEvidenceCount,
+      carriedForwardEvidenceCount: evidence.length - newEvidenceCount,
+      missingData,
+      recommendations,
+      redFlagStatus: "not_evaluated",
+    },
+  };
+}
+
 async function resetDeadLetterJob(
   client: DatabaseClient,
   scope: { familyId: string; documentVersionId: string; jobId: string },
@@ -1726,6 +2198,157 @@ export function createDocumentService(
     options.maxDocumentBytes < pngSignature.byteLength
   ) {
     throw new Error("maxDocumentBytes must fit a document signature");
+  }
+
+  async function createProfileArchive(
+    actor: SessionActor,
+    requestedScope: { familyId: string; profileId: string },
+    correlationId: string,
+    archiveOptions: ProfileArchiveOptions,
+  ): Promise<EvidenceBundleContent> {
+    const scope = canonicalProfileScope(requestedScope);
+    return database.transaction(async (client) => {
+      await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
+      const profile = (
+        await client.query<EvidenceBundleProfileRow>(
+          `SELECT id, family_id, display_name, kind, created_at
+             FROM patient_profiles
+            WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
+          [scope.familyId, scope.profileId],
+        )
+      ).rows[0];
+      if (profile === undefined) throw new ResourceNotFoundError();
+      const documentRows = await client.query<EvidenceBundleDocumentRow>(
+        `SELECT d.id,
+                d.family_id,
+                d.patient_profile_id,
+                d.status,
+                d.original_filename,
+                d.uploaded_at,
+                d.duplicate_of_document_id,
+                duplicate.patient_profile_id AS duplicate_profile_id,
+                COALESCE(blob_type.content_type, b.content_type) AS content_type,
+                b.byte_size,
+                b.sha256,
+                b.storage_key,
+                v.id AS document_version_id
+           FROM documents d
+           JOIN document_versions v
+             ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+           JOIN document_blobs b ON b.family_id = v.family_id AND b.id = v.blob_id
+           LEFT JOIN document_blob_content_types blob_type
+             ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
+           LEFT JOIN documents duplicate
+             ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+          WHERE d.family_id = $1 AND d.patient_profile_id = $2
+          ORDER BY d.uploaded_at DESC, d.id DESC
+          LIMIT $3`,
+        [scope.familyId, scope.profileId, archiveOptions.maximumDocuments + 1],
+      );
+      if (
+        archiveOptions.failWhenOverLimit &&
+        documentRows.rows.length > archiveOptions.maximumDocuments
+      ) {
+        throw new DomainConflictError();
+      }
+      const selectedDocumentRows = archiveOptions.failWhenOverLimit
+        ? documentRows.rows
+        : documentRows.rows.slice(0, archiveOptions.maximumDocuments);
+      const documents = selectedDocumentRows.map(evidenceBundleDocument);
+      const documentByVersion = new Map(
+        documents.map((document) => [document.versionId, document]),
+      );
+      const selectedVersionIds = documents.map((document) => document.versionId);
+      const observations: SyntheticEvidenceBundleManifest["observations"][number][] = [];
+      if (selectedVersionIds.length > 0) {
+        const placeholders = selectedVersionIds.map((_, index) => `$${index + 3}`).join(", ");
+        const observationRows = await client.query<ObservationHistoryRow>(
+          `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
+                  o.normalized_value, o.normalized_unit, o.conversion_version,
+                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
+                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
+                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
+                  o.document_id, o.document_version_id, page.page_number,
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM observations o
+             JOIN document_pages page
+               ON page.family_id = o.family_id
+              AND page.id = o.document_page_id
+              AND page.document_version_id = o.document_version_id
+             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = o.family_id
+              AND reference_range.observation_id = o.id
+            WHERE o.family_id = $1
+              AND o.patient_profile_id = $2
+              AND o.status = 'confirmed'
+              AND o.document_version_id IN (${placeholders})
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) ASC, o.id ASC`,
+          [scope.familyId, scope.profileId, ...selectedVersionIds],
+        );
+        for (const row of observationRows.rows) {
+          const item = observationHistoryItem(row, scope);
+          const document = documentByVersion.get(item.sourceDocument.versionId);
+          if (document === undefined) {
+            throw new ObjectStorageIntegrityError("Export observation source is inconsistent");
+          }
+          const { contentPath: _contentPath, ...sourceDocument } = item.sourceDocument;
+          observations.push({
+            ...item,
+            sourceDocument: { ...sourceDocument, archivePath: document.archivePath },
+          });
+        }
+      }
+      const manifest = {
+        contractVersion: archiveOptions.contractVersion,
+        exportedAt: new Date().toISOString(),
+        profile: evidenceBundleProfile(profile),
+        documents,
+        observations,
+      } as SyntheticEvidenceBundleManifest | SyntheticProfileExportManifest;
+      const sources = await Promise.all(
+        selectedDocumentRows.map(async (row, index) => {
+          const document = documents[index];
+          if (document === undefined)
+            throw new ObjectStorageIntegrityError("Export document missing");
+          const expected = {
+            contentType: row.content_type,
+            byteSize: byteSize(row.byte_size),
+            sha256: canonicalChecksum(row.sha256, "export checksum"),
+          };
+          const stored = await storage.get(createObjectStorageKey(row.storage_key), expected);
+          if (!metadataMatches(stored.metadata, expected)) {
+            throw new ObjectStorageIntegrityError("Export storage metadata is inconsistent");
+          }
+          const chunks: Buffer[] = [];
+          for await (const chunk of stored.body) {
+            chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+          }
+          return { path: document.archivePath, bytes: Buffer.concat(chunks) };
+        }),
+      );
+      const archive = createSyntheticEvidenceBundle({ manifest, sources });
+      await audit(client, {
+        familyId: scope.familyId,
+        actorUserId: actor.userId,
+        action: archiveOptions.action,
+        resourceType: "PatientProfile",
+        resourceId: scope.profileId,
+        correlationId,
+        createdAt: new Date(),
+        contractVersion: archiveOptions.contractVersion,
+      });
+      return { body: Readable.from([archive]), byteSize: archive.length };
+    });
   }
 
   return {
@@ -2427,6 +3050,343 @@ export function createDocumentService(
       });
     },
 
+    async getHealthSummary(actor, requestedScope, requestedQuery, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const requestedVersion = healthSummaryVersion(requestedQuery.version);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const storedSummary = (
+          await client.query<{ id: string }>(
+            `SELECT id
+               FROM health_summaries
+              WHERE family_id = $1 AND patient_profile_id = $2
+                AND ($3 IS NULL OR version = $3)
+              ORDER BY version DESC
+              LIMIT 1`,
+            [scope.familyId, scope.profileId, requestedVersion],
+          )
+        ).rows[0];
+        if (requestedVersion !== null && storedSummary === undefined)
+          throw new ResourceNotFoundError();
+        const rows = await client.query<HealthSummaryRow>(
+          `SELECT observation.id,
+                  summary.id AS summary_id,
+                  summary.version,
+                  summary.created_at,
+                  summary.previous_summary_id,
+                  previous.version AS previous_version,
+                  previous.created_at AS previous_created_at,
+                  summary.included_evidence_count,
+                  summary.available_confirmed_observation_count,
+                  summary.missing_data,
+                  summary.recommendation_codes,
+                  evidence.observation_id,
+                  evidence.position,
+                  evidence.is_new_since_previous_summary,
+                  observation.canonical_code,
+                  observation.source_name,
+                  observation.source_value,
+                  observation.source_unit,
+                  observation.normalized_value,
+                  observation.normalized_unit,
+                  observation.conversion_version,
+                  observation.sampled_at,
+                  observation.resulted_at,
+                  observation.uploaded_at,
+                  observation.specimen_type,
+                  observation.laboratory,
+                  observation.source_fragment,
+                  observation.extraction_confidence,
+                  observation.confirmed_at,
+                  observation.confirmed_by_user_id,
+                  reviewer.display_name AS confirmed_by_display_name,
+                  observation.document_id,
+                  observation.document_version_id,
+                  page.page_number,
+                  COALESCE(observation.sampled_at, observation.resulted_at, observation.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM health_summaries summary
+             JOIN health_summary_evidence evidence
+               ON evidence.family_id = summary.family_id AND evidence.health_summary_id = summary.id
+             JOIN observations observation
+               ON observation.family_id = evidence.family_id AND observation.id = evidence.observation_id
+             JOIN document_pages page
+               ON page.family_id = observation.family_id
+              AND page.id = observation.document_page_id
+              AND page.document_version_id = observation.document_version_id
+             JOIN users reviewer ON reviewer.id = observation.confirmed_by_user_id
+             LEFT JOIN health_summaries previous
+               ON previous.family_id = summary.family_id AND previous.id = summary.previous_summary_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = observation.family_id
+              AND reference_range.observation_id = observation.id
+            WHERE summary.family_id = $1
+              AND summary.patient_profile_id = $2
+              AND summary.id = $3
+            ORDER BY evidence.position ASC
+            LIMIT $4`,
+          [scope.familyId, scope.profileId, storedSummary?.id ?? null, MAX_HEALTH_SUMMARY_EVIDENCE],
+        );
+        if (storedSummary !== undefined && rows.rows.length === 0) {
+          throw new ObjectStorageIntegrityError(
+            "Stored health summary has no readable confirmed evidence",
+          );
+        }
+        const response = healthSummaryResponse(scope, rows.rows);
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.health_summary.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: HEALTH_SUMMARY_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getHealthSummaryHistory(actor, requestedScope, requestedQuery, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const beforeVersion = healthSummaryVersion(requestedQuery.beforeVersion);
+      const limit = healthSummaryHistoryLimit(requestedQuery.limit);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const rows = await client.query<HealthSummaryVersionRow>(
+          `SELECT summary.id,
+                  summary.version,
+                  summary.created_at,
+                  summary.included_evidence_count,
+                  summary.available_confirmed_observation_count,
+                  COUNT(evidence.observation_id) AS actual_evidence_count,
+                  SUM(CASE WHEN evidence.is_new_since_previous_summary = 1 THEN 1 ELSE 0 END)
+                    AS new_evidence_count
+             FROM health_summaries summary
+             JOIN health_summary_evidence evidence
+               ON evidence.family_id = summary.family_id AND evidence.health_summary_id = summary.id
+            WHERE summary.family_id = $1
+              AND summary.patient_profile_id = $2
+              AND ($3 IS NULL OR summary.version < $3)
+            GROUP BY summary.id, summary.version, summary.created_at, summary.included_evidence_count,
+                     summary.available_confirmed_observation_count
+            ORDER BY summary.version DESC
+            LIMIT $4`,
+          [scope.familyId, scope.profileId, beforeVersion, limit + 1],
+        );
+        const pageRows = rows.rows.slice(0, limit);
+        const versions = pageRows.map((row) => {
+          const includedEvidenceCount = asCount(
+            row.included_evidence_count,
+            "health summary history evidence count",
+          );
+          const totalConfirmedObservationCount = asCount(
+            row.available_confirmed_observation_count,
+            "health summary history confirmed observation count",
+          );
+          const newEvidenceCount = asCount(
+            row.new_evidence_count,
+            "health summary history new evidence",
+          );
+          const actualEvidenceCount = asCount(
+            row.actual_evidence_count,
+            "health summary history actual evidence count",
+          );
+          if (
+            includedEvidenceCount < 1 ||
+            actualEvidenceCount !== includedEvidenceCount ||
+            totalConfirmedObservationCount < includedEvidenceCount ||
+            newEvidenceCount > includedEvidenceCount
+          ) {
+            throw new ObjectStorageIntegrityError("Stored health summary history is invalid");
+          }
+          const version = asCount(row.version, "health summary history version");
+          if (version < 1) {
+            throw new ObjectStorageIntegrityError(
+              "Stored health summary history version is invalid",
+            );
+          }
+          return {
+            id: requiredCanonicalUuid(row.id, "health summary history id"),
+            version,
+            createdAt: canonicalTimestamp(row.created_at),
+            includedEvidenceCount,
+            totalConfirmedObservationCount,
+            newEvidenceCount,
+            carriedForwardEvidenceCount: includedEvidenceCount - newEvidenceCount,
+          };
+        });
+        const last = versions.at(-1);
+        const response: HealthSummaryHistoryResponse = {
+          contractVersion: HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+          versions,
+          nextBeforeVersion: rows.rows.length > limit && last !== undefined ? last.version : null,
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.health_summary_history.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
+    async getHealthSummaryComparison(actor, requestedScope, requestedQuery, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const { fromVersion, toVersion } = healthSummaryComparisonVersions(requestedQuery);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const summaries = await client.query<HealthSummarySelectorRow>(
+          `SELECT id, version, created_at, included_evidence_count
+             FROM health_summaries
+            WHERE family_id = $1
+              AND patient_profile_id = $2
+              AND version IN ($3, $4)
+            ORDER BY version ASC`,
+          [scope.familyId, scope.profileId, fromVersion, toVersion],
+        );
+        const baseRow = summaries.rows[0];
+        const targetRow = summaries.rows[1];
+        if (
+          baseRow === undefined ||
+          targetRow === undefined ||
+          asCount(baseRow.version, "comparison base summary version") !== fromVersion ||
+          asCount(targetRow.version, "comparison target summary version") !== toVersion
+        ) {
+          throw new ResourceNotFoundError();
+        }
+        const rows = await client.query<ObservationHistoryRow & { summary_version: number }>(
+          `SELECT summary.version AS summary_version,
+                  observation.id,
+                  observation.canonical_code,
+                  observation.source_name,
+                  observation.source_value,
+                  observation.source_unit,
+                  observation.normalized_value,
+                  observation.normalized_unit,
+                  observation.conversion_version,
+                  observation.sampled_at,
+                  observation.resulted_at,
+                  observation.uploaded_at,
+                  observation.specimen_type,
+                  observation.laboratory,
+                  observation.source_fragment,
+                  observation.extraction_confidence,
+                  observation.confirmed_at,
+                  observation.confirmed_by_user_id,
+                  reviewer.display_name AS confirmed_by_display_name,
+                  observation.document_id,
+                  observation.document_version_id,
+                  page.page_number,
+                  COALESCE(observation.sampled_at, observation.resulted_at, observation.uploaded_at) AS timeline_at,
+                  reference_range.source_text AS reference_source_text,
+                  reference_range.source_low AS reference_source_low,
+                  reference_range.source_high AS reference_source_high,
+                  reference_range.source_unit AS reference_source_unit,
+                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
+                  reference_range.normalized_low AS reference_normalized_low,
+                  reference_range.normalized_high AS reference_normalized_high,
+                  reference_range.normalized_unit AS reference_normalized_unit,
+                  reference_range.conversion_version AS reference_conversion_version
+             FROM health_summaries summary
+             JOIN health_summary_evidence evidence
+               ON evidence.family_id = summary.family_id AND evidence.health_summary_id = summary.id
+             JOIN observations observation
+               ON observation.family_id = evidence.family_id AND observation.id = evidence.observation_id
+             JOIN document_pages page
+               ON page.family_id = observation.family_id
+              AND page.id = observation.document_page_id
+              AND page.document_version_id = observation.document_version_id
+             JOIN users reviewer ON reviewer.id = observation.confirmed_by_user_id
+             LEFT JOIN observation_reference_ranges reference_range
+               ON reference_range.family_id = observation.family_id
+              AND reference_range.observation_id = observation.id
+            WHERE summary.family_id = $1
+              AND summary.patient_profile_id = $2
+              AND summary.version IN ($3, $4)
+            ORDER BY summary.version ASC, evidence.position ASC`,
+          [scope.familyId, scope.profileId, fromVersion, toVersion],
+        );
+        const baseEvidence = new Map<string, ObservationHistoryResponse["items"][number]>();
+        const targetEvidence = new Map<string, ObservationHistoryResponse["items"][number]>();
+        for (const row of rows.rows) {
+          const version = asCount(row.summary_version, "comparison evidence version");
+          const target =
+            version === fromVersion ? baseEvidence : version === toVersion ? targetEvidence : null;
+          if (target === null)
+            throw new ObjectStorageIntegrityError("Stored comparison evidence is invalid");
+          const observation = observationHistoryItem(row, scope);
+          if (target.has(observation.id)) {
+            throw new ObjectStorageIntegrityError("Stored comparison evidence is duplicated");
+          }
+          target.set(observation.id, observation);
+        }
+        const baseCount = asCount(
+          baseRow.included_evidence_count,
+          "comparison base summary evidence count",
+        );
+        const targetCount = asCount(
+          targetRow.included_evidence_count,
+          "comparison target summary evidence count",
+        );
+        if (
+          baseCount < 1 ||
+          baseCount > MAX_HEALTH_SUMMARY_EVIDENCE ||
+          targetCount < 1 ||
+          targetCount > MAX_HEALTH_SUMMARY_EVIDENCE ||
+          baseEvidence.size !== baseCount ||
+          targetEvidence.size !== targetCount
+        ) {
+          throw new ObjectStorageIntegrityError(
+            "Stored comparison summary has no readable evidence",
+          );
+        }
+        const response: HealthSummaryComparisonResponse = {
+          contractVersion: HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
+          base: {
+            id: requiredCanonicalUuid(baseRow.id, "comparison base summary"),
+            version: fromVersion,
+            createdAt: canonicalTimestamp(baseRow.created_at),
+          },
+          target: {
+            id: requiredCanonicalUuid(targetRow.id, "comparison target summary"),
+            version: toVersion,
+            createdAt: canonicalTimestamp(targetRow.created_at),
+          },
+          newlyIncluded: [...targetEvidence.values()].filter(
+            (observation) => !baseEvidence.has(observation.id),
+          ),
+          noLongerIncluded: [...baseEvidence.values()].filter(
+            (observation) => !targetEvidence.has(observation.id),
+          ),
+        };
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.health_summary_comparison.opened",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
+        });
+        return response;
+      });
+    },
+
     async getIndicatorCatalog(actor, requestedScope, correlationId) {
       const scope = canonicalProfileScope(requestedScope);
       return database.transaction(async (client) => {
@@ -2874,7 +3834,7 @@ export function createDocumentService(
           correlationId,
           createdAt: now,
         });
-        await client.query(
+        const completedRun = await client.query(
           `UPDATE extraction_runs
               SET status = 'completed'
             WHERE family_id = $1 AND id = $2 AND status = 'awaiting_review'
@@ -2889,6 +3849,16 @@ export function createDocumentService(
               )`,
           [scope.familyId, fact.extraction_run_id],
         );
+        if (completedRun.rowCount === 1) {
+          await createHealthSummaryIfNeeded(client, {
+            familyId: scope.familyId,
+            profileId: document.patient_profile_id,
+            extractionRunId: fact.extraction_run_id,
+            actorUserId: actor.userId,
+            correlationId,
+            now,
+          });
+        }
         return {
           response: factReviewResponse({
             id: decisionId,
@@ -3015,141 +3985,20 @@ export function createDocumentService(
     },
 
     async getEvidenceBundle(actor, requestedScope, correlationId) {
-      const scope = canonicalProfileScope(requestedScope);
-      return database.transaction(async (client) => {
-        await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
-        const profile = (
-          await client.query<EvidenceBundleProfileRow>(
-            `SELECT id, family_id, display_name, kind, created_at
-               FROM patient_profiles
-              WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
-            [scope.familyId, scope.profileId],
-          )
-        ).rows[0];
-        if (profile === undefined) throw new ResourceNotFoundError();
-        const documentRows = await client.query<EvidenceBundleDocumentRow>(
-          `SELECT d.id,
-                  d.family_id,
-                  d.patient_profile_id,
-                  d.status,
-                  d.original_filename,
-                  d.uploaded_at,
-                  d.duplicate_of_document_id,
-                  duplicate.patient_profile_id AS duplicate_profile_id,
-                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
-                  b.byte_size,
-                  b.sha256,
-                  b.storage_key,
-                  v.id AS document_version_id
-             FROM documents d
-             JOIN document_versions v
-               ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
-             JOIN document_blobs b ON b.family_id = v.family_id AND b.id = v.blob_id
-             LEFT JOIN document_blob_content_types blob_type
-               ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
-             LEFT JOIN documents duplicate
-               ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
-            WHERE d.family_id = $1 AND d.patient_profile_id = $2
-            ORDER BY d.uploaded_at DESC, d.id DESC
-            LIMIT $3`,
-          [scope.familyId, scope.profileId, MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS],
-        );
-        const documents = documentRows.rows.map(evidenceBundleDocument);
-        const documentByVersion = new Map(
-          documents.map((document) => [document.versionId, document]),
-        );
-        const selectedVersionIds = documents.map((document) => document.versionId);
-        const observations: SyntheticEvidenceBundleManifest["observations"][number][] = [];
-        if (selectedVersionIds.length > 0) {
-          const selectedVersionPlaceholders = selectedVersionIds
-            .map((_, index) => `$${index + 3}`)
-            .join(", ");
-          const observationRows = await client.query<ObservationHistoryRow>(
-            `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
-                  o.normalized_value, o.normalized_unit, o.conversion_version,
-                  o.sampled_at, o.resulted_at, o.uploaded_at, o.specimen_type, o.laboratory,
-                  o.source_fragment, o.extraction_confidence, o.confirmed_at,
-                  o.confirmed_by_user_id, reviewer.display_name AS confirmed_by_display_name,
-                  o.document_id, o.document_version_id, page.page_number,
-                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at,
-                  reference_range.source_text AS reference_source_text,
-                  reference_range.source_low AS reference_source_low,
-                  reference_range.source_high AS reference_source_high,
-                  reference_range.source_unit AS reference_source_unit,
-                  reference_range.laboratory_out_of_range AS reference_laboratory_out_of_range,
-                  reference_range.normalized_low AS reference_normalized_low,
-                  reference_range.normalized_high AS reference_normalized_high,
-                  reference_range.normalized_unit AS reference_normalized_unit,
-                  reference_range.conversion_version AS reference_conversion_version
-             FROM observations o
-             JOIN document_pages page
-               ON page.family_id = o.family_id
-              AND page.id = o.document_page_id
-              AND page.document_version_id = o.document_version_id
-             JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
-             LEFT JOIN observation_reference_ranges reference_range
-               ON reference_range.family_id = o.family_id
-              AND reference_range.observation_id = o.id
-            WHERE o.family_id = $1
-              AND o.patient_profile_id = $2
-              AND o.status = 'confirmed'
-              AND o.document_version_id IN (${selectedVersionPlaceholders})
-            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) ASC, o.id ASC`,
-            [scope.familyId, scope.profileId, ...selectedVersionIds],
-          );
-          for (const row of observationRows.rows) {
-            const item = observationHistoryItem(row, scope);
-            const document = documentByVersion.get(item.sourceDocument.versionId);
-            if (document === undefined) {
-              throw new ObjectStorageIntegrityError("Export observation source is inconsistent");
-            }
-            const { contentPath: _contentPath, ...sourceDocument } = item.sourceDocument;
-            observations.push({
-              ...item,
-              sourceDocument: { ...sourceDocument, archivePath: document.archivePath },
-            });
-          }
-        }
-        const manifest: SyntheticEvidenceBundleManifest = {
-          contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
-          exportedAt: new Date().toISOString(),
-          profile: evidenceBundleProfile(profile),
-          documents,
-          observations,
-        };
-        const sources = await Promise.all(
-          documentRows.rows.map(async (row, index) => {
-            const document = documents[index];
-            if (document === undefined)
-              throw new ObjectStorageIntegrityError("Export document missing");
-            const expected = {
-              contentType: row.content_type,
-              byteSize: byteSize(row.byte_size),
-              sha256: canonicalChecksum(row.sha256, "export checksum"),
-            };
-            const stored = await storage.get(createObjectStorageKey(row.storage_key), expected);
-            if (!metadataMatches(stored.metadata, expected)) {
-              throw new ObjectStorageIntegrityError("Export storage metadata is inconsistent");
-            }
-            const chunks: Buffer[] = [];
-            for await (const chunk of stored.body) {
-              chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-            }
-            return { path: document.archivePath, bytes: Buffer.concat(chunks) };
-          }),
-        );
-        const archive = createSyntheticEvidenceBundle({ manifest, sources });
-        await audit(client, {
-          familyId: scope.familyId,
-          actorUserId: actor.userId,
-          action: "profile.evidence_bundle.exported",
-          resourceType: "PatientProfile",
-          resourceId: scope.profileId,
-          correlationId,
-          createdAt: new Date(),
-          contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
-        });
-        return { body: Readable.from([archive]), byteSize: archive.length };
+      return createProfileArchive(actor, requestedScope, correlationId, {
+        contractVersion: SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
+        action: "profile.evidence_bundle.exported",
+        maximumDocuments: MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
+        failWhenOverLimit: false,
+      });
+    },
+
+    async getPortableProfileExport(actor, requestedScope, correlationId) {
+      return createProfileArchive(actor, requestedScope, correlationId, {
+        contractVersion: SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
+        action: "profile.portable_export.exported",
+        maximumDocuments: MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
+        failWhenOverLimit: true,
       });
     },
   };

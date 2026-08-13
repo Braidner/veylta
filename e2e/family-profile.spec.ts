@@ -81,6 +81,37 @@ test("an owner can inspect the payload-free family activity log", async ({ page 
   await expect(auditLog).not.toContainText("correlation");
 });
 
+test("an owner archives and restores a profile without deleting it", async ({ page }) => {
+  const names = await registerDemoFamily(page);
+  const ownerProfileUrl = page.url();
+
+  await page.getByRole("button", { name: "Добавить профиль" }).click();
+  await page.getByLabel("Имя нового профиля").fill(names.dependent);
+  await page.getByRole("button", { name: "Создать профиль" }).click();
+  await expect(page.getByRole("heading", { level: 1, name: names.dependent })).toBeVisible();
+
+  await page.getByLabel("Активный профиль").selectOption({ label: names.profile });
+  await expect(page).toHaveURL(ownerProfileUrl);
+  const archive = page.getByRole("region", { name: "Архив профиля" });
+  await expect(archive).toBeVisible();
+  await archive.getByRole("button", { name: "Архивировать профиль" }).click();
+  await expect(archive.getByText("Подтвердите архивирование", { exact: true })).toBeVisible();
+  await archive.getByRole("button", { name: "Подтвердить архивирование" }).click();
+
+  await expect(page.getByRole("heading", { level: 1, name: names.dependent })).toBeVisible();
+  await expect(page.getByLabel("Активный профиль")).not.toContainText(names.profile);
+
+  const restoredArchive = page.getByRole("region", { name: "Архив профиля" });
+  await restoredArchive.getByRole("button", { name: "Показать архивные профили" }).click();
+  await expect(restoredArchive.getByText(names.profile, { exact: true })).toBeVisible();
+  await restoredArchive.getByRole("button", { name: `Восстановить ${names.profile}` }).click();
+  await expect(restoredArchive.getByText("Архивных профилей пока нет.")).toBeVisible();
+
+  await page.getByLabel("Активный профиль").selectOption({ label: names.profile });
+  await expect(page).toHaveURL(ownerProfileUrl);
+  await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
+});
+
 test("an owner can issue a one-time local adult invitation with no access to another profile", async ({
   page,
 }) => {
