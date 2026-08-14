@@ -85,6 +85,23 @@ test("processing worker timings have safe defaults and reject non-positive value
   });
 });
 
+test("Codex care-plan runtime has an explicit bounded model and timeout", () => {
+  withEnvironment(
+    { CODEX_CARE_PLAN_MODEL: undefined, CODEX_CARE_PLAN_TIMEOUT_MS: undefined },
+    () => {
+      const config = loadConfig();
+      assert.equal(config.codexCarePlanModel, "gpt-5.4-mini");
+      assert.equal(config.codexCarePlanTimeoutMs, 120_000);
+    },
+  );
+  withEnvironment({ CODEX_CARE_PLAN_MODEL: "bad model" }, () => {
+    assert.throws(() => loadConfig(), /CODEX_CARE_PLAN_MODEL/);
+  });
+  withEnvironment({ CODEX_CARE_PLAN_TIMEOUT_MS: "600001" }, () => {
+    assert.throws(() => loadConfig(), /CODEX_CARE_PLAN_TIMEOUT_MS must not exceed 600000/);
+  });
+});
+
 test("the default local object storage stays rooted in the workspace", () => {
   withEnvironment(
     { OBJECT_STORAGE_DRIVER: undefined, OBJECT_STORAGE_ROOT: ".local/test-storage" },

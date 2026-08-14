@@ -1,11 +1,47 @@
 # Architecture
 
+## Target architecture: home-server PWA
+
+ADR 0007 establishes one household server as the authority boundary. SQLite is
+the durable structured store, the configured object root holds immutable source
+bytes, and the browser is an installable client rather than the data custodian.
+
+```mermaid
+flowchart LR
+  U["Household user"] --> P["Installed Veylta PWA"]
+  P --> A["Fastify API"]
+  A --> D[("SQLite")]
+  A --> O["Configured object storage root"]
+  W["Worker"] --> D
+  W --> O
+  A -. "explicit agent request" .-> C["Codex adapter"]
+  C --> X["Local Codex CLI"]
+  X -. "user-owned ChatGPT session" .-> M["Codex model service"]
+```
+
+The PWA owns presentation and human decisions. The API resolves the signed-in
+account and authorizes every profile selector. Only an administrator, the
+profile's linked user, or an explicitly granted actor may open a profile. The
+Codex adapter is optional and never reads or stores Codex OAuth credentials.
+Settings use `codex app-server daemon` only for local runtime status/control.
+One acknowledged care-plan request runs a separate bounded
+`codex exec --ephemeral` job in an empty read-only working directory, with
+tools and user customizations disabled. It receives only the latest confirmed
+summary projection, never an original document.
+
+`StorageController` is the single runtime port used by API and worker. Each
+process loads the authoritative local root and generation from SQLite at start.
+A cache miss checks the generation once, so an already-running worker observes
+a verified administrator relocation without turning every object read into a
+competing SQLite query. The previous root is retained for recovery; cleanup and
+backup policy remain explicit operator work.
+
 ## Decision summary
 
 Veylta uses a small TypeScript monorepo with three deployable processes:
 a Next.js web application, a Fastify API, and a worker. Embedded SQLite through
-Node.js `node:sqlite` stores domain state, explicit schema migrations, audit
-events, and durable idempotent jobs. Original documents live behind versioned
+Node.js `node:sqlite` stores accounts, domain state, explicit schema migrations,
+audit events, and durable idempotent jobs. Original documents live behind versioned
 `ObjectStorage/v1`; the default adapter uses a persistent local filesystem
 directory, and an optional S3-compatible adapter preserves the same contract
 for synthetic deployments.
@@ -29,6 +65,12 @@ snapshot, but never compares versions or derives a change.
 `health-summary-comparison/v1` is an explicit read of two authorized immutable
 snapshots. It returns only their source-set membership delta, and therefore
 does not calculate values, direction, trend, diagnosis, or recommendation.
+`home-care-plan/v1` is the profile-scoped household action boundary. It keeps
+person-authored decisions separate from agent proposals. User actions have no
+source provenance and begin accepted; an agent proposal must bind an immutable
+health summary, rule version, optional included observation, and closed missing
+context before it may be displayed. Only a person may move it from `proposed`
+to `accepted` or `dismissed`.
 
 The local synthetic demo additionally supports a one-time adult or caregiver
 invitation. The code is returned only at issuance and stored only as a SHA-256
@@ -60,7 +102,7 @@ flowchart LR
   O --> L["Persistent local filesystem (default)"]
   O -. "explicit adapter" .-> S["S3-compatible storage (optional)"]
   J --> Q["Local bounded synthetic PDF/image OCR"]
-  J -. "future, owner opt-in" .-> X["External OCR / LLM providers"]
+  J -. "future, owner opt-in" .-> X["External OCR providers"]
 ```
 
 The browser never accesses the database or a storage path directly. The API
@@ -110,6 +152,10 @@ required. Shared code is extracted only when two real consumers need it.
 - On explicit request, reads `health-summary-comparison/v1` under the same
   authorization and shows only the source records added to or absent from the
   target snapshot, with re-authorized document selectors.
+- Reads `home-care-plan/v1` under the same profile authorization. Granted
+  readers see it read-only; administrators, owners, and self-linked adults may
+  add human decisions, request an acknowledged Codex proposal, or explicitly
+  accept/dismiss that proposal.
 - Offers owner/self profile actors a direct local TAR download of no more than
   five synthetic sources plus a checksummed manifest. It is a bounded snapshot,
   not a backup, restore, or production export workflow.

@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 if (existsSync(".env")) process.loadEnvFile(".env");
 
 const commands = [
-  ["api", ["--filter", "@veylta/api", "dev:api"], { DEMO_REGISTRATION_ENABLED: "true" }],
+  ["api", ["--filter", "@veylta/api", "dev:api"], {}],
   ["worker", ["--filter", "@veylta/api", "dev:worker"], {}],
   ["web", ["--filter", "@veylta/web", "dev"], {}],
 ];

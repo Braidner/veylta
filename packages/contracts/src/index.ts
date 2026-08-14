@@ -1,4 +1,6 @@
 export const HTTP_API_VERSION = "v1" as const;
+export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
+export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v1" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
@@ -12,6 +14,7 @@ export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
 export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
 export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
 export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
+export const HOME_CARE_PLAN_CONTRACT_VERSION = "home-care-plan/v1" as const;
 export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
 /**
  * A complete, profile-scoped synthetic export. It is intentionally distinct
@@ -24,6 +27,10 @@ export const SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION = "synthetic-profile-expo
  * hides a profile and its sources from active access; it never deletes them.
  */
 export const PROFILE_ARCHIVE_CONTRACT_VERSION = "profile-archive/v1" as const;
+/** Portable, provider-neutral data layout selected and owned by the user. */
+export const VEYLTA_VAULT_CONTRACT_VERSION = "veylta-vault/v1" as const;
+/** Narrow command/result protocol used by an explicitly connected local agent. */
+export const VEYLTA_AGENT_PROTOCOL_VERSION = "veylta-agent/v1" as const;
 export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
 /**
  * The complete local profile export fails before sending bytes if a profile
@@ -33,12 +40,120 @@ export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
 export const MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS = 10;
 export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
 export const MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE = 50;
+export const CARE_PLAN_CATEGORIES = [
+  "laboratory",
+  "clinician",
+  "nutrition",
+  "activity",
+  "reminder",
+] as const;
+export const CARE_PLAN_ITEM_STATES = ["proposed", "accepted", "completed", "dismissed"] as const;
 export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
 /** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
 export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
+
+export const VEYLTA_VAULT_MEDIA_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const;
+export const VEYLTA_AGENT_COMMAND_TYPES = ["scan_unprocessed", "analyze_document"] as const;
+export const VEYLTA_AGENT_COMMAND_STATES = ["queued", "leased", "completed", "failed"] as const;
+
+export type VeyltaVaultMediaType = (typeof VEYLTA_VAULT_MEDIA_TYPES)[number];
+export type VeyltaAgentCommandType = (typeof VEYLTA_AGENT_COMMAND_TYPES)[number];
+
+/**
+ * Public root metadata. Credentials, provider tokens, local bridge tokens, and
+ * absolute machine paths are intentionally not part of the portable vault.
+ */
+export interface VeyltaVaultManifest {
+  readonly contractVersion: typeof VEYLTA_VAULT_CONTRACT_VERSION;
+  readonly vaultId: string;
+  readonly createdAt: string;
+}
+
+/** Immutable source selector stored next to one user-owned original. */
+export interface VeyltaVaultDocumentManifest {
+  readonly contractVersion: typeof VEYLTA_VAULT_CONTRACT_VERSION;
+  readonly id: string;
+  readonly profileId: string;
+  readonly importedAt: string;
+  readonly mediaType: VeyltaVaultMediaType;
+  readonly byteSize: number;
+  readonly sha256: string;
+  readonly originalFileName: string;
+  /** Slash-separated path relative to the vault root. */
+  readonly sourcePath: string;
+}
+
+interface VeyltaAgentCommandBase {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly id: string;
+  readonly vaultId: string;
+  readonly requestedAt: string;
+}
+
+export interface VeyltaScanUnprocessedCommand extends VeyltaAgentCommandBase {
+  readonly type: "scan_unprocessed";
+  readonly profileId?: string;
+}
+
+export interface VeyltaAnalyzeDocumentCommand extends VeyltaAgentCommandBase {
+  readonly type: "analyze_document";
+  readonly profileId: string;
+  readonly documentId: string;
+  /** Binds every result to the exact immutable input version. */
+  readonly sourceSha256: string;
+}
+
+export type VeyltaAgentCommand = VeyltaScanUnprocessedCommand | VeyltaAnalyzeDocumentCommand;
+
+export interface VeyltaQueuedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "queued";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+}
+
+export interface VeyltaLeasedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "leased";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+  readonly workerId: string;
+  /** One-way digest; the raw lease token is never synchronized in the vault. */
+  readonly leaseTokenHash: string;
+  readonly leasedAt: string;
+  readonly leaseExpiresAt: string;
+}
+
+export interface VeyltaCompletedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "completed";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+  readonly completedAt: string;
+}
+
+export interface VeyltaFailedAgentCommandRecord {
+  readonly protocolVersion: typeof VEYLTA_AGENT_PROTOCOL_VERSION;
+  readonly state: "failed";
+  readonly command: VeyltaAgentCommand;
+  readonly attemptCount: number;
+  readonly queuedAt: string;
+  /** Sanitized machine code only; no document values or prompt text. */
+  readonly failureCode: string;
+  readonly failedAt: string;
+}
+
+export type VeyltaAgentCommandRecord =
+  | VeyltaQueuedAgentCommandRecord
+  | VeyltaLeasedAgentCommandRecord
+  | VeyltaCompletedAgentCommandRecord
+  | VeyltaFailedAgentCommandRecord;
 
 /**
  * The only canonical codes the deterministic synthetic parser can propose.
@@ -95,6 +210,7 @@ export interface HealthStatus {
 }
 
 export type FamilyRole = "owner" | "adult_member" | "caregiver";
+export type AppAccountRole = "admin" | "user";
 export type FamilyInvitationRole = "adult_member" | "caregiver";
 export type PatientProfileKind = "adult" | "dependent";
 export type PatientProfileAccess = "owner" | "self" | "granted_read";
@@ -114,6 +230,104 @@ export interface PatientProfileSummary {
   /** The server-authorized scope this session has for the profile. */
   access: PatientProfileAccess;
   createdAt: string;
+}
+
+export interface AppAccountUser {
+  readonly id: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly role: AppAccountRole;
+}
+
+export interface SetupStatusResponse {
+  readonly contractVersion: typeof ACCOUNT_CONTRACT_VERSION;
+  readonly setupRequired: boolean;
+}
+
+export interface AdminSetupRequest {
+  readonly username: string;
+  readonly password: string;
+  readonly displayName: string;
+}
+
+export interface AdminSetupResponse {
+  readonly contractVersion: typeof ACCOUNT_CONTRACT_VERSION;
+  readonly user: AppAccountUser;
+  readonly family: FamilySummary;
+  readonly profile: PatientProfileSummary;
+}
+
+export interface LoginRequest {
+  readonly username: string;
+  readonly password: string;
+}
+
+export interface LoginResponse {
+  readonly contractVersion: typeof ACCOUNT_CONTRACT_VERSION;
+  readonly user: AppAccountUser;
+}
+
+export interface ManagedAccount {
+  readonly id: string;
+  readonly username: string;
+  readonly displayName: string;
+  readonly role: AppAccountRole;
+  readonly status: "active" | "disabled";
+}
+
+export interface ManagedAccountCreateRequest {
+  readonly username: string;
+  readonly password: string;
+  readonly displayName: string;
+  readonly role: AppAccountRole;
+}
+
+export interface ManagedAccountCreateResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly account: ManagedAccount;
+  readonly profile: PatientProfileSummary;
+}
+
+export interface CodexRuntimeStatus {
+  readonly installed: boolean;
+  readonly authenticated: boolean;
+  readonly authenticationMode: "chatgpt" | "api_key" | "unknown" | null;
+  readonly authenticationOwner: "codex_cli";
+  readonly daemonRunning: boolean;
+  readonly cliVersion: string | null;
+  readonly runtimeVersion: string | null;
+  readonly experimental: true;
+}
+
+export interface HomeStorageStatus {
+  readonly driver: "local" | "s3";
+  readonly rootPath: string | null;
+  readonly state: "stable" | "copying" | "failed";
+  readonly targetRootPath: string | null;
+  readonly generation: number;
+  readonly relocationSupported: boolean;
+  readonly lastFailureCode: "TARGET_INVALID" | "COPY_FAILED" | "VERIFY_FAILED" | null;
+}
+
+export interface HomeSettingsResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly codex: CodexRuntimeStatus;
+  readonly storage: HomeStorageStatus;
+  readonly accounts: readonly ManagedAccount[];
+}
+
+export interface StorageRelocationRequest {
+  readonly rootPath: string;
+}
+
+export interface StorageRelocationResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly storage: HomeStorageStatus;
+}
+
+export interface CodexRuntimeActionResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly codex: CodexRuntimeStatus;
 }
 
 export interface DemoRegistrationRequest {
@@ -265,7 +479,11 @@ export interface SessionResponse {
   contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
   user: {
     id: string;
+    /** Null only for legacy local-demo sessions created before account setup. */
+    username: string | null;
     displayName: string;
+    /** Null only for legacy local-demo sessions created before account setup. */
+    role: AppAccountRole | null;
   };
   families: SessionFamily[];
 }
@@ -502,6 +720,104 @@ export interface HealthSummaryComparisonResponse {
   readonly newlyIncluded: readonly ObservationHistoryItem[];
   /** Confirmed source observations present in base but absent from target. */
   readonly noLongerIncluded: readonly ObservationHistoryItem[];
+}
+
+export type CarePlanCategory = (typeof CARE_PLAN_CATEGORIES)[number];
+export type CarePlanItemState = (typeof CARE_PLAN_ITEM_STATES)[number];
+
+/**
+ * Source binding for an agent/rule proposal. User-authored actions have null
+ * provenance and are never presented as source-derived recommendations.
+ */
+export interface CarePlanProvenance {
+  readonly proposalRunId: string;
+  readonly healthSummary: {
+    readonly id: string;
+    readonly version: number;
+  };
+  readonly sourceObservationId: string | null;
+  readonly modelId: string;
+  readonly runtimeVersion: string;
+  readonly ruleVersion: string;
+  readonly missingContext: readonly string[];
+}
+
+export interface CarePlanItem {
+  readonly id: string;
+  readonly category: CarePlanCategory;
+  readonly title: string;
+  readonly note: string | null;
+  readonly scheduledFor: string | null;
+  readonly state: CarePlanItemState;
+  readonly origin: "user" | "codex";
+  readonly revision: number;
+  readonly provenance: CarePlanProvenance | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface CarePlanResponse {
+  readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
+  readonly profileId: string;
+  readonly canWrite: boolean;
+  readonly evidence: {
+    readonly sourceCount: number;
+    readonly pendingReviewCount: number;
+    readonly confirmedObservationCount: number;
+    readonly latestSummary: {
+      readonly id: string;
+      readonly version: number;
+      readonly createdAt: string;
+    } | null;
+  };
+  readonly items: readonly CarePlanItem[];
+}
+
+export interface CarePlanItemCreateRequest {
+  readonly category: CarePlanCategory;
+  readonly title: string;
+  readonly note: string | null;
+  /** Local calendar date in canonical YYYY-MM-DD form. */
+  readonly scheduledFor: string | null;
+}
+
+export interface CarePlanItemStateRequest {
+  readonly revision: number;
+  readonly state: "accepted" | "completed" | "dismissed";
+  readonly scheduledFor: string | null;
+}
+
+export interface CarePlanItemResponse {
+  readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
+  readonly profileId: string;
+  readonly item: CarePlanItem;
+}
+
+export interface CarePlanProposalRequest {
+  /** Explicit acknowledgement that the confirmed summary is sent to the Codex model service. */
+  readonly acknowledgement: "send_confirmed_summary_to_codex";
+}
+
+export interface CarePlanProposalRun {
+  readonly id: string;
+  readonly healthSummary: {
+    readonly id: string;
+    readonly version: number;
+  };
+  readonly modelId: string;
+  readonly runtimeVersion: string;
+  readonly ruleVersion: string;
+  readonly proposalCount: number;
+  readonly completedAt: string;
+}
+
+export interface CarePlanProposalResponse {
+  readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
+  readonly profileId: string;
+  /** True when the exact summary/model/rule result was already stored. */
+  readonly replayed: boolean;
+  readonly run: CarePlanProposalRun;
+  readonly items: readonly CarePlanItem[];
 }
 
 /**

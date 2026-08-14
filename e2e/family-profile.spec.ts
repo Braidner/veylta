@@ -1,4 +1,5 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
+import { acceptSyntheticInvitation, createSyntheticFamily } from "./support/synthetic-family";
 
 function syntheticNames() {
   const suffix = crypto.randomUUID().slice(0, 8);
@@ -13,17 +14,18 @@ function syntheticNames() {
 async function registerDemoFamily(page: Page) {
   const names = syntheticNames();
 
-  await page.goto("/");
-  await page.getByLabel("Имя владельца").fill(names.owner);
-  await page.getByLabel("Название семьи").fill(names.family);
-  await page.getByLabel("Имя профиля").fill(names.profile);
-  await page.getByRole("button", { name: "Создать пространство" }).click();
-
-  await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
+  await createSyntheticFamily(page, names);
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
   await expect(page).toHaveTitle(`${names.profile} — Veylta`);
   const overview = page.getByRole("region", { name: "Обзор профиля" });
   await expect(overview).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Разделы профиля" })).toBeVisible();
+  await expect(overview.getByRole("heading", { name: "Состояние данных" })).toBeVisible();
+  await expect(overview.getByText("Не оценка здоровья", { exact: true })).toBeVisible();
+  const evidence = overview.getByLabel("Состояние данных");
+  await expect(evidence.getByText("Источники", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Проверка", { exact: true })).toBeVisible();
+  await expect(evidence.getByText("Подтверждено", { exact: true })).toBeVisible();
   await expect(overview.getByText("Ничего не ожидает проверки.")).toBeVisible();
   await expect(overview.getByText("Исходников пока нет.")).toBeVisible();
   await expect(
@@ -64,9 +66,9 @@ test("a synthetic family session survives reload and keeps the active profile in
   await page.getByRole("button", { name: "Выйти" }).click();
 
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.getByRole("heading", { level: 1 })).toContainText(
-    "Создайте семейное пространство",
-  );
+  await expect(
+    page.getByRole("heading", { level: 1, name: /Настройте домашнюю Veylta|Войдите в Veylta/ }),
+  ).toBeVisible();
 });
 
 test("an owner can inspect the payload-free family activity log", async ({ page }) => {
@@ -125,12 +127,12 @@ test("an owner can issue a one-time local adult invitation with no access to ano
   expect(code).toMatch(/^vi_[A-Za-z0-9_-]{43}$/);
 
   await page.getByRole("button", { name: "Выйти" }).click();
-  await page.getByRole("button", { name: "У меня есть код приглашения" }).click();
-  await page.getByLabel("Одноразовый код").fill(code ?? "");
-  await page.getByLabel("Ваше имя").fill(`Участник ${crypto.randomUUID().slice(0, 8)}`);
   const adultProfile = `Личный профиль ${crypto.randomUUID().slice(0, 8)}`;
-  await page.getByLabel("Имя вашего профиля, если приглашены как взрослый").fill(adultProfile);
-  await page.getByRole("button", { name: "Присоединиться к семье" }).click();
+  await acceptSyntheticInvitation(page, {
+    code: code ?? "",
+    displayName: `Участник ${crypto.randomUUID().slice(0, 8)}`,
+    profileName: adultProfile,
+  });
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
@@ -160,15 +162,12 @@ test("an owner grants and revokes read-only access to a profile for an invited a
     const code = await invitation.locator("code").textContent();
     expect(code).toMatch(/^vi_[A-Za-z0-9_-]{43}$/);
 
-    await adultPage.goto("/");
-    await adultPage.getByRole("button", { name: "У меня есть код приглашения" }).click();
-    await adultPage.getByLabel("Одноразовый код").fill(code ?? "");
-    await adultPage.getByLabel("Ваше имя").fill(`Читатель ${crypto.randomUUID().slice(0, 8)}`);
     const adultProfile = `Личный профиль ${crypto.randomUUID().slice(0, 8)}`;
-    await adultPage
-      .getByLabel("Имя вашего профиля, если приглашены как взрослый")
-      .fill(adultProfile);
-    await adultPage.getByRole("button", { name: "Присоединиться к семье" }).click();
+    await acceptSyntheticInvitation(adultPage, {
+      code: code ?? "",
+      displayName: `Читатель ${crypto.randomUUID().slice(0, 8)}`,
+      profileName: adultProfile,
+    });
     await expect(adultPage.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
 
     await ownerPage.reload();
@@ -224,11 +223,10 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     const code = await invitation.locator("code").textContent();
     expect(code).toMatch(/^vi_[A-Za-z0-9_-]{43}$/);
 
-    await caregiverPage.goto("/");
-    await caregiverPage.getByRole("button", { name: "У меня есть код приглашения" }).click();
-    await caregiverPage.getByLabel("Одноразовый код").fill(code ?? "");
-    await caregiverPage.getByLabel("Ваше имя").fill(`Помощник ${crypto.randomUUID().slice(0, 8)}`);
-    await caregiverPage.getByRole("button", { name: "Присоединиться к семье" }).click();
+    await acceptSyntheticInvitation(caregiverPage, {
+      code: code ?? "",
+      displayName: `Помощник ${crypto.randomUUID().slice(0, 8)}`,
+    });
     await expect(
       caregiverPage.getByRole("heading", { level: 1, name: "Пока нет доступных профилей" }),
     ).toBeVisible();

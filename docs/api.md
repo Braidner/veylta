@@ -50,9 +50,57 @@ Common status meanings:
 - `202`: processing accepted and asynchronous;
 - `503`: safely retryable dependency failure.
 
-## Local demo identity, family, and profile
+## Home-server setup and identity
 
-### `POST /v1/demo/registrations`
+### `GET /v1/setup`
+
+Returns `account/v1` and `setupRequired`. It is always private/no-store. On an
+empty database this is the only product bootstrap path; it never accepts an
+actor identifier or secret.
+
+```json
+{
+  "contractVersion": "account/v1",
+  "setupRequired": true
+}
+```
+
+### `POST /v1/setup`
+
+Available exactly once. With the configured browser `Origin`, it atomically
+creates the first `admin`, home workspace, owner membership, linked adult
+profile, session, and payload-free audit records. Username is case-insensitive
+and normalized to lower-case; password length is 12–128 characters and storage
+uses a versioned salted scrypt hash. A concurrent or later call returns `409`.
+
+```json
+{
+  "username": "home-admin",
+  "displayName": "Домашний администратор",
+  "password": "a long local password"
+}
+```
+
+Response `201` sets the opaque `HttpOnly; SameSite=Strict` session cookie and
+returns the `account/v1` user plus the created family/profile selectors. It
+never returns a password or password hash.
+
+### `POST /v1/session`
+
+Signs into an existing active local account using username and password. It
+requires the configured browser `Origin`, returns `account/v1`, and sets a new
+opaque session cookie. Unknown user and wrong password share the same
+`401 INVALID_CREDENTIALS` envelope.
+
+### Legacy synthetic test identity
+
+`POST /v1/demo/registrations` remains disabled by default and exists only to
+create isolated synthetic fixtures in browser/integration tests. The normal
+`pnpm dev` flow never enables it.
+
+## Family and profile
+
+### `POST /v1/demo/registrations` (test-only)
 
 Creates an opaque local demo identity, session, family, owner membership, and
 first linked adult profile in one transaction. The route is available only when
@@ -97,18 +145,111 @@ session token.
 
 ### `GET /v1/session`
 
-Resolves the cookie server-side and returns the current demo user plus active
-families and profiles that actor may access. An owner receives all active
-profiles in their family; an invited adult receives their linked adult profile
-plus any currently granted `profile.read` profile. Each returned profile names
-its server-determined access as `owner`, `self`, or `granted_read`. A caregiver
-receives no profile list. It returns `401` for an absent, expired, revoked, or
-disabled session and is always `Cache-Control: no-store`.
+Resolves the cookie server-side and returns the current local user plus active
+families and profiles that actor may access. An administrator/owner receives
+all active profiles in the home family, with their own linked profile sorted
+first; a regular user receives their linked adult profile plus any currently
+granted `profile.read` profile. Each returned profile names its server-determined
+access as `owner`, `self`, or `granted_read`. Account-backed sessions
+additionally return normalized `username` and system `role`; legacy test
+sessions return `null` for those fields. A caregiver receives no profile list.
+It returns `401` for an absent, expired, revoked, or disabled session and is
+always `Cache-Control: no-store`.
 
 ### `DELETE /v1/session`
 
 Revokes the current session transactionally, records a payload-free audit event,
 and expires the cookie. It requires the configured web `Origin`.
+
+## Home-server settings
+
+Every settings response is private/no-store. These routes are intentionally
+non-disclosing: a signed-in non-administrator receives `404`, with no account
+names, filesystem paths, or Codex status.
+
+### `GET /v1/settings`
+
+Returns the administrator-only `home-settings/v1` projection:
+
+```json
+{
+  "contractVersion": "home-settings/v1",
+  "codex": {
+    "installed": true,
+    "authenticated": true,
+    "authenticationMode": "chatgpt",
+    "authenticationOwner": "codex_cli",
+    "daemonRunning": false,
+    "cliVersion": "codex-cli 0.x",
+    "runtimeVersion": null,
+    "experimental": true
+  },
+  "storage": {
+    "driver": "local",
+    "rootPath": "/srv/veylta/objects",
+    "state": "stable",
+    "targetRootPath": null,
+    "generation": 1,
+    "relocationSupported": true,
+    "lastFailureCode": null
+  },
+  "accounts": [
+    {
+      "id": "user_placeholder",
+      "username": "home-admin",
+      "displayName": "Домашний администратор",
+      "role": "admin",
+      "status": "active"
+    }
+  ]
+}
+```
+
+The Codex projection contains capability and version data only. Veylta never
+reads or returns Codex OAuth tokens, API keys, or Codex-home contents.
+
+### `POST /v1/settings/accounts`
+
+Creates an `admin` or `user` plus a linked adult profile in the administrator's
+home family. An `admin` receives owner membership and can manage every profile;
+a `user` receives adult membership and can open only their linked profile or an
+explicitly granted profile. It uses the same normalized username and scrypt
+password boundary as setup, requires the configured `Origin`, and returns `409`
+for duplicates.
+
+```json
+{
+  "username": "family-user",
+  "displayName": "Пользователь семьи",
+  "role": "user",
+  "password": "a different long local password"
+}
+```
+
+Response `201` returns the safe account and profile selectors, never a password
+or password hash.
+
+### `POST /v1/settings/storage/relocate`
+
+For local storage, copies every persisted document blob to a different absolute
+directory, verifies bytes against SQLite size/content-type/SHA-256 records, and
+then switches the authoritative root in the same serialized transaction. The
+previous root remains as a recovery copy. Invalid/root/home paths return `422`;
+active upload/relocation returns `409`; copy or verification failure returns
+`503` without switching roots.
+
+```json
+{
+  "rootPath": "/Volumes/Health/Veylta"
+}
+```
+
+### `POST /v1/settings/codex/start`
+
+Requests local `codex app-server daemon` startup. Codex owns authentication via
+`codex login`; Veylta accepts and stores no API key. The safe status response and
+payload-free audit report the result. This adapter is experimental and consumes
+the household's Codex subscription limits.
 
 ### `POST /v1/families/{familyId}/profiles`
 
@@ -585,6 +726,123 @@ recommendation. Each successful read writes a payload-free
 `profile-overview/v1` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
+## Household care plan (Task 33a)
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/care-plan`
+
+Returns `home-care-plan/v1` under the normal profile authorization boundary.
+Administrators, the family owner, and the self-linked adult receive
+`canWrite: true`; an explicitly granted `profile.read` actor receives the same
+plan with `canWrite: false`. Unknown, archived, cross-family, and ungranted
+selectors share the same non-disclosing `404`. The response is private and
+non-cacheable.
+
+```json
+{
+  "contractVersion": "home-care-plan/v1",
+  "profileId": "profile_placeholder",
+  "canWrite": true,
+  "evidence": {
+    "sourceCount": 2,
+    "pendingReviewCount": 1,
+    "confirmedObservationCount": 3,
+    "latestSummary": {
+      "id": "summary_placeholder",
+      "version": 2,
+      "createdAt": "2026-08-12T00:00:00.000Z"
+    }
+  },
+  "items": [
+    {
+      "id": "item_placeholder",
+      "category": "reminder",
+      "title": "Обсудить повторный анализ",
+      "note": null,
+      "scheduledFor": "2026-09-15",
+      "state": "accepted",
+      "origin": "user",
+      "revision": 1,
+      "provenance": null,
+      "createdAt": "2026-08-12T00:00:00.000Z",
+      "updatedAt": "2026-08-12T00:00:00.000Z"
+    }
+  ]
+}
+```
+
+Categories are `laboratory`, `clinician`, `nutrition`, `activity`, and
+`reminder`. A user-authored item is an explicit household decision and always
+has `origin: "user"`, `state: "accepted"`, and `provenance: null`; it is never
+presented as an evidence-derived recommendation. A Codex proposal has
+`origin: "codex"`, begins `proposed`, and must retain its immutable health
+summary selector, optional source observation, proposal run, model, runtime,
+rule version, and disclosed `missingContext` until retained or dismissed.
+
+Successful reads append `profile.care_plan.opened` with only the contract
+version. Titles, notes, schedule, medical counts, and provenance never enter
+audit metadata.
+
+### `PUT /v1/families/{familyId}/profiles/{profileId}/care-plan/items/{itemId}`
+
+Creates a person-authored item using a client-generated canonical UUID. The
+cookie-authenticated mutation requires the exact trusted `Origin`. The body is:
+
+```json
+{
+  "category": "reminder",
+  "title": "Обсудить повторный анализ",
+  "note": "Взять подтверждённый источник",
+  "scheduledFor": "2026-09-15"
+}
+```
+
+The same UUID and canonical content replay with `200`; first creation returns
+`201`; reuse with different content returns `409`. Only a writer may call the
+route. It returns `{ "contractVersion", "profileId", "item" }` and writes a
+payload-free create or replay audit event.
+
+### `PUT /v1/families/{familyId}/profiles/{profileId}/care-plan/items/{itemId}/state`
+
+Changes one retained item with optimistic revision checking:
+
+```json
+{ "revision": 1, "state": "completed", "scheduledFor": "2026-09-15" }
+```
+
+Allowed target states are `accepted`, `completed`, and `dismissed`. A proposal
+may be accepted or dismissed; an accepted item may be rescheduled, completed,
+or dismissed. Content and provenance are immutable and rows cannot be deleted.
+An exact retry after a successful update returns the current revision; a stale
+or invalid transition returns `409`/`422`. State audit events contain no title,
+note, schedule, or medical payload.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/care-plan/proposals`
+
+Explicitly sends only the latest confirmed health-summary projection to the
+model service through the locally installed Codex CLI: summary version and
+closed missing-context labels plus each selected source name/value/unit,
+canonical code, sample/result dates, laboratory, and its positional index. It
+never sends source PDF/image bytes, filenames, fragments, document/observation
+IDs, passwords, API keys, or OAuth tokens.
+The trusted-origin body is deliberately literal:
+
+```json
+{ "acknowledgement": "send_confirmed_summary_to_codex" }
+```
+
+Only a profile writer may run it. The production adapter requires `codex login
+status` to report ChatGPT authentication, removes Platform API-key variables,
+and invokes `codex exec --ephemeral` in an empty temporary directory with a
+read-only sandbox, local tools/extensions disabled, and a closed schema that
+can select at most one item in each of the five lanes.
+
+First completion returns `201`; the same summary/model/rule returns the stored
+run with `200`, `replayed: true`, and no second Codex invocation. Every item
+remains `proposed`. Audit contains only action and `home-care-plan/v1`, never
+medical values, prompt, output, model, or context. Runtime/subscription failure
+returns sanitized `503 CODEX_UNAVAILABLE`; malformed output returns `503
+OUTPUT_INVALID`.
+
 ## Evidence-backed profile summary (Task 20)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/health-summary`
@@ -1011,7 +1269,7 @@ retry/dead-letter transition with exactly one payload-free event in the same
 SQLite transaction. It is attributed to the uploader, correlated as the bounded
 `worker:<jobId>`, and contains only `contractVersion`, `automated`, `outcome`,
 and (for failure) a sanitized error code. Fact review,
-confirmation/correction/rejection, and future agent/provider egress have their
+confirmation/correction/rejection, and Codex/provider egress have their
 own events. Event metadata
 never includes filenames, file content, page text, source fragments, medical
 values, credentials, or signed URLs. Worker stdout carries only a processing

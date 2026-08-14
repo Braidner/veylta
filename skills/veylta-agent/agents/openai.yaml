@@ -1,0 +1,5 @@
+interface:
+  display_name: "Veylta Agent"
+  short_description: "Разбирает документы в личном Veylta Vault"
+  brand_color: "#2563EB"
+  default_prompt: "Используй $veylta-agent, чтобы подключиться к моему Veylta Vault и разобрать выбранные необработанные документы."

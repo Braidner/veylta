@@ -21,6 +21,12 @@ not claims about current implementation or regulatory compliance.
 Medical data is highly sensitive. A resource identifier, checksum, filename,
 processing state, or fact that a document exists can itself be sensitive.
 
+The target PWA architecture places custody on one household server. That reduces
+third-party custody but does not make the data automatically encrypted or safe
+to expose. Host accounts, filesystem permissions, home-network access, remote
+access configuration, storage relocation, and backups are part of the threat
+boundary.
+
 ## Trust boundaries
 
 1. Browser to Fastify API over an authenticated transport.
@@ -28,8 +34,12 @@ processing state, or fact that a document exists can itself be sensitive.
 3. API/worker to `ObjectStorage/v1` and the configured local storage root or,
    only when explicitly selected, an S3-compatible TLS endpoint.
 4. Untrusted document bytes/text to security checks and deterministic parsing.
-5. Future deployment to S3, OCR, or LLM provider networks.
+5. Explicit deployment to S3 or an external OCR/provider network.
 6. Operators, logs, metrics, traces, backups, and exported files.
+7. Browser/PWA to local account bootstrap, sign-in, and settings surfaces.
+8. API to the optional local Codex CLI adapter.
+9. Codex CLI to the model service for only the bounded confirmed projection
+   named in a user-confirmed run. Home storage does not remove this egress.
 
 All document content and metadata supplied by a user are untrusted. Extracted
 text is data, never an instruction. A configured external provider is not inside
@@ -45,7 +55,7 @@ the family's trust boundary merely because it exposes an API.
 - Accidental disclosure through logs, telemetry, errors, backups, URLs, or test
   fixtures.
 - Retry, race, or partial-failure bugs corrupting medical history.
-- Document instructions attempting prompt injection against future agents.
+- Confirmed source fields attempting prompt injection against the Codex job.
 
 ## Threats and required controls
 
@@ -67,9 +77,15 @@ the family's trust boundary merely because it exposes an API.
 | Storage overwrite/tampering | Original evidence silently changes or is read inconsistently | Opaque key digest; S3 conditional create; required/attested SSE-S3 or SSE-KMS; ETag-pinned controlled read; bounded SHA-256 snapshot checked against database metadata | Adapter contract tests; provider IAM/bucket/key policies before any real data |
 | Job retry/race | Duplicate or contradictory medical records | Stable job dedupe key; leased claims; compare-and-set transitions; immutable retry/review requests; DB uniqueness; transactional fact persistence and final review | Extraction and Task 6 review controls in first slice |
 | Poisoned extraction | Incorrect value presented as truth | `ExtractedFact` is untrusted and separate from `Observation`; strict schema; confidence/review gate; preserve raw value | First slice |
-| Prompt injection | Future LLM follows document instructions | Treat text as quoted data; fixed system policy; tool allowlist; strict schema; deterministic pre/post safety layer | Before any LLM |
-| Unsafe medical output | Diagnosis/treatment harm or missed urgency | The delivered summary is a closed, non-clinical evidence snapshot: confirmed data only, source links, missing-context labels, no risk/red-flag/diagnosis/treatment field, and only operational next actions. Rule-based clinical red flags and any recommendation require a separately reviewed safety boundary | Before recommendation features |
-| Provider egress without consent | Sensitive document sent externally | Local OCR reads only the checked-in English model and has no provider URL; external OCR/LLM remains disabled by default and later needs owner configuration, a clear provider warning, minimum-data handling, and egress audit | Before any external provider |
+| Prompt injection | Codex follows instructions embedded in confirmed source fields | Send a bounded structured projection as untrusted quoted data; fixed policy; disable tools, rules, plugins, memories, browser, shell, and collaboration; strict schema; deterministic post-validation and copy | Codex household plan |
+| Unsafe medical output | Diagnosis/treatment harm or missed urgency | Codex can only select one bounded draft per existing lane; deterministic copy contains no diagnosis, treatment, triage, prescription, or urgency. Each item remains `proposed`, with immutable run/summary/model/rule/source/context provenance and explicit acceptance | Codex household plan |
+| Provider egress without consent | Sensitive document sent externally | Local OCR has no provider URL. Codex requires literal acknowledgement and sends only the latest confirmed projection; no source bytes, filenames, fragments, or credentials. The UI discloses ChatGPT egress first | Codex household plan |
+| Bootstrap race or second administrator | Attacker claims or duplicates the first account | Expose setup only while no account exists; serialize with `BEGIN IMMEDIATE`; create account/workspace/profile/session atomically; exact-Origin mutation | Home-server bootstrap |
+| Weak local password storage | Offline database theft reveals credentials | Versioned memory-hard scrypt hash with random salt; password-length bounds; uniform login failure; no password in audit/logs | Home-server bootstrap |
+| Unsafe storage relocation | Partial copy or typed-path mistake loses evidence | Admin-only maintenance mode; copy and checksum every object; atomically switch configuration only after verification; retain recovery journal | Before configurable relocation |
+| Codex credential disclosure | Home app copies subscription tokens into its database/logs | Never read or persist Codex OAuth; start/connect to local app-server; store only non-secret preferences and status | First Codex adapter |
+| Unauthorized local agent | Another process submits work or broadens scope | Profile ACL and trusted Origin; empty temporary cwd; ephemeral/read-only Codex; shell, browser, plugins, memory, collaboration, computer/image tools disabled; closed schema; no arbitrary command surface | Codex household plan |
+| Misleading local-storage claim | User assumes model processing never leaves device | Before agent run, identify selected sources and disclose model-service egress under the user's Codex data controls; keep deterministic local processing distinct | First Codex adapter |
 | SSRF through URL/provider config | Access to internal network or cloud metadata | No arbitrary URL ingest in first slice; allowlisted endpoints; URL parsing, DNS/IP checks, redirect limits, egress policy | Before URL/provider features |
 | Signed-link leakage | Temporary public access to a document | API still proxies authorized reads; later presigned URLs are single-purpose, short-lived, non-logged, and tenant-bound | Before presigned URLs |
 | Sensitive logs/traces | Persistent secondary disclosure | Never log bodies, text, medical values, raw filenames, tokens, or signed URLs; redact errors; no patient labels in metrics | First slice |
@@ -81,9 +97,10 @@ the family's trust boundary merely because it exposes an API.
 
 ## First-slice security invariants
 
-- Local demo onboarding binds only to loopback, collects no email/password,
-  persists only a SHA-256 session-token digest, and requires an exact configured
-  browser origin for mutations. It is not production authentication.
+- Empty-installation setup collects no email, stores a versioned scrypt password
+  hash, persists only a SHA-256 session-token digest, and requires an exact
+  configured browser origin. The transaction creates exactly one administrator,
+  workspace, linked profile, and session.
 - Synthetic PDF/PNG/JPEG only; no real medical data enters the repository or demo flow.
 - Every family/profile/document/fact/observation query starts from the authorized
   tenant scope, including worker queries.

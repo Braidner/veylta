@@ -1,6 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
 const reuseExistingServer = false;
+const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? "4400";
+const apiPort = process.env.PLAYWRIGHT_API_PORT ?? "4401";
+const workerPort = process.env.PLAYWRIGHT_WORKER_PORT ?? "4402";
+const webOrigin = `http://127.0.0.1:${webPort}`;
+const apiOrigin = `http://127.0.0.1:${apiPort}`;
+const workerOrigin = `http://127.0.0.1:${workerPort}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -12,7 +18,7 @@ export default defineConfig({
   retries: process.env.CI === "true" ? 1 : 0,
   reporter: process.env.CI === "true" ? "github" : "list",
   use: {
-    baseURL: "http://127.0.0.1:4300",
+    baseURL: webOrigin,
     trace: "retain-on-failure",
   },
   projects: [
@@ -23,30 +29,34 @@ export default defineConfig({
   ],
   webServer: [
     {
-      command: "pnpm --filter @veylta/api dev:api",
-      url: "http://127.0.0.1:4301/healthz",
+      command: "node --import tsx src/server.ts",
+      cwd: "apps/api",
+      url: `${apiOrigin}/healthz`,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
       env: {
         ...process.env,
+        API_PORT: apiPort,
         DEMO_REGISTRATION_ENABLED: "true",
-        WEB_ORIGIN: "http://127.0.0.1:4300",
+        WEB_ORIGIN: webOrigin,
       },
       reuseExistingServer,
       timeout: 30_000,
     },
     {
-      command: "pnpm --filter @veylta/api dev:worker",
-      url: "http://127.0.0.1:4302/healthz",
+      command: "node --import tsx src/worker.ts",
+      cwd: "apps/api",
+      url: `${workerOrigin}/healthz`,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
-      env: process.env,
+      env: { ...process.env, WORKER_HEALTH_PORT: workerPort },
       reuseExistingServer,
       timeout: 30_000,
     },
     {
-      command: "pnpm --filter @veylta/web dev",
-      url: "http://127.0.0.1:4300",
+      command: `node node_modules/next/dist/bin/next dev --hostname 127.0.0.1 --port ${webPort}`,
+      cwd: "apps/web",
+      url: webOrigin,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
-      env: process.env,
+      env: { ...process.env, API_INTERNAL_URL: apiOrigin },
       reuseExistingServer,
       timeout: 60_000,
     },

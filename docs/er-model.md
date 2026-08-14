@@ -21,6 +21,7 @@
 
 ```mermaid
 erDiagram
+  User ||--o| AppAccount : authenticates_as
   User ||--o{ FamilyMembership : joins
   Family ||--o{ FamilyMembership : has
   Family ||--o{ PatientProfile : contains
@@ -49,6 +50,13 @@ erDiagram
   PatientProfile ||--o{ Encounter : has
   PatientProfile ||--o{ HealthSummary : summarized_by
   HealthSummary ||--o{ HealthSummaryEvidence : contains
+  PatientProfile ||--o{ CarePlanItem : plans
+  HealthSummary ||--o{ CarePlanItem : supports_proposal
+  Observation ||--o{ CarePlanItem : may_support
+  PatientProfile ||--o{ CarePlanProposalRun : requests
+  HealthSummary ||--o{ CarePlanProposalRun : exact_input
+  CarePlanProposalRun ||--o{ CarePlanCodexProvenance : produces
+  CarePlanItem ||--o| CarePlanCodexProvenance : binds
 
   ExtractionRun ||--o{ AgentRun : may_use
   Family ||--o{ AuditEvent : records
@@ -56,8 +64,11 @@ erDiagram
   ProcessingJob ||--o{ ProcessingRetryRequest : requeued_by
 ```
 
-`ProfileConsentGrant` and Task 20 `HealthSummary` are current narrow migrated
-boundaries. Extended clinical resources, `Recommendation`, broader consent
+`ProfileConsentGrant`, Task 20 `HealthSummary`, and Task 33a `CarePlanItem` are
+current narrow migrated boundaries. `CarePlanItem` is a household action, not a
+clinical `Recommendation`: user items have no derived provenance, while an
+agent proposal must retain summary/rule/missing-context provenance and remains
+unaccepted. Extended clinical resources, `Recommendation`, broader consent
 capabilities, and live `AgentRun` providers remain designed boundaries, not a
 claim that they are migrated in the first slice.
 
@@ -66,12 +77,23 @@ claim that they are migrated in the first slice.
 ### User
 
 - `id`
-- display name; production login identity remains owned by a future
-  authentication subsystem
+- display name
 - `created_at`, `disabled_at`
 
-Task 3 creates an opaque local demo identity and stores no email or reusable
-credential in the domain table.
+### AppAccount
+
+- `user_id` (one-to-one with `User`)
+- normalized, case-insensitive `username`
+- versioned salted scrypt `password_hash`
+- system `role`: `admin | user`
+- `created_at`, `updated_at`
+
+An empty installation creates the first `admin` account exactly once. Passwords
+and Codex credentials are never stored in `User`, `Session`, proposal runs, or
+audit metadata.
+Every administrator account has owner membership in the single home family;
+every regular account has adult membership and one self-linked adult profile.
+System role does not create a second profile permission store.
 
 ### Session
 
@@ -79,8 +101,21 @@ credential in the domain table.
 - SHA-256 token digest (never the plaintext cookie value)
 - `created_at`, `expires_at`, `revoked_at`
 
-The local browser token is an HttpOnly, SameSite cookie. Production identity,
-rotation, recovery, and deployment controls are intentionally deferred.
+The local browser token is an HttpOnly, SameSite cookie. Local account sign-in
+is delivered; rotation policy, password recovery, passkeys, and remote-deployment
+controls remain deferred.
+
+### HomeStorageSettings
+
+- singleton installation row
+- `driver`: `local | s3`
+- `current_root`, guarded `target_root`
+- relocation `state`: `stable | copying | failed`
+- monotonic `generation`, sanitized `last_failure_code`, `updated_at`
+
+The row contains configuration, never document bytes or credentials. Only an
+administrator projection may read an absolute local path. API and worker resolve
+the same row through `StorageController`.
 
 ### Family
 
@@ -387,9 +422,13 @@ tables: `observation-history/v1` is an authorized profile-scoped read over
 confirmed `Observation` rows, their optional source range, reviewer, and
 document/page provenance. Task 20 adds only `HealthSummary` and
 `HealthSummaryEvidence`, used by `health-summary/v1` and its Task 21 immutable
-version index. Add broader consent
-capabilities, extended clinical entities, recommendations, and agent runs only
-with the slice that uses and tests them.
+version index. Task 33a adds retained `CarePlanItem` rows with profile-scoped
+access and replay-safe revisions. Task 33b adds retained
+`CarePlanProposalRun` plus `CarePlanCodexProvenance`: the exact
+profile/summary/model/rule result is single-run, replayable, and every Codex
+item is bound to that run. Add broader consent capabilities, extended clinical
+entities, and clinically reviewed recommendations only with the slice that uses
+and tests them.
 
 ## Database invariants to test
 

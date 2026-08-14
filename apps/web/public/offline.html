@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1649d8" />
+    <title>Veylta — офлайн</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          sans-serif;
+        background: #f4f6f8;
+        color: #111827;
+      }
+
+      body {
+        min-height: 100dvh;
+        margin: 0;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+        box-sizing: border-box;
+        background:
+          radial-gradient(circle at 50% 25%, rgba(45, 99, 235, 0.14), transparent 35%), #f4f6f8;
+      }
+
+      main {
+        width: min(100%, 560px);
+        padding: clamp(28px, 6vw, 48px);
+        border: 1px solid #d9dee8;
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 24px 70px rgba(25, 38, 70, 0.12);
+      }
+
+      .mark {
+        display: grid;
+        width: 52px;
+        height: 52px;
+        place-items: center;
+        border-radius: 16px;
+        background: #1649d8;
+        color: white;
+        font-weight: 800;
+        letter-spacing: -0.04em;
+      }
+
+      h1 {
+        margin: 28px 0 12px;
+        font-size: clamp(2rem, 8vw, 3.6rem);
+        line-height: 0.98;
+        letter-spacing: -0.055em;
+      }
+
+      p {
+        margin: 0;
+        color: #536074;
+        font-size: 1rem;
+        line-height: 1.65;
+      }
+
+      .privacy {
+        margin-top: 22px;
+        padding-top: 22px;
+        border-top: 1px solid #e5e9f0;
+        color: #26344a;
+        font-weight: 650;
+      }
+
+      button {
+        margin-top: 28px;
+        min-height: 44px;
+        padding: 0 20px;
+        border: 0;
+        border-radius: 999px;
+        background: #1649d8;
+        color: white;
+        font: inherit;
+        font-weight: 700;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="mark" aria-hidden="true">V</div>
+      <h1>Veylta сейчас офлайн</h1>
+      <p>Подключитесь к сети и повторите попытку, чтобы открыть выбранное семейное пространство.</p>
+      <p class="privacy">Медицинские данные не сохранены в кэше браузера.</p>
+      <button type="button" onclick="window.location.reload()">Попробовать снова</button>
+    </main>
+  </body>
+</html>

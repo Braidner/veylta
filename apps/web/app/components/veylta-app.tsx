@@ -1,9 +1,14 @@
 "use client";
 
 import type {
+  AdminSetupResponse,
   ArchivedProfileListResponse,
-  DemoInvitationAcceptResponse,
-  DemoRegistrationResponse,
+  CarePlanCategory,
+  CarePlanItem,
+  CarePlanItemResponse,
+  CarePlanProposalResponse,
+  CarePlanResponse,
+  CodexRuntimeActionResponse,
   DocumentFactsResponse,
   DocumentProcessingResponse,
   DocumentProcessingRetryResponse,
@@ -22,8 +27,11 @@ import type {
   HealthSummaryMissingData,
   HealthSummaryRecommendationCode,
   HealthSummaryResponse,
+  HomeSettingsResponse,
   IndicatorCatalogResponse,
   IndicatorSeriesResponse,
+  LoginResponse,
+  ManagedAccountCreateResponse,
   ObservationHistoryResponse,
   PatientProfileSummary,
   ProfileArchiveResponse,
@@ -35,6 +43,8 @@ import type {
   ProfileRestoreResponse,
   SessionFamily,
   SessionResponse,
+  SetupStatusResponse,
+  StorageRelocationResponse,
 } from "@veylta/contracts";
 import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import Link from "next/link";
@@ -47,7 +57,8 @@ const processingPollIntervalMs = 2_000;
 
 type ScreenState =
   | { kind: "loading" }
-  | { kind: "unauthenticated" }
+  | { kind: "setup" }
+  | { kind: "login" }
   | { kind: "authenticated"; session: SessionResponse }
   | { kind: "error" };
 
@@ -95,6 +106,10 @@ async function readSession(): Promise<SessionResponse | null> {
   }
 }
 
+async function readSetupStatus(): Promise<SetupStatusResponse> {
+  return apiRequest<SetupStatusResponse>("/v1/setup");
+}
+
 function firstProfile(session: SessionResponse): PatientProfileSummary | undefined {
   return session.families.flatMap((family) => family.profiles)[0];
 }
@@ -131,6 +146,10 @@ function profileOverviewPath(familyId: string, profileId: string): string {
 
 function healthSummaryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/health-summary`;
+}
+
+function carePlanPath(familyId: string, profileId: string): string {
+  return `/v1${profilePath(familyId, profileId)}/care-plan`;
 }
 
 function healthSummaryHistoryPath(familyId: string, profileId: string): string {
@@ -185,18 +204,18 @@ interface VeyltaAppProps {
   requestedFamilyId?: string;
   requestedProfileId?: string;
   requestedDocumentId?: string;
+  requestedSettings?: boolean;
 }
 
 export function VeyltaApp({
   requestedFamilyId,
   requestedProfileId,
   requestedDocumentId,
+  requestedSettings = false,
 }: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
-  const [action, setAction] = useState<
-    "register" | "accept-invitation" | "add-profile" | "logout" | null
-  >(null);
+  const [action, setAction] = useState<"setup" | "login" | "add-profile" | "logout" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
   const requestedContext =
@@ -208,19 +227,19 @@ export function VeyltaApp({
   useEffect(() => {
     let active = true;
 
-    readSession()
-      .then((session) => {
+    Promise.all([readSession(), readSetupStatus()])
+      .then(([session, setup]) => {
         if (!active) return;
 
         if (session === null) {
-          setScreen({ kind: "unauthenticated" });
+          setScreen({ kind: setup.setupRequired ? "setup" : "login" });
           if (hasRequestedProfile) router.replace("/");
           return;
         }
 
         setScreen({ kind: "authenticated", session });
         const profile = firstProfile(session);
-        if (!hasRequestedProfile && profile !== undefined) {
+        if (!hasRequestedProfile && !requestedSettings && profile !== undefined) {
           router.replace(profilePath(profile.familyId, profile.id));
         }
         if (hasRequestedProfile && profile === undefined) {
@@ -234,64 +253,63 @@ export function VeyltaApp({
     return () => {
       active = false;
     };
-  }, [hasRequestedProfile, router]);
+  }, [hasRequestedProfile, requestedSettings, router]);
 
-  async function handleRegistration(event: FormEvent<HTMLFormElement>) {
+  async function handleSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setAction("register");
+    setAction("setup");
     setActionError(null);
 
     const form = new FormData(event.currentTarget);
+    const password = String(form.get("password") ?? "");
+    if (password !== String(form.get("passwordConfirmation") ?? "")) {
+      setActionError("Пароли не совпадают.");
+      setAction(null);
+      return;
+    }
     try {
-      const registration = await apiRequest<DemoRegistrationResponse>("/v1/demo/registrations", {
+      const setup = await apiRequest<AdminSetupResponse>("/v1/setup", {
         method: "POST",
         body: JSON.stringify({
+          username: String(form.get("username") ?? "").trim(),
           displayName: String(form.get("displayName") ?? "").trim(),
-          familyName: String(form.get("familyName") ?? "").trim(),
-          profileName: String(form.get("profileName") ?? "").trim(),
+          password,
         }),
       });
       const session = await readSession();
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
-      router.replace(profilePath(registration.family.id, registration.profile.id));
+      router.replace(profilePath(setup.family.id, setup.profile.id));
     } catch {
-      setActionError("Не удалось создать пространство. Проверьте поля и попробуйте ещё раз.");
+      setActionError("Не удалось создать администратора. Проверьте поля и попробуйте ещё раз.");
     } finally {
       setAction(null);
     }
   }
 
-  async function handleInvitationAcceptance(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setAction("accept-invitation");
+    setAction("login");
     setActionError(null);
 
     const form = new FormData(event.currentTarget);
     try {
-      const accepted = await apiRequest<DemoInvitationAcceptResponse>(
-        "/v1/demo/invitations/accept",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            code: String(form.get("code") ?? "").trim(),
-            displayName: String(form.get("displayName") ?? "").trim(),
-            ...(String(form.get("profileName") ?? "").trim().length > 0
-              ? { profileName: String(form.get("profileName") ?? "").trim() }
-              : {}),
-          }),
-        },
-      );
+      await apiRequest<LoginResponse>("/v1/session", {
+        method: "POST",
+        body: JSON.stringify({
+          username: String(form.get("username") ?? "").trim(),
+          password: String(form.get("password") ?? ""),
+        }),
+      });
       const session = await readSession();
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
-      router.replace(
-        accepted.profile === null ? "/" : profilePath(accepted.family.id, accepted.profile.id),
-      );
+      const profile = firstProfile(session);
+      if (!requestedSettings) {
+        router.replace(profile === undefined ? "/" : profilePath(profile.familyId, profile.id));
+      }
     } catch {
-      setActionError(
-        "Не удалось принять приглашение. Проверьте одноразовый код и попробуйте ещё раз.",
-      );
+      setActionError("Неверный логин или пароль.");
     } finally {
       setAction(null);
     }
@@ -331,7 +349,7 @@ export function VeyltaApp({
     setActionError(null);
     try {
       await apiRequest<void>("/v1/session", { method: "DELETE" });
-      setScreen({ kind: "unauthenticated" });
+      setScreen({ kind: "loading" });
       setAddProfileOpen(false);
       router.replace("/");
     } catch {
@@ -345,7 +363,7 @@ export function VeyltaApp({
   async function refreshSessionAfterProfileArchive(): Promise<void> {
     const refreshed = await readSession();
     if (refreshed === null) {
-      setScreen({ kind: "unauthenticated" });
+      setScreen({ kind: "login" });
       router.replace("/");
       return;
     }
@@ -357,7 +375,17 @@ export function VeyltaApp({
   async function refreshSessionAfterProfileRestore(): Promise<void> {
     const refreshed = await readSession();
     if (refreshed === null) {
-      setScreen({ kind: "unauthenticated" });
+      setScreen({ kind: "login" });
+      router.replace("/");
+      return;
+    }
+    setScreen({ kind: "authenticated", session: refreshed });
+  }
+
+  async function refreshSession(): Promise<void> {
+    const refreshed = await readSession();
+    if (refreshed === null) {
+      setScreen({ kind: "login" });
       router.replace("/");
       return;
     }
@@ -370,7 +398,11 @@ export function VeyltaApp({
       ? findProfileContext(session, requestedContext.familyId, requestedContext.profileId)
       : undefined;
   const redirectProfile = session === undefined ? undefined : firstProfile(session);
-  const pageTitle = context === undefined ? "Veylta" : `${context.profile.displayName} — Veylta`;
+  const pageTitle = requestedSettings
+    ? "Настройки — Veylta"
+    : context === undefined
+      ? "Veylta"
+      : `${context.profile.displayName} — Veylta`;
 
   useEffect(() => {
     document.title = pageTitle;
@@ -387,7 +419,12 @@ export function VeyltaApp({
           Veylta
         </Link>
         <div className="workspace-actions">
-          <span className="environment">Только синтетика</span>
+          <span className="environment">Домашний сервер</span>
+          {session?.user.role === "admin" ? (
+            <Link className="text-button" href={requestedSettings ? "/" : "/settings"}>
+              {requestedSettings ? "Профили" : "Настройки"}
+            </Link>
+          ) : null}
           {session !== undefined ? (
             <button
               className="text-button"
@@ -404,35 +441,46 @@ export function VeyltaApp({
       <main id="main-content">
         {screen.kind === "loading" ? <LoadingScreen /> : null}
         {screen.kind === "error" ? <ErrorScreen onRetry={() => window.location.reload()} /> : null}
-        {screen.kind === "unauthenticated" && !hasRequestedProfile ? (
-          <OnboardingScreen
-            acceptPending={action === "accept-invitation"}
+        {(screen.kind === "setup" || screen.kind === "login") && !hasRequestedProfile ? (
+          <AccountAccessScreen
+            mode={screen.kind}
             error={actionError}
-            pending={action === "register"}
-            onAccept={handleInvitationAcceptance}
-            onSubmit={handleRegistration}
+            pending={action === screen.kind}
+            onSubmit={screen.kind === "setup" ? handleSetup : handleLogin}
           />
         ) : null}
-        {screen.kind === "unauthenticated" && hasRequestedProfile ? (
+        {(screen.kind === "setup" || screen.kind === "login") && hasRequestedProfile ? (
           <LoadingScreen copy="Возвращаем к началу…" />
         ) : null}
-        {session !== undefined && !hasRequestedProfile && redirectProfile !== undefined ? (
+        {session !== undefined && requestedSettings ? (
+          <HomeSettingsScreen session={session} onSessionRefresh={refreshSession} />
+        ) : null}
+        {session !== undefined &&
+        !requestedSettings &&
+        !hasRequestedProfile &&
+        redirectProfile !== undefined ? (
           <LoadingScreen copy="Открываем профиль…" />
         ) : null}
-        {session !== undefined && !hasRequestedProfile && redirectProfile === undefined ? (
+        {session !== undefined &&
+        !requestedSettings &&
+        !hasRequestedProfile &&
+        redirectProfile === undefined ? (
           <NoAuthorizedProfilesScreen />
         ) : null}
-        {session !== undefined && hasRequestedProfile && context === undefined ? (
+        {session !== undefined &&
+        !requestedSettings &&
+        hasRequestedProfile &&
+        context === undefined ? (
           <MissingProfileScreen fallbackProfile={redirectProfile} />
         ) : null}
-        {session !== undefined && context !== undefined ? (
+        {session !== undefined && !requestedSettings && context !== undefined ? (
           <ProfileWorkspace
             session={session}
             family={context.family}
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
             addProfileOpen={addProfileOpen}
-            action={action === "accept-invitation" ? null : action}
+            action={action}
             error={actionError}
             onProfileChange={(familyId, profileId) => {
               setActionError(null);
@@ -449,6 +497,451 @@ export function VeyltaApp({
         ) : null}
       </main>
     </>
+  );
+}
+
+interface HomeSettingsScreenProps {
+  session: SessionResponse;
+  onSessionRefresh: () => Promise<void>;
+}
+
+function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenProps) {
+  const [settings, setSettings] = useState<HomeSettingsResponse | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "error">("loading");
+  const [pending, setPending] = useState<"account" | "storage" | "codex" | null>(null);
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [storageError, setStorageError] = useState<string | null>(null);
+  const [codexError, setCodexError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoadState("loading");
+    try {
+      setSettings(await apiRequest<HomeSettingsResponse>("/v1/settings"));
+      setLoadState("ready");
+    } catch (error) {
+      setLoadState(error instanceof ApiError && error.status === 404 ? "denied" : "error");
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function createAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("account");
+    setAccountError(null);
+    setNotice(null);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    const password = String(form.get("password") ?? "");
+    if (password !== String(form.get("passwordConfirmation") ?? "")) {
+      setAccountError("Пароли не совпадают.");
+      setPending(null);
+      return;
+    }
+    try {
+      const created = await apiRequest<ManagedAccountCreateResponse>("/v1/settings/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          username: String(form.get("username") ?? "").trim(),
+          displayName: String(form.get("displayName") ?? "").trim(),
+          role: String(form.get("role") ?? "user"),
+          password,
+        }),
+      });
+      formElement.reset();
+      setSettings((current) =>
+        current === null
+          ? current
+          : { ...current, accounts: [...current.accounts, created.account] },
+      );
+      await onSessionRefresh();
+      setNotice(`Учётная запись ${created.account.username} создана вместе с личной карточкой.`);
+    } catch (error) {
+      setAccountError(
+        error instanceof ApiError && error.status === 409
+          ? "Такой логин уже занят."
+          : "Не удалось создать учётную запись. Проверьте поля и повторите.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function relocateStorage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setPending("storage");
+    setStorageError(null);
+    setNotice(null);
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    try {
+      const relocated = await apiRequest<StorageRelocationResponse>(
+        "/v1/settings/storage/relocate",
+        {
+          method: "POST",
+          body: JSON.stringify({ rootPath: String(form.get("rootPath") ?? "").trim() }),
+        },
+      );
+      setSettings((current) =>
+        current === null ? current : { ...current, storage: relocated.storage },
+      );
+      formElement.reset();
+      setNotice("Хранилище проверено и переключено. Прежняя копия сохранена для восстановления.");
+    } catch (error) {
+      setStorageError(
+        error instanceof ApiError && error.status === 422
+          ? "Укажите абсолютный путь внутри отдельной папки, не домашний каталог и не корень диска."
+          : "Перенос не завершён. Активная точка хранения не изменилась.",
+      );
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function startCodex() {
+    setPending("codex");
+    setCodexError(null);
+    setNotice(null);
+    try {
+      const started = await apiRequest<CodexRuntimeActionResponse>("/v1/settings/codex/start", {
+        method: "POST",
+      });
+      setSettings((current) => (current === null ? current : { ...current, codex: started.codex }));
+      if (started.codex.daemonRunning) {
+        setNotice("Codex runtime запущен и готов принимать локальные задания.");
+      } else {
+        setCodexError(
+          "Runtime не запустился. Проверьте установку и выполните codex login в терминале.",
+        );
+      }
+    } catch {
+      setCodexError("Не удалось запустить Codex runtime. Данные Veylta не изменились.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  if (loadState === "loading") return <LoadingScreen copy="Проверяем домашний сервер…" />;
+  if (loadState === "denied" || session.user.role !== "admin") {
+    return <MissingSettingsScreen />;
+  }
+  if (loadState === "error" || settings === null) {
+    return <ErrorScreen onRetry={() => void load()} />;
+  }
+
+  const codexState = !settings.codex.installed
+    ? "CLI не установлен"
+    : !settings.codex.authenticated
+      ? "Требуется вход"
+      : settings.codex.daemonRunning
+        ? "Агент готов"
+        : "Готов к запуску";
+  const subscriptionConnected =
+    settings.codex.authenticated && settings.codex.authenticationMode === "chatgpt";
+
+  return (
+    <section className="settings-shell" aria-labelledby="settings-title">
+      <div className="settings-heading">
+        <div>
+          <p className="context-line">Управление домашним контуром</p>
+          <h1 id="settings-title">Настройки сервера</h1>
+          <p className="lede">
+            Здесь администратор управляет локальным агентом, местом хранения и доступом людей.
+            Оригиналы остаются в выбранном домашнем хранилище. Только подтверждённая выжимка
+            отправляется в Codex после отдельного согласия владельца.
+          </p>
+        </div>
+        <div className="settings-heading__identity">
+          <span>Администратор</span>
+          <strong>{session.user.displayName}</strong>
+          <small>@{session.user.username}</small>
+        </div>
+      </div>
+
+      {notice !== null ? (
+        <p className="settings-notice" role="status">
+          {notice}
+        </p>
+      ) : null}
+
+      <div className="settings-console">
+        <section className="codex-console" aria-labelledby="codex-settings-title">
+          <div className="codex-console__topline">
+            <span
+              className={`status-dot ${settings.codex.daemonRunning ? "status-dot--ready" : ""}`}
+            />
+            <span>{codexState}</span>
+            <span className="codex-console__mode">
+              {subscriptionConnected ? "ChatGPT подписка" : "Локальный Codex"}
+            </span>
+          </div>
+          <div className="codex-console__body">
+            <div>
+              <p className="section-label">Codex runtime</p>
+              <h2 id="codex-settings-title">Локальный агент без API-ключа</h2>
+              <p className="codex-console__copy">
+                Veylta запускает узкие задания через установленный Codex CLI, а app-server daemon
+                показывает готовность runtime. Авторизацией владеет сам Codex; приложение не читает
+                и не копирует OAuth-токены.
+              </p>
+            </div>
+            <dl className="runtime-facts">
+              <div>
+                <dt>CLI</dt>
+                <dd>{settings.codex.cliVersion ?? "Не найден"}</dd>
+              </div>
+              <div>
+                <dt>Авторизация</dt>
+                <dd>
+                  {subscriptionConnected
+                    ? "ChatGPT / Codex"
+                    : settings.codex.authenticated
+                      ? "Другой режим"
+                      : "Не выполнена"}
+                </dd>
+              </div>
+              <div>
+                <dt>App-server</dt>
+                <dd>
+                  {settings.codex.runtimeVersion ??
+                    (settings.codex.daemonRunning ? "Запущен" : "Остановлен")}
+                </dd>
+              </div>
+            </dl>
+          </div>
+          {!settings.codex.installed ? (
+            <p className="codex-console__instruction">
+              Установите CLI на домашнем сервере: <code>npm install -g @openai/codex</code>
+            </p>
+          ) : !settings.codex.authenticated ? (
+            <p className="codex-console__instruction">
+              В терминале выполните <code>codex login</code> и войдите через ChatGPT.
+            </p>
+          ) : !settings.codex.daemonRunning ? (
+            <button
+              className="button codex-console__action"
+              type="button"
+              onClick={startCodex}
+              disabled={pending !== null}
+            >
+              {pending === "codex" ? "Запускаем…" : "Запустить Codex runtime"}
+            </button>
+          ) : (
+            <p className="codex-console__instruction codex-console__instruction--ready">
+              Агент подключён. Он получает только явно поставленные Veylta задания.
+            </p>
+          )}
+          {codexError !== null ? (
+            <p className="form-error" role="alert">
+              {codexError}
+            </p>
+          ) : null}
+          <p className="codex-console__footnote">
+            Экспериментальный адаптер · расходуются лимиты вашей подписки Codex, отдельной оплаты за
+            API-токены нет.
+          </p>
+        </section>
+
+        <section className="storage-settings" aria-labelledby="storage-settings-title">
+          <div className="settings-section-heading">
+            <div>
+              <p className="section-label">Локальные данные</p>
+              <h2 id="storage-settings-title">Точка хранения</h2>
+            </div>
+            <span className="storage-generation">Поколение {settings.storage.generation}</span>
+          </div>
+          <dl className="storage-current">
+            <div>
+              <dt>Драйвер</dt>
+              <dd>{settings.storage.driver === "local" ? "Локальная папка" : "S3-совместимый"}</dd>
+            </div>
+            <div>
+              <dt>Активный путь</dt>
+              <dd>
+                <code>{settings.storage.rootPath ?? "Настраивается вне интерфейса"}</code>
+              </dd>
+            </div>
+          </dl>
+          {settings.storage.relocationSupported ? (
+            <form
+              className="storage-relocation"
+              onSubmit={relocateStorage}
+              aria-busy={pending === "storage"}
+            >
+              <label className="field">
+                <span>Новая папка</span>
+                <input
+                  name="rootPath"
+                  type="text"
+                  required
+                  minLength={2}
+                  maxLength={2048}
+                  placeholder="/Volumes/Health/Veylta"
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending !== null}
+                />
+              </label>
+              <label className="confirmation-field">
+                <input name="confirmed" type="checkbox" required disabled={pending !== null} />
+                <span>
+                  Скопировать и проверить все объекты перед переключением. Старую папку не удалять.
+                </span>
+              </label>
+              <button
+                className="button button--secondary"
+                type="submit"
+                disabled={pending !== null}
+              >
+                {pending === "storage" ? "Проверяем копию…" : "Перенести хранилище"}
+              </button>
+              {storageError !== null ? (
+                <p className="form-error" role="alert">
+                  {storageError}
+                </p>
+              ) : null}
+            </form>
+          ) : (
+            <p className="form-note">
+              Для этого драйвера перенос выполняется в конфигурации сервера.
+            </p>
+          )}
+        </section>
+      </div>
+
+      <section className="account-settings" aria-labelledby="account-settings-title">
+        <div className="settings-section-heading account-settings__heading">
+          <div>
+            <p className="section-label">Доступ к сервису</p>
+            <h2 id="account-settings-title">Учётные записи</h2>
+          </div>
+          <p>{settings.accounts.length} на домашнем сервере</p>
+        </div>
+        <div className="account-settings__body">
+          <ul className="account-register" aria-label="Учётные записи">
+            {settings.accounts.map((account) => (
+              <li className="account-register__row" key={account.id}>
+                <span className="account-avatar" aria-hidden="true">
+                  {account.displayName.slice(0, 1).toLocaleUpperCase("ru")}
+                </span>
+                <span className="account-register__identity">
+                  <strong>{account.displayName}</strong>
+                  <small>@{account.username}</small>
+                </span>
+                <span className="account-register__role">
+                  {account.role === "admin" ? "Администратор" : "Пользователь"}
+                </span>
+                <span
+                  className={`account-register__status account-register__status--${account.status}`}
+                >
+                  {account.status === "active" ? "Активна" : "Отключена"}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          <form
+            className="account-create"
+            onSubmit={createAccount}
+            aria-busy={pending === "account"}
+          >
+            <div className="form-heading">
+              <p>Новый доступ</p>
+              <h3>Создать учётную запись</h3>
+            </div>
+            <label className="field">
+              <span>Имя человека</span>
+              <input
+                name="displayName"
+                type="text"
+                required
+                minLength={1}
+                maxLength={120}
+                autoComplete="off"
+                disabled={pending !== null}
+              />
+            </label>
+            <label className="field">
+              <span>Логин</span>
+              <input
+                name="username"
+                type="text"
+                required
+                minLength={3}
+                maxLength={32}
+                pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
+                autoCapitalize="none"
+                autoComplete="off"
+                spellCheck={false}
+                disabled={pending !== null}
+              />
+            </label>
+            <label className="field">
+              <span>Роль</span>
+              <select name="role" defaultValue="user" disabled={pending !== null}>
+                <option value="user">Пользователь</option>
+                <option value="admin">Администратор</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>Временный пароль</span>
+              <input
+                name="password"
+                type="password"
+                required
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+                disabled={pending !== null}
+              />
+            </label>
+            <label className="field">
+              <span>Повторите временный пароль</span>
+              <input
+                name="passwordConfirmation"
+                type="password"
+                required
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+                disabled={pending !== null}
+              />
+            </label>
+            <p className="form-note">
+              Вместе с учёткой создаётся личная взрослая карточка. Роль определяет системные права,
+              доступ к чужим карточкам проверяется отдельно.
+            </p>
+            {accountError !== null ? (
+              <p className="form-error" role="alert">
+                {accountError}
+              </p>
+            ) : null}
+            <button className="button button--primary" type="submit" disabled={pending !== null}>
+              {pending === "account" ? "Создаём…" : "Создать учётную запись"}
+            </button>
+          </form>
+        </div>
+      </section>
+    </section>
+  );
+}
+
+function MissingSettingsScreen() {
+  return (
+    <section className="state-shell" aria-labelledby="missing-settings-title">
+      <p className="context-line">Доступ ограничен</p>
+      <h1 id="missing-settings-title">Настройки недоступны</h1>
+      <p className="lede">
+        Раздел существует только для администратора. Сведения об учётках, путях и Codex runtime не
+        раскрываются.
+      </p>
+      <Link className="button button--primary" href="/">
+        Открыть свою карточку
+      </Link>
+    </section>
   );
 }
 
@@ -520,118 +1013,71 @@ function NoAuthorizedProfilesScreen() {
   );
 }
 
-interface OnboardingScreenProps {
-  acceptPending: boolean;
+interface AccountAccessScreenProps {
+  mode: "setup" | "login";
   pending: boolean;
   error: string | null;
-  onAccept: (event: FormEvent<HTMLFormElement>) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-function OnboardingScreen({
-  acceptPending,
-  pending,
-  error,
-  onAccept,
-  onSubmit,
-}: OnboardingScreenProps) {
-  const [mode, setMode] = useState<"register" | "accept">("register");
-  const formPending = mode === "register" ? pending : acceptPending;
-
+function AccountAccessScreen({ mode, pending, error, onSubmit }: AccountAccessScreenProps) {
   return (
     <section className="onboarding-shell" aria-labelledby="onboarding-title">
       <div className="onboarding-intro">
-        <p className="context-line">Спокойная семейная история здоровья</p>
-        <h1 id="onboarding-title">Создайте семейное пространство</h1>
+        <p className="context-line">Домашняя история здоровья</p>
+        <h1 id="onboarding-title">
+          {mode === "setup" ? "Настройте домашнюю Veylta" : "Войдите в Veylta"}
+        </h1>
         <p className="lede">
-          Начните с владельца и одного профиля. Активный человек всегда будет указан в заголовке и
-          адресе страницы.
+          {mode === "setup"
+            ? "Первый вход создаёт администратора, его личную карточку и закрытое семейное пространство."
+            : "Откройте свою карточку или профиль, к которому вам выдали доступ."}
         </p>
         <div className="privacy-note">
           <span className="privacy-note__mark" aria-hidden="true">
-            S
+            L
           </span>
           <div>
-            <strong>Сейчас — только синтетические данные</strong>
+            <strong>SQLite и документы остаются дома</strong>
             <p>
-              Используйте вымышленные имена. Реальные медицинские документы и адрес электронной
-              почты на этом этапе не нужны.
+              Veylta работает на вашем сервере. Пароль хранится только как стойкий scrypt-хеш,
+              сессия — в HttpOnly cookie.
             </p>
           </div>
         </div>
         <SystemStatus />
       </div>
 
-      <form
-        className="onboarding-form"
-        onSubmit={mode === "register" ? onSubmit : onAccept}
-        aria-busy={formPending}
-        aria-describedby="demo-form-note"
-      >
-        <div className="form-heading">
-          <p>Локальный demo-доступ</p>
-          <h2>{mode === "register" ? "Владелец и семья" : "Принять приглашение"}</h2>
-        </div>
+      <div className="onboarding-actions">
+        <form
+          className="onboarding-form account-access-form"
+          onSubmit={onSubmit}
+          aria-busy={pending}
+          aria-describedby="account-form-note"
+        >
+          <div className="form-heading">
+            <p>{mode === "setup" ? "Первый запуск" : "Защищённая сессия"}</p>
+            <h2>{mode === "setup" ? "Главная учётная запись" : "Учётная запись"}</h2>
+          </div>
 
-        {mode === "register" ? (
-          <>
-            <label className="field">
-              <span>Имя владельца</span>
-              <input
-                name="displayName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Владелец 01"
-                disabled={formPending}
-              />
-            </label>
+          <label className="field">
+            <span>Логин</span>
+            <input
+              name="username"
+              type="text"
+              required
+              minLength={3}
+              maxLength={32}
+              pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
+              autoCapitalize="none"
+              autoComplete="username"
+              spellCheck={false}
+              placeholder="home-admin"
+              disabled={pending}
+            />
+          </label>
 
-            <label className="field">
-              <span>Название семьи</span>
-              <input
-                name="familyName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Семья 01"
-                disabled={formPending}
-              />
-            </label>
-
-            <label className="field">
-              <span>Имя профиля</span>
-              <input
-                name="profileName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Профиль 01"
-                disabled={formPending}
-              />
-            </label>
-          </>
-        ) : (
-          <>
-            <label className="field">
-              <span>Одноразовый код</span>
-              <input
-                name="code"
-                type="text"
-                required
-                minLength={46}
-                maxLength={46}
-                autoComplete="off"
-                placeholder="vi_…"
-                disabled={formPending}
-              />
-            </label>
+          {mode === "setup" ? (
             <label className="field">
               <span>Ваше имя</span>
               <input
@@ -640,61 +1086,63 @@ function OnboardingScreen({
                 required
                 minLength={1}
                 maxLength={120}
-                autoComplete="off"
-                placeholder="Например, Участник 01"
-                disabled={formPending}
+                autoComplete="name"
+                placeholder="Как обращаться в интерфейсе"
+                disabled={pending}
               />
             </label>
+          ) : null}
+
+          <label className="field">
+            <span>Пароль</span>
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={12}
+              maxLength={128}
+              autoComplete={mode === "setup" ? "new-password" : "current-password"}
+              disabled={pending}
+            />
+          </label>
+
+          {mode === "setup" ? (
             <label className="field">
-              <span>Имя вашего профиля, если приглашены как взрослый</span>
+              <span>Повторите пароль</span>
               <input
-                name="profileName"
-                type="text"
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                placeholder="Не заполняйте для помощника по уходу"
-                disabled={formPending}
+                name="passwordConfirmation"
+                type="password"
+                required
+                minLength={12}
+                maxLength={128}
+                autoComplete="new-password"
+                disabled={pending}
               />
             </label>
-          </>
-        )}
+          ) : null}
 
-        {error !== null ? (
-          <p className="form-error" role="alert">
-            {error}
+          {error !== null ? (
+            <p className="form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <button className="button button--primary button--wide" type="submit" disabled={pending}>
+            {pending
+              ? mode === "setup"
+                ? "Создаём администратора…"
+                : "Входим…"
+              : mode === "setup"
+                ? "Создать администратора"
+                : "Войти"}
+          </button>
+          <p id="account-form-note" className="form-note">
+            {mode === "setup"
+              ? "Этот администратор сможет подключить Codex, настроить хранилище и создать остальные учётные записи."
+              : "Доступ определяется сервером: администратор, владелец карточки или явно выданное разрешение."}
           </p>
-        ) : null}
-
-        <button
-          className="button button--primary button--wide"
-          type="submit"
-          disabled={formPending}
-        >
-          {formPending
-            ? mode === "register"
-              ? "Создаём…"
-              : "Присоединяем…"
-            : mode === "register"
-              ? "Создать пространство"
-              : "Присоединиться к семье"}
-        </button>
-        <button
-          className="text-button onboarding-form__mode"
-          type="button"
-          disabled={formPending}
-          onClick={() => {
-            setMode((current) => (current === "register" ? "accept" : "register"));
-          }}
-        >
-          {mode === "register" ? "У меня есть код приглашения" : "Создать новое пространство"}
-        </button>
-        <p id="demo-form-note" className="form-note">
-          Код действует один раз 24 часа. Для взрослого укажите имя личного профиля; помощник по
-          уходу оставляет его пустым. Demo-сессия хранится в защищённой HttpOnly cookie; в браузере
-          нет токена доступа.
-        </p>
-      </form>
+        </form>
+      </div>
     </section>
   );
 }
@@ -705,7 +1153,7 @@ interface ProfileWorkspaceProps {
   profile: PatientProfileSummary;
   requestedDocumentId: string | undefined;
   addProfileOpen: boolean;
-  action: "register" | "add-profile" | "logout" | null;
+  action: "setup" | "login" | "add-profile" | "logout" | null;
   error: string | null;
   onProfileChange: (familyId: string, profileId: string) => void;
   onAddProfileToggle: () => void;
@@ -782,6 +1230,23 @@ function ProfileWorkspace({
 
   return (
     <section className="profile-shell" aria-labelledby="profile-title">
+      <nav className="profile-navigation" aria-label="Разделы профиля">
+        <a
+          className="profile-navigation__item profile-navigation__item--active"
+          href="#profile-dashboard"
+        >
+          Обзор
+        </a>
+        <a className="profile-navigation__item" href="#document-inbox-title">
+          Источники
+        </a>
+        <a className="profile-navigation__item" href="#observation-history">
+          История
+        </a>
+        <a className="profile-navigation__item" href="#indicator-catalog">
+          Динамика
+        </a>
+      </nav>
       <div className="profile-heading">
         <div>
           <p className="context-line">
@@ -794,6 +1259,11 @@ function ProfileWorkspace({
             {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}:{" "}
             {session.user.displayName}
           </p>
+          {session.user.role !== null ? (
+            <p className="profile-access">
+              {session.user.role === "admin" ? "Администратор системы" : "Пользователь системы"}
+            </p>
+          ) : null}
           {profile.access === "granted_read" ? (
             <p className="profile-access">Доступ по согласию: только чтение</p>
           ) : null}
@@ -1614,6 +2084,61 @@ function profileOverviewProcessingCopy(
   }
 }
 
+function sourceCountCopy(count: number): string {
+  const remainder10 = count % 10;
+  const remainder100 = count % 100;
+  if (remainder10 === 1 && remainder100 !== 11) return `${count} источник`;
+  if ([2, 3, 4].includes(remainder10) && ![12, 13, 14].includes(remainder100)) {
+    return `${count} источника`;
+  }
+  return `${count} источников`;
+}
+
+function profileDataState(overview: ProfileOverviewResponse): {
+  label: string;
+  detail: string;
+  actionHref: string;
+  actionLabel: string;
+} {
+  if (overview.reviewQueue.pendingFactCount > 0) {
+    const firstReview = overview.reviewQueue.documents[0];
+    return {
+      label: "Нужна ваша проверка",
+      detail: `${factCountCopy(overview.reviewQueue.pendingFactCount)} ещё не стали подтверждёнными данными.`,
+      actionHref:
+        firstReview === undefined
+          ? "#document-inbox-title"
+          : documentPath(overview.profile.familyId, overview.profile.id, firstReview.id),
+      actionLabel: firstReview === undefined ? "Открыть источники" : "Проверить значения",
+    };
+  }
+  const activeProcessing = overview.recentDocuments.find(
+    (document) => !["completed", "failed", "awaiting_review"].includes(document.processing.state),
+  );
+  if (activeProcessing !== undefined) {
+    return {
+      label: "Обрабатываем источник",
+      detail: profileOverviewProcessingCopy(activeProcessing.processing),
+      actionHref: documentPath(overview.profile.familyId, overview.profile.id, activeProcessing.id),
+      actionLabel: "Открыть статус",
+    };
+  }
+  if (overview.recentObservations.length > 0) {
+    return {
+      label: "Данные подтверждены",
+      detail: "Последние значения связаны с исходными документами и готовы для просмотра.",
+      actionHref: "#observation-history",
+      actionLabel: "Открыть историю",
+    };
+  }
+  return {
+    label: "Нужен первый источник",
+    detail: "Добавьте документ, чтобы начать собирать проверяемую историю.",
+    actionHref: "#document-inbox-title",
+    actionLabel: "Добавить документ",
+  };
+}
+
 function ProfileOverviewPanel({
   familyId,
   profileId,
@@ -1649,16 +2174,17 @@ function ProfileOverviewPanel({
 
   return (
     <section
+      id="profile-dashboard"
       className="profile-overview"
       aria-labelledby="profile-overview-title"
       aria-busy={state.kind === "loading"}
     >
       <div className="profile-overview__heading">
-        <p className="context-line">Профиль · источники и решения</p>
+        <p className="context-line">Живая карта профиля</p>
         <h2 id="profile-overview-title">Обзор профиля</h2>
         <p className="profile-overview__description">
-          Здесь только состояние исходников, явные решения и подтверждённые значения. Медицинские
-          выводы, оценки и рекомендации не формируются.
+          Документы, проверка и подтверждённые значения собраны в одном месте. Каждый результат
+          остаётся связан с исходником.
         </p>
         {canWriteProfile ? (
           <div className="profile-overview__exports">
@@ -1711,141 +2237,731 @@ function ProfileOverviewPanel({
       ) : null}
 
       {state.kind === "ready" ? (
-        <div className="profile-overview__sections">
-          <section className="profile-overview__section" aria-labelledby="overview-review-title">
-            <div className="profile-overview__section-heading">
-              <div>
-                <p className="context-line">Следующее действие</p>
-                <h3 id="overview-review-title">Проверка исходников</h3>
-              </div>
-              <span className="profile-overview__count">
-                <span className="visually-hidden">Документов в очереди: </span>
-                {state.overview.reviewQueue.documentCount}
-              </span>
-            </div>
-            {state.overview.reviewQueue.documentCount === 0 ? (
-              <div className="profile-overview__empty">
-                <p>
-                  Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
-                </p>
-              </div>
-            ) : (
-              <ol className="profile-overview__list">
-                {state.overview.reviewQueue.documents.map((document) => (
-                  <li key={document.id} className="profile-overview__row">
+        <>
+          {(() => {
+            const dataState = profileDataState(state.overview);
+            const latestDocument = state.overview.recentDocuments[0];
+            return (
+              <div className="profile-cockpit">
+                <section
+                  className="profile-cockpit__map"
+                  aria-labelledby="profile-data-state-title"
+                >
+                  <div className="profile-cockpit__title-row">
                     <div>
-                      <strong>{document.originalFilename}</strong>
-                      <span>
-                        {factCountCopy(document.pendingFactCount)} ждут решения
-                        {document.needsAttentionFactCount > 0
-                          ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
-                          : ""}
-                      </span>
+                      <p>Контур профиля</p>
+                      <h3 id="profile-data-state-title">Состояние данных</h3>
                     </div>
-                    <Link
-                      className="text-link"
-                      href={documentPath(familyId, profileId, document.id)}
-                    >
-                      Открыть проверку
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-            {state.overview.reviewQueue.documentCount >
-            state.overview.reviewQueue.documents.length ? (
-              <p className="profile-overview__more">
-                Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
-                очереди.
-              </p>
-            ) : null}
-          </section>
+                    <span className="profile-cockpit__boundary">Не оценка здоровья</span>
+                  </div>
 
-          <section className="profile-overview__section" aria-labelledby="overview-documents-title">
-            <div className="profile-overview__section-heading">
-              <div>
-                <p className="context-line">Неизменяемые байты</p>
-                <h3 id="overview-documents-title">Последние исходники</h3>
-              </div>
-            </div>
-            {state.overview.recentDocuments.length === 0 ? (
-              <div className="profile-overview__empty">
-                <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
-                {canWriteProfile ? (
-                  <a className="text-link" href="#document-inbox-title">
-                    Добавить исходник
-                  </a>
-                ) : null}
-              </div>
-            ) : (
-              <ol className="profile-overview__list">
-                {state.overview.recentDocuments.map((document) => (
-                  <li key={document.id} className="profile-overview__row">
-                    <div>
-                      <strong>{document.originalFilename}</strong>
-                      <span>
-                        {documentKindLabel(document.contentType)} ·{" "}
-                        {formatDate(document.uploadedAt)} ·{" "}
-                        {profileOverviewProcessingCopy(document.processing)}
-                      </span>
+                  <div className="evidence-map">
+                    <div className="evidence-map__core">
+                      <span>{state.overview.recentDocuments.length}</span>
+                      <small>
+                        {sourceCountCopy(state.overview.recentDocuments.length)} в обзоре
+                      </small>
                     </div>
-                    <Link
-                      className="text-link"
-                      href={documentPath(familyId, profileId, document.id)}
-                    >
-                      Открыть источник
-                    </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+                    <ol className="evidence-map__steps">
+                      <li
+                        data-state={state.overview.recentDocuments.length > 0 ? "ready" : "empty"}
+                      >
+                        <span className="evidence-map__step-index">1</span>
+                        <strong>Источники</strong>
+                        <small>
+                          {latestDocument === undefined
+                            ? "Ещё не добавлены"
+                            : `Последний · ${formatDate(latestDocument.uploadedAt)}`}
+                        </small>
+                      </li>
+                      <li
+                        data-state={
+                          state.overview.reviewQueue.pendingFactCount > 0 ? "attention" : "ready"
+                        }
+                      >
+                        <span className="evidence-map__step-index">2</span>
+                        <strong>Проверка</strong>
+                        <small>
+                          {state.overview.reviewQueue.pendingFactCount === 0
+                            ? "Нет ожидающих решений"
+                            : `${factCountCopy(state.overview.reviewQueue.pendingFactCount)} ожидают проверки`}
+                        </small>
+                      </li>
+                      <li
+                        data-state={
+                          state.overview.recentObservations.length > 0 ? "ready" : "empty"
+                        }
+                      >
+                        <span className="evidence-map__step-index">3</span>
+                        <strong>Подтверждено</strong>
+                        <small>
+                          {state.overview.recentObservations.length === 0
+                            ? "Пока нет значений"
+                            : `${state.overview.recentObservations.length} последних значения`}
+                        </small>
+                      </li>
+                    </ol>
+                  </div>
+                </section>
 
-          <section
-            className="profile-overview__section"
-            aria-labelledby="overview-observations-title"
-          >
-            <div className="profile-overview__section-heading">
-              <div>
-                <p className="context-line">Явно подтверждено</p>
-                <h3 id="overview-observations-title">Последние значения</h3>
-              </div>
-              <a className="text-link" href="#observation-history">
-                Вся история
-              </a>
-            </div>
-            {state.overview.recentObservations.length === 0 ? (
-              <div className="profile-overview__empty">
-                <p>
-                  Подтверждённых значений пока нет. Они появятся здесь только после явного решения.
-                </p>
-              </div>
-            ) : (
-              <ol className="profile-overview__list">
-                {state.overview.recentObservations.map((observation) => (
-                  <li key={observation.id} className="profile-overview__row">
-                    <div>
-                      <strong>
-                        {observation.source.name}: {observation.source.value}{" "}
-                        {observation.source.unit}
-                      </strong>
-                      <span>
-                        Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
-                        {observation.sourceDocument.pageNumber}
-                      </span>
-                    </div>
-                    <Link
-                      className="text-link"
-                      href={documentPath(familyId, profileId, observation.sourceDocument.id)}
-                    >
-                      Открыть источник
+                <aside
+                  className="profile-cockpit__action"
+                  aria-labelledby="profile-next-action-title"
+                >
+                  <span className="profile-cockpit__pulse" aria-hidden="true" />
+                  <p>Следующее действие</p>
+                  <h3 id="profile-next-action-title">{dataState.label}</h3>
+                  <p className="profile-cockpit__action-copy">{dataState.detail}</p>
+                  {dataState.actionHref.startsWith("/") ? (
+                    <Link className="button button--primary" href={dataState.actionHref}>
+                      {dataState.actionLabel}
                     </Link>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+                  ) : (
+                    <a className="button button--primary" href={dataState.actionHref}>
+                      {dataState.actionLabel}
+                    </a>
+                  )}
+                  <dl className="profile-cockpit__facts">
+                    <div>
+                      <dt>Документы в проверке</dt>
+                      <dd>{state.overview.reviewQueue.documentCount}</dd>
+                    </div>
+                    <div>
+                      <dt>Недавние подтверждения</dt>
+                      <dd>{state.overview.recentObservations.length}</dd>
+                    </div>
+                  </dl>
+                </aside>
+              </div>
+            );
+          })()}
+
+          <CarePlanPanel
+            familyId={familyId}
+            profileId={profileId}
+            canWriteProfile={canWriteProfile}
+          />
+
+          <div className="profile-overview__sections">
+            <section className="profile-overview__section" aria-labelledby="overview-review-title">
+              <div className="profile-overview__section-heading">
+                <div>
+                  <p className="context-line">Следующее действие</p>
+                  <h3 id="overview-review-title">Проверка исходников</h3>
+                </div>
+                <span className="profile-overview__count">
+                  <span className="visually-hidden">Документов в очереди: </span>
+                  {state.overview.reviewQueue.documentCount}
+                </span>
+              </div>
+              {state.overview.reviewQueue.documentCount === 0 ? (
+                <div className="profile-overview__empty">
+                  <p>
+                    Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                  </p>
+                </div>
+              ) : (
+                <ol className="profile-overview__list">
+                  {state.overview.reviewQueue.documents.map((document) => (
+                    <li key={document.id} className="profile-overview__row">
+                      <div>
+                        <strong>{document.originalFilename}</strong>
+                        <span>
+                          {factCountCopy(document.pendingFactCount)} ждут решения
+                          {document.needsAttentionFactCount > 0
+                            ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                            : ""}
+                        </span>
+                      </div>
+                      <Link
+                        className="text-link"
+                        href={documentPath(familyId, profileId, document.id)}
+                      >
+                        Открыть проверку
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
+              {state.overview.reviewQueue.documentCount >
+              state.overview.reviewQueue.documents.length ? (
+                <p className="profile-overview__more">
+                  Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
+                  очереди.
+                </p>
+              ) : null}
+            </section>
+
+            <section
+              className="profile-overview__section"
+              aria-labelledby="overview-documents-title"
+            >
+              <div className="profile-overview__section-heading">
+                <div>
+                  <p className="context-line">Неизменяемые байты</p>
+                  <h3 id="overview-documents-title">Последние исходники</h3>
+                </div>
+              </div>
+              {state.overview.recentDocuments.length === 0 ? (
+                <div className="profile-overview__empty">
+                  <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
+                  {canWriteProfile ? (
+                    <a className="text-link" href="#document-inbox-title">
+                      Добавить исходник
+                    </a>
+                  ) : null}
+                </div>
+              ) : (
+                <ol className="profile-overview__list">
+                  {state.overview.recentDocuments.map((document) => (
+                    <li key={document.id} className="profile-overview__row">
+                      <div>
+                        <strong>{document.originalFilename}</strong>
+                        <span>
+                          {documentKindLabel(document.contentType)} ·{" "}
+                          {formatDate(document.uploadedAt)} ·{" "}
+                          {profileOverviewProcessingCopy(document.processing)}
+                        </span>
+                      </div>
+                      <Link
+                        className="text-link"
+                        href={documentPath(familyId, profileId, document.id)}
+                      >
+                        Открыть источник
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+
+            <section
+              className="profile-overview__section"
+              aria-labelledby="overview-observations-title"
+            >
+              <div className="profile-overview__section-heading">
+                <div>
+                  <p className="context-line">Явно подтверждено</p>
+                  <h3 id="overview-observations-title">Последние значения</h3>
+                </div>
+                <a className="text-link" href="#observation-history">
+                  Вся история
+                </a>
+              </div>
+              {state.overview.recentObservations.length === 0 ? (
+                <div className="profile-overview__empty">
+                  <p>
+                    Подтверждённых значений пока нет. Они появятся здесь только после явного
+                    решения.
+                  </p>
+                </div>
+              ) : (
+                <ol className="profile-overview__list">
+                  {state.overview.recentObservations.map((observation) => (
+                    <li key={observation.id} className="profile-overview__row">
+                      <div>
+                        <strong>
+                          {observation.source.name}: {observation.source.value}{" "}
+                          {observation.source.unit}
+                        </strong>
+                        <span>
+                          Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
+                          {observation.sourceDocument.pageNumber}
+                        </span>
+                      </div>
+                      <Link
+                        className="text-link"
+                        href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                      >
+                        Открыть источник
+                      </Link>
+                    </li>
+                  ))}
+                </ol>
+              )}
+            </section>
+          </div>
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+const carePlanLanes: ReadonlyArray<{
+  category: CarePlanCategory;
+  label: string;
+  empty: string;
+}> = [
+  {
+    category: "laboratory",
+    label: "Анализы",
+    empty: "Зафиксируйте анализ, который вы уже решили обсудить или повторить.",
+  },
+  {
+    category: "clinician",
+    label: "Специалисты",
+    empty: "Врач или специальность появляются только как принятый вами пункт.",
+  },
+  {
+    category: "nutrition",
+    label: "Питание",
+    empty: "Не назначаем рацион без ограничений, контекста и подтверждённого источника.",
+  },
+  {
+    category: "activity",
+    label: "Активность",
+    empty: "Спортивная программа требует ваших ограничений и явного принятия.",
+  },
+  {
+    category: "reminder",
+    label: "Напоминания",
+    empty: "Добавьте срок для уже принятого домашнего действия.",
+  },
+];
+
+type CarePlanState =
+  | { kind: "loading" }
+  | { kind: "ready"; response: CarePlanResponse }
+  | { kind: "error"; copy: string };
+
+function carePlanErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && [401, 404].includes(error.status)) {
+    return "План этого профиля недоступен. Вернитесь к доступной карточке.";
+  }
+  if (error instanceof ApiError && error.status === 409) {
+    return "План или сводка уже изменились. Обновите страницу и повторите действие.";
+  }
+  if (error instanceof ApiError && error.status === 503) {
+    return "Codex не подготовил черновики. Проверьте в настройках вход через ChatGPT и повторите позже.";
+  }
+  if (error instanceof ApiError && [400, 422].includes(error.status)) {
+    return "Проверьте название, примечание и дату действия.";
+  }
+  return "Не удалось обновить домашний план. Сохранённые пункты не изменены.";
+}
+
+function carePlanStateCopy(item: CarePlanItem): string {
+  switch (item.state) {
+    case "proposed":
+      return "Предложение · ждёт решения";
+    case "accepted":
+      return item.scheduledFor === null
+        ? "Принято без срока"
+        : `Запланировано · ${item.scheduledFor}`;
+    case "completed":
+      return "Выполнено";
+    case "dismissed":
+      return "Отклонено";
+  }
+}
+
+function CarePlanPanel({
+  familyId,
+  profileId,
+  canWriteProfile,
+}: {
+  familyId: string;
+  profileId: string;
+  canWriteProfile: boolean;
+}) {
+  const formId = useId();
+  const [state, setState] = useState<CarePlanState>({ kind: "loading" });
+  const [formOpen, setFormOpen] = useState(false);
+  const [codexDisclosureOpen, setCodexDisclosureOpen] = useState(false);
+  const [codexPending, setCodexPending] = useState(false);
+  const [pendingItemId, setPendingItemId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const creationAttempt = useRef<{ fingerprint: string; itemId: string } | null>(null);
+
+  const load = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      setState({ kind: "loading" });
+      try {
+        const response = await apiRequest<CarePlanResponse>(
+          carePlanPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", response });
+      } catch (loadError) {
+        if (!signal?.aborted) setState({ kind: "error", copy: carePlanErrorCopy(loadError) });
+      }
+    },
+    [familyId, profileId],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void load(controller.signal);
+    return () => controller.abort();
+  }, [load]);
+
+  async function createItem(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const form = event.currentTarget;
+    const fields = new FormData(form);
+    const category = fields.get("category");
+    const title = fields.get("title");
+    const note = fields.get("note");
+    const scheduledFor = fields.get("scheduledFor");
+    if (
+      typeof category !== "string" ||
+      !carePlanLanes.some((lane) => lane.category === category) ||
+      typeof title !== "string" ||
+      title.trim().length === 0 ||
+      typeof note !== "string" ||
+      typeof scheduledFor !== "string"
+    ) {
+      setError("Заполните название домашнего действия.");
+      return;
+    }
+    const input = {
+      category: category as CarePlanCategory,
+      title: title.trim(),
+      note: note.trim() || null,
+      scheduledFor: scheduledFor || null,
+    };
+    const fingerprint = JSON.stringify(input);
+    if (creationAttempt.current?.fingerprint !== fingerprint) {
+      creationAttempt.current = { fingerprint, itemId: crypto.randomUUID() };
+    }
+    const itemId = creationAttempt.current.itemId;
+    setPendingItemId(itemId);
+    setError(null);
+    try {
+      await apiRequest<CarePlanItemResponse>(
+        `${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(itemId)}`,
+        { method: "PUT", body: JSON.stringify(input) },
+      );
+      creationAttempt.current = null;
+      form.reset();
+      setFormOpen(false);
+      await load();
+    } catch (requestError) {
+      if (requestError instanceof ApiError && [400, 409, 422].includes(requestError.status)) {
+        creationAttempt.current = null;
+      }
+      setError(carePlanErrorCopy(requestError));
+    } finally {
+      setPendingItemId(null);
+    }
+  }
+
+  async function changeState(
+    item: CarePlanItem,
+    nextState: "accepted" | "completed" | "dismissed",
+  ): Promise<void> {
+    setPendingItemId(item.id);
+    setError(null);
+    try {
+      await apiRequest<CarePlanItemResponse>(
+        `${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}/state`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            revision: item.revision,
+            state: nextState,
+            scheduledFor: item.scheduledFor,
+          }),
+        },
+      );
+      await load();
+    } catch (requestError) {
+      setError(carePlanErrorCopy(requestError));
+    } finally {
+      setPendingItemId(null);
+    }
+  }
+
+  async function generateWithCodex(): Promise<void> {
+    setCodexPending(true);
+    setError(null);
+    try {
+      const response = await apiRequest<CarePlanProposalResponse>(
+        `${carePlanPath(familyId, profileId)}/proposals`,
+        {
+          method: "POST",
+          body: JSON.stringify({ acknowledgement: "send_confirmed_summary_to_codex" }),
+        },
+      );
+      setCodexDisclosureOpen(false);
+      await load();
+      if (response.items.length === 0) {
+        setError("Codex не нашёл безопасных черновиков для этой версии сводки.");
+      }
+    } catch (requestError) {
+      setError(carePlanErrorCopy(requestError));
+    } finally {
+      setCodexPending(false);
+    }
+  }
+
+  const canWrite = state.kind === "ready" && state.response.canWrite && canWriteProfile;
+
+  return (
+    <section
+      className="care-plan"
+      aria-labelledby={`${formId}-title`}
+      aria-busy={state.kind === "loading"}
+    >
+      <div className="care-plan__heading">
+        <div>
+          <p>Домашний health-care</p>
+          <h3 id={`${formId}-title`}>План заботы</h3>
+          <span>
+            Предложения не становятся назначениями автоматически. Сначала источник, затем ваше
+            решение.
+          </span>
         </div>
+        {canWrite ? (
+          <div className="care-plan__heading-actions">
+            <button
+              className="button button--secondary"
+              type="button"
+              aria-expanded={codexDisclosureOpen}
+              aria-controls={`${formId}-codex-disclosure`}
+              disabled={codexPending || state.response.evidence.latestSummary === null}
+              onClick={() => {
+                setCodexDisclosureOpen((current) => !current);
+                setFormOpen(false);
+                setError(null);
+              }}
+            >
+              {codexPending ? "Codex анализирует…" : "Предложения Codex"}
+            </button>
+            <button
+              className="button button--secondary"
+              type="button"
+              aria-expanded={formOpen}
+              aria-controls={`${formId}-form`}
+              onClick={() => {
+                setFormOpen((current) => !current);
+                setCodexDisclosureOpen(false);
+                setError(null);
+              }}
+            >
+              {formOpen ? "Закрыть" : "Добавить действие"}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {state.kind === "loading" ? (
+        <div className="care-plan__loading" aria-live="polite">
+          <div className="skeleton skeleton--overview-row" aria-hidden="true" />
+          <p>Собираем план и проверяем его источники…</p>
+        </div>
+      ) : null}
+
+      {state.kind === "error" ? (
+        <div className="care-plan__error" role="status">
+          <p>{state.copy}</p>
+          <button className="button button--secondary" type="button" onClick={() => void load()}>
+            Обновить план
+          </button>
+        </div>
+      ) : null}
+
+      {state.kind === "ready" ? (
+        <>
+          <dl className="care-plan__evidence" aria-label="Основание плана">
+            <div>
+              <dt>Источники</dt>
+              <dd>{state.response.evidence.sourceCount}</dd>
+            </div>
+            <div>
+              <dt>Ждут проверки</dt>
+              <dd>{state.response.evidence.pendingReviewCount}</dd>
+            </div>
+            <div>
+              <dt>Подтверждено</dt>
+              <dd>{state.response.evidence.confirmedObservationCount}</dd>
+            </div>
+            <div>
+              <dt>Версия сводки</dt>
+              <dd>{state.response.evidence.latestSummary?.version ?? "—"}</dd>
+            </div>
+          </dl>
+
+          {codexDisclosureOpen && canWrite ? (
+            <section
+              id={`${formId}-codex-disclosure`}
+              className="care-plan__codex-disclosure"
+              aria-labelledby={`${formId}-codex-title`}
+            >
+              <div>
+                <p className="section-label">Внешняя обработка · ChatGPT подписка</p>
+                <h4 id={`${formId}-codex-title`}>Передать подтверждённую сводку в Codex?</h4>
+                <p>
+                  Уйдёт только выжимка из сводки v{state.response.evidence.latestSummary?.version}:
+                  названия, значения, единицы, даты, код показателя, лаборатория и метки
+                  недостающего контекста. PDF, имена файлов, фрагменты, идентификаторы записей,
+                  пароли и OAuth-токены не передаются.
+                </p>
+              </div>
+              <div className="care-plan__codex-actions">
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={codexPending}
+                  onClick={() => void generateWithCodex()}
+                >
+                  {codexPending ? "Формируем черновики…" : "Да, сформировать черновики"}
+                </button>
+                <button
+                  className="text-button"
+                  type="button"
+                  disabled={codexPending}
+                  onClick={() => setCodexDisclosureOpen(false)}
+                >
+                  Отмена
+                </button>
+              </div>
+              <small>
+                Используется вход Codex CLI через ChatGPT. Каждый результат останется черновиком до
+                вашего решения.
+              </small>
+            </section>
+          ) : null}
+
+          {formOpen && canWrite ? (
+            <form id={`${formId}-form`} className="care-plan__form" onSubmit={createItem}>
+              <label>
+                <span>Направление</span>
+                <select name="category" defaultValue="reminder" disabled={pendingItemId !== null}>
+                  {carePlanLanes.map((lane) => (
+                    <option key={lane.category} value={lane.category}>
+                      {lane.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="care-plan__form-title">
+                <span>Что вы решили сделать</span>
+                <input
+                  name="title"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  disabled={pendingItemId !== null}
+                  placeholder="Например, обсудить повторный анализ"
+                />
+              </label>
+              <label>
+                <span>Срок</span>
+                <input name="scheduledFor" type="date" disabled={pendingItemId !== null} />
+              </label>
+              <label className="care-plan__form-note">
+                <span>Контекст для себя</span>
+                <textarea
+                  name="note"
+                  maxLength={500}
+                  rows={2}
+                  disabled={pendingItemId !== null}
+                  placeholder="Необязательно. Не вводите сюда пароль или ключ Codex."
+                />
+              </label>
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={pendingItemId !== null}
+              >
+                {pendingItemId === null ? "Сохранить в план" : "Сохраняем…"}
+              </button>
+            </form>
+          ) : null}
+
+          {error !== null ? (
+            <p className="form-error care-plan__form-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+
+          <div className="care-plan__lanes">
+            {carePlanLanes.map((lane) => {
+              const items = state.response.items.filter(
+                (item) => item.category === lane.category && item.state !== "dismissed",
+              );
+              return (
+                <section
+                  key={lane.category}
+                  className="care-plan__lane"
+                  aria-labelledby={`${formId}-${lane.category}`}
+                >
+                  <div className="care-plan__lane-heading">
+                    <h4 id={`${formId}-${lane.category}`}>{lane.label}</h4>
+                    <span>{items.length}</span>
+                  </div>
+                  {items.length === 0 ? (
+                    <p className="care-plan__empty">{lane.empty}</p>
+                  ) : (
+                    <ol>
+                      {items.map((item) => (
+                        <li key={item.id} data-state={item.state}>
+                          <div>
+                            <strong>{item.title}</strong>
+                            <span>{carePlanStateCopy(item)}</span>
+                            {item.note === null ? null : <p>{item.note}</p>}
+                            {item.provenance === null ? (
+                              <small>Добавлено человеком · без автоматической рекомендации</small>
+                            ) : (
+                              <details>
+                                <summary>Почему это предложено</summary>
+                                <p>
+                                  Сводка v{item.provenance.healthSummary.version} · правило{" "}
+                                  {item.provenance.ruleVersion}
+                                </p>
+                                <p>
+                                  Модель {item.provenance.modelId} · runtime{" "}
+                                  {item.provenance.runtimeVersion}
+                                </p>
+                                <p>
+                                  Не хватает контекста:{" "}
+                                  {item.provenance.missingContext.join(", ") || "не указано"}
+                                </p>
+                              </details>
+                            )}
+                          </div>
+                          {canWrite && item.state === "proposed" ? (
+                            <div className="care-plan__actions">
+                              <button
+                                className="text-button"
+                                type="button"
+                                disabled={pendingItemId !== null}
+                                onClick={() => void changeState(item, "accepted")}
+                              >
+                                Принять
+                              </button>
+                              <button
+                                className="text-button"
+                                type="button"
+                                disabled={pendingItemId !== null}
+                                onClick={() => void changeState(item, "dismissed")}
+                              >
+                                Отклонить
+                              </button>
+                            </div>
+                          ) : null}
+                          {canWrite && item.state === "accepted" ? (
+                            <button
+                              className="care-plan__complete"
+                              type="button"
+                              disabled={pendingItemId !== null}
+                              onClick={() => void changeState(item, "completed")}
+                            >
+                              Отметить выполненным
+                            </button>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+        </>
       ) : null}
     </section>
   );

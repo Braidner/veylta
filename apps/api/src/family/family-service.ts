@@ -42,7 +42,9 @@ export class DomainValidationError extends Error {}
 
 export interface SessionActor {
   userId: string;
+  username: string | null;
   displayName: string;
+  accountRole: "admin" | "user" | null;
   tokenHash: string;
 }
 
@@ -387,13 +389,17 @@ async function requireOwner(
   if (access.rows[0]?.role !== "owner") throw new ResourceNotFoundError();
 }
 
-async function profilesFor(client: Queryable, familyId: string): Promise<PatientProfileSummary[]> {
+async function profilesFor(
+  client: Queryable,
+  familyId: string,
+  userId: string,
+): Promise<PatientProfileSummary[]> {
   const result = await client.query<ProfileRow>(
     `SELECT id, family_id, display_name, kind, 'owner' AS access, created_at
      FROM patient_profiles
      WHERE family_id = $1 AND archived_at IS NULL
-     ORDER BY created_at, id`,
-    [familyId],
+     ORDER BY CASE WHEN linked_user_id = $2 THEN 0 ELSE 1 END, created_at, id`,
+    [familyId, userId],
   );
   return result.rows.map(profileSummary);
 }
@@ -440,10 +446,16 @@ export function createFamilyService(
       const token = cookieValue(cookieHeader, options.cookieName);
       if (token === null || token.length < 32 || token.length > 128) return null;
       const tokenHash = sha256(token);
-      const result = await database.query<{ user_id: string; display_name: string }>(
-        `SELECT s.user_id, u.display_name
+      const result = await database.query<{
+        user_id: string;
+        username: string | null;
+        display_name: string;
+        account_role: "admin" | "user" | null;
+      }>(
+        `SELECT s.user_id, u.display_name, a.username, a.role AS account_role
          FROM sessions s
          JOIN users u ON u.id = s.user_id
+         LEFT JOIN app_accounts a ON a.user_id = u.id
          WHERE s.token_hash = $1
            AND s.revoked_at IS NULL
            AND s.expires_at > $2
@@ -453,7 +465,13 @@ export function createFamilyService(
       const row = result.rows[0];
       return row === undefined
         ? null
-        : { userId: row.user_id, displayName: row.display_name, tokenHash };
+        : {
+            userId: row.user_id,
+            username: row.username,
+            displayName: row.display_name,
+            accountRole: row.account_role,
+            tokenHash,
+          };
     },
 
     clearSessionCookie() {
@@ -794,7 +812,7 @@ export function createFamilyService(
             createdAt: new Date(row.created_at).toISOString(),
             profiles:
               row.role === "owner"
-                ? await profilesFor(client, row.id)
+                ? await profilesFor(client, row.id, actor.userId)
                 : row.role === "adult_member" || row.role === "caregiver"
                   ? await profilesForGrantedUser(client, row.id, actor.userId)
                   : [],
@@ -802,7 +820,12 @@ export function createFamilyService(
         }
         return {
           contractVersion: FAMILY_PROFILE_CONTRACT_VERSION,
-          user: { id: actor.userId, displayName: actor.displayName },
+          user: {
+            id: actor.userId,
+            username: actor.username,
+            displayName: actor.displayName,
+            role: actor.accountRole,
+          },
           families,
         };
       });
@@ -979,7 +1002,7 @@ export function createFamilyService(
           [familyId, actor.userId],
         );
         const role = memberships.rows[0]?.role;
-        if (role === "owner") return profilesFor(client, familyId);
+        if (role === "owner") return profilesFor(client, familyId, actor.userId);
         if (role === "adult_member" || role === "caregiver") {
           return profilesForGrantedUser(client, familyId, actor.userId);
         }

@@ -1,28 +1,68 @@
+import { createAccountService } from "./accounts/account-service.js";
+import { registerAccountRoutes } from "./accounts/routes.js";
 import { buildApp } from "./app.js";
+import { createCarePlanService } from "./care-plan/care-plan-service.js";
+import { createCodexCarePlanGenerator } from "./care-plan/codex-care-plan-generator.js";
+import { registerCarePlanRoutes } from "./care-plan/routes.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, databaseReadiness } from "./database/pool.js";
 import { createDocumentService } from "./documents/document-service.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
 import { registerFamilyRoutes } from "./family/routes.js";
-import { createObjectStorage } from "./storage/create-object-storage.js";
+import { createCodexRuntimeProbe } from "./settings/codex-runtime.js";
+import { createHomeSettingsService } from "./settings/home-settings-service.js";
+import { registerHomeSettingsRoutes } from "./settings/routes.js";
+import { createStorageController } from "./storage/storage-controller.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databasePath);
+const storage = createStorageController(database, config.objectStorage);
+await storage.initialize();
 const app = buildApp({ readiness: databaseReadiness(database) });
 const familyService = createFamilyService(database, {
   cookieName: "veylta_session",
   secureCookie: config.secureSessionCookie,
   sessionTtlSeconds: config.sessionTtlSeconds,
 });
+registerAccountRoutes(
+  app,
+  createAccountService(database, {
+    cookieName: "veylta_session",
+    secureCookie: config.secureSessionCookie,
+    sessionTtlSeconds: config.sessionTtlSeconds,
+  }),
+  { allowedMutationOrigins: [config.webOrigin] },
+);
 registerFamilyRoutes(app, familyService, {
   allowedMutationOrigins: [config.webOrigin],
   demoRegistrationEnabled: config.demoRegistrationEnabled,
 });
+registerHomeSettingsRoutes(
+  app,
+  familyService,
+  createHomeSettingsService(database, storage, createCodexRuntimeProbe()),
+  { allowedMutationOrigins: [config.webOrigin] },
+);
+registerCarePlanRoutes(
+  app,
+  familyService,
+  createCarePlanService(database, {
+    generator: createCodexCarePlanGenerator({
+      modelId: config.codexCarePlanModel,
+      timeoutMs: config.codexCarePlanTimeoutMs,
+    }),
+    leaseDurationMs: config.codexCarePlanTimeoutMs + 30_000,
+    modelId: config.codexCarePlanModel,
+  }),
+  {
+    allowedMutationOrigins: [config.webOrigin],
+  },
+);
 registerDocumentRoutes(
   app,
   familyService,
-  createDocumentService(database, createObjectStorage(config.objectStorage), {
+  createDocumentService(database, storage, {
     maxDocumentBytes: config.maxDocumentBytes,
   }),
   {

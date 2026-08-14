@@ -15,19 +15,35 @@ person answer:
 It is a preparation and understanding tool, not a clinician, diagnostic system,
 prescribing system, or complete EHR.
 
+## Target product model
+
+Veylta is an installable PWA backed by a household-owned server. SQLite is the
+authoritative structured store and immutable source bytes live in a configured
+local storage directory. The first visit creates one administrator account;
+later visits require local sign-in. Administrators manage accounts, storage,
+Codex connectivity, and access, while each profile remains an independently
+authorized medical boundary.
+
+Document analysis is explicit and visible. The local deterministic worker is
+the default. An optional Codex adapter may process selected documents through a
+locally installed `codex app-server`; the user's `codex login` session remains
+owned by Codex. Veylta stores no model key or OAuth token, and the confirmation
+screen must disclose which source can leave the home server. A person still
+makes every final fact decision.
+
 ## Users and access model
 
 | Role | Product responsibility |
 | --- | --- |
-| Family owner | Manages the family, configured storage, and access grants. |
-| Adult member | Manages their linked personal profile and may receive a specific read grant. |
-| Caregiver | Starts without a profile and may read only a profile explicitly shared by the owner. |
+| Administrator | Manages the home installation, accounts, storage, Codex connection, and every profile. |
+| User | Opens their own linked profile and any profile explicitly shared with them. |
+| Granted user | Reads only the named profile and capabilities explicitly granted to their account. |
 | Dependent profile | Represents a child or other dependent without its own login. |
 
-Membership in a family is not blanket access to every patient profile. Every
-medical-data request is authorized on the server against the active family,
-profile, membership, and applicable consent grant. Access and material agent
-actions produce audit events.
+A profile URL is only a selector. Every medical-data request is authorized on
+the server against the active account, system role, linked profile, and any
+applicable explicit grant. Access and material agent actions produce audit
+events.
 
 ## Product principles
 
@@ -120,8 +136,18 @@ The first slice proves one complete and safe path with synthetic data:
     and pending extraction is paused until that owner restores it. Archive
     retains the immutable evidence graph and does not claim account deletion,
     retention, backup, recovery, or production restore (Task 24, delivered).
+20. An authorized profile owner keeps a household care plan split into
+    analyses, clinicians, nutrition, activity, and reminders. User-authored
+    actions are explicit decisions, not recommendations inferred from medical
+    evidence. On a separate acknowledged action, Codex may select at most one
+    bounded draft in each existing lane from the latest confirmed summary. The
+    UI discloses ChatGPT egress before the call; no original bytes, filenames,
+    fragments, credentials, or OAuth tokens are sent. Every draft binds its
+    immutable summary, model/runtime/rule, optional source observation, and
+    missing context, and remains unaccepted until a person decides (Tasks 33a
+    and 33b, delivered).
 
-The implemented synthetic record path reaches step 19, and the separate
+The implemented synthetic record path reaches step 20, and the separate
 owner-only activity log in step 11 is also delivered. A document is uploaded as
 `queued`, then the worker exposes the real stages `security_check`,
 `text_extraction`, `document_classification`, `structured_extraction`, and
@@ -162,6 +188,13 @@ independently reviewed.
   extraction.
 - Confirmed observations appear in a source-first profile history; the original
   document is authorized again when a user follows its source link.
+- A profile reader can inspect the same bounded plan, while only an
+  administrator/owner or self-linked user can create or change its actions.
+- A person-authored plan item survives reload and is never labelled as a Codex
+  or evidence-derived recommendation.
+- A Codex proposal requires literal egress acknowledgement, refuses API-key
+  authentication, is replay-safe for one exact summary/model/rule, exposes its
+  immutable provenance, and remains only a proposal until a person accepts it.
 - A failed confirmation produces no partial medical record.
 - Job retry produces no duplicate facts or observations.
 - All access and state-changing actions are audited without logging medical
@@ -189,7 +222,7 @@ independently reviewed.
 ## Full MVP direction
 
 Later slices may add a broader document classifier and extraction schema,
-clinically reviewed summaries and recommendations, full role/consent management,
+clinically reviewed recommendations, full role/consent management,
 production export, account deletion, and backup/restore. The local
 demo now supports one-time adult and caregiver joins. An adult receives one
 self-linked profile; a caregiver receives no profile until an owner explicitly

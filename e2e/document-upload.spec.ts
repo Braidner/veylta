@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { createSyntheticLabImage } from "../apps/api/test/synthetic-lab-image.js";
+import { createSyntheticFamily } from "./support/synthetic-family";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
 const syntheticLabBytes = await readFile(syntheticLabFixture);
@@ -23,13 +24,8 @@ function syntheticPdf(label: string): Buffer {
 
 async function registerDemoFamily(page: Page) {
   const names = syntheticNames();
-  await page.goto("/");
-  await page.getByLabel("Имя владельца").fill(names.owner);
-  await page.getByLabel("Название семьи").fill(names.family);
-  await page.getByLabel("Имя профиля").fill(names.profile);
-  await page.getByRole("button", { name: "Создать пространство" }).click();
-  await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
-  return { names, profileUrl: page.url() };
+  const profileUrl = await createSyntheticFamily(page, names);
+  return { names, profileUrl };
 }
 
 async function uploadPdf(
