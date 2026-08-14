@@ -345,6 +345,13 @@ h3 {
   color: oklch(0.61 0.018 250);
 }
 
+.field-hint {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
 .button {
   display: inline-flex;
   align-items: center;

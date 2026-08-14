@@ -50,6 +50,7 @@ import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { adminSetupError, validateAdminSetup } from "../account-access";
 import { SystemStatus } from "./system-status";
 
 const apiPrefix = "/health-api";
@@ -63,7 +64,10 @@ type ScreenState =
   | { kind: "error" };
 
 class ApiError extends Error {
-  constructor(readonly status: number) {
+  constructor(
+    readonly status: number,
+    readonly code: string | null,
+  ) {
     super(`API request failed with status ${status}`);
     this.name = "ApiError";
   }
@@ -85,7 +89,14 @@ async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
   });
 
   if (!response.ok) {
-    throw new ApiError(response.status);
+    let code: string | null = null;
+    try {
+      const body = (await response.json()) as { error?: { code?: unknown } };
+      if (typeof body.error?.code === "string") code = body.error.code;
+    } catch {
+      // The status remains authoritative when an intermediary returns no JSON envelope.
+    }
+    throw new ApiError(response.status, code);
   }
 
   if (response.status === 204) {
@@ -261,9 +272,15 @@ export function VeyltaApp({
     setActionError(null);
 
     const form = new FormData(event.currentTarget);
-    const password = String(form.get("password") ?? "");
-    if (password !== String(form.get("passwordConfirmation") ?? "")) {
-      setActionError("Пароли не совпадают.");
+    const fields = {
+      username: String(form.get("username") ?? "").trim(),
+      displayName: String(form.get("displayName") ?? "").trim(),
+      password: String(form.get("password") ?? ""),
+      passwordConfirmation: String(form.get("passwordConfirmation") ?? ""),
+    };
+    const validationError = validateAdminSetup(fields);
+    if (validationError !== null) {
+      setActionError(validationError);
       setAction(null);
       return;
     }
@@ -271,17 +288,21 @@ export function VeyltaApp({
       const setup = await apiRequest<AdminSetupResponse>("/v1/setup", {
         method: "POST",
         body: JSON.stringify({
-          username: String(form.get("username") ?? "").trim(),
-          displayName: String(form.get("displayName") ?? "").trim(),
-          password,
+          username: fields.username,
+          displayName: fields.displayName,
+          password: fields.password,
         }),
       });
       const session = await readSession();
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
       router.replace(profilePath(setup.family.id, setup.profile.id));
-    } catch {
-      setActionError("Не удалось создать администратора. Проверьте поля и попробуйте ещё раз.");
+    } catch (error) {
+      setActionError(
+        error instanceof ApiError
+          ? adminSetupError(error.status, error.code)
+          : "Не удалось связаться с сервером. Проверьте, что API запущен, и повторите попытку.",
+      );
     } finally {
       setAction(null);
     }
@@ -1052,6 +1073,7 @@ function AccountAccessScreen({ mode, pending, error, onSubmit }: AccountAccessSc
         <form
           className="onboarding-form account-access-form"
           onSubmit={onSubmit}
+          noValidate={mode === "setup"}
           aria-busy={pending}
           aria-describedby="account-form-note"
         >
@@ -1065,16 +1087,21 @@ function AccountAccessScreen({ mode, pending, error, onSubmit }: AccountAccessSc
             <input
               name="username"
               type="text"
+              aria-label="Логин"
               required
               minLength={3}
               maxLength={32}
               pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
               autoCapitalize="none"
               autoComplete="username"
+              aria-describedby="account-username-hint"
               spellCheck={false}
               placeholder="home-admin"
               disabled={pending}
             />
+            <small id="account-username-hint" className="field-hint">
+              3–32 латинских символа; можно использовать цифры, точку, дефис и подчёркивание.
+            </small>
           </label>
 
           {mode === "setup" ? (
@@ -1083,13 +1110,18 @@ function AccountAccessScreen({ mode, pending, error, onSubmit }: AccountAccessSc
               <input
                 name="displayName"
                 type="text"
+                aria-label="Ваше имя"
                 required
                 minLength={1}
                 maxLength={120}
+                aria-describedby="account-display-name-hint"
                 autoComplete="name"
                 placeholder="Как обращаться в интерфейсе"
                 disabled={pending}
               />
+              <small id="account-display-name-hint" className="field-hint">
+                Это имя будет видно только пользователям вашего домашнего сервера.
+              </small>
             </label>
           ) : null}
 
@@ -1098,12 +1130,19 @@ function AccountAccessScreen({ mode, pending, error, onSubmit }: AccountAccessSc
             <input
               name="password"
               type="password"
+              aria-label="Пароль"
               required
               minLength={12}
               maxLength={128}
+              aria-describedby={mode === "setup" ? "account-password-hint" : undefined}
               autoComplete={mode === "setup" ? "new-password" : "current-password"}
               disabled={pending}
             />
+            {mode === "setup" ? (
+              <small id="account-password-hint" className="field-hint">
+                Не менее 12 символов. Пароль остаётся только на домашнем сервере.
+              </small>
+            ) : null}
           </label>
 
           {mode === "setup" ? (
@@ -1112,6 +1151,7 @@ function AccountAccessScreen({ mode, pending, error, onSubmit }: AccountAccessSc
               <input
                 name="passwordConfirmation"
                 type="password"
+                aria-label="Повторите пароль"
                 required
                 minLength={12}
                 maxLength={128}

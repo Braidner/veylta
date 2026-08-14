@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786661635.9629781,
-    "ast_hash": "b010e6944df3a4f3107425d9d621c5d0",
+    "mtime": 1786687304.4728973,
+    "ast_hash": "7a1378bee6e2aebc448dd6148928e913",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -745,8 +745,8 @@
     "semantic_hash": ""
   },
   "e2e/account-setup.spec.ts": {
-    "mtime": 1786656310.3006372,
-    "ast_hash": "58239b5ebd7ab721857a84ee826c7e1b",
+    "mtime": 1786687400.9206784,
+    "ast_hash": "9e23aa415df4f7dcc3e00ce96a4e01ef",
     "semantic_hash": ""
   },
   "e2e/support/synthetic-family.ts": {
@@ -852,6 +852,16 @@
   "db/migrations/0015_codex_care_plan_proposals.up.sql": {
     "mtime": 1786661834.8499026,
     "ast_hash": "559dc76c8aae1df70613d081824b87dc",
+    "semantic_hash": ""
+  },
+  "apps/web/app/account-access.test.ts": {
+    "mtime": 1786687171.3746674,
+    "ast_hash": "443c6e30ea2a3dd9e4a69039c175e999",
+    "semantic_hash": ""
+  },
+  "apps/web/app/account-access.ts": {
+    "mtime": 1786687157.0243149,
+    "ast_hash": "6378d389c7e9e42c7c0dcb8c5eb290e5",
     "semantic_hash": ""
   }
 }

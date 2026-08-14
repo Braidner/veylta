@@ -9,11 +9,19 @@ test("first launch creates the administrator, opens their profile, and later log
     page.getByRole("heading", { level: 1, name: "Настройте домашнюю Veylta" }),
   ).toBeVisible();
   await expect(page.getByText("Подключите личную папку")).toHaveCount(0);
+  await expect(page.getByText(/3–32 латинских символа/)).toBeVisible();
+  await expect(page.getByText(/Не менее 12 символов/)).toBeVisible();
 
-  await page.getByLabel("Логин").fill("home-admin");
+  await page.getByLabel("Логин").fill("админ");
   await page.getByLabel("Ваше имя").fill("Домашний администратор");
   await page.getByLabel("Пароль", { exact: true }).fill("correct horse battery staple");
   await page.getByLabel("Повторите пароль").fill("correct horse battery staple");
+  await page.getByRole("button", { name: "Создать администратора" }).click();
+  await expect(page.locator(".form-error[role='alert']")).toHaveText(
+    "Логин: 3–32 латинских символа, цифры, точка, дефис или подчёркивание.",
+  );
+
+  await page.getByLabel("Логин").fill("home-admin");
   await page.getByRole("button", { name: "Создать администратора" }).click();
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]+\/profiles\/[0-9a-f-]+$/);
