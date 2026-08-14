@@ -66,7 +66,6 @@ import {
   CheckCheck,
   ClipboardList,
   Clock3,
-  Download,
   Files,
   FileText,
   FileUp,
@@ -74,7 +73,6 @@ import {
   House,
   LogOut,
   MessageCircle,
-  RefreshCw,
   Search,
   Send,
   Settings,
@@ -97,6 +95,7 @@ import {
   useState,
 } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
+import { DocumentHero } from "./document-hero";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
 import { VeyltaMark } from "./veylta-mark";
@@ -1965,49 +1964,7 @@ function ProfileWorkspace({
             ) : null}
           </div>
         </div>
-      ) : (
-        <div className="document-context-bar">
-          <p>
-            <span>{family.displayName}</span>
-            <span aria-hidden="true">/</span>
-            <strong>{profile.displayName}</strong>
-            <span aria-hidden="true">/</span>
-            <span>Документы</span>
-          </p>
-          <div className="document-context-bar__actions">
-            <label className="profile-switcher">
-              <span className="visually-hidden">Активный профиль</span>
-              <select
-                aria-label="Активный профиль"
-                value={profile.id}
-                onChange={(event) => {
-                  const selected = profiles.find((item) => item.id === event.target.value);
-                  if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
-                }}
-              >
-                {profiles.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.displayName}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {canWriteProfile ? (
-              <button
-                className="profile-heading__upload"
-                type="button"
-                aria-label="Загрузить документ"
-                onClick={openUploadDialog}
-              >
-                Загрузить
-                <span aria-hidden="true">
-                  <ArrowRight size={18} />
-                </span>
-              </button>
-            ) : null}
-          </div>
-        </div>
-      )}
+      ) : null}
 
       {error !== null && !addProfileOpen ? (
         <p className="form-error workspace-error" role="alert">
@@ -5592,69 +5549,26 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
 
   return (
     <section className="document-view" aria-labelledby="document-title">
-      <header className="document-page-header document-page-hero" data-testid="document-hero">
-        <div className="document-page-header__identity">
-          <p className="context-line">Документ профиля</p>
-          <h1 id="document-title">{intelligence?.title ?? savedDocument.originalFilename}</h1>
-          <p className="document-meta">
-            {documentKindLabel(savedDocument.contentType)} · {formatBytes(savedDocument.byteSize)} ·{" "}
-            {formatDate(savedDocument.uploadedAt)}
-          </p>
-        </div>
-        <fieldset className="document-page-header__actions">
-          <legend className="visually-hidden">Действия с документом</legend>
-          <a className="button button--secondary" href={contentUrl} download>
-            <Download size={17} aria-hidden="true" />
-            Скачать
-          </a>
-          {canRestart ? (
-            <button
-              className="button button--secondary"
-              type="button"
-              onClick={() => void handleRestart()}
-              disabled={restartPending}
-            >
-              <RefreshCw size={17} aria-hidden="true" />
-              {restartPending ? "Запускаем…" : "Перезапустить разбор"}
-            </button>
-          ) : null}
-          {canWriteProfile ? (
-            <button
-              className="button button--secondary document-delete-trigger"
-              type="button"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
-              <Trash2 size={17} aria-hidden="true" />
-              Удалить
-            </button>
-          ) : null}
-        </fieldset>
-        {restartError === null ? null : (
-          <p className="form-error document-page-header__error" role="alert">
-            {restartError}
-          </p>
-        )}
-        <div className="document-page-hero__summary">
-          <div className="document-section-heading">
-            <div>
-              <p className="context-line">Коротко о документе</p>
-              <h2>Саммари Codex</h2>
-            </div>
-            <Bot size={22} aria-hidden="true" />
-          </div>
-          <p>
-            {intelligence?.shortSummary ??
-              "Короткое саммари появится здесь после завершения нового разбора документа."}
-          </p>
-          {(processing.state === "awaiting_review" || processing.state === "completed") &&
-          resultAvailability !== null ? (
-            <p className="document-page-hero__result-state" role="status">
-              {resultAvailability}
-            </p>
-          ) : null}
-          <small>Фактическое описание источника, не диагноз и не медицинская рекомендация.</small>
-        </div>
-      </header>
+      <DocumentHero
+        title={intelligence?.title ?? savedDocument.originalFilename}
+        metadata={`${documentKindLabel(savedDocument.contentType)} · ${formatBytes(savedDocument.byteSize)} · ${formatDate(savedDocument.uploadedAt)}`}
+        summary={
+          intelligence?.shortSummary ??
+          "Короткое саммари появится здесь после завершения нового разбора документа."
+        }
+        resultAvailability={
+          processing.state === "awaiting_review" || processing.state === "completed"
+            ? resultAvailability
+            : null
+        }
+        downloadHref={contentUrl}
+        canRestart={canRestart}
+        restartPending={restartPending}
+        restartError={restartError}
+        canDelete={canWriteProfile}
+        onRestart={() => void handleRestart()}
+        onDelete={() => setDeleteDialogOpen(true)}
+      />
 
       {savedDocument.duplicate.possible ? (
         <div className="duplicate-note" role="status">

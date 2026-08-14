@@ -53,7 +53,18 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   const source = workspace.getByTestId("document-review-source");
   const resultsPanel = workspace.locator(".document-review-workspace__body");
   const hero = page.getByTestId("document-hero");
+  const heroActions = hero.getByRole("group", { name: "Действия с документом" });
 
+  await expect(page.locator(".document-context-bar")).toHaveCount(0);
+  await expect(hero.getByText("Коротко о документе", { exact: true })).toHaveCount(0);
+  await expect(hero.getByText("Саммари Codex", { exact: true })).toHaveCount(0);
+  await expect(heroActions.getByRole("link", { name: "Скачать" })).toBeVisible();
+  await expect(heroActions.getByRole("button", { name: "Перезапустить разбор" })).toBeVisible();
+  expect(
+    await heroActions
+      .getByRole("link", { name: "Скачать" })
+      .evaluate((element) => getComputedStyle(element).backgroundColor),
+  ).toBe("rgba(0, 0, 0, 0)");
   await expect(firstResult).toHaveAttribute("aria-pressed", "true");
   await expect(secondResult).toHaveAttribute("aria-pressed", "false");
   await expect(source.getByText("Источник результата", { exact: true })).toBeVisible();
@@ -66,17 +77,20 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   await expect(source.getByText("Диапазон в документе", { exact: true })).toBeVisible();
   await expect(source.getByText("5.0–8.0 synthetic-unit", { exact: true })).toBeVisible();
   expect(await source.evaluate((element) => getComputedStyle(element).position)).toBe("static");
-  const [heroBox, sourceBox, resultsPanelBox, firstResultBox] = await Promise.all([
+  const [heroBox, heroActionsBox, sourceBox, resultsPanelBox, firstResultBox] = await Promise.all([
     hero.boundingBox(),
+    heroActions.boundingBox(),
     source.boundingBox(),
     resultsPanel.boundingBox(),
     firstResult.boundingBox(),
   ]);
   expect(heroBox).not.toBeNull();
+  expect(heroActionsBox).not.toBeNull();
   expect(sourceBox).not.toBeNull();
   expect(resultsPanelBox).not.toBeNull();
   expect(firstResultBox).not.toBeNull();
   expect(Math.abs((resultsPanelBox?.y ?? 0) - (sourceBox?.y ?? 0))).toBeLessThanOrEqual(2);
+  expect((heroActionsBox?.y ?? 0) - (heroBox?.y ?? 0)).toBeLessThanOrEqual(40);
   expect(firstResultBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
   expect(sourceBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
 

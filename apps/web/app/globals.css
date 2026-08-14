@@ -5975,72 +5975,6 @@ body:has(.upload-dialog[open]) {
   padding: 24px 28px 40px;
 }
 
-.document-page-header {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 18px 28px;
-  align-items: end;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--color-line);
-}
-
-.document-page-header__identity {
-  min-width: 0;
-}
-
-.document-page-header .back-link {
-  margin-bottom: 18px;
-}
-
-.document-page-header .document-state {
-  margin-bottom: 8px;
-  font-size: 0.75rem;
-}
-
-.document-page-header h2 {
-  max-width: none;
-  font-size: clamp(1.75rem, 2.4vw, 2.5rem);
-  line-height: 1.06;
-  letter-spacing: -0.035em;
-}
-
-.document-page-header__actions {
-  display: flex;
-  flex-wrap: wrap;
-  min-width: 0;
-  gap: 8px;
-  justify-content: flex-end;
-  padding: 0;
-  margin: 0;
-  border: 0;
-}
-
-.document-page-header__actions .button {
-  gap: 8px;
-  min-height: 42px;
-  padding-inline: 15px;
-  white-space: nowrap;
-}
-
-.document-page-header__restart-note {
-  grid-column: 2;
-  max-width: 48ch;
-  margin: -8px 0 0;
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
-  line-height: 1.4;
-  text-align: right;
-}
-
-.document-delete-trigger {
-  color: var(--color-danger);
-}
-
-.document-page-header__error {
-  grid-column: 1 / -1;
-  margin: 0;
-}
-
 .document-view > .duplicate-note {
   max-width: none;
   margin: 16px 0 0;
@@ -6431,21 +6365,6 @@ body:has(.upload-dialog[open]) {
 }
 
 @media (max-width: 1040px) {
-  .document-page-header {
-    grid-template-columns: 1fr;
-    align-items: start;
-  }
-
-  .document-page-header__actions {
-    justify-content: flex-start;
-  }
-
-  .document-page-header__restart-note {
-    grid-column: 1;
-    margin-top: -10px;
-    text-align: left;
-  }
-
   .document-dashboard-grid {
     grid-template-columns: minmax(0, 1fr) minmax(250px, 300px);
   }
@@ -6500,19 +6419,15 @@ body:has(.upload-dialog[open]) {
     padding: 20px 16px 32px;
   }
 
-  .document-page-header__actions,
-  .document-page-header__actions .button,
   .document-delete-dialog__actions,
   .document-delete-dialog__actions .button {
     width: 100%;
   }
 
-  .document-page-header__actions,
   .document-delete-dialog__actions {
     flex-direction: column;
   }
 
-  .document-page-header__actions .button,
   .document-delete-dialog__actions .button {
     justify-content: center;
   }
@@ -6543,41 +6458,7 @@ body:has(.upload-dialog[open]) {
     padding: 22px;
   }
 }
-/* Document workspace v5: one dashboard grid, source-first review. */
-.document-context-bar {
-  display: flex;
-  min-height: 48px;
-  gap: 24px;
-  align-items: center;
-  justify-content: space-between;
-  padding-bottom: 24px;
-  border-bottom: 1px solid var(--color-line);
-}
-
-.document-context-bar > p {
-  display: flex;
-  min-width: 0;
-  gap: 9px;
-  align-items: center;
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 0.8125rem;
-}
-
-.document-context-bar > p strong {
-  overflow: hidden;
-  color: var(--color-ink);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.document-context-bar__actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 10px;
-  align-items: center;
-}
-
+/* Document workspace v6: reusable hero and source-first review. */
 .workspace-tab-panel--document-detail {
   width: 100%;
   max-width: none;
@@ -6596,26 +6477,25 @@ body:has(.upload-dialog[open]) {
   padding: 32px 0 48px;
 }
 
-.document-page-header {
-  gap: 16px 32px;
-  padding-bottom: 24px;
+.document-hero__identity {
+  min-width: 0;
 }
 
-.document-page-header__identity .context-line {
+.document-hero__identity .context-line {
   margin-bottom: 8px;
 }
 
-.document-page-header h1 {
-  max-width: 28ch;
-  font-size: clamp(1.8rem, 2.5vw, 2.75rem);
-  line-height: 1.04;
-  letter-spacing: -0.04em;
-}
-
-.document-page-hero {
+.document-hero {
   position: relative;
   isolation: isolate;
+  display: grid;
+  grid-template-areas:
+    "identity actions"
+    "error error"
+    "summary summary";
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: 24px 32px;
+  align-items: start;
   padding: 32px;
   overflow: hidden;
   color: white;
@@ -6626,7 +6506,7 @@ body:has(.upload-dialog[open]) {
   border-radius: 16px;
 }
 
-.document-page-hero::after {
+.document-hero::after {
   position: absolute;
   z-index: -1;
   right: -48px;
@@ -6641,55 +6521,93 @@ body:has(.upload-dialog[open]) {
     0 0 0 64px oklch(1 0 0 / 3%);
 }
 
-.document-page-hero .context-line,
-.document-page-hero .document-meta,
-.document-page-hero small {
+.document-hero .context-line,
+.document-hero .document-meta,
+.document-hero small {
   color: oklch(0.96 0.015 260 / 86%);
 }
 
-.document-page-hero h1 {
+.document-hero h1 {
+  grid-area: identity;
   max-width: 24ch;
+  margin: 0;
+  color: white;
+  font-size: 2.75rem;
+  line-height: 1.04;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+}
+
+.document-hero__identity {
+  grid-area: identity;
+}
+
+.document-hero__actions {
+  display: flex;
+  grid-area: actions;
+  flex-wrap: wrap;
+  min-width: 0;
+  gap: 8px;
+  justify-content: flex-end;
+  padding: 0;
+  margin: 0;
+  border: 0;
+}
+
+.document-hero__action {
+  gap: 8px;
+  min-height: 40px;
+  padding-inline: 12px;
+  color: white;
+  white-space: nowrap;
+  background: transparent;
+  border: 1px solid oklch(1 0 0 / 34%);
+  transition:
+    color 180ms ease,
+    background-color 180ms ease,
+    border-color 180ms ease;
+}
+
+.document-hero__action:hover {
+  color: white;
+  background: oklch(1 0 0 / 12%);
+  border-color: oklch(1 0 0 / 68%);
+}
+
+.document-hero__action:disabled {
+  color: oklch(1 0 0 / 56%);
+  background: transparent;
+  border-color: oklch(1 0 0 / 18%);
+}
+
+.document-hero__action--danger:hover {
+  color: white;
+  background: oklch(0.52 0.2 28 / 62%);
+  border-color: oklch(0.9 0.08 25 / 72%);
+}
+
+.document-hero__error {
+  grid-area: error;
+  margin: 0;
   color: white;
 }
 
-.document-page-hero .document-page-header__actions .button {
-  color: var(--color-primary);
-  background: white;
-  border-color: oklch(1 0 0 / 24%);
-}
-
-.document-page-hero .document-page-header__actions .button:hover {
-  background: oklch(0.97 0.012 265);
-  border-color: white;
-}
-
-.document-page-hero .document-page-header__actions .document-delete-trigger {
-  color: var(--color-danger);
-}
-
-.document-page-hero__summary {
-  grid-column: 1 / -1;
+.document-hero__summary {
+  grid-area: summary;
   padding-top: 24px;
   border-top: 1px solid oklch(1 0 0 / 22%);
 }
 
-.document-page-hero__summary h2 {
-  margin: 0;
-  color: white;
-  font-size: 1.125rem;
-  letter-spacing: -0.02em;
-}
-
-.document-page-hero__summary > p {
+.document-hero__summary > p {
   max-width: 72ch;
-  margin: 16px 0 0;
+  margin: 0;
   font-size: 1.125rem;
   font-weight: 650;
   line-height: 1.5;
   text-wrap: pretty;
 }
 
-.document-page-hero__summary > .document-page-hero__result-state {
+.document-hero__summary > .document-hero__result-state {
   width: fit-content;
   max-width: 100%;
   padding: 8px 12px;
@@ -6700,7 +6618,7 @@ body:has(.upload-dialog[open]) {
   font-size: 0.8125rem;
 }
 
-.document-page-hero__summary > small {
+.document-hero__summary > small {
   display: block;
   max-width: 70ch;
   margin-top: 16px;
@@ -7237,14 +7155,23 @@ body:has(.upload-dialog[open]) {
 }
 
 @media (max-width: 900px) {
-  .document-context-bar,
   .document-review-workspace__heading {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .document-context-bar__actions {
-    justify-content: space-between;
+  .document-hero {
+    grid-template-areas:
+      "identity"
+      "actions"
+      "error"
+      "summary";
+    grid-template-columns: 1fr;
+    padding: 24px;
+  }
+
+  .document-hero__actions {
+    justify-content: flex-start;
   }
 
   .document-review-workspace,
@@ -7258,16 +7185,35 @@ body:has(.upload-dialog[open]) {
     padding: 24px 0 32px;
   }
 
-  .document-context-bar__actions,
   .document-review-workspace__bulk {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .document-context-bar__actions .profile-switcher,
-  .document-context-bar__actions .profile-heading__upload,
   .document-review-workspace__bulk .button {
     width: 100%;
+  }
+
+  .document-hero {
+    gap: 20px;
+    padding: 20px;
+  }
+
+  .document-hero h1 {
+    font-size: 2rem;
+  }
+
+  .document-hero__actions,
+  .document-hero__action {
+    width: 100%;
+  }
+
+  .document-hero__actions {
+    flex-direction: column;
+  }
+
+  .document-hero__action {
+    justify-content: center;
   }
 
   .document-review-workspace__body,

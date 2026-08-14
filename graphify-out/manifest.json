@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786738787.1786492,
-    "ast_hash": "05f5b09ba11e5953a7ecd622af382c41",
+    "mtime": 1786739935.65199,
+    "ast_hash": "778bc0f20ee66dc3718d877dac647730",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -430,8 +430,8 @@
     "semantic_hash": ""
   },
   "e2e/document-review.spec.ts": {
-    "mtime": 1786738555.8540566,
-    "ast_hash": "688c04215c92b14897f7f015f53a63eb",
+    "mtime": 1786740167.1838253,
+    "ast_hash": "73b464ed27e8b98b6b3e6e0710307dae",
     "semantic_hash": ""
   },
   "apps/api/test/observation-history.integration.test.ts": {
@@ -1102,6 +1102,11 @@
   "docs/adr/0009-document-knowledge-and-lifecycle.md": {
     "mtime": 1786728144.4481173,
     "ast_hash": "a76035d8b6bfe819087404b204ac10b0",
+    "semantic_hash": ""
+  },
+  "apps/web/app/components/document-hero.tsx": {
+    "mtime": 1786739935.650809,
+    "ast_hash": "9f6e3d29df01c01300e4d117805d46be",
     "semantic_hash": ""
   }
 }
