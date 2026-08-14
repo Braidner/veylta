@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { DOCUMENT_INTELLIGENCE_CONTRACT_VERSION } from "@veylta/contracts";
 import {
@@ -23,10 +24,14 @@ const pages = [
 
 function executorFor(
   output: unknown,
-  calls: Array<{ arguments: readonly string[]; input: string }>,
+  calls: Array<{ arguments: readonly string[]; input: string; outputSchema: string }>,
 ) {
   const executor: DocumentIntelligenceExecutor = async (arguments_, input, files) => {
-    calls.push({ arguments: arguments_, input });
+    calls.push({
+      arguments: arguments_,
+      input,
+      outputSchema: await readFile(files.schemaPath, "utf8"),
+    });
     await files.writeOutput(JSON.stringify(output));
     return { stdout: "", stderr: "", runtimeVersion: "codex-cli 0.147.0" };
   };
@@ -34,7 +39,7 @@ function executorFor(
 }
 
 test("Codex classifies a document and returns only source-bound review drafts", async () => {
-  const calls: Array<{ arguments: readonly string[]; input: string }> = [];
+  const calls: Array<{ arguments: readonly string[]; input: string; outputSchema: string }> = [];
   const provider = createCodexDocumentIntelligenceProvider(
     { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },
     executorFor(
@@ -97,7 +102,42 @@ test("Codex classifies a document and returns only source-bound review drafts", 
   assert.ok(calls[0]?.arguments.includes("--ephemeral"));
   assert.ok(calls[0]?.arguments.includes("read-only"));
   assert.match(calls[0]?.input ?? "", /untrusted document content/i);
+  assert.match(calls[0]?.input ?? "", /complete source line/i);
   assert.doesNotMatch(calls[0]?.input ?? "", /familyId|profileId|originalFilename/i);
+  assert.doesNotMatch(calls[0]?.outputSchema ?? "", /"uniqueItems"/);
+  const schema = JSON.parse(calls[0]?.outputSchema ?? "{}") as {
+    properties?: {
+      facts?: {
+        items?: {
+          properties?: {
+            proposedSampledAt?: { anyOf?: Array<{ pattern?: string }> };
+            proposedResultedAt?: { anyOf?: Array<{ pattern?: string }> };
+            referenceRange?: {
+              anyOf?: Array<{
+                properties?: { sourceText?: { anyOf?: Array<{ pattern?: string }> } };
+              }>;
+            };
+            source?: { properties?: { fragment?: { description?: string; minLength?: number } } };
+          };
+        };
+      };
+    };
+  };
+  const fragmentSchema = schema.properties?.facts?.items?.properties?.source?.properties?.fragment;
+  assert.equal(fragmentSchema?.minLength, 12);
+  assert.match(fragmentSchema?.description ?? "", /complete source line/i);
+  const factProperties = schema.properties?.facts?.items?.properties;
+  assert.match(factProperties?.proposedSampledAt?.anyOf?.[0]?.pattern ?? "", /T.*Z/);
+  assert.equal(
+    factProperties?.proposedSampledAt?.anyOf?.[0]?.pattern,
+    factProperties?.proposedResultedAt?.anyOf?.[0]?.pattern,
+  );
+  assert.match(
+    factProperties?.referenceRange?.anyOf?.[0]?.properties?.sourceText?.anyOf?.[0]?.pattern ?? "",
+    /\\S/,
+  );
+  assert.match(calls[0]?.input ?? "", /canonical UTC timestamp/i);
+  assert.match(calls[0]?.input ?? "", /null instead of an empty string/i);
 });
 
 test("Codex can sort a non-laboratory document without inventing facts", async () => {
