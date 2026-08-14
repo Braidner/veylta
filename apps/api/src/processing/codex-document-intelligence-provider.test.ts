@@ -163,6 +163,52 @@ test("Codex can sort a non-laboratory document without inventing facts", async (
   assert.deepEqual(result.extraction.items, []);
 });
 
+test("Codex provenance expands an exact context fragment to its complete source line", async () => {
+  const provider = createCodexDocumentIntelligenceProvider(
+    { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },
+    executorFor(
+      {
+        classification: {
+          category: "laboratory",
+          title: "Синтетический лабораторный отчёт",
+          documentDate: "2026-08-12",
+          confidence: 0.96,
+        },
+        facts: [
+          {
+            factKey: "synthetic-glucose",
+            sourceName: "Synthetic glucose",
+            sourceValue: "7.0",
+            sourceUnit: "synthetic-unit",
+            proposedCanonicalCode: null,
+            proposedNormalizedValue: null,
+            proposedNormalizedUnit: null,
+            proposedSampledAt: null,
+            proposedResultedAt: "2026-08-12T00:00:00.000Z",
+            proposedSpecimenType: null,
+            proposedLaboratory: null,
+            referenceRange: null,
+            confidence: 0.91,
+            validationIssues: [],
+            source: {
+              pageNumber: 1,
+              fragment: "glucose: 7.0 synthetic-unit",
+            },
+          },
+        ],
+      },
+      [],
+    ),
+  );
+
+  const result = await provider.analyze({ contentType: "application/pdf", pages });
+
+  assert.equal(
+    result.extraction.items[0]?.source.fragment,
+    "Synthetic glucose: 7.0 synthetic-unit",
+  );
+});
+
 test("Codex output fails closed when provenance is not an exact page fragment", async () => {
   const provider = createCodexDocumentIntelligenceProvider(
     { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },

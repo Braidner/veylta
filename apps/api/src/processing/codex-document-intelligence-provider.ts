@@ -221,6 +221,21 @@ function boundedSourceFragment(value: unknown): string {
   return normalized;
 }
 
+function completeSourceLines(pageText: string, requestedFragment: string): string {
+  const normalizedPage = pageText.replaceAll("\r\n", "\n");
+  const firstMatch = normalizedPage.indexOf(requestedFragment);
+  if (
+    firstMatch < 0 ||
+    normalizedPage.indexOf(requestedFragment, firstMatch + requestedFragment.length) >= 0
+  ) {
+    invalidOutput();
+  }
+  const lineStart = normalizedPage.lastIndexOf("\n", firstMatch - 1) + 1;
+  const followingLineBreak = normalizedPage.indexOf("\n", firstMatch + requestedFragment.length);
+  const lineEnd = followingLineBreak < 0 ? normalizedPage.length : followingLineBreak;
+  return boundedSourceFragment(normalizedPage.slice(lineStart, lineEnd).trim());
+}
+
 function confidence(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
     invalidOutput();
@@ -331,14 +346,10 @@ function parseFact(
   exactKeys(source, ["pageNumber", "fragment"]);
   if (!Number.isSafeInteger(source.pageNumber)) invalidOutput();
   const pageNumber = source.pageNumber as number;
-  const fragment = boundedSourceFragment(source.fragment);
+  const requestedFragment = boundedSourceFragment(source.fragment);
   const page = pages.get(pageNumber);
-  if (
-    page === undefined ||
-    !`\n${page.text.replaceAll("\r\n", "\n")}\n`.includes(`\n${fragment}\n`)
-  ) {
-    invalidOutput();
-  }
+  if (page === undefined) invalidOutput();
+  const fragment = completeSourceLines(page.text, requestedFragment);
   return {
     factKey,
     sourceName: boundedString(fact.sourceName, 200),
