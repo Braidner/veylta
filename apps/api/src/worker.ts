@@ -3,6 +3,7 @@ import { createServer } from "node:http";
 import { type HealthStatus, HTTP_API_VERSION } from "@veylta/contracts";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./database/pool.js";
+import { createCodexDocumentIntelligenceProvider } from "./processing/codex-document-intelligence-provider.js";
 import { createDocumentExtractionProcessor } from "./processing/document-extraction-processor.js";
 import { createStorageController } from "./storage/storage-controller.js";
 
@@ -13,6 +14,10 @@ await storage.initialize();
 const processor = createDocumentExtractionProcessor({
   database,
   storage,
+  intelligence: createCodexDocumentIntelligenceProvider({
+    modelId: config.codexDocumentModel,
+    timeoutMs: config.codexDocumentTimeoutMs,
+  }),
 });
 const workerId = randomUUID();
 let ready = false;

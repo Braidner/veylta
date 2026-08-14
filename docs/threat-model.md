@@ -33,13 +33,13 @@ boundary.
 2. API/worker to the configured local SQLite database file.
 3. API/worker to `ObjectStorage/v1` and the configured local storage root or,
    only when explicitly selected, an S3-compatible TLS endpoint.
-4. Untrusted document bytes/text to security checks and deterministic parsing.
+4. Untrusted document bytes/text to security checks and bounded local transport.
 5. Explicit deployment to S3 or an external OCR/provider network.
 6. Operators, logs, metrics, traces, backups, and exported files.
 7. Browser/PWA to local account bootstrap, sign-in, and settings surfaces.
 8. API to the optional local Codex CLI adapter.
-9. Codex CLI to the model service for only the bounded confirmed projection
-   named in a user-confirmed run. Home storage does not remove this egress.
+9. Codex CLI to the model service for bounded acknowledged document pages or a
+   confirmed care-plan projection. Home storage does not remove this egress.
 
 All document content and metadata supplied by a user are untrusted. Extracted
 text is data, never an instruction. A configured external provider is not inside
@@ -77,16 +77,16 @@ the family's trust boundary merely because it exposes an API.
 | Storage overwrite/tampering | Original evidence silently changes or is read inconsistently | Opaque key digest; S3 conditional create; required/attested SSE-S3 or SSE-KMS; ETag-pinned controlled read; bounded SHA-256 snapshot checked against database metadata | Adapter contract tests; provider IAM/bucket/key policies before any real data |
 | Job retry/race | Duplicate or contradictory medical records | Stable job dedupe key; leased claims; compare-and-set transitions; immutable retry/review requests; DB uniqueness; transactional fact persistence and final review | Extraction and Task 6 review controls in first slice |
 | Poisoned extraction | Incorrect value presented as truth | `ExtractedFact` is untrusted and separate from `Observation`; strict schema; confidence/review gate; preserve raw value | First slice |
-| Prompt injection | Codex follows instructions embedded in confirmed source fields | Send a bounded structured projection as untrusted quoted data; fixed policy; disable tools, rules, plugins, memories, browser, shell, and collaboration; strict schema; deterministic post-validation and copy | Codex household plan |
+| Prompt injection | Codex follows instructions embedded in documents or confirmed source fields | Send bounded structured content explicitly labelled untrusted; fixed policy; empty temporary directory; ephemeral/read-only run; disable tools, rules, plugins, memories, browser, shell, and collaboration; strict schema; exact-fragment post-validation | Codex document intelligence and household plan |
 | Unsafe medical output | Diagnosis/treatment harm or missed urgency | Codex can only select one bounded draft per existing lane; deterministic copy contains no diagnosis, treatment, triage, prescription, or urgency. Each item remains `proposed`, with immutable run/summary/model/rule/source/context provenance and explicit acceptance | Codex household plan |
 | Assistant impersonation | Conversational UI is mistaken for a doctor, nutritionist, or trainer | Use role labels `Медицинский навигатор`, `Питание`, and `Движение`; state that they do not replace a professional; derive landing messages from server-authoritative state; route every action to an implemented source/review/plan surface; never show an opaque health score | Profile landing UI |
-| Provider egress without consent | Sensitive document sent externally | Local OCR has no provider URL. Codex requires literal acknowledgement and sends only the latest confirmed projection; no source bytes, filenames, fragments, or credentials. The UI discloses ChatGPT egress first | Codex household plan |
+| Provider egress without consent | Sensitive document sent externally | The batch dialog names Codex and requires literal acknowledgement before upload. The provider receives bounded page content but no family/profile IDs, filename, storage key, path, or credentials. The UI discloses ChatGPT egress first | Codex document intelligence |
 | Bootstrap race or second administrator | Attacker claims or duplicates the first account | Expose setup only while no account exists; serialize with `BEGIN IMMEDIATE`; create account/workspace/profile/session atomically; exact-Origin mutation | Home-server bootstrap |
 | Weak local password storage | Offline database theft reveals credentials | Versioned memory-hard scrypt hash with random salt; password-length bounds; uniform login failure; no password in audit/logs | Home-server bootstrap |
 | Unsafe storage relocation | Partial copy or typed-path mistake loses evidence | Admin-only maintenance mode; copy and checksum every object; atomically switch configuration only after verification; retain recovery journal | Before configurable relocation |
 | Codex credential disclosure | Home app copies subscription tokens into its database/logs | Never read or persist Codex OAuth; start/connect to local app-server; store only non-secret preferences and status | First Codex adapter |
 | Unauthorized local agent | Another process submits work or broadens scope | Profile ACL and trusted Origin; empty temporary cwd; ephemeral/read-only Codex; shell, browser, plugins, memory, collaboration, computer/image tools disabled; closed schema; no arbitrary command surface | Codex household plan |
-| Misleading local-storage claim | User assumes model processing never leaves device | Before agent run, identify selected sources and disclose model-service egress under the user's Codex data controls; keep deterministic local processing distinct | First Codex adapter |
+| Misleading local-storage claim | User assumes model processing never leaves device | Before upload, identify Codex as the processor and disclose model-service egress under the user's Codex data controls; distinguish local immutable storage from provider processing | First Codex adapter |
 | SSRF through URL/provider config | Access to internal network or cloud metadata | No arbitrary URL ingest in first slice; allowlisted endpoints; URL parsing, DNS/IP checks, redirect limits, egress policy | Before URL/provider features |
 | Signed-link leakage | Temporary public access to a document | API still proxies authorized reads; later presigned URLs are single-purpose, short-lived, non-logged, and tenant-bound | Before presigned URLs |
 | Sensitive logs/traces | Persistent secondary disclosure | Never log bodies, text, medical values, raw filenames, tokens, or signed URLs; redact errors; no patient labels in metrics | First slice |
@@ -113,11 +113,10 @@ the family's trust boundary merely because it exposes an API.
   deletion: active profile/document authorization and worker claims reject it,
   while the immutable source graph remains retained until a separately designed
   production deletion/retention workflow exists.
-- Deterministic parsing has no network egress. OCR is local: only after a missing
-  PDF text layer, or directly for PNG/JPEG after signature and header pixel-cap
-  checks. It remains bounded before rendering/recognition and accepted only through
-  the same fixed synthetic grammar. LLM and
-  external OCR adapters are absent or disabled, not mocked as successful stages.
+- Byte integrity, PDF text transport, and bounded OCR stay deterministic and
+  local. Semantic classification and structured extraction run through Codex
+  only after the UI egress disclosure. The response is untrusted until its
+  closed schema and every exact source fragment pass local validation.
 - The repository, fixtures, tests, and supported parser format are
   synthetic-only. PDF/PNG/JPEG signature/type/size checks are not content classification
   and cannot prevent a local user from selecting a real medical document; therefore
@@ -125,9 +124,9 @@ the family's trust boundary merely because it exposes an API.
 - The worker accepts only the bounded, checksum-verified PDF/PNG/JPEG stored for its
   tenant-scoped document version. It extracts PDF text with PDF.js; only a
   missing PDF layer can activate rendered-page OCR, while direct image inputs
-  use bounded local OCR after header validation. All paths accept
-  only the checked-in synthetic report grammar; unsupported documents become a
-  sanitized failure category.
+  use bounded local OCR after header validation. Codex may classify any bounded
+  document into the closed category set; non-laboratory documents complete with
+  zero facts, while invalid or unbound model output fails closed.
 - A `dead_letter` result exposes only a safe category and retry eligibility.
   The retry command is origin-checked and idempotent; it cannot choose a parser,
   job kind, storage key, URL, OCR provider, or LLM provider.

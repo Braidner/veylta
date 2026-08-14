@@ -390,8 +390,9 @@ confidence, missing data, and evidence links.
 - sanitized parameters, timing, cost, error category
 - evidence links and safety-policy version
 
-No prompt/model run exists in the deterministic first slice. `ExtractionRun`
-still records its parser/schema version and timing.
+`DocumentIntelligenceResult` records one immutable provider/model/runtime/schema
+classification per document version. `ExtractionRun` names the corresponding
+Codex extractor version; prompts and raw model responses are not persisted.
 
 ### AuditEvent
 
@@ -429,6 +430,12 @@ profile/summary/model/rule result is single-run, replayable, and every Codex
 item is bound to that run. Add broader consent capabilities, extended clinical
 entities, and clinically reviewed recommendations only with the slice that uses
 and tests them.
+
+Migration 0016 adds `DocumentIntelligenceResult`: document/version/job,
+provider/model/runtime/schema, closed category, factual title, optional document
+date, confidence, and creation time. Composite foreign keys bind it to the exact
+tenant document version and processing job; update/delete triggers keep it
+immutable.
 
 ## Database invariants to test
 

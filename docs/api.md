@@ -477,7 +477,8 @@ object on retry. Automated orphan retention/cleanup remains deferred.
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
 
 Returns immutable version metadata, possible same-family duplicate information,
-and real processing state. Its `document.status` remains `uploaded`; the nested
+Codex classification (`intelligence`, nullable while queued), and real
+processing state. Its `document.status` remains `uploaded`; the nested
 processing state is one of `queued`, `security_check`, `text_extraction`,
 `document_classification`, `structured_extraction`, `validation`,
 `awaiting_review`, `completed`, or sanitized `failed`. `awaiting_review`
@@ -506,7 +507,7 @@ Returns a compact status response and records a payload-free access audit event:
 ```
 
 `failed` contains only one of `document_unavailable`, `invalid_document`,
-`unsupported_document`, `extraction_failed`, `validation_failed`, or
+`agent_unavailable`, `agent_output_invalid`, `extraction_failed`, `validation_failed`, or
 `attempts_exhausted`, plus `retryAllowed`. Neither processing status nor errors
 contain document text, a filename, a storage key, parser diagnostics, or values.
 
@@ -1249,12 +1250,13 @@ Jobs are internal and not accepted from arbitrary browser payloads. The worker
 polls SQLite for the single known `document_extraction` kind and versioned
 identifier-only payloads, claims a bounded lease, and persists an attempt with
 one of the implemented stages. It reads the authorized version through
-`ObjectStorage/v1`, bounds and verifies its bytes, and extracts a PDF text
-layer. Only when that layer is absent does it render at most three bounded pages
-for the checked-in local English OCR model. Direct PNG/JPEG uses the same model
-only after exact-signature and bounded header-pixel checks. Every path accepts
-only the versioned synthetic grammar. There is no external OCR/LLM provider
-SDK, arbitrary URL, or worker HTTP command surface.
+`ObjectStorage/v1`, bounds and verifies its bytes, and extracts page evidence
+with PDF.js or bounded local OCR. It then calls `DocumentIntelligenceProvider`.
+The delivered Codex adapter runs ephemeral/read-only with tools and user
+customizations disabled, returns a closed `document-intelligence/v1` result,
+and is post-validated against exact page fragments. A document with no
+quantitative laboratory facts still completes and is filed by category. There
+is no arbitrary URL or worker HTTP command surface.
 
 User-visible retry is the authorized endpoint above. It can requeue only the
 stable failed job and cannot inject a job kind, storage key, URL, or

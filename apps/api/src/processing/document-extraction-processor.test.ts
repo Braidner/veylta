@@ -18,10 +18,11 @@ import { PdfTextExtractionError, type PdfTextExtractionOptions } from "./pdf-tex
 import type {
   LeasedProcessingJob,
   ProcessingErrorCode,
+  ProcessingExtractionOutput,
   ProcessingJob,
   ProcessingStage,
 } from "./processing-job-service.js";
-import type { ExtractedPageText, ParsedLabExtraction } from "./synthetic-lab-parser.js";
+import type { ExtractedPageText } from "./synthetic-lab-parser.js";
 
 const now = new Date("2026-08-12T08:00:00.000Z");
 const familyId = "10000000-0000-4000-8000-000000000001";
@@ -138,13 +139,13 @@ function syntheticPage(): ExtractedPageText {
 interface CoordinatorHarness {
   coordinator: DocumentExtractionJobCoordinator;
   failures: ProcessingErrorCode[];
-  outputs: ParsedLabExtraction[];
+  outputs: ProcessingExtractionOutput[];
   stages: ProcessingStage[];
 }
 
 function coordinatorHarness(): CoordinatorHarness {
   const failures: ProcessingErrorCode[] = [];
-  const outputs: ParsedLabExtraction[] = [];
+  const outputs: ProcessingExtractionOutput[] = [];
   const stages: ProcessingStage[] = [];
   const leased = claim();
   return {
@@ -258,9 +259,9 @@ test("maps a missing text layer to a sanitized retry outcome", async () => {
   assert.deepEqual(result, {
     status: "retry_wait",
     jobId,
-    errorCode: "UNSUPPORTED_DOCUMENT",
+    errorCode: "EXTRACTION_FAILED",
   });
-  assert.deepEqual(harness.failures, ["UNSUPPORTED_DOCUMENT"]);
+  assert.deepEqual(harness.failures, ["EXTRACTION_FAILED"]);
   assert.equal(JSON.stringify(result).includes("TEXT_LAYER_MISSING"), false);
 });
 
@@ -319,7 +320,7 @@ test("does not invoke scanned-PDF OCR after another text-extraction failure", as
   assert.deepEqual(result, {
     status: "retry_wait",
     jobId,
-    errorCode: "UNSUPPORTED_DOCUMENT",
+    errorCode: "EXTRACTION_FAILED",
   });
   assert.equal(fallbackCalls, 0);
 });

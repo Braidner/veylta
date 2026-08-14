@@ -1,6 +1,12 @@
 import { createHash, randomUUID } from "node:crypto";
-import { DOCUMENT_CONTRACT_VERSION, LAB_EXTRACTION_SCHEMA_VERSION } from "@veylta/contracts";
+import {
+  DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  LAB_EXTRACTION_SCHEMA_VERSION,
+} from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "./codex-document-intelligence-provider.js";
+import type { DocumentIntelligenceOutput } from "./document-intelligence-provider.js";
 import {
   type ParsedDocumentPage,
   type ParsedLabExtraction,
@@ -12,6 +18,9 @@ import {
 export const DOCUMENT_EXTRACTION_JOB_KIND = "document_extraction" as const;
 export const DOCUMENT_EXTRACTION_PAYLOAD_VERSION = "document-extraction-job/v1" as const;
 export const DOCUMENT_EXTRACTION_KIND = "deterministic_pdf_text" as const;
+export const CODEX_DOCUMENT_EXTRACTION_KIND = "codex_document_intelligence" as const;
+
+export type ProcessingExtractionOutput = ParsedLabExtraction | DocumentIntelligenceOutput;
 
 export type ProcessingJobState = "pending" | "leased" | "retry_wait" | "succeeded" | "dead_letter";
 export type ProcessingStage =
@@ -23,10 +32,11 @@ export type ProcessingStage =
 
 export type ProcessingErrorCode =
   | "ATTEMPT_LIMIT"
+  | "AGENT_OUTPUT_INVALID"
+  | "AGENT_UNAVAILABLE"
   | "DOCUMENT_UNAVAILABLE"
   | "EXTRACTION_FAILED"
   | "INVALID_DOCUMENT"
-  | "UNSUPPORTED_DOCUMENT"
   | "VALIDATION_FAILED";
 
 export interface ProcessingJob {
@@ -82,7 +92,7 @@ export interface ProcessingJobService {
   ): Promise<LeasedProcessingJob>;
   completeExtraction(
     claim: LeasedProcessingJob,
-    output: ParsedLabExtraction,
+    output: ProcessingExtractionOutput,
     now: Date,
   ): Promise<ProcessingCompletion>;
   recordFailure(
@@ -167,6 +177,19 @@ interface AuditSourceRow {
   uploaded_by_user_id: string;
 }
 
+interface DocumentIntelligenceRow {
+  id: string;
+  document_id: string;
+  provider: string;
+  model_id: string;
+  runtime_version: string;
+  schema_version: string;
+  category: string;
+  title: string;
+  document_date: string | null;
+  confidence: number;
+}
+
 const jobStates = new Set<ProcessingJobState>([
   "pending",
   "leased",
@@ -190,10 +213,11 @@ const processingStageOrder: readonly ProcessingStage[] = [
 ];
 const errorMessages: Record<ProcessingErrorCode, string> = {
   ATTEMPT_LIMIT: "Processing attempt limit reached",
+  AGENT_OUTPUT_INVALID: "Document intelligence output validation failed",
+  AGENT_UNAVAILABLE: "Document intelligence provider is unavailable",
   DOCUMENT_UNAVAILABLE: "Document content is unavailable",
   EXTRACTION_FAILED: "Document text extraction failed",
   INVALID_DOCUMENT: "Document content is invalid",
-  UNSUPPORTED_DOCUMENT: "Document format is unsupported",
   VALIDATION_FAILED: "Extraction output validation failed",
 };
 const versionPattern = /^[a-z0-9][a-z0-9._/+:-]{0,99}$/;
@@ -305,7 +329,7 @@ function asClaim(row: ProcessingJobRow): LeasedProcessingJob {
 }
 
 function dedupeKey(familyId: string, documentVersionId: string): string {
-  return `extract:${familyId}:${documentVersionId}:${SYNTHETIC_LAB_PARSER_VERSION}`;
+  return `extract:${familyId}:${documentVersionId}:${CODEX_DOCUMENT_INTELLIGENCE_VERSION}`;
 }
 
 export async function enqueueDocumentExtractionInTransaction(
@@ -454,13 +478,15 @@ function assertFact(
   seen.add(fact.factKey);
 }
 
-function validateOutput(output: ParsedLabExtraction): void {
+function validateOutput(output: ProcessingExtractionOutput): void {
+  const isCodexOutput = "intelligence" in output;
   if (
     output.extraction.schemaVersion !== LAB_EXTRACTION_SCHEMA_VERSION ||
-    output.extraction.extractorVersion !== SYNTHETIC_LAB_PARSER_VERSION ||
+    (output.extraction.extractorVersion !== SYNTHETIC_LAB_PARSER_VERSION &&
+      output.extraction.extractorVersion !== CODEX_DOCUMENT_INTELLIGENCE_VERSION) ||
     output.pages.length === 0 ||
     output.pages.length > 50 ||
-    output.extraction.items.length === 0 ||
+    (!isCodexOutput && output.extraction.items.length === 0) ||
     output.extraction.items.length > 100
   ) {
     invalidOutput();
@@ -490,12 +516,19 @@ function pageId(job: LeasedProcessingJob, page: ParsedDocumentPage): string {
   return stableId("page", job.familyId, job.documentVersionId, page.pageNumber);
 }
 
-function runId(job: LeasedProcessingJob): string {
-  return stableId("run", job.familyId, job.documentVersionId, job.id, SYNTHETIC_LAB_PARSER_VERSION);
+function runId(
+  job: LeasedProcessingJob,
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
+): string {
+  return stableId("run", job.familyId, job.documentVersionId, job.id, extractorVersion);
 }
 
-function factId(job: LeasedProcessingJob, fact: StrictLabExtractionFact): string {
-  return stableId("fact", runId(job), fact.factKey);
+function factId(
+  job: LeasedProcessingJob,
+  fact: StrictLabExtractionFact,
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
+): string {
+  return stableId("fact", runId(job, extractorVersion), fact.factKey);
 }
 
 type AutomatedProcessingOutcome =
@@ -632,8 +665,9 @@ async function insertOrVerifyFact(
   fact: StrictLabExtractionFact,
   pages: ReadonlyMap<number, ParsedDocumentPage>,
   createdAt: string,
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
 ): Promise<void> {
-  const id = factId(job, fact);
+  const id = factId(job, fact, extractorVersion);
   const page = pages.get(fact.source.pageNumber);
   if (page === undefined) throw new InvalidProcessingOutputError();
   const documentPageId = pageId(job, page);
@@ -653,7 +687,7 @@ async function insertOrVerifyFact(
       id,
       job.familyId,
       job.documentVersionId,
-      runId(job),
+      runId(job, extractorVersion),
       documentPageId,
       fact.factKey,
       ...values,
@@ -669,7 +703,7 @@ async function insertOrVerifyFact(
               confidence, validation_issues, review_status
          FROM extracted_facts
         WHERE family_id = $1 AND extraction_run_id = $2 AND fact_key = $3`,
-      [job.familyId, runId(job), fact.factKey],
+      [job.familyId, runId(job, extractorVersion), fact.factKey],
     )
   ).rows[0];
   if (
@@ -705,8 +739,9 @@ async function completionFromStored(
   job: LeasedProcessingJob,
   expectedFactCount: number,
   status: ProcessingCompletion["status"],
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
 ): Promise<ProcessingCompletion> {
-  const expectedRunId = runId(job);
+  const expectedRunId = runId(job, extractorVersion);
   const run = (
     await client.query<ExtractionRunRow>(
       `SELECT id, status, extractor_version, output_schema_version
@@ -726,7 +761,7 @@ async function completionFromStored(
   if (
     run === undefined ||
     run.id !== expectedRunId ||
-    run.extractor_version !== SYNTHETIC_LAB_PARSER_VERSION ||
+    run.extractor_version !== extractorVersion ||
     run.output_schema_version !== LAB_EXTRACTION_SCHEMA_VERSION ||
     (run.status !== "awaiting_review" && run.status !== "completed") ||
     factCount !== expectedFactCount
@@ -734,6 +769,65 @@ async function completionFromStored(
     throw new ProcessingPersistenceConflictError();
   }
   return { status, extractionRunId: expectedRunId, factCount, needsReviewCount };
+}
+
+async function insertOrVerifyIntelligence(
+  client: DatabaseClient,
+  claim: LeasedProcessingJob,
+  documentId: string,
+  output: DocumentIntelligenceOutput,
+  createdAt: string,
+): Promise<void> {
+  const value = output.intelligence;
+  const id = stableId("intelligence", claim.familyId, claim.documentVersionId);
+  await client.query(
+    `INSERT INTO document_intelligence_results
+       (id, family_id, document_id, document_version_id, processing_job_id,
+        provider, model_id, runtime_version, schema_version, category,
+        title, document_date, confidence, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+     ON CONFLICT (family_id, document_version_id) DO NOTHING`,
+    [
+      id,
+      claim.familyId,
+      documentId,
+      claim.documentVersionId,
+      claim.id,
+      value.provider,
+      value.modelId,
+      value.runtimeVersion,
+      value.contractVersion,
+      value.category,
+      value.title,
+      value.documentDate,
+      value.confidence,
+      createdAt,
+    ],
+  );
+  const stored = (
+    await client.query<DocumentIntelligenceRow>(
+      `SELECT id, document_id, provider, model_id, runtime_version, schema_version,
+              category, title, document_date, confidence
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [claim.familyId, claim.documentVersionId],
+    )
+  ).rows[0];
+  if (
+    stored === undefined ||
+    stored.id !== id ||
+    stored.document_id !== documentId ||
+    stored.provider !== "codex" ||
+    stored.model_id !== value.modelId ||
+    stored.runtime_version !== value.runtimeVersion ||
+    stored.schema_version !== DOCUMENT_INTELLIGENCE_CONTRACT_VERSION ||
+    stored.category !== value.category ||
+    stored.title !== value.title ||
+    stored.document_date !== value.documentDate ||
+    Number(stored.confidence) !== value.confidence
+  ) {
+    throw new ProcessingPersistenceConflictError();
+  }
 }
 
 export function createProcessingJobService(
@@ -888,6 +982,8 @@ export function createProcessingJobService(
     async completeExtraction(claim, output, completedAt) {
       assertDate(completedAt, "completedAt");
       validateOutput(output);
+      const extractorVersion = output.extraction.extractorVersion;
+      const isCodexOutput = "intelligence" in output;
       const now = completedAt.toISOString();
       const pages = new Map(output.pages.map((page) => [page.pageNumber, page]));
       return database.transaction(async (client) => {
@@ -898,6 +994,7 @@ export function createProcessingJobService(
             claim,
             output.extraction.items.length,
             "already_completed",
+            extractorVersion,
           );
         }
         if (
@@ -912,8 +1009,8 @@ export function createProcessingJobService(
         if (stored.current_stage !== "validation") {
           throw new InvalidProcessingStageTransitionError();
         }
-        const activeProfile = await client.query<{ id: string }>(
-          `SELECT p.id
+        const activeProfile = await client.query<{ document_id: string; id: string }>(
+          `SELECT p.id, d.id AS document_id
              FROM document_versions v
              JOIN documents d
                ON d.family_id = v.family_id
@@ -925,9 +1022,11 @@ export function createProcessingJobService(
             WHERE v.family_id = $1 AND v.id = $2`,
           [claim.familyId, claim.documentVersionId],
         );
-        if (activeProfile.rows[0] === undefined) throw new ProcessingPersistenceConflictError();
+        const source = activeProfile.rows[0];
+        if (source === undefined) throw new ProcessingPersistenceConflictError();
 
-        const extractionStatus = "awaiting_review";
+        const extractionStatus =
+          output.extraction.items.length === 0 ? "completed" : "awaiting_review";
         await client.query(
           `INSERT INTO extraction_runs
                (id, family_id, document_version_id, job_id, extractor_kind,
@@ -936,12 +1035,12 @@ export function createProcessingJobService(
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $9)
              ON CONFLICT (family_id, job_id) DO NOTHING`,
           [
-            runId(claim),
+            runId(claim, extractorVersion),
             claim.familyId,
             claim.documentVersionId,
             claim.id,
-            DOCUMENT_EXTRACTION_KIND,
-            SYNTHETIC_LAB_PARSER_VERSION,
+            isCodexOutput ? CODEX_DOCUMENT_EXTRACTION_KIND : DOCUMENT_EXTRACTION_KIND,
+            extractorVersion,
             LAB_EXTRACTION_SCHEMA_VERSION,
             extractionStatus,
             claim.updatedAt,
@@ -950,7 +1049,10 @@ export function createProcessingJobService(
         );
         for (const page of output.pages) await insertOrVerifyPage(client, claim, page, now);
         for (const fact of output.extraction.items) {
-          await insertOrVerifyFact(client, claim, fact, pages, now);
+          await insertOrVerifyFact(client, claim, fact, pages, now, extractorVersion);
+        }
+        if (isCodexOutput) {
+          await insertOrVerifyIntelligence(client, claim, source.document_id, output, now);
         }
         const updated = await client.query(
           `UPDATE processing_jobs
@@ -973,7 +1075,13 @@ export function createProcessingJobService(
           },
           now,
         );
-        return completionFromStored(client, claim, output.extraction.items.length, "completed");
+        return completionFromStored(
+          client,
+          claim,
+          output.extraction.items.length,
+          "completed",
+          extractorVersion,
+        );
       });
     },
 

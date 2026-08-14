@@ -15,7 +15,7 @@ const fakeCodex = join(fakeBin, "codex");
 await writeFile(
   fakeCodex,
   `#!/usr/bin/env node
-import { writeFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 const args = process.argv.slice(2);
 if (args[0] === "--version") {
   process.stdout.write("codex-cli 0.147.0\\n");
@@ -28,10 +28,62 @@ if (args[0] === "--version") {
 } else if (args[0] === "exec") {
   const marker = args.indexOf("--output-last-message");
   if (marker < 0 || args[marker + 1] === undefined) process.exit(2);
-  await writeFile(args[marker + 1], JSON.stringify({ items: [
-    { category: "laboratory", sourceObservationIndex: 0, missingContext: ["sample_date"] },
-    { category: "nutrition", sourceObservationIndex: null, missingContext: ["dietary_restrictions"] }
-  ] }));
+  const schemaMarker = args.indexOf("--output-schema");
+  if (schemaMarker < 0 || args[schemaMarker + 1] === undefined) process.exit(2);
+  const schema = JSON.parse(await readFile(args[schemaMarker + 1], "utf8"));
+  if (schema.properties?.classification !== undefined) {
+    let prompt = "";
+    for await (const chunk of process.stdin) prompt += chunk;
+    const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\\n") + 1));
+    const facts = [];
+    for (const page of payload.pages) {
+      const lines = page.text.replaceAll("\\r\\n", "\\n").split("\\n");
+      for (let index = 0; index <= lines.length - 8; index += 1) {
+        const block = lines.slice(index, index + 8);
+        if (!block[0].startsWith("FACT|") || block[7] !== "END") continue;
+        const value = (position, prefix) => block[position].slice(prefix.length);
+        const factKey = value(0, "FACT|");
+        const sourceUnit = value(3, "UNIT|");
+        facts.push({
+          factKey,
+          sourceName: value(1, "NAME|"),
+          sourceValue: value(2, "VALUE|"),
+          sourceUnit,
+          proposedCanonicalCode: factKey,
+          proposedNormalizedValue: null,
+          proposedNormalizedUnit: null,
+          proposedSampledAt: null,
+          proposedResultedAt: null,
+          proposedSpecimenType: null,
+          proposedLaboratory: null,
+          referenceRange: {
+            sourceText: value(4, "RANGE|"),
+            sourceLow: null,
+            sourceHigh: null,
+            sourceUnit,
+            laboratoryOutOfRange: null
+          },
+          confidence: Number(value(5, "CONFIDENCE|")),
+          validationIssues: value(6, "ISSUES|") === "NONE" ? [] : value(6, "ISSUES|").split(","),
+          source: { pageNumber: page.pageNumber, fragment: block.join("\\n") }
+        });
+      }
+    }
+    await writeFile(args[marker + 1], JSON.stringify({
+      classification: {
+        category: facts.length > 0 ? "laboratory" : "other",
+        title: facts.length > 0 ? "Синтетические лабораторные результаты" : "Синтетический документ",
+        documentDate: null,
+        confidence: 0.94
+      },
+      facts
+    }));
+  } else {
+    await writeFile(args[marker + 1], JSON.stringify({ items: [
+      { category: "laboratory", sourceObservationIndex: 0, missingContext: ["sample_date"] },
+      { category: "nutrition", sourceObservationIndex: null, missingContext: ["dietary_restrictions"] }
+    ] }));
+  }
 } else {
   process.exit(2);
 }

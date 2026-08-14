@@ -25,9 +25,9 @@ transaction. Later sign-in uses a local username and password. The target
 settings surface manages Codex connection status, document-storage location,
 local administrator/user accounts, and per-profile access.
 
-The optional Codex integration follows Hermes' proven local-runtime pattern:
+The Codex integration follows Hermes' proven local-runtime pattern:
 Veylta checks and starts a locally installed `codex app-server` daemon, while
-bounded proposal jobs run through `codex exec --ephemeral` using the same
+bounded document-intelligence and proposal jobs run through `codex exec --ephemeral` using the same
 ChatGPT subscription session owned by `codex login`. Veylta never reads, copies,
 or persists Codex OAuth tokens or API keys, and refuses proposals unless Codex
 confirms ChatGPT authentication. See
@@ -43,12 +43,11 @@ extracted facts, and explicit review decisions in persistent local storage.
 The full first slice remains deliberately narrow:
 
 1. create a family and a patient profile;
-2. upload a fully synthetic Russian-language text-layer report or a bounded
-   image-only scan using the fixed local-English synthetic fallback grammar;
+2. batch-upload up to twenty fully synthetic PDF, PNG, or JPEG documents;
 3. persist the immutable original and calculate its SHA-256 while streaming;
 4. detect a possible duplicate within that family;
-5. deterministically extract a small, versioned set of laboratory facts with
-   provenance and a durable local job;
+5. let Codex classify every document into a bounded archive category and extract
+   only source-bound quantitative laboratory facts through a provider-neutral port;
 6. explicitly confirm, correct, or reject those facts; a confirmation or
    correction creates a source-linked observation without changing the raw
    extraction (Task 6, delivered);
@@ -102,7 +101,8 @@ real-data readiness claim.
 ## Product principles
 
 - Family-first access with explicit per-profile grants.
-- Privacy-first processing and no external medical-data transfer by default.
+- Privacy-first processing with explicit disclosure before document content is
+  sent through the household's Codex subscription.
 - Source-first, immutable originals and complete provenance.
 - Explicit human review before any extracted fact becomes a medical observation.
 - Explainable outputs; no opaque health score.
@@ -121,11 +121,10 @@ real-data readiness claim.
   directory by default and an explicit S3-compatible encrypted adapter for
   synthetic deployments. Controlled reads take a bounded, checksum-verified
   snapshot (the current synthetic-document cap is 5 MiB) before returning bytes.
-- Versioned deterministic parser for the first synthetic document format. When
-  a PDF text layer is absent, the worker may run a local, bounded English OCR
-  model on rendered PDF pages; direct PNG/JPEG inputs use that same bounded
-  local path after signature and header-pixel checks. It never calls an
-  OCR/LLM provider.
+- Provider-neutral `DocumentIntelligenceProvider` boundary with a Codex CLI
+  implementation. Local bounded PDF/OCR transport produces page evidence;
+  Codex classifies the document and returns a closed, source-bound schema.
+  Results are rejected unless every fact cites an exact source fragment.
 - Versioned `home-care-plan/v1` read/write boundary backed by tenant-aware
   SQLite constraints. User actions are replay-safe and retained; a future
   Codex proposal must name its immutable summary, rule version, source when
@@ -173,18 +172,20 @@ pnpm license:check
 `pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
 On first launch, <http://127.0.0.1:4300> creates the only bootstrap administrator
 and signs them into their linked profile. Later visits show the local sign-in
-screen. The active profile stays explicit in both the route and heading. It accepts one
-synthetic PDF, PNG, or JPEG up to 5 MiB, streams it through matching
+screen. The active profile stays explicit in both the route and heading. The
+batch dialog accepts up to twenty synthetic PDF, PNG, or JPEG files of 5 MiB
+each and streams each through matching
 MIME/signature, size, and SHA-256 checks, and
 keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
 reported only inside the same family; it creates another logical document but
 not another blob. Source download is authorized again and returned as a safe
-attachment. The worker polls the same SQLite file and processes the checked-in
-synthetic PDF grammar through PDF.js and a strict deterministic parser. For an
+attachment. The worker polls the same SQLite file and uses PDF.js plus bounded
+local OCR to produce page evidence. For an
 image-only PDF it renders at most three bounded pages; direct PNG/JPEG uses the
-same local English OCR model after a header pixel-cap check. Every OCR output
-still has to satisfy the exact synthetic grammar; there is no OCR/LLM network call or provider
-URL. Extracted facts are proposals
+same local English OCR model after a header pixel-cap check. After explicit UI
+disclosure, page content is sent to the locally authenticated Codex CLI. Codex
+classifies and distributes documents into archive sections, while a strict
+post-validator rejects invented or unbound facts. Extracted facts are proposals
 for review, never confirmed medical observations by themselves. A user
 confirmation or correction creates one immutable review decision and confirmed
 observation in the same transaction; a rejection creates no observation. The
@@ -196,7 +197,7 @@ difference between the latest two numeric sources; it never assigns a
 reference-range meaning, clinical trend, or recommendation.
 
 The profile landing view is an authorized `profile-overview/v1` read: it shows
-at most three recent immutable sources, three pending-review sources, and three
+at most fifty recent immutable sources, three pending-review sources, and three
 explicitly confirmed values with links back to the original document. It is an
 operational overview, never a clinical summary, and its successful read is
 payload-free audited. Its owner/self-only `synthetic-evidence-bundle/v1` download

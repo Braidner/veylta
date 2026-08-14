@@ -75,10 +75,10 @@ function databasePath(): string {
   return resolve(projectRoot, configured);
 }
 
-function codexModel(): string {
-  const value = process.env.CODEX_CARE_PLAN_MODEL ?? "gpt-5.4-mini";
+function codexModel(name: "CODEX_CARE_PLAN_MODEL" | "CODEX_DOCUMENT_MODEL"): string {
+  const value = process.env[name] ?? "gpt-5.4-mini";
   if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(value)) {
-    throw new Error("CODEX_CARE_PLAN_MODEL must be a canonical Codex model id");
+    throw new Error(`${name} must be a canonical Codex model id`);
   }
   return value;
 }
@@ -156,6 +156,8 @@ export interface RuntimeConfig {
   databasePath: string;
   codexCarePlanModel: string;
   codexCarePlanTimeoutMs: number;
+  codexDocumentModel: string;
+  codexDocumentTimeoutMs: number;
   demoRegistrationEnabled: boolean;
   maxDocumentBytes: number;
   objectStorage: ObjectStorageRuntimeConfig;
@@ -179,17 +181,26 @@ export function loadConfig(): RuntimeConfig {
   if (maxDocumentBytes > MAX_SYNTHETIC_DOCUMENT_BYTES) {
     throw new Error(`MAX_DOCUMENT_BYTES must not exceed ${MAX_SYNTHETIC_DOCUMENT_BYTES}`);
   }
+  const codexDocumentTimeoutMs = boundedInteger("CODEX_DOCUMENT_TIMEOUT_MS", 180_000, 600_000);
+  const processingLeaseDurationMs = integer("PROCESSING_LEASE_DURATION_MS", 240_000);
+  if (processingLeaseDurationMs < codexDocumentTimeoutMs + 30_000) {
+    throw new Error(
+      "PROCESSING_LEASE_DURATION_MS must exceed CODEX_DOCUMENT_TIMEOUT_MS by at least 30000",
+    );
+  }
 
   return {
     apiHost,
     apiPort: integer("API_PORT", 4301),
-    codexCarePlanModel: codexModel(),
+    codexCarePlanModel: codexModel("CODEX_CARE_PLAN_MODEL"),
     codexCarePlanTimeoutMs: boundedInteger("CODEX_CARE_PLAN_TIMEOUT_MS", 120_000, 600_000),
+    codexDocumentModel: codexModel("CODEX_DOCUMENT_MODEL"),
+    codexDocumentTimeoutMs,
     databasePath: databasePath(),
     demoRegistrationEnabled,
     maxDocumentBytes,
     objectStorage: objectStorage(),
-    processingLeaseDurationMs: integer("PROCESSING_LEASE_DURATION_MS", 60_000),
+    processingLeaseDurationMs,
     processingPollIntervalMs: integer("PROCESSING_POLL_INTERVAL_MS", 500),
     processingRetryDelayMs: integer("PROCESSING_RETRY_DELAY_MS", 1_000),
     secureSessionCookie: boolean("SESSION_COOKIE_SECURE", false),

@@ -1,5 +1,10 @@
 # First-slice acceptance evidence
 
+> Historical baseline: this document records the original deterministic
+> synthetic slice. Task 34 supersedes its semantic extraction path with the
+> acknowledged Codex provider described in ADR 0008; storage, provenance,
+> tenant isolation, and human-review evidence remain applicable.
+
 **Recorded:** 2026-08-13
 **Code baseline:** local Task 24 worktree atop `3e0340f feat: export complete synthetic profile archive`
 **Execution context:** repository root on Node.js `v22.22.3` and pnpm `10.4.1`

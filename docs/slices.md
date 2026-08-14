@@ -590,6 +590,23 @@ Status: delivered.
   Codex call. The adapter uses an empty temporary directory, read-only sandbox,
   ephemeral session, closed output schema, and disabled shell/browser/plugins.
 
+### Task 34 — Codex document intelligence and batch intake
+
+Commit intent: `feat: analyze document batches with codex`
+
+Status: delivered.
+
+- Up to twenty PDF/PNG/JPEG files can be selected or dropped in one dialog;
+  every file retains its own size/signature/SHA-256/idempotency boundary.
+- The dialog explicitly identifies Codex model-service egress. Originals remain
+  immutable in household storage.
+- `DocumentIntelligenceProvider` separates semantic analysis from storage and
+  byte transport. The delivered Codex adapter classifies into a closed archive
+  category and extracts only exact-fragment-bound quantitative facts.
+- Non-laboratory documents complete with zero facts; malformed or invented
+  provider output fails closed. Classification is immutable and versioned by
+  provider, model, runtime, and schema.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
@@ -597,7 +614,7 @@ commit chain:
 
 1. Alternate synthetic fixtures and any OCR language/model expansion beyond the
    delivered local English PDF/image fallback.
-2. Broader classification/extraction with provider interfaces and strict schemas.
+2. Additional document-intelligence providers implementing the delivered port.
 3. Clinically reviewed evidence summaries and recommendations beyond the
    delivered non-clinical `health-summary/v1` snapshot.
 4. Broader role/consent UX: additional capability sets, expiry, delegation, and
@@ -606,6 +623,6 @@ commit chain:
 5. Portable export, controlled deletion, backup, and verified restore.
 6. FHIR R4 mappings and Bundle import/export at the system edge.
 
-The complete MVP is not part of the first vertical slice. External OCR, broader
-LLM access beyond the delivered bounded Codex proposal job, clinical advice,
-and real-data readiness remain off until their production gates are met.
+The complete MVP is not part of the first vertical slice. External OCR,
+clinical advice, and real-data readiness remain off until their production
+gates are met.

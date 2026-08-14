@@ -14,7 +14,8 @@ flowchart LR
   A --> O["Configured object storage root"]
   W["Worker"] --> D
   W --> O
-  A -. "explicit agent request" .-> C["Codex adapter"]
+  W -. "acknowledged document analysis" .-> C["Document intelligence port"]
+  A -. "explicit care-plan request" .-> C
   C --> X["Local Codex CLI"]
   X -. "user-owned ChatGPT session" .-> M["Codex model service"]
 ```
@@ -22,12 +23,14 @@ flowchart LR
 The PWA owns presentation and human decisions. The API resolves the signed-in
 account and authorizes every profile selector. Only an administrator, the
 profile's linked user, or an explicitly granted actor may open a profile. The
-Codex adapter is optional and never reads or stores Codex OAuth credentials.
+Codex adapter never reads or stores Codex OAuth credentials.
 Settings use `codex app-server daemon` only for local runtime status/control.
-One acknowledged care-plan request runs a separate bounded
+Acknowledged document jobs and care-plan requests run separate bounded
 `codex exec --ephemeral` job in an empty read-only working directory, with
-tools and user customizations disabled. It receives only the latest confirmed
-summary projection, never an original document.
+tools and user customizations disabled. Document analysis receives bounded page
+content but no family/profile identifier, original filename, storage key, or
+filesystem path. Care-plan generation still receives only the latest confirmed
+summary projection.
 
 `StorageController` is the single runtime port used by API and worker. Each
 process loads the authoritative local root and generation from SQLite at start.
@@ -246,6 +249,7 @@ sequenceDiagram
   participant S as ObjectStorage/v1 local
   participant D as SQLite
   participant W as Worker
+  participant C as Codex provider
 
   B->>A: POST synthetic PDF, PNG, or JPEG for patient profile
   A->>A: Authenticate, authorize, validate limits/signature
@@ -256,8 +260,11 @@ sequenceDiagram
   A-->>B: 202 uploaded / processing queued / possible duplicate
   W->>D: Claim durable job lease
   W->>S: getStream(document version)
-  W->>W: Extract text + deterministic lab-extraction/v1 parse
-  W->>D: Transaction: pages + extraction run + immutable extracted facts
+  W->>W: Extract bounded page evidence
+  W->>C: Classify + source-bound extraction (closed schema)
+  C-->>W: Category/title/facts with exact fragments
+  W->>W: Fail-closed schema and provenance validation
+  W->>D: Transaction: pages + intelligence + run + immutable facts
   W-->>D: job succeeded; run awaiting_review
   B->>A: GET processing / facts
   Note over B,D: Task 6 review decisions create optional observations; Task 7 reads confirmed observations with re-authorized source links

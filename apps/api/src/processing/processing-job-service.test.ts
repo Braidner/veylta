@@ -4,8 +4,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { DOCUMENT_INTELLIGENCE_CONTRACT_VERSION } from "@veylta/contracts";
 import { migrateUp } from "../database/migrations.js";
 import { createDatabase, type Database } from "../database/pool.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "./codex-document-intelligence-provider.js";
+import type { DocumentIntelligenceOutput } from "./document-intelligence-provider.js";
 import {
   createProcessingJobService,
   enqueueDocumentExtractionInTransaction,
@@ -72,6 +75,27 @@ function highConfidenceExtraction(): ParsedLabExtraction {
       extractionVersion: "pdfjs-dist/6.2.108",
     },
   ]);
+}
+
+function codexExtraction(): DocumentIntelligenceOutput {
+  const parsed = parsedExtraction();
+  return {
+    pages: parsed.pages,
+    extraction: {
+      ...parsed.extraction,
+      extractorVersion: CODEX_DOCUMENT_INTELLIGENCE_VERSION,
+    },
+    intelligence: {
+      contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+      provider: "codex",
+      modelId: "gpt-5.4-mini",
+      runtimeVersion: "codex-cli/0.147.0",
+      category: "laboratory",
+      title: "Синтетические лабораторные результаты",
+      documentDate: "2026-08-12",
+      confidence: 0.93,
+    },
+  };
 }
 
 async function advanceToValidation(
@@ -472,6 +496,51 @@ test("completion atomically persists provenance once and is idempotent on acknow
       outcome: "completed",
     });
     assert.doesNotMatch(events[0]?.metadata ?? "", /synthetic-analyte-a|reference|7\.0/i);
+  });
+});
+
+test("Codex completion stores immutable classification beside source-bound facts", async () => {
+  await withDatabase(async (database, fixture) => {
+    const jobs = createProcessingJobService(database);
+    await jobs.enqueueDocumentExtraction({ ...fixture, now: start });
+    const claim = await jobs.claimNext({
+      workerId: "worker-codex",
+      now: start,
+      leaseDurationMs: 60_000,
+    });
+    assert.ok(claim !== null);
+    await advanceToValidation(jobs, claim);
+
+    const completion = await jobs.completeExtraction(claim, codexExtraction(), after(500));
+    assert.equal(completion.factCount, 1);
+    const stored = await database.query<{
+      category: string;
+      model_id: string;
+      provider: string;
+      schema_version: string;
+      title: string;
+    }>(
+      `SELECT provider, model_id, schema_version, category, title
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.deepEqual(stored.rows, [
+      {
+        provider: "codex",
+        model_id: "gpt-5.4-mini",
+        schema_version: "document-intelligence/v1",
+        category: "laboratory",
+        title: "Синтетические лабораторные результаты",
+      },
+    ]);
+    await assert.rejects(
+      database.query(
+        "UPDATE document_intelligence_results SET title = 'mutated' WHERE family_id = $1",
+        [fixture.familyId],
+      ),
+      /immutable/,
+    );
   });
 });
 

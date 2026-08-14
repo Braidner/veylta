@@ -5,6 +5,7 @@ export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
+export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v1" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
@@ -180,10 +181,22 @@ export const DOCUMENT_PROCESSING_STATES = [
 export const DOCUMENT_PROCESSING_FAILURE_CATEGORIES = [
   "document_unavailable",
   "invalid_document",
-  "unsupported_document",
+  "agent_unavailable",
+  "agent_output_invalid",
   "extraction_failed",
   "validation_failed",
   "attempts_exhausted",
+] as const;
+
+export const DOCUMENT_CATEGORIES = [
+  "laboratory",
+  "imaging",
+  "prescription",
+  "discharge_summary",
+  "consultation",
+  "vaccination",
+  "insurance",
+  "other",
 ] as const;
 
 export const LAB_FACT_VALIDATION_ISSUES = [
@@ -493,6 +506,23 @@ export type SyntheticDocumentContentType = "application/pdf" | "image/png" | "im
 export type DocumentProcessingState = (typeof DOCUMENT_PROCESSING_STATES)[number];
 export type DocumentProcessingFailureCategory =
   (typeof DOCUMENT_PROCESSING_FAILURE_CATEGORIES)[number];
+export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+
+/**
+ * Immutable semantic metadata proposed by the configured document-intelligence
+ * provider. It classifies the source; it is not a diagnosis or a confirmed
+ * observation.
+ */
+export interface DocumentIntelligenceSummary {
+  readonly contractVersion: typeof DOCUMENT_INTELLIGENCE_CONTRACT_VERSION;
+  readonly provider: "codex";
+  readonly modelId: string;
+  readonly runtimeVersion: string;
+  readonly category: DocumentCategory;
+  readonly title: string;
+  readonly documentDate: string | null;
+  readonly confidence: number;
+}
 
 export interface DocumentProcessingNotStarted {
   readonly state: "not_started";
@@ -556,6 +586,7 @@ export interface DocumentSummary {
     documentId: string | null;
     profileId: string | null;
   };
+  readonly intelligence: DocumentIntelligenceSummary | null;
   processing: DocumentProcessingStatus;
 }
 
@@ -585,6 +616,7 @@ export interface ProfileOverviewDocument {
   readonly originalFilename: string;
   readonly contentType: SyntheticDocumentContentType;
   readonly uploadedAt: string;
+  readonly intelligence: DocumentIntelligenceSummary | null;
   readonly processing: DocumentProcessingStatus;
 }
 
@@ -601,7 +633,7 @@ export interface ProfileOverviewReviewDocument {
 export interface ProfileOverviewResponse {
   readonly contractVersion: typeof PROFILE_OVERVIEW_CONTRACT_VERSION;
   readonly profile: PatientProfileSummary;
-  /** Newest first; bounded to three immutable source documents. */
+  /** Newest first; bounded to fifty immutable source documents. */
   readonly recentDocuments: readonly ProfileOverviewDocument[];
   readonly reviewQueue: {
     readonly documentCount: number;

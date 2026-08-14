@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   type DemoRegistrationResponse,
   DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
   LAB_EXTRACTION_SCHEMA_VERSION,
   MAX_SYNTHETIC_PDF_BYTES,
 } from "@veylta/contracts";
@@ -18,7 +19,10 @@ import { createDocumentService } from "../src/documents/document-service.js";
 import { registerDocumentRoutes } from "../src/documents/routes.js";
 import { createFamilyService } from "../src/family/family-service.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../src/processing/codex-document-intelligence-provider.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
+import type { DocumentIntelligenceProvider } from "../src/processing/document-intelligence-provider.js";
+import { parseSyntheticLabPages } from "../src/processing/synthetic-lab-parser.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
 import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
@@ -153,9 +157,42 @@ async function processOneDocument(
 ): Promise<
   Awaited<ReturnType<ReturnType<typeof createDocumentExtractionProcessor>["processNext"]>>
 > {
+  const intelligence: DocumentIntelligenceProvider = {
+    async analyze(input) {
+      const pages = input.pages.map((page) => ({
+        ...page,
+        textSha256: createHash("sha256").update(page.text, "utf8").digest("hex"),
+      }));
+      let items: ReturnType<typeof parseSyntheticLabPages>["extraction"]["items"] = [];
+      try {
+        items = parseSyntheticLabPages(input.pages).extraction.items;
+      } catch {
+        // This deterministic double simulates Codex classifying a non-lab document with no facts.
+      }
+      return {
+        pages,
+        extraction: {
+          schemaVersion: LAB_EXTRACTION_SCHEMA_VERSION,
+          extractorVersion: CODEX_DOCUMENT_INTELLIGENCE_VERSION,
+          items,
+        },
+        intelligence: {
+          contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+          provider: "codex",
+          modelId: "gpt-5.4-mini",
+          runtimeVersion: "codex-cli/test",
+          category: items.length > 0 ? "laboratory" : "other",
+          title: items.length > 0 ? "Синтетические анализы" : "Синтетический документ",
+          documentDate: null,
+          confidence: 0.95,
+        },
+      };
+    },
+  };
   const processor = createDocumentExtractionProcessor({
     database,
     storage: createLocalObjectStorage(storageRoot),
+    intelligence,
   });
   return processor.processNext({
     workerId: `test-worker-${randomUUID()}`,
@@ -220,7 +257,7 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
     });
     assert.equal(facts.statusCode, 200);
     assert.equal(facts.json().schemaVersion, LAB_EXTRACTION_SCHEMA_VERSION);
-    assert.equal(facts.json().extractorVersion, "synthetic-lab-text/v1");
+    assert.equal(facts.json().extractorVersion, CODEX_DOCUMENT_INTELLIGENCE_VERSION);
     assert.equal(facts.json().items.length, 2);
     assert.deepEqual(
       facts.json().items.map((item: { factKey: string }) => item.factKey),
@@ -400,7 +437,7 @@ for (const [format, contentType, filename] of [
   });
 }
 
-test("an image-only PDF outside the synthetic grammar records no facts", async () => {
+test("Codex classifies an image-only PDF outside the lab grammar without inventing facts", async () => {
   await withTestContext(async ({ app, database, storageRoot }) => {
     const owner = await registerOwner(app, "Unsupported scanned processing");
     const uploaded = await upload(
@@ -413,11 +450,8 @@ test("an image-only PDF outside the synthetic grammar records no facts", async (
     const documentId = uploaded.json().document.id as string;
 
     const processed = await processOneDocument(database, storageRoot);
-    assert.equal(processed.status, "retry_wait");
-    assert.equal(
-      "errorCode" in processed ? processed.errorCode : undefined,
-      "UNSUPPORTED_DOCUMENT",
-    );
+    assert.equal(processed.status, "completed");
+    assert.equal("factCount" in processed ? processed.factCount : undefined, 0);
     const facts = await database.query<{ count: number }>(
       `SELECT count(*) AS count
          FROM extracted_facts f
@@ -426,6 +460,15 @@ test("an image-only PDF outside the synthetic grammar records no facts", async (
       [owner.body.family.id, documentId],
     );
     assert.equal(Number(facts.rows[0]?.count), 0);
+    const intelligence = await database.query<{ category: string; title: string }>(
+      `SELECT category, title
+         FROM document_intelligence_results i
+         JOIN document_versions v
+           ON v.family_id = i.family_id AND v.id = i.document_version_id
+        WHERE v.family_id = $1 AND v.document_id = $2`,
+      [owner.body.family.id, documentId],
+    );
+    assert.deepEqual(intelligence.rows, [{ category: "other", title: "Синтетический документ" }]);
   });
 });
 

@@ -24,12 +24,13 @@ later visits require local sign-in. Administrators manage accounts, storage,
 Codex connectivity, and access, while each profile remains an independently
 authorized medical boundary.
 
-Document analysis is explicit and visible. The local deterministic worker is
-the default. An optional Codex adapter may process selected documents through a
-locally installed `codex app-server`; the user's `codex login` session remains
-owned by Codex. Veylta stores no model key or OAuth token, and the confirmation
-screen must disclose which source can leave the home server. A person still
-makes every final fact decision.
+Document analysis is explicit and visible. The worker sends bounded page
+content through a provider-neutral intelligence port; the delivered provider
+uses local `codex exec --ephemeral` and the user's existing `codex login`
+session. Veylta stores no model key or OAuth token. The batch dialog names Codex
+and requires acknowledgement before upload; a person still makes every final
+fact decision. A later provider must implement the same closed contract rather
+than leaking provider-specific behavior into the domain.
 
 ## Users and access model
 
@@ -70,20 +71,19 @@ events.
 The first slice proves one complete and safe path with synthetic data:
 
 1. An authenticated demo user creates a family and a patient profile.
-2. The user uploads a synthetic Russian-language PDF with a text layer, an
-   image-only PDF scan, or a direct synthetic PNG/JPEG using the fixed local
-   English OCR and synthetic fallback grammar.
+2. The user selects or drops up to twenty synthetic PDFs, PNGs, or JPEGs in one
+   batch and explicitly acknowledges Codex model-service egress.
 3. The API validates and streams it to the default local `ObjectStorage/v1`,
    calculating SHA-256 without loading the entire file into memory. An optional
    S3-compatible adapter exists for synthetic operator testing only; it is not
    enabled in the demo default.
 4. A repeat SHA-256 within the same family is reported as a possible duplicate;
    no document is automatically deleted.
-5. A durable SQLite-backed background job reads a PDF text layer. Only when
-   that layer is absent, it renders at most three bounded PDF pages and runs the
-   checked-in local English OCR model; direct PNG/JPEG enters the same bounded
-   local OCR path after image-header preflight. All paths then use the same
-   deterministic parser for one explicitly supported synthetic report format.
+5. A durable SQLite-backed job reads a PDF text layer or uses bounded local OCR
+   after image preflight. The Codex provider classifies the document into a
+   closed category, creates a short archive title, and extracts only explicit
+   quantitative laboratory facts. Non-laboratory documents may correctly
+   complete with zero facts instead of becoming unsupported failures.
 6. Extracted facts retain raw text, value, unit, confidence, page, and fragment.
 7. The parser marks uncertain or ambiguous facts as `needs_review`; all other
    extracted facts remain `extracted`. Both are untrusted and await an explicit

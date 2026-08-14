@@ -65,10 +65,11 @@ test("processing worker timings have safe defaults and reject non-positive value
       PROCESSING_LEASE_DURATION_MS: undefined,
       PROCESSING_POLL_INTERVAL_MS: undefined,
       PROCESSING_RETRY_DELAY_MS: undefined,
+      CODEX_DOCUMENT_TIMEOUT_MS: undefined,
     },
     () => {
       const config = loadConfig();
-      assert.equal(config.processingLeaseDurationMs, 60_000);
+      assert.equal(config.processingLeaseDurationMs, 240_000);
       assert.equal(config.processingPollIntervalMs, 500);
       assert.equal(config.processingRetryDelayMs, 1_000);
     },
@@ -80,6 +81,12 @@ test("processing worker timings have safe defaults and reject non-positive value
   withEnvironment({ PROCESSING_LEASE_DURATION_MS: "-1" }, () => {
     assert.throws(() => loadConfig(), /PROCESSING_LEASE_DURATION_MS must be a positive integer/);
   });
+  withEnvironment(
+    { CODEX_DOCUMENT_TIMEOUT_MS: "180000", PROCESSING_LEASE_DURATION_MS: "200000" },
+    () => {
+      assert.throws(() => loadConfig(), /must exceed CODEX_DOCUMENT_TIMEOUT_MS/);
+    },
+  );
   withEnvironment({ PROCESSING_RETRY_DELAY_MS: "100ms" }, () => {
     assert.throws(() => loadConfig(), /PROCESSING_RETRY_DELAY_MS must be a positive integer/);
   });
@@ -99,6 +106,17 @@ test("Codex care-plan runtime has an explicit bounded model and timeout", () => 
   });
   withEnvironment({ CODEX_CARE_PLAN_TIMEOUT_MS: "600001" }, () => {
     assert.throws(() => loadConfig(), /CODEX_CARE_PLAN_TIMEOUT_MS must not exceed 600000/);
+  });
+});
+
+test("Codex document intelligence has an explicit model and bounded timeout", () => {
+  withEnvironment({ CODEX_DOCUMENT_MODEL: undefined, CODEX_DOCUMENT_TIMEOUT_MS: undefined }, () => {
+    const config = loadConfig();
+    assert.equal(config.codexDocumentModel, "gpt-5.4-mini");
+    assert.equal(config.codexDocumentTimeoutMs, 180_000);
+  });
+  withEnvironment({ CODEX_DOCUMENT_MODEL: "bad model" }, () => {
+    assert.throws(() => loadConfig(), /CODEX_DOCUMENT_MODEL/);
   });
 });
 

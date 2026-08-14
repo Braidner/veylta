@@ -1,5 +1,8 @@
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 import { createSyntheticFamily } from "./support/synthetic-family";
+
+const fixtureUrl = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
 
 test("desktop dashboard matches the full-width reference composition", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
@@ -107,7 +110,7 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   expect(overflows).toBe(false);
 });
 
-test("upload opens a keyboard-safe drag and drop dialog", async ({ page }) => {
+test("upload opens a keyboard-safe Codex batch dialog", async ({ page }) => {
   await createSyntheticFamily(page, {
     owner: "Upload Owner",
     family: "Upload Family",
@@ -115,25 +118,42 @@ test("upload opens a keyboard-safe drag and drop dialog", async ({ page }) => {
   });
 
   await page.getByRole("button", { name: "Загрузить документ" }).click();
-  const dialog = page.getByRole("dialog", { name: "Загрузить синтетический документ" });
+  const dialog = page.getByRole("dialog", { name: "Загрузить документы" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Перетащите файл сюда")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Загрузить исходник" })).toBeDisabled();
+  await expect(dialog.getByText("Перетащите файлы сюда")).toBeVisible();
+  await expect(dialog.getByText(/Codex сам определит тип/)).toBeVisible();
+  await expect(dialog.getByLabel("Документы для Codex")).toHaveAttribute("multiple", "");
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
 
   await page.getByRole("button", { name: "Загрузить документ" }).click();
-  await dialog.locator(".upload-dropzone").evaluate((dropzone) => {
+  const fixture = Array.from(await readFile(fixtureUrl));
+  await dialog.locator(".upload-dropzone").evaluate((dropzone, bytes) => {
     const transfer = new DataTransfer();
     transfer.items.add(
-      new File(["%PDF-1.7\n% Veylta synthetic fixture\n%%EOF\n"], "synthetic-drag.pdf", {
+      new File([Uint8Array.from(bytes)], "synthetic-a.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    transfer.items.add(
+      new File([Uint8Array.from(bytes)], "synthetic-b.pdf", {
         type: "application/pdf",
       }),
     );
     dropzone.dispatchEvent(new DragEvent("dragenter", { bubbles: true, dataTransfer: transfer }));
     dropzone.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
-  });
-  await expect(dialog.getByText("synthetic-drag.pdf", { exact: true })).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Загрузить исходник" })).toBeEnabled();
+  }, fixture);
+  await expect(dialog.getByText("synthetic-a.pdf", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("synthetic-b.pdf", { exact: true })).toBeVisible();
+  const submit = dialog.getByRole("button", { name: "Загрузить 2 документа" });
+  await expect(submit).toBeDisabled();
+  await dialog
+    .getByRole("checkbox", { name: /передать содержимое этих документов в Codex/i })
+    .check();
+  await expect(submit).toBeEnabled();
+  await submit.click();
+  await expect(page).toHaveURL(/\?tab=documents$/);
+  await expect(page.getByRole("heading", { name: "Анализы" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Распределено Codex")).toHaveCount(2);
 });

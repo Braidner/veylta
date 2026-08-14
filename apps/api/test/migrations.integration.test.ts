@@ -528,6 +528,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "care_plan_items"), true);
     assert.equal(await tableExists(database, "care_plan_proposal_runs"), true);
     assert.equal(await tableExists(database, "care_plan_codex_provenance"), true);
+    assert.equal(await tableExists(database, "document_intelligence_results"), true);
     await database.query(
       `INSERT INTO home_storage_settings
          (singleton, driver, current_root, state, generation)
@@ -540,6 +541,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0016_document_intelligence");
+    assert.equal(await tableExists(database, "document_intelligence_results"), false);
     assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
     assert.equal(await tableExists(database, "care_plan_proposal_runs"), false);
     assert.equal(await migrateDown(database), "0014_home_care_plan");
@@ -628,12 +631,108 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0013_home_settings",
       "0014_home_care_plan",
       "0015_codex_care_plan_proposals",
+      "0016_document_intelligence",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
       "PRAGMA foreign_key_check",
     );
     assert.deepEqual(foreignKeyViolations.rows, []);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("document intelligence classification is immutable and bound to one tenant document version", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-document-intelligence-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const fixture = await createDocumentFixture(database, "Synthetic AI classification");
+    const processing = await insertProcessingGraph(database, fixture, "ai-classification");
+    const resultId = randomUUID();
+    const now = new Date().toISOString();
+
+    await database.query(
+      `INSERT INTO document_intelligence_results
+         (id, family_id, document_id, document_version_id, processing_job_id,
+          provider, model_id, runtime_version, schema_version, category, title,
+          document_date, confidence, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+               'document-intelligence/v1', 'laboratory', 'Synthetic laboratory report',
+               '2026-08-12', 0.96, $6)`,
+      [
+        resultId,
+        fixture.familyId,
+        fixture.documentId,
+        fixture.documentVersionId,
+        processing.jobId,
+        now,
+      ],
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          "UPDATE document_intelligence_results SET category = 'other' WHERE id = $1",
+          [resultId],
+        ),
+      "trigger",
+    );
+    const invalidFixture = await createDocumentFixture(database, "Invalid AI category");
+    const invalidProcessing = await insertProcessingGraph(
+      database,
+      invalidFixture,
+      "invalid-ai-category",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO document_intelligence_results
+             (id, family_id, document_id, document_version_id, processing_job_id,
+              provider, model_id, runtime_version, schema_version, category, title,
+              confidence, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+                   'document-intelligence/v1', 'diagnosis', 'Invalid category', 0.5, $6)`,
+          [
+            randomUUID(),
+            invalidFixture.familyId,
+            invalidFixture.documentId,
+            invalidFixture.documentVersionId,
+            invalidProcessing.jobId,
+            now,
+          ],
+        ),
+      "check",
+    );
+
+    const foreignFixture = await createDocumentFixture(database, "Foreign AI classification");
+    const foreignProcessing = await insertProcessingGraph(
+      database,
+      foreignFixture,
+      "foreign-ai-classification",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO document_intelligence_results
+             (id, family_id, document_id, document_version_id, processing_job_id,
+              provider, model_id, runtime_version, schema_version, category, title,
+              confidence, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+                   'document-intelligence/v1', 'other', 'Cross tenant', 0.5, $6)`,
+          [
+            randomUUID(),
+            fixture.familyId,
+            foreignFixture.documentId,
+            foreignFixture.documentVersionId,
+            foreignProcessing.jobId,
+            now,
+          ],
+        ),
+      "foreign-key",
+    );
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });
@@ -894,6 +993,7 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
+    assert.equal(await migrateDown(database), "0016_document_intelligence");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     assert.equal(await tableExists(database, "care_plan_items"), true);
   } finally {
@@ -985,6 +1085,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0016_document_intelligence");
     assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
     assert.equal(await migrateDown(database), "0014_home_care_plan");
     assert.equal(await migrateDown(database), "0013_home_settings");

@@ -5,7 +5,9 @@ import {
   AUDIT_LOG_CONTRACT_VERSION,
   type CarePlanProposalResponse,
   type CarePlanResponse,
+  DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
   type DocumentFactsResponse,
@@ -66,6 +68,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
   assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v1");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
+  assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v1");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
@@ -441,7 +444,8 @@ test("document processing exposes only supported observable states and sanitized
   assert.deepEqual(DOCUMENT_PROCESSING_FAILURE_CATEGORIES, [
     "document_unavailable",
     "invalid_document",
-    "unsupported_document",
+    "agent_unavailable",
+    "agent_output_invalid",
     "extraction_failed",
     "validation_failed",
     "attempts_exhausted",
@@ -486,6 +490,16 @@ test("document v3 embeds discriminated processing status without changing origin
       sha256: "a".repeat(64),
       uploadedAt: "2026-08-12T12:00:00.000Z",
       duplicate: { possible: false, documentId: null, profileId: null },
+      intelligence: {
+        contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+        provider: "codex",
+        modelId: "gpt-5.4-mini",
+        runtimeVersion: "codex-cli 0.147.0",
+        category: "laboratory",
+        title: "Синтетический лабораторный отчёт",
+        documentDate: "2026-08-12",
+        confidence: 0.96,
+      },
       processing: {
         state: "awaiting_review",
         updatedAt: "2026-08-12T12:00:02.000Z",
@@ -496,6 +510,17 @@ test("document v3 embeds discriminated processing status without changing origin
   } satisfies DocumentResponse;
 
   assert.equal(response.document.status, "uploaded");
+  assert.deepEqual(DOCUMENT_CATEGORIES, [
+    "laboratory",
+    "imaging",
+    "prescription",
+    "discharge_summary",
+    "consultation",
+    "vaccination",
+    "insurance",
+    "other",
+  ]);
+  assert.equal(response.document.intelligence.provider, "codex");
   assert.equal(response.document.processing.state, "awaiting_review");
 });
 

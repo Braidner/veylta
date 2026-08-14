@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import {
+  DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
   type DocumentFactsResponse,
+  type DocumentIntelligenceSummary,
   type DocumentProcessingResponse,
   type DocumentProcessingRetryResponse,
   type DocumentProcessingStatus,
@@ -399,6 +402,25 @@ interface ProfileOverviewDocumentRow extends DocumentRow {
   fact_count: number | null;
   pending_fact_count: number | null;
   needs_attention_fact_count: number | null;
+  intelligence_provider: string | null;
+  intelligence_model_id: string | null;
+  intelligence_runtime_version: string | null;
+  intelligence_schema_version: string | null;
+  intelligence_category: string | null;
+  intelligence_title: string | null;
+  intelligence_document_date: string | null;
+  intelligence_confidence: number | null;
+}
+
+interface DocumentIntelligenceRow {
+  provider: string;
+  model_id: string;
+  runtime_version: string;
+  schema_version: string;
+  category: string;
+  title: string;
+  document_date: string | null;
+  confidence: number;
 }
 
 interface ProfileOverviewProfileRow {
@@ -822,8 +844,10 @@ function processingFailureCategory(
       return "document_unavailable";
     case "INVALID_DOCUMENT":
       return "invalid_document";
-    case "UNSUPPORTED_DOCUMENT":
-      return "unsupported_document";
+    case "AGENT_UNAVAILABLE":
+      return "agent_unavailable";
+    case "AGENT_OUTPUT_INVALID":
+      return "agent_output_invalid";
     case "EXTRACTION_FAILED":
       return "extraction_failed";
     case "VALIDATION_FAILED":
@@ -914,6 +938,66 @@ function profileOverviewProcessing(row: ProfileOverviewDocumentRow): DocumentPro
   return processingStatus(job, counts);
 }
 
+function documentIntelligence(
+  row: DocumentIntelligenceRow | undefined,
+): DocumentIntelligenceSummary | null {
+  if (row === undefined) return null;
+  const confidence = Number(row.confidence);
+  if (
+    row.provider !== "codex" ||
+    row.schema_version !== DOCUMENT_INTELLIGENCE_CONTRACT_VERSION ||
+    !DOCUMENT_CATEGORIES.includes(row.category as (typeof DOCUMENT_CATEGORIES)[number]) ||
+    !Number.isFinite(confidence) ||
+    confidence < 0 ||
+    confidence > 1 ||
+    (row.document_date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(row.document_date))
+  ) {
+    throw new ObjectStorageIntegrityError("Stored document intelligence is invalid");
+  }
+  return {
+    contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+    provider: "codex",
+    modelId: requiredBoundedString(row.model_id, 100, "document intelligence model"),
+    runtimeVersion: requiredBoundedString(
+      row.runtime_version,
+      100,
+      "document intelligence runtime",
+    ),
+    category: row.category as (typeof DOCUMENT_CATEGORIES)[number],
+    title: requiredBoundedString(row.title, 200, "document intelligence title"),
+    documentDate: row.document_date,
+    confidence,
+  };
+}
+
+function profileOverviewIntelligence(
+  row: ProfileOverviewDocumentRow,
+): DocumentIntelligenceSummary | null {
+  const values = [
+    row.intelligence_provider,
+    row.intelligence_model_id,
+    row.intelligence_runtime_version,
+    row.intelligence_schema_version,
+    row.intelligence_category,
+    row.intelligence_title,
+    row.intelligence_confidence,
+  ];
+  if (values.every((value) => value === null)) return null;
+  if (values.some((value) => value === null)) {
+    throw new ObjectStorageIntegrityError("Stored document intelligence is incomplete");
+  }
+  return documentIntelligence({
+    provider: row.intelligence_provider as string,
+    model_id: row.intelligence_model_id as string,
+    runtime_version: row.intelligence_runtime_version as string,
+    schema_version: row.intelligence_schema_version as string,
+    category: row.intelligence_category as string,
+    title: row.intelligence_title as string,
+    document_date: row.intelligence_document_date,
+    confidence: row.intelligence_confidence as number,
+  });
+}
+
 function profileOverviewProfile(row: ProfileOverviewProfileRow): PatientProfileSummary {
   if (row.kind !== "adult" && row.kind !== "dependent") {
     throw new ObjectStorageIntegrityError("Stored profile kind is invalid");
@@ -934,13 +1018,14 @@ function profileOverviewProfile(row: ProfileOverviewProfileRow): PatientProfileS
 function profileOverviewDocument(
   row: ProfileOverviewDocumentRow,
 ): ProfileOverviewResponse["recentDocuments"][number] {
-  const document = summary(row, profileOverviewProcessing(row));
+  const document = summary(row, profileOverviewProcessing(row), profileOverviewIntelligence(row));
   return {
     id: document.id,
     originalFilename: document.originalFilename,
     contentType: document.contentType,
     uploadedAt: document.uploadedAt,
     processing: document.processing,
+    intelligence: document.intelligence,
   };
 }
 
@@ -1011,6 +1096,7 @@ function evidenceBundleDocument(
 function summary(
   row: DocumentRow,
   processing: DocumentProcessingStatus = { state: "not_started" },
+  intelligence: DocumentIntelligenceSummary | null = null,
 ): DocumentSummary {
   return {
     id: row.id,
@@ -1028,7 +1114,24 @@ function summary(
       profileId: row.duplicate_profile_id,
     },
     processing,
+    intelligence,
   };
+}
+
+async function intelligenceForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<DocumentIntelligenceSummary | null> {
+  const stored = (
+    await client.query<DocumentIntelligenceRow>(
+      `SELECT provider, model_id, runtime_version, schema_version, category,
+              title, document_date, confidence
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [row.family_id, row.document_version_id],
+    )
+  ).rows[0];
+  return documentIntelligence(stored);
 }
 
 function metadataMatches(
@@ -2619,7 +2722,11 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
         });
-        return summary(row, await processingForDocument(client, row));
+        return summary(
+          row,
+          await processingForDocument(client, row),
+          await intelligenceForDocument(client, row),
+        );
       });
     },
 
@@ -2847,6 +2954,14 @@ export function createDocumentService(
                   j.updated_at AS job_updated_at,
                   r.id AS extraction_run_id,
                   r.status AS extraction_status,
+                  intelligence.provider AS intelligence_provider,
+                  intelligence.model_id AS intelligence_model_id,
+                  intelligence.runtime_version AS intelligence_runtime_version,
+                  intelligence.schema_version AS intelligence_schema_version,
+                  intelligence.category AS intelligence_category,
+                  intelligence.title AS intelligence_title,
+                  intelligence.document_date AS intelligence_document_date,
+                  intelligence.confidence AS intelligence_confidence,
                   COUNT(f.id) AS fact_count,
                   COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
                     AS pending_fact_count,
@@ -2876,6 +2991,9 @@ export function createDocumentService(
                   ORDER BY latest_run.created_at DESC, latest_run.id DESC
                   LIMIT 1
                )
+             LEFT JOIN document_intelligence_results intelligence
+               ON intelligence.family_id = d.family_id
+              AND intelligence.document_version_id = v.id
              LEFT JOIN extracted_facts f
                ON f.family_id = r.family_id AND f.extraction_run_id = r.id
              LEFT JOIN review_decisions d_review
@@ -2885,9 +3003,12 @@ export function createDocumentService(
                      d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
                      blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
                      v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
-                     r.id, r.status
+                     r.id, r.status, intelligence.provider, intelligence.model_id,
+                     intelligence.runtime_version, intelligence.schema_version,
+                     intelligence.category, intelligence.title,
+                     intelligence.document_date, intelligence.confidence
             ORDER BY d.uploaded_at DESC, d.id DESC
-            LIMIT 3`,
+            LIMIT 50`,
           [scope.familyId, scope.profileId],
         );
 
@@ -2940,6 +3061,14 @@ export function createDocumentService(
                   j.updated_at AS job_updated_at,
                   r.id AS extraction_run_id,
                   r.status AS extraction_status,
+                  intelligence.provider AS intelligence_provider,
+                  intelligence.model_id AS intelligence_model_id,
+                  intelligence.runtime_version AS intelligence_runtime_version,
+                  intelligence.schema_version AS intelligence_schema_version,
+                  intelligence.category AS intelligence_category,
+                  intelligence.title AS intelligence_title,
+                  intelligence.document_date AS intelligence_document_date,
+                  intelligence.confidence AS intelligence_confidence,
                   COUNT(f.id) AS fact_count,
                   COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
                     AS pending_fact_count,
@@ -2960,6 +3089,9 @@ export function createDocumentService(
                ON r.family_id = v.family_id
               AND r.document_version_id = v.id
               AND r.status = 'awaiting_review'
+             LEFT JOIN document_intelligence_results intelligence
+               ON intelligence.family_id = d.family_id
+              AND intelligence.document_version_id = v.id
              LEFT JOIN processing_jobs j
                ON j.family_id = d.family_id
               AND j.document_version_id = v.id
@@ -2973,7 +3105,10 @@ export function createDocumentService(
                      d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
                      blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
                      v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
-                     r.id, r.status
+                     r.id, r.status, intelligence.provider, intelligence.model_id,
+                     intelligence.runtime_version, intelligence.schema_version,
+                     intelligence.category, intelligence.title,
+                     intelligence.document_date, intelligence.confidence
             ORDER BY d.uploaded_at DESC, d.id DESC
             LIMIT 3`,
           [scope.familyId, scope.profileId],

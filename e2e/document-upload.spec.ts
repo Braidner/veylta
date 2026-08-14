@@ -51,7 +51,7 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
   const firstDocumentUrl = page.url();
-  await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
+  await expect(page.getByText(filename, { exact: false })).toBeVisible();
   await expect(page.getByText("Исходник сохранён без изменений")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
@@ -59,7 +59,10 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
 
   await page.reload();
   await expect(page).toHaveURL(firstDocumentUrl);
-  await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 2, name: "Синтетические лабораторные результаты" }),
+  ).toBeVisible();
+  await expect(page.getByText(filename, { exact: false })).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("link", { name: "Скачать исходный PDF" }).click();

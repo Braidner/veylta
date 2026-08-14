@@ -46,7 +46,7 @@ import type {
   SetupStatusResponse,
   StorageRelocationResponse,
 } from "@veylta/contracts";
-import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import {
   ArrowRight,
   CalendarDays,
@@ -1394,11 +1394,12 @@ function ProfileWorkspace({
   const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const [selectedUpload, setSelectedUpload] = useState<File | null>(null);
+  const [selectedUploads, setSelectedUploads] = useState<readonly File[]>([]);
+  const [codexConsent, setCodexConsent] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const uploadDialog = useRef<HTMLDialogElement>(null);
-  const uploadAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+  const uploadAttempts = useRef(new Map<string, string>());
   const now = new Date();
   const greeting =
     now.getHours() < 12 ? "Доброе утро" : now.getHours() < 18 ? "Добрый день" : "Добрый вечер";
@@ -1416,7 +1417,8 @@ function ProfileWorkspace({
   }, [uploadOpen]);
 
   function openUploadDialog() {
-    setSelectedUpload(null);
+    setSelectedUploads([]);
+    setCodexConsent(false);
     setDocumentError(null);
     setDragActive(false);
     setUploadOpen(true);
@@ -1427,71 +1429,140 @@ function ProfileWorkspace({
     setUploadOpen(false);
   }
 
-  function selectUpload(file: File | undefined) {
-    if (file === undefined || file.size === 0) {
-      setSelectedUpload(null);
-      setDocumentError("Выберите один синтетический PDF, PNG или JPEG-файл.");
-      return;
+  function uploadFingerprint(file: File) {
+    return `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
+  }
+
+  function selectUploads(files: readonly File[]) {
+    const valid: File[] = [];
+    const rejected: string[] = [];
+    for (const file of files) {
+      if (
+        file.size === 0 ||
+        file.size > MAX_SYNTHETIC_DOCUMENT_BYTES ||
+        !isSupportedSyntheticDocument(file)
+      ) {
+        rejected.push(file.name || "без имени");
+        continue;
+      }
+      valid.push(file);
     }
-    if (!isSupportedSyntheticDocument(file)) {
-      setSelectedUpload(null);
-      setDocumentError("Поддерживаются только синтетические PDF, PNG и JPEG-файлы.");
-      return;
-    }
-    if (file.size > MAX_SYNTHETIC_DOCUMENT_BYTES) {
-      setSelectedUpload(null);
-      setDocumentError("Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.");
-      return;
-    }
-    setSelectedUpload(file);
-    setDocumentError(null);
+    setSelectedUploads((current) => {
+      const known = new Set(current.map(uploadFingerprint));
+      const merged = [...current];
+      for (const file of valid) {
+        const fingerprint = uploadFingerprint(file);
+        if (!known.has(fingerprint) && merged.length < 20) {
+          merged.push(file);
+          known.add(fingerprint);
+        }
+      }
+      return merged;
+    });
+    setDocumentError(
+      rejected.length > 0
+        ? `Не добавлены: ${rejected.join(", ")}. Нужны PDF, PNG или JPEG до 5 МБ.`
+        : valid.length > 20
+          ? "За один раз можно загрузить не больше 20 документов."
+          : null,
+    );
   }
 
   function handleDrop(event: DragEvent<HTMLLabelElement>) {
     event.preventDefault();
     setDragActive(false);
-    selectUpload(event.dataTransfer.files[0]);
+    selectUploads(Array.from(event.dataTransfer.files));
+  }
+
+  function uploadFailureMessage(error: unknown) {
+    if (error instanceof ApiError) {
+      if (error.status === 413 || error.code === "PAYLOAD_TOO_LARGE") {
+        return "Файл превышает лимит 5 МБ. Выберите документ меньшего размера.";
+      }
+      if (
+        error.code === "INVALID_DOCUMENT_SIGNATURE" ||
+        error.code === "UNSUPPORTED_DOCUMENT_TYPE" ||
+        error.code === "INVALID_MULTIPART_UPLOAD" ||
+        error.status === 415
+      ) {
+        return "Файл не похож на поддерживаемый PDF, PNG или JPEG. Проверьте формат и содержимое.";
+      }
+      if (error.status === 409) {
+        return "Не удалось безопасно повторить эту загрузку. Удалите файл из списка и добавьте его снова.";
+      }
+    }
+    return "Документ не загрузился. Исходник не изменён; проверьте соединение и повторите попытку.";
   }
 
   async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setDocumentError(null);
 
-    const file = selectedUpload;
-    if (file === null || file.size === 0) {
-      setDocumentError("Выберите один синтетический PDF, PNG или JPEG-файл.");
+    if (selectedUploads.length === 0) {
+      setDocumentError("Выберите хотя бы один PDF, PNG или JPEG-файл.");
       return;
     }
-    if (file.size > MAX_SYNTHETIC_DOCUMENT_BYTES) {
-      setDocumentError("Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.");
+    if (!codexConsent) {
+      setDocumentError("Подтвердите передачу содержимого документов в Codex.");
       return;
-    }
-
-    const fingerprint = `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
-    if (uploadAttempt.current?.fingerprint !== fingerprint) {
-      uploadAttempt.current = { fingerprint, key: crypto.randomUUID() };
     }
 
     setUploadPending(true);
+    const failed: Array<{ file: File; error: unknown }> = [];
+    let singleDocumentId: string | null = null;
     try {
-      const body = new FormData();
-      body.append("file", file, file.name);
-      const response = await apiRequest<DocumentResponse>(
-        `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": uploadAttempt.current.key },
-          body,
-        },
-      );
-      uploadAttempt.current = null;
-      setUploadOpen(false);
-      router.push(documentPath(family.id, profile.id, response.document.id));
-    } catch (error) {
-      if (error instanceof ApiError && [400, 409, 413, 415].includes(error.status)) {
-        uploadAttempt.current = null;
+      for (const file of selectedUploads) {
+        const fingerprint = uploadFingerprint(file);
+        const key = uploadAttempts.current.get(fingerprint) ?? crypto.randomUUID();
+        uploadAttempts.current.set(fingerprint, key);
+        const body = new FormData();
+        body.append("file", file, file.name);
+        try {
+          const response = await apiRequest<DocumentResponse>(
+            `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents`,
+            {
+              method: "POST",
+              headers: {
+                "Idempotency-Key": key,
+                "X-Veylta-Document-Intelligence": "codex/v1",
+              },
+              body,
+            },
+          );
+          if (selectedUploads.length === 1) singleDocumentId = response.document.id;
+          uploadAttempts.current.delete(fingerprint);
+        } catch (requestError) {
+          if (
+            requestError instanceof ApiError &&
+            [400, 409, 413, 415].includes(requestError.status)
+          ) {
+            uploadAttempts.current.delete(fingerprint);
+          }
+          failed.push({ file, error: requestError });
+        }
       }
-      setDocumentError(uploadErrorCopy(error));
+      if (failed.length > 0) {
+        setSelectedUploads(failed.map(({ file }) => file));
+        if (selectedUploads.length === 1) {
+          setDocumentError(uploadFailureMessage(failed[0]?.error));
+        } else if (failed.length === selectedUploads.length) {
+          setDocumentError(
+            `${failed.length} документа не загрузились. Ничего не передано Codex; проверьте файлы и повторите попытку.`,
+          );
+        } else {
+          setDocumentError(
+            `${failed.length} ${failed.length === 1 ? "документ не загрузился" : "документа не загрузились"}. Остальные уже переданы Codex.`,
+          );
+        }
+      } else {
+        setUploadOpen(false);
+        router.push(
+          singleDocumentId === null
+            ? profileTabPath(family.id, profile.id, "documents")
+            : documentPath(family.id, profile.id, singleDocumentId),
+        );
+        router.refresh();
+      }
     } finally {
       setUploadPending(false);
     }
@@ -1719,19 +1790,29 @@ function ProfileWorkspace({
           dialogRef={uploadDialog}
           open={uploadOpen}
           pending={uploadPending}
-          selectedFile={selectedUpload}
+          selectedFiles={selectedUploads}
+          codexConsent={codexConsent}
           error={documentError}
           dragActive={dragActive}
           onClose={closeUploadDialog}
           onClosed={() => {
             setUploadOpen(false);
-            setSelectedUpload(null);
+            setSelectedUploads([]);
+            setCodexConsent(false);
             setDocumentError(null);
             setDragActive(false);
           }}
           onDragActiveChange={setDragActive}
           onDrop={handleDrop}
-          onSelect={selectUpload}
+          onSelect={selectUploads}
+          onRemove={(file) => {
+            const fingerprint = uploadFingerprint(file);
+            uploadAttempts.current.delete(fingerprint);
+            setSelectedUploads((current) =>
+              current.filter((candidate) => uploadFingerprint(candidate) !== fingerprint),
+            );
+          }}
+          onConsentChange={setCodexConsent}
           onSubmit={handleDocumentUpload}
         />
       ) : null}
@@ -2441,28 +2522,6 @@ function FamilyAuditLogPanel({ familyId }: { familyId: string }) {
   );
 }
 
-function uploadErrorCopy(error: unknown): string {
-  if (!(error instanceof ApiError)) {
-    return "Не удалось загрузить документ. Проверьте соединение и повторите попытку.";
-  }
-  if (error.status === 415) {
-    return "Файл не похож на поддерживаемый PDF, PNG или JPEG. Проверьте формат и содержимое.";
-  }
-  if (error.status === 413) {
-    return "Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.";
-  }
-  if (error.status === 409) {
-    return "Эта попытка загрузки уже относится к другому файлу. Выберите файл заново.";
-  }
-  if (error.status === 400) {
-    return "Нужен ровно один синтетический PDF, PNG или JPEG-файл.";
-  }
-  if (error.status === 401 || error.status === 404) {
-    return "Профиль недоступен. Обновите страницу и проверьте активный профиль.";
-  }
-  return "Не удалось загрузить документ. Данные не изменились; попробуйте ещё раз.";
-}
-
 type ProfileOverviewState =
   | { kind: "loading" }
   | { kind: "ready"; overview: ProfileOverviewResponse }
@@ -2488,7 +2547,7 @@ function profileOverviewProcessingCopy(
     case "text_extraction":
       return "Извлекаем текст";
     case "document_classification":
-      return "Проверяем тип документа";
+      return "Codex определяет раздел";
     case "structured_extraction":
       return "Готовим черновые значения";
     case "validation":
@@ -2500,6 +2559,74 @@ function profileOverviewProcessingCopy(
     case "failed":
       return "Обработка не завершилась";
   }
+}
+
+const documentCategoryLabels: Record<(typeof DOCUMENT_CATEGORIES)[number], string> = {
+  laboratory: "Анализы",
+  imaging: "Снимки и исследования",
+  prescription: "Назначения",
+  discharge_summary: "Выписки",
+  consultation: "Консультации",
+  vaccination: "Вакцинация",
+  insurance: "Страховые документы",
+  other: "Другое",
+};
+
+function DocumentArchiveList({
+  documents,
+  familyId,
+  profileId,
+}: {
+  documents: ProfileOverviewResponse["recentDocuments"];
+  familyId: string;
+  profileId: string;
+}) {
+  const groups = [
+    {
+      id: "processing",
+      label: "Codex распределяет",
+      documents: documents.filter((document) => document.intelligence === null),
+    },
+    ...DOCUMENT_CATEGORIES.map((category) => ({
+      id: category,
+      label: documentCategoryLabels[category],
+      documents: documents.filter((document) => document.intelligence?.category === category),
+    })),
+  ].filter((group) => group.documents.length > 0);
+
+  return (
+    <div className="document-category-groups">
+      {groups.map((group) => (
+        <section
+          key={group.id}
+          className="document-category-group"
+          aria-labelledby={`group-${group.id}`}
+        >
+          <div className="document-category-group__heading">
+            <h4 id={`group-${group.id}`}>{group.label}</h4>
+            <span>{group.documents.length}</span>
+          </div>
+          <ol className="profile-overview__list">
+            {group.documents.map((document) => (
+              <li key={document.id} className="profile-overview__row">
+                <div>
+                  <strong>{document.intelligence?.title ?? document.originalFilename}</strong>
+                  <span>
+                    {document.intelligence === null ? "Ожидает Codex" : "Распределено Codex"} ·{" "}
+                    {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)} ·{" "}
+                    {profileOverviewProcessingCopy(document.processing)}
+                  </span>
+                </div>
+                <Link className="text-link" href={documentPath(familyId, profileId, document.id)}>
+                  Открыть источник
+                </Link>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
+  );
 }
 
 function ProfileOverviewPanel({
@@ -2533,11 +2660,42 @@ function ProfileOverviewPanel({
     [familyId, profileId],
   );
 
+  const refreshOverview = useCallback(async (): Promise<void> => {
+    try {
+      const overview = await apiRequest<ProfileOverviewResponse>(
+        profileOverviewPath(familyId, profileId),
+      );
+      setState({ kind: "ready", overview });
+    } catch {
+      // Keep the last authorized snapshot during a transient background refresh failure.
+    }
+  }, [familyId, profileId]);
+
   useEffect(() => {
     const controller = new AbortController();
     void loadOverview(controller.signal);
     return () => controller.abort();
   }, [loadOverview]);
+
+  useEffect(() => {
+    if (
+      state.kind !== "ready" ||
+      !state.overview.recentDocuments.some((document) =>
+        [
+          "queued",
+          "security_check",
+          "text_extraction",
+          "document_classification",
+          "structured_extraction",
+          "validation",
+        ].includes(document.processing.state),
+      )
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => void refreshOverview(), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [refreshOverview, state]);
 
   return (
     <section
@@ -2682,26 +2840,11 @@ function ProfileOverviewPanel({
                     ) : null}
                   </div>
                 ) : (
-                  <ol className="profile-overview__list">
-                    {state.overview.recentDocuments.map((document) => (
-                      <li key={document.id} className="profile-overview__row">
-                        <div>
-                          <strong>{document.originalFilename}</strong>
-                          <span>
-                            {documentKindLabel(document.contentType)} ·{" "}
-                            {formatDate(document.uploadedAt)} ·{" "}
-                            {profileOverviewProcessingCopy(document.processing)}
-                          </span>
-                        </div>
-                        <Link
-                          className="text-link"
-                          href={documentPath(familyId, profileId, document.id)}
-                        >
-                          Открыть источник
-                        </Link>
-                      </li>
-                    ))}
-                  </ol>
+                  <DocumentArchiveList
+                    documents={state.overview.recentDocuments}
+                    familyId={familyId}
+                    profileId={profileId}
+                  />
                 )}
               </section>
             </div>
@@ -3667,8 +3810,8 @@ function DocumentInbox({ onUpload }: { onUpload: () => void }) {
       <p className="context-line">Исходные документы</p>
       <h2 id="document-inbox-title">Документы профиля</h2>
       <p className="document-intro">
-        Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Затем локальная
-        детерминированная обработка поставит в очередь черновое извлечение значений для проверки.
+        Загружайте один документ или целую пачку. Оригиналы останутся неизменными, а Codex определит
+        тип каждого файла, разложит архив и подготовит черновые значения со ссылками на источник.
       </p>
 
       <div className="synthetic-reminder" role="note">
@@ -3677,7 +3820,7 @@ function DocumentInbox({ onUpload }: { onUpload: () => void }) {
       </div>
       <button className="button button--primary" type="button" onClick={onUpload}>
         <FileUp size={18} aria-hidden="true" />
-        Загрузить документ
+        Загрузить документы
       </button>
     </section>
   );
@@ -3687,14 +3830,17 @@ interface DocumentUploadDialogProps {
   dialogRef: RefObject<HTMLDialogElement | null>;
   open: boolean;
   pending: boolean;
-  selectedFile: File | null;
+  selectedFiles: readonly File[];
+  codexConsent: boolean;
   error: string | null;
   dragActive: boolean;
   onClose: () => void;
   onClosed: () => void;
   onDragActiveChange: (active: boolean) => void;
   onDrop: (event: DragEvent<HTMLLabelElement>) => void;
-  onSelect: (file: File | undefined) => void;
+  onSelect: (files: readonly File[]) => void;
+  onRemove: (file: File) => void;
+  onConsentChange: (checked: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
@@ -3702,7 +3848,8 @@ function DocumentUploadDialog({
   dialogRef,
   open,
   pending,
-  selectedFile,
+  selectedFiles,
+  codexConsent,
   error,
   dragActive,
   onClose,
@@ -3710,6 +3857,8 @@ function DocumentUploadDialog({
   onDragActiveChange,
   onDrop,
   onSelect,
+  onRemove,
+  onConsentChange,
   onSubmit,
 }: DocumentUploadDialogProps) {
   return (
@@ -3727,8 +3876,11 @@ function DocumentUploadDialog({
         <div className="upload-dialog__heading">
           <div>
             <p className="context-line">Новый источник</p>
-            <h2 id="upload-dialog-title">Загрузить синтетический документ</h2>
-            <p>Оригинал останется локально и неизменяемо свяжется с результатом проверки.</p>
+            <h2 id="upload-dialog-title">Загрузить документы</h2>
+            <p>
+              Оригиналы останутся локально. Codex сам определит тип каждого документа и распределит
+              их по разделам архива.
+            </p>
           </div>
           <button
             className="workspace-icon-action upload-dialog__close"
@@ -3742,7 +3894,7 @@ function DocumentUploadDialog({
         </div>
 
         <label
-          className={`upload-dropzone ${dragActive ? "upload-dropzone--active" : ""} ${selectedFile !== null ? "upload-dropzone--selected" : ""}`}
+          className={`upload-dropzone ${dragActive ? "upload-dropzone--active" : ""} ${selectedFiles.length > 0 ? "upload-dropzone--selected" : ""}`}
           onDragEnter={(event) => {
             event.preventDefault();
             onDragActiveChange(true);
@@ -3760,27 +3912,62 @@ function DocumentUploadDialog({
         >
           <input
             className="visually-hidden"
-            aria-label="Синтетический документ"
+            aria-label="Документы для Codex"
             type="file"
+            multiple
             accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
             disabled={pending}
-            onChange={(event) => onSelect(event.currentTarget.files?.[0])}
+            onChange={(event) => onSelect(Array.from(event.currentTarget.files ?? []))}
           />
           <span className="upload-dropzone__icon" aria-hidden="true">
             <FileUp size={26} strokeWidth={1.7} />
           </span>
-          {selectedFile === null ? (
+          {selectedFiles.length === 0 ? (
             <span className="upload-dropzone__copy">
-              <strong>Перетащите файл сюда</strong>
+              <strong>Перетащите файлы сюда</strong>
               <span>или нажмите, чтобы выбрать на диске</span>
             </span>
           ) : (
             <span className="upload-dropzone__copy">
-              <strong>{selectedFile.name}</strong>
-              <span>{formatUploadSize(selectedFile.size)} · готов к локальной проверке</span>
+              <strong>Выбрано {selectedFiles.length}</strong>
+              <span>Можно добавить ещё — до 20 документов за раз</span>
             </span>
           )}
           <span className="upload-dropzone__formats">PDF · PNG · JPEG · до 5 МБ</span>
+        </label>
+
+        {selectedFiles.length > 0 ? (
+          <ul className="upload-file-list" aria-label="Выбранные документы">
+            {selectedFiles.map((file) => (
+              <li key={`${file.name}:${file.size}:${file.lastModified}`}>
+                <span>
+                  <strong>{file.name}</strong>
+                  <small>{formatUploadSize(file.size)}</small>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Убрать ${file.name}`}
+                  onClick={() => onRemove(file)}
+                  disabled={pending}
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <label className="codex-consent">
+          <input
+            type="checkbox"
+            checked={codexConsent}
+            onChange={(event) => onConsentChange(event.currentTarget.checked)}
+            disabled={pending}
+          />
+          <span>
+            Я согласен передать содержимое этих документов в Codex для классификации и извлечения.
+            Исходные файлы остаются в локальном хранилище Veylta.
+          </span>
         </label>
 
         <div className="synthetic-reminder" role="note">
@@ -3806,14 +3993,18 @@ function DocumentUploadDialog({
           <button
             className="button button--primary"
             type="submit"
-            disabled={pending || selectedFile === null}
+            disabled={pending || selectedFiles.length === 0 || !codexConsent}
           >
-            {pending ? "Сохраняем исходник…" : "Загрузить исходник"}
+            {pending
+              ? "Передаём документы…"
+              : selectedFiles.length === 1
+                ? "Загрузить документ"
+                : `Загрузить ${selectedFiles.length} документа`}
           </button>
         </div>
         {pending ? (
           <p className="form-note" role="status">
-            Загружаем, проверяем тип и считаем SHA-256…
+            Сохраняем оригиналы, считаем SHA-256 и ставим анализ Codex в очередь…
           </p>
         ) : null}
       </form>
@@ -4677,11 +4868,25 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
         <span aria-hidden="true" />
         Исходник сохранён без изменений
       </p>
-      <h2 id="document-title">{savedDocument.originalFilename}</h2>
+      <h2 id="document-title">
+        {savedDocument.intelligence?.title ?? savedDocument.originalFilename}
+      </h2>
       <p className="document-meta">
+        {savedDocument.intelligence === null ? "" : `${savedDocument.originalFilename} · `}
         {documentKindLabel(savedDocument.contentType)} · {formatBytes(savedDocument.byteSize)} ·{" "}
         {formatDate(savedDocument.uploadedAt)}
       </p>
+
+      {savedDocument.intelligence !== null ? (
+        <div className="document-intelligence-summary" role="status">
+          <span>Распределено Codex</span>
+          <strong>{documentCategoryLabels[savedDocument.intelligence.category]}</strong>
+          <small>
+            Уверенность {Math.round(savedDocument.intelligence.confidence * 100)}% · результат
+            требует проверки человеком
+          </small>
+        </div>
+      ) : null}
 
       {savedDocument.duplicate.possible ? (
         <div className="duplicate-note" role="status">
@@ -4814,8 +5019,10 @@ function processingFailureCopy(
       return "Исходник сейчас недоступен обработчику. Сам файл не менялся.";
     case "invalid_document":
       return "Документ нельзя обработать безопасно. Исходник сохранён без изменений.";
-    case "unsupported_document":
-      return "Этот вариант исходника пока не поддерживается детерминированным извлечением.";
+    case "agent_unavailable":
+      return "Codex сейчас недоступен. Исходник сохранён локально, можно повторить анализ позже.";
+    case "agent_output_invalid":
+      return "Ответ Codex не прошёл проверку структуры и привязки к источнику.";
     case "extraction_failed":
       return "Не удалось надёжно извлечь текст. Никаких значений не интерпретировано.";
     case "validation_failed":
@@ -4854,31 +5061,31 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "text_extraction":
       return {
         heading: "Извлекаем текст из исходника",
-        copy: "Используем детерминированный локальный обработчик. Медицинские выводы не формируются.",
+        copy: "Локально получаем текст или изображение, которые затем будут переданы выбранному AI-провайдеру.",
         integrityLabel: "Извлечение текста",
         mark: "…",
         tone: "active",
       };
     case "document_classification":
       return {
-        heading: "Проверяем тип документа",
-        copy: "Сверяем документ с ограниченным синтетическим форматом этого контура.",
-        integrityLabel: "Проверка типа",
+        heading: "Codex определяет тип документа",
+        copy: "AI выбирает раздел архива и короткое понятное название документа.",
+        integrityLabel: "Классификация Codex",
         mark: "…",
         tone: "active",
       };
     case "structured_extraction":
       return {
-        heading: "Готовим черновые значения",
-        copy: "Связываем каждое значение со страницей и фрагментом исходника.",
+        heading: "Codex разбирает документ",
+        copy: "Каждое найденное значение должно быть связано со страницей и точным фрагментом исходника.",
         integrityLabel: "Структурирование",
         mark: "…",
         tone: "active",
       };
     case "validation":
       return {
-        heading: "Проверяем черновой результат",
-        copy: "Проверяем формат, источник и ограничения перед тем, как показать значения для проверки.",
+        heading: "Проверяем ответ Codex",
+        copy: "Отбрасываем результат, если структура или ссылка на источник не проходят строгую проверку.",
         integrityLabel: "Проверка результата",
         mark: "…",
         tone: "active",
