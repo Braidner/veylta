@@ -155,8 +155,8 @@
     "semantic_hash": ""
   },
   "DESIGN.md": {
-    "mtime": 1786695106.8710067,
-    "ast_hash": "a4671f945de59893a4e54a610adad664",
+    "mtime": 1786699292.128104,
+    "ast_hash": "b011b159ab0b4e30bd2a1571edabc4e4",
     "semantic_hash": ""
   },
   "PRODUCT.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786694789.8410242,
-    "ast_hash": "66aae1e4341a0080d6274c74b94b2f97",
+    "mtime": 1786698815.6720057,
+    "ast_hash": "84f7fadda4e2de5d2be434ae84caa585",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -865,8 +865,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/profile-dashboard.tsx": {
-    "mtime": 1786694084.6668742,
-    "ast_hash": "de7c3fc46e8e5207f1728260d67b1f4d",
+    "mtime": 1786699382.4421773,
+    "ast_hash": "1d79a996632e60459ce8393dc5da6ec9",
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-mark.tsx": {
@@ -890,8 +890,8 @@
     "semantic_hash": ""
   },
   "e2e/dashboard-redesign.spec.ts": {
-    "mtime": 1786694392.7265458,
-    "ast_hash": "b96c89bfcca77757caa6ed17ad6fdd06",
+    "mtime": 1786699068.4256601,
+    "ast_hash": "1a2f47d9b4049d45e101d838e52dc47e",
     "semantic_hash": ""
   }
 }

@@ -1,12 +1,17 @@
+import type { ProfileOverviewResponse } from "@veylta/contracts";
 import { cva } from "class-variance-authority";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowUpRight,
   BadgeCheck,
+  CalendarDays,
   CircleAlert,
   ClipboardCheck,
   FileText,
+  FolderSearch,
+  History,
+  Maximize2,
   MessagesSquare,
   PersonStanding,
   ShieldCheck,
@@ -21,6 +26,7 @@ import type {
   DashboardSignal,
   ProfileDashboardModel,
 } from "../profile-dashboard";
+import { buildProfileDashboardModel } from "../profile-dashboard";
 
 const assistantIcons: Record<DashboardAssistantId, LucideIcon> = {
   medical_navigator: ShieldCheck,
@@ -118,7 +124,151 @@ function HealthSignal({ signal, icon: SignalIcon }: { signal: DashboardSignal; i
   );
 }
 
-export function ProfileDashboard({ model }: { model: ProfileDashboardModel }) {
+function documentHref(familyId: string, profileId: string, documentId: string): string {
+  return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}/documents/${encodeURIComponent(documentId)}`;
+}
+
+function documentStateCopy(
+  state: ProfileOverviewResponse["recentDocuments"][number]["processing"]["state"],
+): string {
+  switch (state) {
+    case "completed":
+      return "Проверено";
+    case "awaiting_review":
+      return "Нужна проверка";
+    case "failed":
+      return "Не обработан";
+    case "not_started":
+    case "queued":
+      return "Ожидает обработки";
+    default:
+      return "Обработка";
+  }
+}
+
+function formatShortDate(value: string): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(value));
+}
+
+function DashboardDocuments({ overview }: { overview: ProfileOverviewResponse }) {
+  const documents = overview.recentDocuments.slice(0, 3);
+  return (
+    <section className="dashboard-documents" aria-labelledby="dashboard-documents-title">
+      <div className="dashboard-card-heading">
+        <span aria-hidden="true">
+          <FileText size={20} strokeWidth={1.8} />
+        </span>
+        <h3 id="dashboard-documents-title">Последний документ</h3>
+        <a href="#document-inbox-title" aria-label="Загрузить новый документ">
+          <ArrowUpRight size={18} aria-hidden="true" />
+        </a>
+      </div>
+
+      {documents.length === 0 ? (
+        <div className="dashboard-documents__empty">
+          <p>Архив пока пуст</p>
+          <span>Добавьте первый синтетический источник — оригинал останется локально.</span>
+          <a href="#document-inbox-title">Загрузить первый документ</a>
+        </div>
+      ) : (
+        <ol className="dashboard-documents__list">
+          {documents.map((document, index) => (
+            <li key={document.id} data-primary={index === 0 ? "true" : undefined}>
+              <Link
+                href={documentHref(overview.profile.familyId, overview.profile.id, document.id)}
+              >
+                <span className="dashboard-documents__file" aria-hidden="true">
+                  <FileText size={17} strokeWidth={1.8} />
+                </span>
+                <span>
+                  <strong>{document.originalFilename}</strong>
+                  <small>{formatShortDate(document.uploadedAt)}</small>
+                </span>
+                <em>{documentStateCopy(document.processing.state)}</em>
+              </Link>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
+  );
+}
+
+function currentWeek(): ReadonlyArray<{ label: string; date: number; active: boolean }> {
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const labels = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"];
+  return labels.map((label, index) => {
+    const date = new Date(start);
+    date.setDate(start.getDate() + index);
+    return { label, date: date.getDate(), active: date.toDateString() === today.toDateString() };
+  });
+}
+
+function DashboardPlan() {
+  return (
+    <section className="dashboard-plan" aria-label="Календарь и быстрый доступ к плану">
+      <div className="dashboard-card-heading">
+        <span aria-hidden="true">
+          <CalendarDays size={20} strokeWidth={1.8} />
+        </span>
+        <h3 id="dashboard-plan-title">План заботы</h3>
+        <a href="#care-plan" aria-label="Открыть план заботы">
+          <ArrowUpRight size={18} aria-hidden="true" />
+        </a>
+      </div>
+
+      <ol className="dashboard-plan__week" aria-label="Текущая неделя">
+        {currentWeek().map((day) => (
+          <li key={day.label} data-active={day.active ? "true" : undefined}>
+            <small>{day.label}</small>
+            <strong>{day.date}</strong>
+          </li>
+        ))}
+      </ol>
+
+      <div className="dashboard-plan__empty">
+        <span aria-hidden="true" />
+        <p>
+          <strong>Ваши действия — только после подтверждения</strong>
+          <small>Черновики помощников не становятся назначениями автоматически.</small>
+        </p>
+      </div>
+
+      <a className="dashboard-plan__source" href="#care-plan">
+        <span>
+          <strong>Источник всегда рядом</strong>
+          <small>Каждый пункт связан с подтверждёнными данными</small>
+        </span>
+        <ShieldCheck size={20} aria-hidden="true" />
+      </a>
+    </section>
+  );
+}
+
+function DashboardTools() {
+  return (
+    <nav className="dashboard-tools" aria-label="Быстрые действия обзора">
+      <a href="#indicator-catalog" aria-label="Найти показатель" title="Найти показатель">
+        <FolderSearch size={19} aria-hidden="true" />
+      </a>
+      <a href="#profile-dashboard" aria-label="Вернуться к началу обзора" title="Начало обзора">
+        <Maximize2 size={19} aria-hidden="true" />
+      </a>
+      <a href="#observation-history" aria-label="Открыть историю" title="История">
+        <History size={19} aria-hidden="true" />
+      </a>
+    </nav>
+  );
+}
+
+export function ProfileDashboard({ overview }: { overview: ProfileOverviewResponse }) {
+  const model = buildProfileDashboardModel(overview);
   const signals = Object.entries(model.signals) as Array<
     [keyof ProfileDashboardModel["signals"], DashboardSignal]
   >;
@@ -147,6 +297,8 @@ export function ProfileDashboard({ model }: { model: ProfileDashboardModel }) {
         </div>
       </section>
 
+      <DashboardTools />
+
       <section className="health-signals" aria-labelledby="health-signals-title">
         <div className="dashboard-panel-heading">
           <div className="dashboard-panel-heading__icon" aria-hidden="true">
@@ -168,6 +320,9 @@ export function ProfileDashboard({ model }: { model: ProfileDashboardModel }) {
           Это состояние архива и явные отметки источников — не диагноз, риск или медицинская оценка.
         </p>
       </section>
+
+      <DashboardDocuments overview={overview} />
+      <DashboardPlan />
     </div>
   );
 }

@@ -36,8 +36,8 @@ Use the self-hosted Geist variable font package with the native system sans stac
 
 ## Layout
 
-- Desktop uses a persistent top workspace bar and a centered application canvas up to 1560px.
-- The profile overview is full-width: assistants lead on the left and factual health signals sit on the right. Administrative profile controls begin below that overview.
+- Desktop uses a persistent top workspace bar and a full-viewport application canvas. There is no decorative preview frame, outer margin, maximum width, corner radius, or drop shadow around the authenticated profile surface; 40px of internal padding remains as the working safe area.
+- The first desktop viewport follows one named dashboard grid: the three stacked assistants occupy the left column, a narrow rail exposes real overview shortcuts, four factual signals run across the upper right, and the latest document plus care-plan preview share the lower right. Administrative profile controls begin below that overview.
 - The active profile is repeated beside context-sensitive page titles, not hidden only inside navigation.
 - Review uses one contiguous work surface: source facts on the left and the decision controls alongside them. Avoid nested cards.
 - Mobile collapses columns into source-first reading order and exposes the four real profile anchors in a safe-area-aware bottom navigation.

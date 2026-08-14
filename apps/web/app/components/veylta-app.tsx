@@ -47,12 +47,22 @@ import type {
   StorageRelocationResponse,
 } from "@veylta/contracts";
 import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
-import { ClipboardList, Files, History, House, LogOut, Settings } from "lucide-react";
+import {
+  ArrowRight,
+  CalendarDays,
+  ClipboardList,
+  Clock3,
+  Files,
+  History,
+  House,
+  LogOut,
+  Search,
+  Settings,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
-import { buildProfileDashboardModel } from "../profile-dashboard";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
 import { VeyltaMark } from "./veylta-mark";
@@ -438,7 +448,9 @@ export function VeyltaApp({
       <a className="skip-link" href="#main-content">
         Перейти к содержанию
       </a>
-      <header className="workspace-bar">
+      <header
+        className={context === undefined ? "workspace-bar" : "workspace-bar workspace-bar--profile"}
+      >
         <Link className="wordmark" href="/" aria-label="Veylta — главная">
           <VeyltaMark className="wordmark__mark" />
           Veylta
@@ -465,6 +477,12 @@ export function VeyltaApp({
               План
             </a>
           </nav>
+        ) : null}
+        {context !== undefined ? (
+          <a className="workspace-search" href="#indicator-catalog" aria-label="Поиск по архиву">
+            <Search size={18} aria-hidden="true" />
+            <span>Поиск по архиву</span>
+          </a>
         ) : null}
         <div className="workspace-actions">
           <span className="environment">
@@ -1271,6 +1289,14 @@ function ProfileWorkspace({
   const [uploadPending, setUploadPending] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const uploadAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+  const now = new Date();
+  const greeting =
+    now.getHours() < 12 ? "Доброе утро" : now.getHours() < 18 ? "Добрый день" : "Добрый вечер";
+  const dashboardDate = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(now);
 
   async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1326,10 +1352,10 @@ function ProfileWorkspace({
             <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
           </p>
           <h1 id="profile-title" aria-label={profile.displayName}>
-            Здравствуйте, {profile.displayName.split(" ")[0]}
+            {greeting}, {profile.displayName.split(" ")[0]}
           </h1>
           <p className="profile-owner">
-            Архив, проверки и домашний план этого профиля — в одном месте.
+            Документы, сигналы и план заботы этого профиля — в одном месте.
           </p>
           <div className="profile-heading__access">
             <span>
@@ -1339,22 +1365,45 @@ function ProfileWorkspace({
           </div>
         </div>
 
-        <label className="profile-switcher">
-          <span>Активный профиль</span>
-          <select
-            value={profile.id}
-            onChange={(event) => {
-              const selected = profiles.find((item) => item.id === event.target.value);
-              if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
-            }}
-          >
-            {profiles.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="profile-heading__controls">
+          <span className="profile-heading__control">
+            <CalendarDays size={18} aria-hidden="true" />
+            {dashboardDate}
+          </span>
+          <span className="profile-heading__control">
+            <Clock3 size={18} aria-hidden="true" />
+            30 дней
+          </span>
+          <label className="profile-switcher">
+            <span className="visually-hidden">Активный профиль</span>
+            <select
+              aria-label="Активный профиль"
+              value={profile.id}
+              onChange={(event) => {
+                const selected = profiles.find((item) => item.id === event.target.value);
+                if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
+              }}
+            >
+              {profiles.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+          {canWriteProfile ? (
+            <a
+              className="profile-heading__upload"
+              href="#document-inbox-title"
+              aria-label="Загрузить документ"
+            >
+              Загрузить
+              <span aria-hidden="true">
+                <ArrowRight size={18} />
+              </span>
+            </a>
+          ) : null}
+        </div>
       </div>
 
       {error !== null && !addProfileOpen ? (
@@ -2224,7 +2273,7 @@ function ProfileOverviewPanel({
 
       {state.kind === "ready" ? (
         <>
-          <ProfileDashboard model={buildProfileDashboardModel(state.overview)} />
+          <ProfileDashboard overview={state.overview} />
 
           {canWriteProfile ? (
             <details className="profile-overview__exports">
@@ -2317,7 +2366,7 @@ function ProfileOverviewPanel({
               <div className="profile-overview__section-heading">
                 <div>
                   <p className="context-line">Неизменяемые байты</p>
-                  <h3 id="overview-documents-title">Последние исходники</h3>
+                  <h3 id="overview-documents-title">Архив исходников</h3>
                 </div>
               </div>
               {state.overview.recentDocuments.length === 0 ? (
