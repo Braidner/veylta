@@ -330,8 +330,8 @@
     "semantic_hash": ""
   },
   "e2e/document-upload.spec.ts": {
-    "mtime": 1786736423.7137802,
-    "ast_hash": "af338db25b6c1848183c497a3e5c5473",
+    "mtime": 1786740298.3929224,
+    "ast_hash": "1b6f9da57b9c141d2454e6aa56044b3a",
     "semantic_hash": ""
   },
   "docs/adr/0005-sqlite-persistence.md": {

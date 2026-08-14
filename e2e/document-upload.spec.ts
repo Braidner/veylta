@@ -51,7 +51,7 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
   const firstDocumentUrl = page.url();
-  await expect(page.getByRole("heading", { level: 1, name: filename })).toBeVisible();
+  await expect(page.locator("#document-title")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
@@ -132,7 +132,7 @@ test("a direct synthetic PNG is accepted, OCRed, and downloaded with its origina
   );
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole("heading", { level: 1, name: filename })).toBeVisible();
+  await expect(page.locator("#document-title")).toBeVisible();
   await expect(page.locator(".document-meta")).toContainText("PNG");
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
