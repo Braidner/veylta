@@ -92,45 +92,39 @@ test("processing worker timings have safe defaults and reject non-positive value
   });
 });
 
-test("Codex care-plan runtime has an explicit bounded model and timeout", () => {
+test("Codex execution has one explicit default profile and bounded timeouts", () => {
   withEnvironment(
-    { CODEX_CARE_PLAN_MODEL: undefined, CODEX_CARE_PLAN_TIMEOUT_MS: undefined },
-    () => {
-      const config = loadConfig();
-      assert.equal(config.codexCarePlanModel, "gpt-5.4-mini");
-      assert.equal(config.codexCarePlanTimeoutMs, 120_000);
+    {
+      CODEX_MODEL: undefined,
+      CODEX_REASONING_EFFORT: undefined,
+      CODEX_SERVICE_TIER: undefined,
+      CODEX_CARE_PLAN_TIMEOUT_MS: undefined,
+      CODEX_DOCUMENT_TIMEOUT_MS: undefined,
+      CODEX_DOCUMENT_AGENT_TIMEOUT_MS: undefined,
     },
-  );
-  withEnvironment({ CODEX_CARE_PLAN_MODEL: "bad model" }, () => {
-    assert.throws(() => loadConfig(), /CODEX_CARE_PLAN_MODEL/);
-  });
-  withEnvironment({ CODEX_CARE_PLAN_TIMEOUT_MS: "600001" }, () => {
-    assert.throws(() => loadConfig(), /CODEX_CARE_PLAN_TIMEOUT_MS must not exceed 600000/);
-  });
-});
-
-test("Codex document intelligence has an explicit model and bounded timeout", () => {
-  withEnvironment({ CODEX_DOCUMENT_MODEL: undefined, CODEX_DOCUMENT_TIMEOUT_MS: undefined }, () => {
-    const config = loadConfig();
-    assert.equal(config.codexDocumentModel, "gpt-5.4-mini");
-    assert.equal(config.codexDocumentTimeoutMs, 300_000);
-  });
-  withEnvironment({ CODEX_DOCUMENT_MODEL: "bad model" }, () => {
-    assert.throws(() => loadConfig(), /CODEX_DOCUMENT_MODEL/);
-  });
-});
-
-test("Codex document dialogue has an explicit bounded model and timeout", () => {
-  withEnvironment(
-    { CODEX_DOCUMENT_AGENT_MODEL: undefined, CODEX_DOCUMENT_AGENT_TIMEOUT_MS: undefined },
     () => {
       const config = loadConfig();
-      assert.equal(config.codexDocumentAgentModel, "gpt-5.4-mini");
+      assert.deepEqual(config.codexDefaultPreference, {
+        modelId: "gpt-5.6-sol",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      });
+      assert.equal(config.codexCarePlanTimeoutMs, 120_000);
+      assert.equal(config.codexDocumentTimeoutMs, 300_000);
       assert.equal(config.codexDocumentAgentTimeoutMs, 120_000);
     },
   );
-  withEnvironment({ CODEX_DOCUMENT_AGENT_MODEL: "bad model" }, () => {
-    assert.throws(() => loadConfig(), /CODEX_DOCUMENT_AGENT_MODEL/);
+  withEnvironment({ CODEX_MODEL: "bad model" }, () => {
+    assert.throws(() => loadConfig(), /CODEX_MODEL/);
+  });
+  withEnvironment({ CODEX_REASONING_EFFORT: "extreme" }, () => {
+    assert.throws(() => loadConfig(), /preference/i);
+  });
+  withEnvironment({ CODEX_SERVICE_TIER: "turbo" }, () => {
+    assert.throws(() => loadConfig(), /preference/i);
+  });
+  withEnvironment({ CODEX_CARE_PLAN_TIMEOUT_MS: "600001" }, () => {
+    assert.throws(() => loadConfig(), /CODEX_CARE_PLAN_TIMEOUT_MS must not exceed 600000/);
   });
   withEnvironment({ CODEX_DOCUMENT_AGENT_TIMEOUT_MS: "600001" }, () => {
     assert.throws(() => loadConfig(), /CODEX_DOCUMENT_AGENT_TIMEOUT_MS must not exceed 600000/);

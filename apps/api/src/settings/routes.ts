@@ -1,4 +1,10 @@
-import type { ManagedAccountCreateRequest, StorageRelocationRequest } from "@veylta/contracts";
+import {
+  CODEX_REASONING_EFFORTS,
+  CODEX_SERVICE_TIERS,
+  type CodexPreferenceUpdateRequest,
+  type ManagedAccountCreateRequest,
+  type StorageRelocationRequest,
+} from "@veylta/contracts";
 import type { FastifyInstance } from "fastify";
 import type { FamilyService } from "../family/family-service.js";
 import {
@@ -14,6 +20,10 @@ import {
   StorageRelocationValidationError,
 } from "../storage/storage-controller.js";
 import type { HomeSettingsService } from "./home-settings-service.js";
+import {
+  CodexCatalogUnavailableError,
+  CodexPreferenceUnsupportedError,
+} from "./home-settings-service.js";
 
 const usernameSchema = {
   type: "string",
@@ -54,6 +64,30 @@ function sendSettingsError(
         errorEnvelope(
           error.code,
           "Storage relocation failed without switching the active root.",
+          requestId,
+        ),
+      );
+    return true;
+  }
+  if (error instanceof CodexCatalogUnavailableError) {
+    reply
+      .code(503)
+      .send(
+        errorEnvelope(
+          "CODEX_CATALOG_UNAVAILABLE",
+          "The local Codex model catalog is unavailable.",
+          requestId,
+        ),
+      );
+    return true;
+  }
+  if (error instanceof CodexPreferenceUnsupportedError) {
+    reply
+      .code(422)
+      .send(
+        errorEnvelope(
+          "CODEX_PREFERENCE_UNSUPPORTED",
+          "The selected Codex execution profile is unavailable.",
           requestId,
         ),
       );
@@ -148,4 +182,39 @@ export function registerHomeSettingsRoutes(
       if (!sendDomainError(error, request, reply)) throw error;
     }
   });
+
+  app.put<{ Body: CodexPreferenceUpdateRequest }>(
+    "/v1/settings/codex/preferences",
+    {
+      schema: {
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["modelId", "reasoningEffort", "serviceTier"],
+          properties: {
+            modelId: {
+              type: "string",
+              minLength: 2,
+              maxLength: 80,
+              pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$",
+            },
+            reasoningEffort: { type: "string", enum: CODEX_REASONING_EFFORTS },
+            serviceTier: { type: "string", enum: CODEX_SERVICE_TIERS },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      privateResponse(reply);
+      if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+      const actor = await requireActor(family, request, reply);
+      if (actor === null) return;
+      try {
+        reply.send(await service.updateCodexPreference(actor, request.body, request.id));
+      } catch (error) {
+        if (!sendSettingsError(error, request.id, reply) && !sendDomainError(error, request, reply))
+          throw error;
+      }
+    },
+  );
 }

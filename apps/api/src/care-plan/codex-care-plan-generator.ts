@@ -1,8 +1,12 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CarePlanCategory } from "@veylta/contracts";
+import type { CarePlanCategory, CodexExecutionPreference } from "@veylta/contracts";
 import { type CodexCliExecutor, createCodexCliExecutor } from "../codex/codex-cli-executor.js";
+import {
+  type CodexExecutionProfileResolver,
+  codexExecutionArguments,
+} from "../codex/codex-execution-profile.js";
 
 const maximumOutputBytes = 64 * 1024;
 const missingContextCodes = [
@@ -49,7 +53,11 @@ export interface CarePlanGeneratorResult {
 }
 
 export interface CarePlanProposalGenerator {
-  generate(input: CarePlanGeneratorInput): Promise<CarePlanGeneratorResult>;
+  executionProfile(): ReturnType<CodexExecutionProfileResolver>;
+  generate(
+    input: CarePlanGeneratorInput,
+    profile: CodexExecutionPreference,
+  ): Promise<CarePlanGeneratorResult>;
 }
 
 const outputSchema = {
@@ -165,18 +173,19 @@ function prompt(input: CarePlanGeneratorInput): string {
 }
 
 export function createCodexCarePlanGenerator(
-  options: { modelId: string; timeoutMs: number },
+  options: { resolveExecutionProfile: CodexExecutionProfileResolver; timeoutMs: number },
   executor: CodexCliExecutor = createCodexCliExecutor({
     timeoutMs: options.timeoutMs,
     maximumInputBytes: maximumOutputBytes,
     maximumOutputBytes,
   }),
 ): CarePlanProposalGenerator {
-  if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(options.modelId) || options.timeoutMs < 1_000) {
+  if (options.timeoutMs < 1_000) {
     throw new Error("Codex care-plan configuration is invalid");
   }
   return {
-    async generate(input) {
+    executionProfile: options.resolveExecutionProfile,
+    async generate(input, profile) {
       const directory = await mkdtemp(join(tmpdir(), "veylta-codex-care-plan-"));
       const schemaPath = join(directory, "output.schema.json");
       const outputPath = join(directory, "output.json");
@@ -190,8 +199,7 @@ export function createCodexCarePlanGenerator(
           "--skip-git-repo-check",
           "--sandbox",
           "read-only",
-          "--model",
-          options.modelId,
+          ...codexExecutionArguments(profile),
           "--output-schema",
           schemaPath,
           "--output-last-message",
@@ -227,7 +235,7 @@ export function createCodexCarePlanGenerator(
           throw new Error("Codex proposal output is invalid");
         }
         return {
-          modelId: options.modelId,
+          modelId: profile.modelId,
           runtimeVersion: result.runtimeVersion,
           items: parseOutput(output, input.evidence.length),
         };

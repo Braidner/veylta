@@ -12,6 +12,7 @@ import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase } from "../src/database/pool.js";
 import { createFamilyService } from "../src/family/family-service.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
+import { createCodexPreferencesStore } from "../src/settings/codex-preferences.js";
 import {
   type CodexRuntimeProbe,
   createHomeSettingsService,
@@ -22,6 +23,26 @@ import { createObjectStorageKey } from "../src/storage/object-storage.js";
 import { createLocalStorageController } from "../src/storage/storage-controller.js";
 
 const webOrigin = "http://127.0.0.1:4300";
+const models = [
+  {
+    id: "gpt-5.6-sol",
+    displayName: "GPT-5.6 Sol",
+    isDefault: true,
+    defaultReasoningEffort: "medium" as const,
+    supportedReasoningEfforts: ["low", "medium", "high", "xhigh"] as const,
+    supportsFastMode: true,
+    upgradeModelId: null,
+  },
+] as const;
+const usageLimits = [
+  {
+    name: "Codex",
+    usedPercent: 35,
+    remainingPercent: 65,
+    windowDurationMinutes: 10_080,
+    resetsAt: "2026-08-18T12:00:00.000Z",
+  },
+] as const;
 
 function cookie(response: {
   headers: Record<string, string | number | string[] | undefined>;
@@ -38,6 +59,8 @@ const codex: CodexRuntimeProbe = {
       daemonRunning: false,
       cliVersion: "codex-cli 0.test.0",
       runtimeVersion: null,
+      models,
+      usageLimits,
     };
   },
   async startDaemon() {
@@ -48,6 +71,8 @@ const codex: CodexRuntimeProbe = {
       daemonRunning: true,
       cliVersion: "codex-cli 0.test.0",
       runtimeVersion: "app-server 0.test.0",
+      models,
+      usageLimits,
     };
   },
 };
@@ -81,9 +106,17 @@ test("administrator manages local accounts, Codex status, and verified storage r
     allowedMutationOrigins: [webOrigin],
     demoRegistrationEnabled: false,
   });
-  registerHomeSettingsRoutes(app, family, createHomeSettingsService(database, storage, codex), {
-    allowedMutationOrigins: [webOrigin],
+  const preferences = createCodexPreferencesStore(database, {
+    modelId: "gpt-5.6-sol",
+    reasoningEffort: "medium",
+    serviceTier: "standard",
   });
+  registerHomeSettingsRoutes(
+    app,
+    family,
+    createHomeSettingsService(database, storage, codex, preferences),
+    { allowedMutationOrigins: [webOrigin] },
+  );
 
   try {
     const setup = await app.inject({
@@ -120,7 +153,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
         accounts: settingsBody.accounts.map(({ id: _id, ...account }) => account),
       },
       {
-        contractVersion: "home-settings/v1",
+        contractVersion: "home-settings/v2",
         codex: {
           installed: true,
           authenticated: true,
@@ -128,6 +161,13 @@ test("administrator manages local accounts, Codex status, and verified storage r
           daemonRunning: false,
           cliVersion: "codex-cli 0.test.0",
           runtimeVersion: null,
+          preference: {
+            modelId: "gpt-5.6-sol",
+            reasoningEffort: "medium",
+            serviceTier: "standard",
+          },
+          models,
+          usageLimits,
           authenticationOwner: "codex_cli",
           experimental: true,
         },
@@ -328,6 +368,31 @@ test("administrator manages local accounts, Codex status, and verified storage r
     }
     assert.deepEqual(Buffer.concat(refreshedWorkerChunks), postRelocationBytes);
 
+    const updatedPreference = await app.inject({
+      method: "PUT",
+      url: "/v1/settings/codex/preferences",
+      headers: { cookie: adminCookie, origin: webOrigin },
+      payload: {
+        modelId: "gpt-5.6-sol",
+        reasoningEffort: "high",
+        serviceTier: "fast",
+      },
+    });
+    assert.equal(updatedPreference.statusCode, 200);
+    assert.deepEqual(
+      (updatedPreference.json() as { codex: { preference: unknown } }).codex.preference,
+      {
+        modelId: "gpt-5.6-sol",
+        reasoningEffort: "high",
+        serviceTier: "fast",
+      },
+    );
+    assert.deepEqual(await preferences.get(), {
+      modelId: "gpt-5.6-sol",
+      reasoningEffort: "high",
+      serviceTier: "fast",
+    });
+
     const started = await app.inject({
       method: "POST",
       url: "/v1/settings/codex/start",
@@ -343,7 +408,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
     );
     assert.equal(runtimeAudit.rowCount, 1);
     assert.deepEqual(JSON.parse(runtimeAudit.rows[0]?.metadata ?? "{}"), {
-      contractVersion: "home-settings/v1",
+      contractVersion: "home-settings/v2",
     });
   } finally {
     await app.close();

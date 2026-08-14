@@ -202,6 +202,7 @@ test("document owner holds a replay-safe Russian Codex conversation", async () =
     );
     assert.ok(audits.rows.some((row) => row.action === "document.agent.message.created"));
     assert.ok(audits.rows.every((row) => !row.metadata.includes("лаборатор")));
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
   } finally {
     await app.close();

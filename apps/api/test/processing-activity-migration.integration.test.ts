@@ -89,7 +89,9 @@ test("processing activity is append-only and prevents a lossy rollback", async (
         database.query("DELETE FROM processing_job_events WHERE processing_job_id = $1", [job.id]),
       /immutable/,
     );
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
+    assert.deepEqual(await migrateUp(database), ["0021_codex_preferences"]);
     await assert.doesNotReject(() => database.check());
   } finally {
     await database.close();

@@ -88,7 +88,11 @@ test("a document keeps one Russian Codex conversation after reload", async ({ pa
   await expect(agent.getByText("Codex получает только контекст этого документа")).toBeVisible();
   await agent.getByLabel("Сообщение для Codex").fill("Чего не хватает в этом документе?");
   await agent.getByRole("button", { name: "Отправить" }).click();
-  await expect(agent.getByText("Чего не хватает в этом документе?")).toBeVisible();
+  await expect(
+    agent
+      .locator(".document-agent__message--user p")
+      .getByText("Чего не хватает в этом документе?"),
+  ).toBeVisible();
   await expect(
     agent.getByText("Не хватает даты биоматериала. Лаборатория и код показателя уже указаны."),
   ).toBeVisible();

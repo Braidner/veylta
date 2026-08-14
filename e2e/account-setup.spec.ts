@@ -42,6 +42,51 @@ test("first launch creates the administrator, opens their profile, and later log
   await expect(page.getByRole("tabpanel", { name: "Настройки" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Локальный агент без API-ключа" })).toBeVisible();
   await expect(page.getByText("отдельной оплаты за API-токены нет")).toBeVisible();
+  await expect(page.getByLabel("Модель")).toHaveValue("gpt-5.6-sol");
+  await expect(page.getByLabel("Уровень рассуждений")).toHaveValue("medium");
+  await expect(page.getByText("Осталось 65%")).toBeVisible();
+  await page.getByLabel("Модель").selectOption("gpt-5.6-luna");
+  await expect(page.getByLabel("Модель")).toHaveValue("gpt-5.6-luna");
+  await page.getByLabel("Уровень рассуждений").selectOption("high");
+  await expect(page.getByLabel("Уровень рассуждений")).toHaveValue("high");
+  await page.getByText("Fast · 1,5× быстрее").click();
+  await expect(page.getByRole("radio", { name: /Fast/ })).toBeChecked();
+  await expect(page.getByText("Новые задания: GPT-5.6 Luna · Высокий · Fast")).toBeVisible();
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/v1/settings/codex/preferences") &&
+        response.request().method() === "PUT" &&
+        response.status() === 200,
+    ),
+    page.getByRole("button", { name: "Сохранить профиль" }).click(),
+  ]);
+  await expect(page.locator(".settings-notice[role='status']")).toContainText(
+    "Профиль Codex сохранён",
+  );
+  await expect(page.getByText("GPT-5.6 Luna · Высокий", { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByLabel("Модель")).toHaveValue("gpt-5.6-luna");
+  await expect(page.getByLabel("Уровень рассуждений")).toHaveValue("high");
+  await expect(page.getByRole("radio", { name: /Fast/ })).toBeChecked();
+  await page.getByLabel("Модель").selectOption("gpt-5.6-sol");
+  await expect(page.getByLabel("Модель")).toHaveValue("gpt-5.6-sol");
+  await page.getByLabel("Уровень рассуждений").selectOption("medium");
+  await page.getByText("Стандартный").click();
+  await expect(page.getByText("Новые задания: GPT-5.6 Sol · Средний · Стандартный")).toBeVisible();
+  await Promise.all([
+    page.waitForResponse(
+      (response) =>
+        response.url().endsWith("/v1/settings/codex/preferences") &&
+        response.request().method() === "PUT" &&
+        response.status() === 200,
+    ),
+    page.getByRole("button", { name: "Сохранить профиль" }).click(),
+  ]);
+  await expect(page.locator(".settings-notice[role='status']")).toContainText(
+    "Профиль Codex сохранён",
+  );
+  await expect(page.getByText("GPT-5.6 Sol · Средний", { exact: true })).toBeVisible();
   await expect(page.getByRole("list", { name: "Учётные записи" })).toContainText(
     "Домашний администратор",
   );
@@ -52,7 +97,7 @@ test("first launch creates the administrator, opens their profile, and later log
   await page.getByLabel("Временный пароль", { exact: true }).fill("another correct local password");
   await page.getByLabel("Повторите временный пароль").fill("another correct local password");
   await page.getByRole("button", { name: "Создать учётную запись" }).click();
-  await expect(page.getByRole("status")).toContainText("family-user");
+  await expect(page.locator(".settings-notice[role='status']")).toContainText("family-user");
   await expect(page.getByRole("list", { name: "Учётные записи" })).toContainText(
     "Пользователь семьи",
   );

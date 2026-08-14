@@ -169,11 +169,11 @@ names, filesystem paths, or Codex status.
 
 ### `GET /v1/settings`
 
-Returns the administrator-only `home-settings/v1` projection:
+Returns the administrator-only `home-settings/v2` projection:
 
 ```json
 {
-  "contractVersion": "home-settings/v1",
+  "contractVersion": "home-settings/v2",
   "codex": {
     "installed": true,
     "authenticated": true,
@@ -182,6 +182,31 @@ Returns the administrator-only `home-settings/v1` projection:
     "daemonRunning": false,
     "cliVersion": "codex-cli 0.x",
     "runtimeVersion": null,
+    "preference": {
+      "modelId": "gpt-5.6-sol",
+      "reasoningEffort": "medium",
+      "serviceTier": "standard"
+    },
+    "models": [
+      {
+        "id": "gpt-5.6-sol",
+        "displayName": "GPT-5.6 Sol",
+        "isDefault": true,
+        "defaultReasoningEffort": "medium",
+        "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "supportsFastMode": true,
+        "upgradeModelId": null
+      }
+    ],
+    "usageLimits": [
+      {
+        "name": "Codex",
+        "usedPercent": 35,
+        "remainingPercent": 65,
+        "windowDurationMinutes": 10080,
+        "resetsAt": "2026-08-18T12:00:00.000Z"
+      }
+    ],
     "experimental": true
   },
   "storage": {
@@ -205,8 +230,9 @@ Returns the administrator-only `home-settings/v1` projection:
 }
 ```
 
-The Codex projection contains capability and version data only. Veylta never
-reads or returns Codex OAuth tokens, API keys, or Codex-home contents.
+The Codex projection contains capability/version data, the local app-server
+model catalog, and its current rate-limit windows. Veylta never reads or returns
+Codex OAuth tokens, API keys, account identifiers, or Codex-home contents.
 
 ### `POST /v1/settings/accounts`
 
@@ -250,6 +276,24 @@ Requests local `codex app-server daemon` startup. Codex owns authentication via
 `codex login`; Veylta accepts and stores no API key. The safe status response and
 payload-free audit report the result. This adapter is experimental and consumes
 the household's Codex subscription limits.
+
+### `PUT /v1/settings/codex/preferences`
+
+Stores one server-wide execution profile used by new document analysis,
+document dialogue, and care-plan proposal tasks. The administrator may choose
+only a model and reasoning effort advertised by the local `model/list` result;
+`fast` is accepted only when that model advertises the priority tier. The route
+requires the configured `Origin`, records a payload-free audit event, returns
+`422 CODEX_PREFERENCE_UNSUPPORTED` for a stale/unsupported choice, and returns
+`503 CODEX_CATALOG_UNAVAILABLE` when the local catalog cannot be verified.
+
+```json
+{
+  "modelId": "gpt-5.6-sol",
+  "reasoningEffort": "high",
+  "serviceTier": "fast"
+}
+```
 
 ### `POST /v1/families/{familyId}/profiles`
 

@@ -1,6 +1,6 @@
 export const HTTP_API_VERSION = "v1" as const;
 export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
-export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v1" as const;
+export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v2" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
@@ -56,6 +56,12 @@ export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
+
+export const CODEX_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
+export const CODEX_SERVICE_TIERS = ["standard", "fast"] as const;
+
+export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORTS)[number];
+export type CodexServiceTier = (typeof CODEX_SERVICE_TIERS)[number];
 
 export const VEYLTA_VAULT_MEDIA_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const;
 export const VEYLTA_AGENT_COMMAND_TYPES = ["scan_unprocessed", "analyze_document"] as const;
@@ -326,7 +332,41 @@ export interface CodexRuntimeStatus {
   readonly daemonRunning: boolean;
   readonly cliVersion: string | null;
   readonly runtimeVersion: string | null;
+  readonly preference: CodexExecutionPreference;
+  readonly models: readonly CodexModelOption[];
+  readonly usageLimits: readonly CodexUsageLimit[];
   readonly experimental: true;
+}
+
+export interface CodexExecutionPreference {
+  readonly modelId: string;
+  readonly reasoningEffort: CodexReasoningEffort;
+  readonly serviceTier: CodexServiceTier;
+}
+
+export interface CodexModelOption {
+  readonly id: string;
+  readonly displayName: string;
+  readonly isDefault: boolean;
+  readonly defaultReasoningEffort: CodexReasoningEffort;
+  readonly supportedReasoningEfforts: readonly CodexReasoningEffort[];
+  readonly supportsFastMode: boolean;
+  readonly upgradeModelId: string | null;
+}
+
+export interface CodexUsageLimit {
+  readonly name: string;
+  readonly usedPercent: number;
+  readonly remainingPercent: number;
+  readonly windowDurationMinutes: number;
+  readonly resetsAt: string;
+}
+
+export interface CodexPreferenceUpdateRequest extends CodexExecutionPreference {}
+
+export interface CodexPreferenceUpdateResponse {
+  readonly contractVersion: typeof HOME_SETTINGS_CONTRACT_VERSION;
+  readonly codex: CodexRuntimeStatus;
 }
 
 export interface HomeStorageStatus {

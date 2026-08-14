@@ -22,7 +22,8 @@ medical metadata, audit events, and jobs stay on the household server.
 On an empty installation the only available product action creates the first
 administrator, their home workspace, and their linked health profile in one
 transaction. Later sign-in uses a local username and password. The target
-settings surface manages Codex connection status, document-storage location,
+settings surface manages Codex connection status, the live local model catalog,
+reasoning/Fast execution profile, subscription limit windows, document-storage location,
 local administrator/user accounts, and per-profile access.
 
 The Codex integration follows Hermes' proven local-runtime pattern:

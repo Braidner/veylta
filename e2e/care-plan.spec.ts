@@ -94,7 +94,7 @@ test("an owner explicitly sends a confirmed summary to the ChatGPT Codex session
   const proposal = plan.locator("li", { hasText: /Обсудить контроль:/ });
   await expect(proposal.getByText("Предложение · ждёт решения")).toBeVisible();
   await proposal.getByText("Почему это предложено").click();
-  await expect(proposal.getByText(/Модель gpt-5\.4-mini/)).toBeVisible();
+  await expect(proposal.getByText(/Модель gpt-5\.6-sol/)).toBeVisible();
   await proposal.getByRole("button", { name: "Принять" }).click();
   await expect(proposal.getByText("Принято без срока")).toBeVisible();
 

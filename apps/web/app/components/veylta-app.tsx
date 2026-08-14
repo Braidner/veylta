@@ -8,7 +8,11 @@ import type {
   CarePlanItemResponse,
   CarePlanProposalResponse,
   CarePlanResponse,
+  CodexExecutionPreference,
+  CodexPreferenceUpdateResponse,
+  CodexReasoningEffort,
   CodexRuntimeActionResponse,
+  CodexServiceTier,
   DocumentAgentConversationResponse,
   DocumentAgentMessage,
   DocumentFactsResponse,
@@ -702,20 +706,34 @@ interface HomeSettingsScreenProps {
 }
 
 function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenProps) {
+  const settingsLoadGeneration = useRef(0);
   const [settings, setSettings] = useState<HomeSettingsResponse | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "error">("loading");
-  const [pending, setPending] = useState<"account" | "storage" | "codex" | null>(null);
+  const [pending, setPending] = useState<"account" | "storage" | "codex" | "preference" | null>(
+    null,
+  );
   const [accountError, setAccountError] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [codexError, setCodexError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [draftPreference, setDraftPreference] = useState<CodexExecutionPreference>({
+    modelId: "",
+    reasoningEffort: "medium",
+    serviceTier: "standard",
+  });
+  const { modelId, reasoningEffort, serviceTier } = draftPreference;
 
   const load = useCallback(async () => {
+    const generation = ++settingsLoadGeneration.current;
     setLoadState("loading");
     try {
-      setSettings(await apiRequest<HomeSettingsResponse>("/v1/settings"));
+      const loaded = await apiRequest<HomeSettingsResponse>("/v1/settings");
+      if (generation !== settingsLoadGeneration.current) return;
+      setSettings(loaded);
+      setDraftPreference(loaded.codex.preference);
       setLoadState("ready");
     } catch (error) {
+      if (generation !== settingsLoadGeneration.current) return;
       setLoadState(error instanceof ApiError && error.status === 404 ? "denied" : "error");
     }
   }, []);
@@ -806,6 +824,7 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
         method: "POST",
       });
       setSettings((current) => (current === null ? current : { ...current, codex: started.codex }));
+      setDraftPreference(started.codex.preference);
       if (started.codex.daemonRunning) {
         setNotice("Codex runtime запущен и готов принимать локальные задания.");
       } else {
@@ -815,6 +834,39 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
       }
     } catch {
       setCodexError("Не удалось запустить Codex runtime. Данные Veylta не изменились.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function saveCodexPreference(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const preference = {
+      modelId: String(form.get("modelId") ?? ""),
+      reasoningEffort: String(form.get("reasoningEffort") ?? "") as CodexReasoningEffort,
+      serviceTier: String(form.get("serviceTier") ?? "") as CodexServiceTier,
+    };
+    setPending("preference");
+    setCodexError(null);
+    setNotice(null);
+    try {
+      const updated = await apiRequest<CodexPreferenceUpdateResponse>(
+        "/v1/settings/codex/preferences",
+        {
+          method: "PUT",
+          body: JSON.stringify(preference),
+        },
+      );
+      setSettings((current) => (current === null ? current : { ...current, codex: updated.codex }));
+      setDraftPreference(updated.codex.preference);
+      setNotice("Профиль Codex сохранён. Новые задания будут использовать эти параметры.");
+    } catch (error) {
+      setCodexError(
+        error instanceof ApiError && error.code === "CODEX_CATALOG_UNAVAILABLE"
+          ? "Codex не сообщил список моделей. Проверьте вход через ChatGPT и повторите."
+          : "Этот профиль недоступен в установленном Codex. Обновите список и выберите другой.",
+      );
     } finally {
       setPending(null);
     }
@@ -837,6 +889,16 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
         : "Готов к запуску";
   const subscriptionConnected =
     settings.codex.authenticated && settings.codex.authenticationMode === "chatgpt";
+  const selectedModel =
+    settings.codex.models.find((model) => model.id === modelId) ?? settings.codex.models[0];
+  const reasoningLabels: Record<CodexReasoningEffort, string> = {
+    low: "Низкий",
+    medium: "Средний",
+    high: "Высокий",
+    xhigh: "Очень высокий",
+    max: "Максимальный",
+    ultra: "Ультра",
+  };
 
   return (
     <section
@@ -906,14 +968,177 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
                 </dd>
               </div>
               <div>
-                <dt>App-server</dt>
+                <dt>Профиль</dt>
                 <dd>
-                  {settings.codex.runtimeVersion ??
-                    (settings.codex.daemonRunning ? "Запущен" : "Остановлен")}
+                  {selectedModel?.displayName ?? settings.codex.preference.modelId} ·{" "}
+                  {reasoningLabels[settings.codex.preference.reasoningEffort]}
                 </dd>
               </div>
             </dl>
           </div>
+          {settings.codex.models.length > 0 ? (
+            <form
+              className="codex-profile"
+              onSubmit={saveCodexPreference}
+              aria-busy={pending === "preference"}
+            >
+              <div className="codex-profile__fields">
+                <label className="field">
+                  <span>Модель</span>
+                  <select
+                    name="modelId"
+                    value={modelId}
+                    disabled={pending !== null}
+                    onChange={(event) => {
+                      const nextModel = settings.codex.models.find(
+                        (model) => model.id === event.currentTarget.value,
+                      );
+                      if (nextModel === undefined) return;
+                      setDraftPreference((current) => ({
+                        modelId: nextModel.id,
+                        reasoningEffort: nextModel.supportedReasoningEfforts.includes(
+                          current.reasoningEffort,
+                        )
+                          ? current.reasoningEffort
+                          : nextModel.defaultReasoningEffort,
+                        serviceTier: nextModel.supportsFastMode ? current.serviceTier : "standard",
+                      }));
+                    }}
+                  >
+                    {settings.codex.models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.displayName}
+                        {model.isDefault ? " · рекомендуется" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Уровень рассуждений</span>
+                  <select
+                    name="reasoningEffort"
+                    value={reasoningEffort}
+                    disabled={pending !== null}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value as CodexReasoningEffort;
+                      setDraftPreference((current) => ({
+                        ...current,
+                        reasoningEffort: value,
+                      }));
+                    }}
+                  >
+                    {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                      <option key={effort} value={effort}>
+                        {reasoningLabels[effort]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <fieldset className="codex-speed">
+                <legend>Режим выполнения</legend>
+                <label data-active={serviceTier === "standard"}>
+                  <input
+                    type="radio"
+                    name="serviceTier"
+                    value="standard"
+                    checked={serviceTier === "standard"}
+                    disabled={pending !== null}
+                    onChange={() =>
+                      setDraftPreference((current) => ({ ...current, serviceTier: "standard" }))
+                    }
+                  />
+                  <span>
+                    <strong>Стандартный</strong>
+                    <small>Обычный расход лимита</small>
+                  </span>
+                </label>
+                <label
+                  data-active={serviceTier === "fast"}
+                  data-disabled={!selectedModel?.supportsFastMode}
+                >
+                  <input
+                    type="radio"
+                    name="serviceTier"
+                    value="fast"
+                    checked={serviceTier === "fast"}
+                    disabled={pending !== null || !selectedModel?.supportsFastMode}
+                    onChange={() =>
+                      setDraftPreference((current) => ({ ...current, serviceTier: "fast" }))
+                    }
+                  />
+                  <span>
+                    <strong>Fast · 1,5× быстрее</strong>
+                    <small>
+                      {selectedModel?.supportsFastMode
+                        ? "Расходует лимит подписки быстрее"
+                        : "Недоступен для этой модели"}
+                    </small>
+                  </span>
+                </label>
+              </fieldset>
+              <output className="codex-profile__preview" aria-live="polite">
+                Новые задания: {selectedModel?.displayName ?? modelId} ·{" "}
+                {reasoningLabels[reasoningEffort]} ·{" "}
+                {serviceTier === "fast" ? "Fast" : "Стандартный"}
+              </output>
+              {selectedModel?.upgradeModelId === null || selectedModel === undefined ? null : (
+                <p className="codex-profile__upgrade">
+                  Codex рекомендует перейти на {selectedModel.upgradeModelId}.
+                </p>
+              )}
+              <button
+                className="button button--secondary codex-profile__save"
+                type="submit"
+                disabled={
+                  pending !== null ||
+                  (modelId === settings.codex.preference.modelId &&
+                    reasoningEffort === settings.codex.preference.reasoningEffort &&
+                    serviceTier === settings.codex.preference.serviceTier)
+                }
+              >
+                {pending === "preference" ? "Сохраняем…" : "Сохранить профиль"}
+              </button>
+            </form>
+          ) : settings.codex.authenticated ? (
+            <p className="codex-console__instruction">
+              Codex не сообщил доступные модели. Обновите CLI или проверьте вход через ChatGPT.
+            </p>
+          ) : null}
+          <section className="codex-usage" aria-labelledby="codex-usage-title">
+            <div className="codex-usage__heading">
+              <h3 id="codex-usage-title">Лимиты подписки</h3>
+              <span>Данные Codex</span>
+            </div>
+            {settings.codex.usageLimits.length === 0 ? (
+              <p>Codex не сообщил текущий лимит.</p>
+            ) : (
+              <ul>
+                {settings.codex.usageLimits.map((limit) => (
+                  <li key={`${limit.name}-${limit.resetsAt}`}>
+                    <div className="codex-usage__line">
+                      <strong>{limit.name}</strong>
+                      <span>Осталось {limit.remainingPercent}%</span>
+                    </div>
+                    <progress
+                      max={100}
+                      value={limit.usedPercent}
+                      aria-label={`${limit.name}: использовано ${limit.usedPercent}%`}
+                    />
+                    <small>
+                      Обновится{" "}
+                      {new Intl.DateTimeFormat("ru-RU", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }).format(new Date(limit.resetsAt))}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
           {!settings.codex.installed ? (
             <p className="codex-console__instruction">
               Установите CLI на домашнем сервере: <code>npm install -g @openai/codex</code>

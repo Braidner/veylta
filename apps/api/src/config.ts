@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
-import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { type CodexExecutionPreference, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { requireCodexExecutionPreference } from "./codex/codex-execution-profile.js";
 import type { S3ServerSideEncryption } from "./storage/s3-object-storage.js";
 
 function findProjectRoot(start: string): string {
@@ -75,14 +76,20 @@ function databasePath(): string {
   return resolve(projectRoot, configured);
 }
 
-function codexModel(
-  name: "CODEX_CARE_PLAN_MODEL" | "CODEX_DOCUMENT_MODEL" | "CODEX_DOCUMENT_AGENT_MODEL",
-): string {
-  const value = process.env[name] ?? "gpt-5.4-mini";
+function codexModel(): string {
+  const value = process.env.CODEX_MODEL ?? "gpt-5.6-sol";
   if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(value)) {
-    throw new Error(`${name} must be a canonical Codex model id`);
+    throw new Error("CODEX_MODEL must be a canonical Codex model id");
   }
   return value;
+}
+
+function codexDefaultPreference(): CodexExecutionPreference {
+  return requireCodexExecutionPreference({
+    modelId: codexModel(),
+    reasoningEffort: process.env.CODEX_REASONING_EFFORT ?? "medium",
+    serviceTier: process.env.CODEX_SERVICE_TIER ?? "standard",
+  });
 }
 
 export type ObjectStorageRuntimeConfig =
@@ -156,11 +163,9 @@ export interface RuntimeConfig {
   apiHost: string;
   apiPort: number;
   databasePath: string;
-  codexCarePlanModel: string;
+  codexDefaultPreference: CodexExecutionPreference;
   codexCarePlanTimeoutMs: number;
-  codexDocumentModel: string;
   codexDocumentTimeoutMs: number;
-  codexDocumentAgentModel: string;
   codexDocumentAgentTimeoutMs: number;
   demoRegistrationEnabled: boolean;
   maxDocumentBytes: number;
@@ -196,11 +201,9 @@ export function loadConfig(): RuntimeConfig {
   return {
     apiHost,
     apiPort: integer("API_PORT", 4301),
-    codexCarePlanModel: codexModel("CODEX_CARE_PLAN_MODEL"),
+    codexDefaultPreference: codexDefaultPreference(),
     codexCarePlanTimeoutMs: boundedInteger("CODEX_CARE_PLAN_TIMEOUT_MS", 120_000, 600_000),
-    codexDocumentModel: codexModel("CODEX_DOCUMENT_MODEL"),
     codexDocumentTimeoutMs,
-    codexDocumentAgentModel: codexModel("CODEX_DOCUMENT_AGENT_MODEL"),
     codexDocumentAgentTimeoutMs: boundedInteger(
       "CODEX_DOCUMENT_AGENT_TIMEOUT_MS",
       120_000,

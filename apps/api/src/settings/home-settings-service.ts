@@ -1,5 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
+  type CodexExecutionPreference,
+  type CodexPreferenceUpdateRequest,
+  type CodexPreferenceUpdateResponse,
   type CodexRuntimeActionResponse,
   type CodexRuntimeStatus,
   HOME_SETTINGS_CONTRACT_VERSION,
@@ -19,6 +22,7 @@ import {
   type SessionActor,
 } from "../family/family-service.js";
 import type { StorageController } from "../storage/storage-controller.js";
+import type { CodexPreferencesStore } from "./codex-preferences.js";
 
 export type { CodexRuntimeProbe, CodexRuntimeProbeResult } from "./codex-runtime.js";
 
@@ -45,7 +49,15 @@ export interface HomeSettingsService {
     correlationId: string,
   ): Promise<StorageRelocationResponse>;
   startCodex(actor: SessionActor, correlationId: string): Promise<CodexRuntimeActionResponse>;
+  updateCodexPreference(
+    actor: SessionActor,
+    input: CodexPreferenceUpdateRequest,
+    correlationId: string,
+  ): Promise<CodexPreferenceUpdateResponse>;
 }
+
+export class CodexCatalogUnavailableError extends Error {}
+export class CodexPreferenceUnsupportedError extends Error {}
 
 const usernamePattern = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 
@@ -63,9 +75,13 @@ function managedAccount(row: AccountRow): ManagedAccount {
   };
 }
 
-function codexStatus(value: CodexRuntimeProbeResult): CodexRuntimeStatus {
+function codexStatus(
+  value: CodexRuntimeProbeResult,
+  preference: CodexExecutionPreference,
+): CodexRuntimeStatus {
   return {
     ...value,
+    preference,
     authenticationOwner: "codex_cli",
     experimental: true,
   };
@@ -116,18 +132,20 @@ export function createHomeSettingsService(
   database: Database,
   storage: StorageController,
   codex: CodexRuntimeProbe,
+  preferences: CodexPreferencesStore,
 ): HomeSettingsService {
   return {
     async get(actor) {
       requireAdministrator(actor);
-      const [runtime, storageStatus, accountList] = await Promise.all([
+      const [runtime, preference, storageStatus, accountList] = await Promise.all([
         codex.status(),
+        preferences.get(),
         storage.status(),
         accounts(database),
       ]);
       return {
         contractVersion: HOME_SETTINGS_CONTRACT_VERSION,
-        codex: codexStatus(runtime),
+        codex: codexStatus(runtime, preference),
         storage: storageStatus,
         accounts: accountList,
       };
@@ -244,7 +262,11 @@ export function createHomeSettingsService(
 
     async startCodex(actor, correlationId) {
       requireAdministrator(actor);
-      const runtime = codexStatus(await codex.startDaemon());
+      const [runtimeResult, preference] = await Promise.all([
+        codex.startDaemon(),
+        preferences.get(),
+      ]);
+      const runtime = codexStatus(runtimeResult, preference);
       await database.transaction((client) =>
         audit(client, {
           familyId: null,
@@ -259,6 +281,40 @@ export function createHomeSettingsService(
       return {
         contractVersion: HOME_SETTINGS_CONTRACT_VERSION,
         codex: runtime,
+      };
+    },
+
+    async updateCodexPreference(actor, input, correlationId) {
+      requireAdministrator(actor);
+      const runtime = await codex.status();
+      if (runtime.models.length === 0) throw new CodexCatalogUnavailableError();
+      const model = runtime.models.find((candidate) => candidate.id === input.modelId);
+      if (
+        model === undefined ||
+        !model.supportedReasoningEfforts.includes(input.reasoningEffort) ||
+        (input.serviceTier === "fast" && !model.supportsFastMode)
+      ) {
+        throw new CodexPreferenceUnsupportedError();
+      }
+      const preference: CodexExecutionPreference = {
+        modelId: model.id,
+        reasoningEffort: input.reasoningEffort,
+        serviceTier: input.serviceTier,
+      };
+      await database.transaction(async (client) => {
+        await preferences.write(client, preference, actor.userId, new Date());
+        await audit(client, {
+          familyId: null,
+          actorUserId: actor.userId,
+          action: "settings.codex.preference_updated",
+          resourceType: "CodexRuntime",
+          resourceId: "primary",
+          correlationId,
+        });
+      });
+      return {
+        contractVersion: HOME_SETTINGS_CONTRACT_VERSION,
+        codex: codexStatus(runtime, preference),
       };
     },
   };

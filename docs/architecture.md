@@ -23,7 +23,10 @@ flowchart LR
 The PWA owns presentation and human decisions. The API resolves the signed-in
 account and authorizes every profile selector. Only an administrator, the
 profile's linked user, or an explicitly granted actor may open a profile. The
-Codex adapter never reads or stores Codex OAuth credentials.
+Codex adapter never reads or stores Codex OAuth credentials. The settings API
+reads the local app-server model catalog and rate-limit windows, then persists
+one validated execution profile shared by document analysis, document dialogue,
+and care-plan proposals.
 Settings use `codex app-server daemon` only for local runtime status/control.
 Acknowledged document jobs and care-plan requests run separate bounded
 `codex exec --ephemeral` job in an empty read-only working directory, with

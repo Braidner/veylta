@@ -2,6 +2,10 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { type CodexCliExecutor, createCodexCliExecutor } from "../codex/codex-cli-executor.js";
+import {
+  type CodexExecutionProfileResolver,
+  codexExecutionArguments,
+} from "../codex/codex-execution-profile.js";
 
 const maximumOutputBytes = 64 * 1024;
 const capabilityEnvironmentName = "VEYLTA_DOCUMENT_AGENT_TOKEN";
@@ -120,7 +124,11 @@ function featureArguments(): string[] {
 }
 
 export function createCodexDocumentAgentRuntime(
-  options: { mcpUrl: string; modelId: string; timeoutMs: number },
+  options: {
+    mcpUrl: string;
+    resolveExecutionProfile: CodexExecutionProfileResolver;
+    timeoutMs: number;
+  },
   executor: CodexCliExecutor = createCodexCliExecutor({
     timeoutMs: options.timeoutMs,
     maximumInputBytes: 8 * 1024,
@@ -131,7 +139,6 @@ export function createCodexDocumentAgentRuntime(
   if (
     parsedUrl.protocol !== "http:" ||
     !["127.0.0.1", "localhost", "[::1]"].includes(parsedUrl.hostname) ||
-    !/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(options.modelId) ||
     options.timeoutMs < 1_000
   ) {
     throw new Error("Codex document agent configuration is invalid");
@@ -139,6 +146,7 @@ export function createCodexDocumentAgentRuntime(
 
   return {
     async respond(input) {
+      const profile = await options.resolveExecutionProfile();
       const directory = await mkdtemp(join(tmpdir(), "veylta-document-agent-"));
       const schemaPath = join(directory, "output.schema.json");
       const outputPath = join(directory, "output.json");
@@ -149,8 +157,7 @@ export function createCodexDocumentAgentRuntime(
           "--ignore-user-config",
           "--ignore-rules",
           "--skip-git-repo-check",
-          "--model",
-          options.modelId,
+          ...codexExecutionArguments(profile),
           "--output-schema",
           schemaPath,
           "--output-last-message",
@@ -184,7 +191,7 @@ export function createCodexDocumentAgentRuntime(
         return {
           threadId: discoveredThreadId,
           text: responseText(output),
-          modelId: options.modelId,
+          modelId: profile.modelId,
           runtimeVersion: result.runtimeVersion,
         };
       } finally {

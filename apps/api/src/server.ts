@@ -15,6 +15,7 @@ import { createDocumentService } from "./documents/document-service.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
 import { registerFamilyRoutes } from "./family/routes.js";
+import { createCodexPreferencesStore } from "./settings/codex-preferences.js";
 import { createCodexRuntimeProbe } from "./settings/codex-runtime.js";
 import { createHomeSettingsService } from "./settings/home-settings-service.js";
 import { registerHomeSettingsRoutes } from "./settings/routes.js";
@@ -24,6 +25,8 @@ const config = loadConfig();
 const database = createDatabase(config.databasePath);
 const storage = createStorageController(database, config.objectStorage);
 await storage.initialize();
+const codexPreferences = createCodexPreferencesStore(database, config.codexDefaultPreference);
+const resolveCodexExecutionProfile = () => codexPreferences.get();
 const app = buildApp({ readiness: databaseReadiness(database) });
 const familyService = createFamilyService(database, {
   cookieName: "veylta_session",
@@ -41,7 +44,7 @@ const documentAgentService = createDocumentAgentService(
   documentService,
   createCodexDocumentAgentRuntime({
     mcpUrl: `http://127.0.0.1:${config.apiPort}/mcp/document-agent`,
-    modelId: config.codexDocumentAgentModel,
+    resolveExecutionProfile: resolveCodexExecutionProfile,
     timeoutMs: config.codexDocumentAgentTimeoutMs,
   }),
   documentAgentCapabilities,
@@ -62,7 +65,7 @@ registerFamilyRoutes(app, familyService, {
 registerHomeSettingsRoutes(
   app,
   familyService,
-  createHomeSettingsService(database, storage, createCodexRuntimeProbe()),
+  createHomeSettingsService(database, storage, createCodexRuntimeProbe(), codexPreferences),
   { allowedMutationOrigins: [config.webOrigin] },
 );
 registerCarePlanRoutes(
@@ -70,11 +73,10 @@ registerCarePlanRoutes(
   familyService,
   createCarePlanService(database, {
     generator: createCodexCarePlanGenerator({
-      modelId: config.codexCarePlanModel,
+      resolveExecutionProfile: resolveCodexExecutionProfile,
       timeoutMs: config.codexCarePlanTimeoutMs,
     }),
     leaseDurationMs: config.codexCarePlanTimeoutMs + 30_000,
-    modelId: config.codexCarePlanModel,
   }),
   {
     allowedMutationOrigins: [config.webOrigin],

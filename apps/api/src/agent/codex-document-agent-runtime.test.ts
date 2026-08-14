@@ -23,7 +23,11 @@ test("Codex document agent starts and resumes one Russian MCP-only thread", asyn
   const runtime = createCodexDocumentAgentRuntime(
     {
       mcpUrl: "http://127.0.0.1:4301/mcp/document-agent",
-      modelId: "gpt-5.4-mini",
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.6-sol",
+        reasoningEffort: "high",
+        serviceTier: "fast",
+      }),
       timeoutMs: 30_000,
     },
     executor,
@@ -47,6 +51,9 @@ test("Codex document agent starts and resumes one Russian MCP-only thread", asyn
   assert.equal(calls[1]?.token, "second-secret-token");
   assert.equal(calls[0]?.arguments_.includes("--ephemeral"), false);
   assert.ok(calls[0]?.arguments_.includes("--json"));
+  assert.ok(calls[0]?.arguments_.includes("gpt-5.6-sol"));
+  assert.ok(calls[0]?.arguments_.includes('model_reasoning_effort="high"'));
+  assert.ok(calls[0]?.arguments_.includes("fast_mode"));
   assert.ok(calls[0]?.arguments_.includes("shell_tool"));
   assert.ok(calls[0]?.arguments_.some((value) => value.includes("mcp_servers.veylta.url")));
   assert.equal(calls[1]?.arguments_[1], "resume");
@@ -62,7 +69,11 @@ test("Codex document agent rejects missing thread provenance and non-Russian emp
   const runtime = createCodexDocumentAgentRuntime(
     {
       mcpUrl: "http://127.0.0.1:4301/mcp/document-agent",
-      modelId: "gpt-5.4-mini",
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.6-sol",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
       timeoutMs: 30_000,
     },
     executor,

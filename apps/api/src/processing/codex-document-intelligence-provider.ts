@@ -9,6 +9,10 @@ import {
   LAB_FACT_VALIDATION_ISSUES,
 } from "@veylta/contracts";
 import { type CodexCliExecutor, createCodexCliExecutor } from "../codex/codex-cli-executor.js";
+import {
+  type CodexExecutionProfileResolver,
+  codexExecutionArguments,
+} from "../codex/codex-execution-profile.js";
 import type {
   DocumentIntelligenceInput,
   DocumentIntelligenceOutput,
@@ -491,18 +495,22 @@ function parseOutput(
 }
 
 export function createCodexDocumentIntelligenceProvider(
-  options: { modelId: string; timeoutMs: number },
+  options: {
+    resolveExecutionProfile: CodexExecutionProfileResolver;
+    timeoutMs: number;
+  },
   executor: DocumentIntelligenceExecutor = createCodexCliExecutor({
     timeoutMs: options.timeoutMs,
     maximumInputBytes,
     maximumOutputBytes,
   }),
 ): DocumentIntelligenceProvider {
-  if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(options.modelId) || options.timeoutMs < 1_000) {
+  if (options.timeoutMs < 1_000) {
     throw new Error("Codex document-intelligence configuration is invalid");
   }
   return {
     async analyze(input) {
+      const profile = await options.resolveExecutionProfile();
       const pages = parsedPages(input.pages);
       const directory = await mkdtemp(join(tmpdir(), "veylta-codex-document-"));
       const schemaPath = join(directory, "output.schema.json");
@@ -517,8 +525,7 @@ export function createCodexDocumentIntelligenceProvider(
           "--skip-git-repo-check",
           "--sandbox",
           "read-only",
-          "--model",
-          options.modelId,
+          ...codexExecutionArguments(profile),
           "--output-schema",
           schemaPath,
           "--output-last-message",
@@ -556,7 +563,7 @@ export function createCodexDocumentIntelligenceProvider(
         }
         const output = await readFile(outputPath, "utf8");
         if (Buffer.byteLength(output, "utf8") > maximumOutputBytes) invalidOutput();
-        return parseOutput(output, pages, options.modelId, result.runtimeVersion);
+        return parseOutput(output, pages, profile.modelId, result.runtimeVersion);
       } finally {
         await rm(directory, { force: true, recursive: true });
       }

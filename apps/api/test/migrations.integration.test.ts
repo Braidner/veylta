@@ -544,6 +544,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
     assert.equal(await migrateDown(database), "0020_processing_activity");
     assert.equal(await migrateDown(database), "0019_document_agent");
     assert.equal(await migrateDown(database), "0018_document_reanalysis");
@@ -645,6 +646,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0018_document_reanalysis",
       "0019_document_agent",
       "0020_processing_activity",
+      "0021_codex_preferences",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -786,6 +788,7 @@ test("document intelligence keeps one immutable result per processing run and re
       [fixture.familyId, fixture.documentVersionId],
     );
     assert.equal(Number(results.rows[0]?.count), 2);
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
     assert.equal(await migrateDown(database), "0020_processing_activity");
     assert.equal(await migrateDown(database), "0019_document_agent");
     await assert.rejects(() => migrateDown(database));
@@ -1057,6 +1060,7 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
     assert.equal(await migrateDown(database), "0020_processing_activity");
     assert.equal(await migrateDown(database), "0019_document_agent");
     assert.equal(await migrateDown(database), "0018_document_reanalysis");
@@ -1153,6 +1157,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
     assert.equal(await migrateDown(database), "0020_processing_activity");
     assert.equal(await migrateDown(database), "0019_document_agent");
     assert.equal(await migrateDown(database), "0018_document_reanalysis");
@@ -1623,6 +1628,50 @@ test("processing schema enforces tenant, state, dedupe, and immutable provenance
       "PRAGMA foreign_key_check",
     );
     assert.deepEqual(foreignKeyViolations.rows, []);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("Codex preferences keep one validated server-wide execution profile", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-codex-preferences-schema-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const fixture = await createDocumentFixture(database, "Codex preferences owner");
+    const now = new Date().toISOString();
+    await database.query(
+      `INSERT INTO codex_preferences
+         (id, model_id, reasoning_effort, service_tier, updated_by_user_id, created_at, updated_at)
+       VALUES ('primary', 'gpt-5.6-sol', 'medium', 'standard', $1, $2, $2)`,
+      [fixture.userId, now],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO codex_preferences
+             (id, model_id, reasoning_effort, service_tier, updated_by_user_id, created_at, updated_at)
+           VALUES ('secondary', 'gpt-5.6-luna', 'low', 'fast', $1, $2, $2)`,
+          [fixture.userId, now],
+        ),
+      "check",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `UPDATE codex_preferences SET reasoning_effort = 'unbounded' WHERE id = 'primary'`,
+        ),
+      "check",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(`UPDATE codex_preferences SET service_tier = 'turbo' WHERE id = 'primary'`),
+      "check",
+    );
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
+    assert.equal(await tableExists(database, "codex_preferences"), false);
+    assert.deepEqual(await migrateUp(database), ["0021_codex_preferences"]);
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });

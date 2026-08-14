@@ -41,7 +41,14 @@ function executorFor(
 test("Codex classifies a document and returns only source-bound review drafts", async () => {
   const calls: Array<{ arguments: readonly string[]; input: string; outputSchema: string }> = [];
   const provider = createCodexDocumentIntelligenceProvider(
-    { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
     executorFor(
       {
         classification: {
@@ -165,7 +172,14 @@ test("Codex classifies a document and returns only source-bound review drafts", 
 
 test("Codex can sort a non-laboratory document without inventing facts", async () => {
   const provider = createCodexDocumentIntelligenceProvider(
-    { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
     executorFor(
       {
         classification: {
@@ -192,7 +206,14 @@ test("Codex can sort a non-laboratory document without inventing facts", async (
 
 test("Codex provenance expands an exact context fragment to its complete source line", async () => {
   const provider = createCodexDocumentIntelligenceProvider(
-    { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
     executorFor(
       {
         classification: {
@@ -262,7 +283,14 @@ test("Codex keeps source-bound facts when another proposed fact fails validation
     },
   };
   const provider = createCodexDocumentIntelligenceProvider(
-    { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
     executorFor(
       {
         classification: {
@@ -296,7 +324,14 @@ test("Codex keeps source-bound facts when another proposed fact fails validation
 
 test("Codex output fails closed when provenance is not an exact page fragment", async () => {
   const provider = createCodexDocumentIntelligenceProvider(
-    { modelId: "gpt-5.4-mini", timeoutMs: 120_000 },
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
     executorFor(
       {
         classification: {
