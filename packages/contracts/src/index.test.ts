@@ -115,6 +115,7 @@ test("document intelligence v2 carries bounded generic source results beside its
     "other",
   ]);
   assert.deepEqual(DOCUMENT_INTELLIGENCE_RESULT_STATUSES, [
+    "above_range",
     "normal",
     "abnormal",
     "detected",

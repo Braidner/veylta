@@ -5300,6 +5300,8 @@ type DocumentViewState =
 
 export function documentResultStatusCopy(status: DocumentIntelligenceResultStatus): string {
   switch (status) {
+    case "above_range":
+      return "Выше диапазона";
     case "normal":
       return "В пределах источника";
     case "abnormal":
@@ -5315,6 +5317,21 @@ export function documentResultStatusCopy(status: DocumentIntelligenceResultStatu
     case "unknown":
       return "Без оценки";
   }
+}
+
+export function documentResultStatusPriority(
+  status: DocumentIntelligenceResultStatus | null,
+): number {
+  return status === "above_range" ? 0 : 1;
+}
+
+export function prioritizeDocumentResults(
+  results: readonly DocumentIntelligenceStructuredResult[],
+): readonly DocumentIntelligenceStructuredResult[] {
+  return [...results].sort(
+    (left, right) =>
+      documentResultStatusPriority(left.status) - documentResultStatusPriority(right.status),
+  );
 }
 
 export function documentResultTypeCopy(type: string): string {
@@ -6711,7 +6728,7 @@ function DocumentReviewPanel({
   const reviewPending = pendingFactId !== null || bulkReview.kind === "running";
   const factItems = facts.kind === "ready" ? facts.items : [];
   const pairedFactIds = new Set<string>();
-  const resultRows = results.map((result) => {
+  const resultRows = prioritizeDocumentResults(results).map((result) => {
     const fact = factItems.find(
       (candidate) =>
         !pairedFactIds.has(candidate.id) && documentResultMatchesFact(result, candidate),
@@ -6867,6 +6884,7 @@ function DocumentReviewPanel({
           >
             {rows.map(({ key, result, fact }) => {
               const active = selectedRow?.key === key;
+              const aboveRange = result?.status === "above_range";
               const displayName =
                 fact?.canonicalDisplayName ?? result?.label ?? fact?.sourceName ?? "Результат";
               const value = result?.value ?? fact?.sourceValue ?? "Не указано";
@@ -6874,7 +6892,7 @@ function DocumentReviewPanel({
               return (
                 <li key={key}>
                   <button
-                    className="document-result-card document-result-card--selectable"
+                    className={`document-result-card document-result-card--selectable${aboveRange ? " document-result-card--above-range" : ""}`}
                     type="button"
                     aria-pressed={active}
                     data-testid={`document-result-card-${key}`}
@@ -6894,14 +6912,23 @@ function DocumentReviewPanel({
                         </span>
                         <strong>{displayName}</strong>
                       </span>
-                      <span
-                        className={`document-result-status document-result-status--${fact?.reviewStatus ?? result?.status ?? "unknown"}`}
-                      >
-                        {fact === null
-                          ? result === null
-                            ? "Результат"
-                            : documentResultStatusCopy(result.status)
-                          : reviewStatusLabel(fact.reviewStatus)}
+                      <span className="document-result-card__statuses">
+                        {aboveRange ? (
+                          <span className="document-result-status document-result-status--above_range">
+                            {documentResultStatusCopy("above_range")}
+                          </span>
+                        ) : null}
+                        {aboveRange && fact === null ? null : (
+                          <span
+                            className={`document-result-status document-result-status--${fact?.reviewStatus ?? result?.status ?? "unknown"}`}
+                          >
+                            {fact === null
+                              ? result === null
+                                ? "Результат"
+                                : documentResultStatusCopy(result.status)
+                              : reviewStatusLabel(fact.reviewStatus)}
+                          </span>
+                        )}
                       </span>
                     </span>
                     <span className="document-result-card__value">

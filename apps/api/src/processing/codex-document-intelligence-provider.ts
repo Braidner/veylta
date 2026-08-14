@@ -163,7 +163,12 @@ const outputSchema = {
           date: {
             anyOf: [{ type: "string", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }, { type: "null" }],
           },
-          status: { type: "string", enum: DOCUMENT_INTELLIGENCE_RESULT_STATUSES },
+          status: {
+            type: "string",
+            enum: DOCUMENT_INTELLIGENCE_RESULT_STATUSES,
+            description:
+              "Use above_range only for an explicit high flag or a printed value above the printed source range; otherwise never infer it.",
+          },
           confidence: { type: "number", minimum: 0, maximum: 1 },
           source: {
             type: "object",
@@ -477,6 +482,42 @@ function parseStructuredResult(
   };
 }
 
+function sourceMarksAboveRange(fragment: string): boolean {
+  return (
+    /(?:^|[\s|;,(])H(?:$|[\s|;,)])/u.test(fragment) ||
+    /[↑⬆]|(?:^|[^\p{L}\p{N}])(?:high|above(?:\s+range)?|повышен(?:о|а|ы)?|выше\s+(?:диапазона|нормы)|высок(?:ий|ая|ое|ие)?)(?:$|[^\p{L}\p{N}])/iu.test(
+      fragment,
+    )
+  );
+}
+
+function numericSourceValue(value: string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const normalized = value.trim().replace(",", ".");
+  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function printedUpperRange(fragment: string): number | null {
+  const match = fragment.match(
+    /(?:reference|range|референс(?:ный)?(?:\s+диапазон)?|диапазон|норма)\s*:?\s*[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*(?:—|–|-|до)\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/iu,
+  );
+  return numericSourceValue(match?.[1]);
+}
+
+function sourceProvesAboveRange(
+  result: DocumentIntelligenceStructuredResult,
+  fact: StrictLabExtractionFact | undefined,
+): boolean {
+  const evidence = fact?.source.fragment ?? result.source.fragment;
+  if (sourceMarksAboveRange(result.source.fragment) || sourceMarksAboveRange(evidence)) return true;
+
+  const value = numericSourceValue(result.value);
+  const upper = printedUpperRange(evidence) ?? printedUpperRange(result.source.fragment);
+  return value !== null && upper !== null && value > upper;
+}
+
 function parseFact(
   value: unknown,
   pages: ReadonlyMap<number, ParsedDocumentPage>,
@@ -555,7 +596,7 @@ function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocument
     "Classify the document into exactly one allowed category. Write title, shortSummary, and detailedSummary in Russian and include only facts explicit in the source.",
     "Omit patient names, addresses, phone numbers, email addresses, policy or order identifiers, and other administrative personal data from title, summaries, and structured results. Keep an identifier only when it is the explicit medical result code requested by the schema.",
     "Extract generic structuredResults with Russian labels for explicit measurements, genetic variants, findings, procedures, medications, diagnoses, or other stated results. A diagnosis result means only a diagnosis literally stated by the source, never model inference.",
-    "For each result, copy explicit code, laboratory, specimen, and date when present. Set status only from an explicit source statement; otherwise use unknown.",
+    "For each result, copy explicit code, laboratory, specimen, and date when present. Use above_range only when the document explicitly marks a value high or when the printed numeric value exceeds the printed explicit source range; never compare against outside medical knowledge. Set every other status only from an explicit source statement; otherwise use unknown.",
     "Also extract explicit quantitative laboratory measurements into facts for the existing human review pipeline. Do not diagnose, treat, prescribe, triage, recommend, or infer missing values.",
     "Extract explicit document-level metadata once: laboratory, specimen type, sample time, and result time. These defaults apply to every fact unless that fact has different explicit metadata.",
     "Return proposed dates only as canonical UTC timestamps. For an explicit date without a time, use 00:00:00.000Z. Use null instead of an empty string for every missing optional field.",
@@ -660,6 +701,9 @@ function parseOutput(
           result.source.fragment.includes(fact.source.fragment)),
     );
     if (matchingFacts.length > 1) invalidOutput();
+    if (result.status === "above_range" && !sourceProvesAboveRange(result, matchingFacts[0])) {
+      invalidOutput();
+    }
     const sameKeyFact = facts.find((fact) => fact.factKey === result.resultKey);
     if (sameKeyFact !== undefined && !matchingFacts.includes(sameKeyFact)) invalidOutput();
     const resultKey = matchingFacts[0]?.factKey ?? result.resultKey;

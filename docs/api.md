@@ -528,7 +528,11 @@ processing state. Intelligence v2 contains a Russian `shortSummary`, Russian
 `detailedSummary`, and bounded `structuredResults`. Every result has a closed
 type/status, optional value/unit/code/laboratory/specimen/date, confidence, page,
 and exact source fragment. These are source-derived proposals, not confirmed
-Observations or medical recommendations. Its `document.status` remains
+Observations or medical recommendations. A result may be `above_range` only
+when the source explicitly marks it high or its printed numeric value exceeds
+the explicit range printed in the same source; the UI places those results
+first and labels them `Выше диапазона`. No outside reference interval or medical
+knowledge is used to derive that status. Its `document.status` remains
 `uploaded`; the nested
 processing state is one of `queued`, `security_check`, `text_extraction`,
 `document_classification`, `structured_extraction`, `validation`,

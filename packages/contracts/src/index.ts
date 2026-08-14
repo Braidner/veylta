@@ -70,6 +70,7 @@ export const DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES = [
   "other",
 ] as const;
 export const DOCUMENT_INTELLIGENCE_RESULT_STATUSES = [
+  "above_range",
   "normal",
   "abnormal",
   "detected",
@@ -629,7 +630,7 @@ export interface DocumentIntelligenceStructuredResult {
   readonly lab: string | null;
   readonly specimen: string | null;
   readonly date: string | null;
-  /** Source-derived only; use unknown when the source does not state the status. */
+  /** Source-derived only; above_range requires an explicit source flag or printed reference range. */
   readonly status: DocumentIntelligenceResultStatus;
   readonly confidence: number;
   readonly source: DocumentIntelligenceSource;

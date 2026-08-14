@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { DocumentSummary } from "@veylta/contracts";
+import type { DocumentIntelligenceStructuredResult, DocumentSummary } from "@veylta/contracts";
 import {
   buildDocumentSearchPath,
   buildIndicatorHistoryPath,
@@ -9,8 +9,10 @@ import {
   documentResultMatchesFact,
   documentResultMissingFields,
   documentResultStatusCopy,
+  documentResultStatusPriority,
   documentResultTypeCopy,
   normalizeDocumentSearchResponse,
+  prioritizeDocumentResults,
 } from "./components/veylta-app";
 
 test("generic measurements reuse their review fact by exact source provenance", () => {
@@ -125,10 +127,45 @@ test("search response accepts both final object shape and a narrow array fallbac
 });
 
 test("structured result status is written in Russian and stays clinically neutral", () => {
+  assert.equal(documentResultStatusCopy("above_range"), "Выше диапазона");
   assert.equal(documentResultStatusCopy("not_detected"), "Не обнаружено");
   assert.equal(documentResultStatusCopy("completed"), "Выполнено");
   assert.equal(documentResultStatusCopy("abnormal"), "Отмечено источником");
   assert.equal(documentResultStatusCopy("unknown"), "Без оценки");
+  assert.equal(documentResultStatusPriority("above_range"), 0);
+  assert.equal(documentResultStatusPriority("abnormal"), 1);
+  assert.equal(documentResultStatusPriority(null), 1);
+});
+
+test("source-marked above-range results are shown first without reordering their peers", () => {
+  const result = (
+    resultKey: string,
+    status: DocumentIntelligenceStructuredResult["status"],
+  ): DocumentIntelligenceStructuredResult => ({
+    resultKey,
+    type: "measurement",
+    label: `Результат ${resultKey}`,
+    value: "1",
+    unit: "ед.",
+    code: null,
+    lab: null,
+    specimen: null,
+    date: null,
+    status,
+    confidence: 1,
+    source: { pageNumber: 1, fragment: `RESULT|${resultKey}` },
+  });
+
+  assert.deepEqual(
+    prioritizeDocumentResults([
+      result("normal-first", "normal"),
+      result("high-first", "above_range"),
+      result("unknown-last", "unknown"),
+      result("high-second", "above_range"),
+      result("normal-second", "normal"),
+    ]).map(({ resultKey }) => resultKey),
+    ["high-first", "high-second", "normal-first", "unknown-last", "normal-second"],
+  );
 });
 
 test("result types are presented as neutral Russian source categories", () => {

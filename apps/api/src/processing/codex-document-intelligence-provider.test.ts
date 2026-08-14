@@ -75,7 +75,7 @@ test("Codex classifies a document and returns only source-bound review drafts", 
             lab: "Синтетическая лаборатория",
             specimen: "Венозная кровь",
             date: "2026-08-12",
-            status: "abnormal",
+            status: "above_range",
             confidence: 0.91,
             source: {
               pageNumber: 1,
@@ -129,6 +129,7 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     "В документе указан один синтетический лабораторный результат.",
   );
   assert.equal(result.intelligence.structuredResults[0]?.type, "measurement");
+  assert.equal(result.intelligence.structuredResults[0]?.status, "above_range");
   assert.equal(result.intelligence.structuredResults[0]?.resultKey, "synthetic-glucose");
   assert.equal(
     result.intelligence.structuredResults[0]?.source.fragment,
@@ -225,6 +226,7 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     "other",
   ]);
   assert.deepEqual(schema.properties?.structuredResults?.items?.properties?.status?.enum, [
+    "above_range",
     "normal",
     "abnormal",
     "detected",
@@ -233,6 +235,7 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     "informational",
     "unknown",
   ]);
+  assert.match(calls[0]?.input ?? "", /above_range.*explicit source range/i);
   assert.match(
     schema.properties?.structuredResults?.items?.properties?.label?.pattern ?? "",
     /А-Я/,
@@ -243,6 +246,75 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     /complete source line/i,
   );
   assert.equal(calls.length, 1);
+});
+
+test("Codex output fails closed when above_range has no source evidence", async () => {
+  const withinRangePages = [
+    {
+      ...pages[0],
+      text: [
+        "SYNTHETIC TEST DATA — NOT FOR MEDICAL USE",
+        "Synthetic glucose: 5.0 synthetic-unit",
+        "Reference: 4.0 — 6.0 synthetic-unit",
+      ].join("\n"),
+    },
+  ];
+  const provider = createCodexDocumentIntelligenceProvider(
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
+    executorFor(
+      {
+        classification: {
+          category: "laboratory",
+          title: "Синтетический лабораторный отчёт",
+          shortSummary: "В документе указано одно синтетическое лабораторное значение.",
+          detailedSummary: "Значение находится внутри явно напечатанного диапазона источника.",
+          documentDate: null,
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
+          confidence: 0.95,
+        },
+        structuredResults: [
+          {
+            resultKey: "synthetic-glucose",
+            type: "measurement",
+            label: "Синтетическая глюкоза",
+            value: "5.0",
+            unit: "synthetic-unit",
+            code: null,
+            lab: null,
+            specimen: null,
+            date: null,
+            status: "above_range",
+            confidence: 0.95,
+            source: {
+              pageNumber: 1,
+              fragment: [
+                "Synthetic glucose: 5.0 synthetic-unit",
+                "Reference: 4.0 — 6.0 synthetic-unit",
+              ].join("\n"),
+            },
+          },
+        ],
+        facts: [],
+      },
+      [],
+    ),
+  );
+
+  await assert.rejects(
+    provider.analyze({ contentType: "application/pdf", pages: withinRangePages }),
+    (error: unknown) =>
+      error instanceof CodexDocumentIntelligenceError && error.code === "OUTPUT_INVALID",
+  );
 });
 
 test("Codex output fails closed when a shared result key contradicts the review fact", async () => {
