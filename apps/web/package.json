@@ -19,7 +19,7 @@
     "build": "next build",
     "dev": "next dev --hostname 0.0.0.0 --port 4300",
     "start": "next start --hostname 0.0.0.0 --port 4300",
-    "test": "tsx --test \"app/**/*.test.ts\"",
+    "test": "tsx --test \"app/**/*.test.ts\" \"*.test.ts\"",
     "typecheck": "next typegen && tsc --noEmit"
   }
 }
