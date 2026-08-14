@@ -6,6 +6,7 @@ export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v1" as const;
+export const DOCUMENT_AGENT_CONTRACT_VERSION = "document-agent/v1" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
@@ -613,6 +614,46 @@ export interface DocumentProcessingRestartResponse {
   readonly documentId: string;
   readonly processing: DocumentProcessingQueued;
 }
+
+export type DocumentAgentMessageRole = "user" | "assistant";
+
+export interface DocumentAgentMessage {
+  readonly id: string;
+  readonly role: DocumentAgentMessageRole;
+  /** User and assistant dialogue is Russian; verbatim document evidence stays in source fields. */
+  readonly text: string;
+  readonly createdAt: string;
+  readonly provenance: {
+    readonly provider: "codex";
+    readonly modelId: string;
+    readonly runtimeVersion: string;
+  } | null;
+}
+
+export interface DocumentAgentConversationResponse {
+  readonly contractVersion: typeof DOCUMENT_AGENT_CONTRACT_VERSION;
+  readonly documentId: string;
+  readonly conversationId: string | null;
+  readonly messages: readonly DocumentAgentMessage[];
+}
+
+export interface DocumentAgentMessageCommand {
+  readonly message: string;
+}
+
+export const DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["message"],
+  properties: {
+    message: {
+      type: "string",
+      minLength: 1,
+      maxLength: 2_000,
+      pattern: "^\\S(?:[\\s\\S]*\\S)?$",
+    },
+  },
+} as const;
 
 /**
  * A bounded, source-first profile landing view. It deliberately contains no

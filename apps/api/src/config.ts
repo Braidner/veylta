@@ -75,7 +75,9 @@ function databasePath(): string {
   return resolve(projectRoot, configured);
 }
 
-function codexModel(name: "CODEX_CARE_PLAN_MODEL" | "CODEX_DOCUMENT_MODEL"): string {
+function codexModel(
+  name: "CODEX_CARE_PLAN_MODEL" | "CODEX_DOCUMENT_MODEL" | "CODEX_DOCUMENT_AGENT_MODEL",
+): string {
   const value = process.env[name] ?? "gpt-5.4-mini";
   if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(value)) {
     throw new Error(`${name} must be a canonical Codex model id`);
@@ -158,6 +160,8 @@ export interface RuntimeConfig {
   codexCarePlanTimeoutMs: number;
   codexDocumentModel: string;
   codexDocumentTimeoutMs: number;
+  codexDocumentAgentModel: string;
+  codexDocumentAgentTimeoutMs: number;
   demoRegistrationEnabled: boolean;
   maxDocumentBytes: number;
   objectStorage: ObjectStorageRuntimeConfig;
@@ -196,6 +200,12 @@ export function loadConfig(): RuntimeConfig {
     codexCarePlanTimeoutMs: boundedInteger("CODEX_CARE_PLAN_TIMEOUT_MS", 120_000, 600_000),
     codexDocumentModel: codexModel("CODEX_DOCUMENT_MODEL"),
     codexDocumentTimeoutMs,
+    codexDocumentAgentModel: codexModel("CODEX_DOCUMENT_AGENT_MODEL"),
+    codexDocumentAgentTimeoutMs: boundedInteger(
+      "CODEX_DOCUMENT_AGENT_TIMEOUT_MS",
+      120_000,
+      600_000,
+    ),
     databasePath: databasePath(),
     demoRegistrationEnabled,
     maxDocumentBytes,

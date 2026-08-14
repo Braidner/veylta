@@ -120,6 +120,23 @@ test("Codex document intelligence has an explicit model and bounded timeout", ()
   });
 });
 
+test("Codex document dialogue has an explicit bounded model and timeout", () => {
+  withEnvironment(
+    { CODEX_DOCUMENT_AGENT_MODEL: undefined, CODEX_DOCUMENT_AGENT_TIMEOUT_MS: undefined },
+    () => {
+      const config = loadConfig();
+      assert.equal(config.codexDocumentAgentModel, "gpt-5.4-mini");
+      assert.equal(config.codexDocumentAgentTimeoutMs, 120_000);
+    },
+  );
+  withEnvironment({ CODEX_DOCUMENT_AGENT_MODEL: "bad model" }, () => {
+    assert.throws(() => loadConfig(), /CODEX_DOCUMENT_AGENT_MODEL/);
+  });
+  withEnvironment({ CODEX_DOCUMENT_AGENT_TIMEOUT_MS: "600001" }, () => {
+    assert.throws(() => loadConfig(), /CODEX_DOCUMENT_AGENT_TIMEOUT_MS must not exceed 600000/);
+  });
+});
+
 test("the default local object storage stays rooted in the workspace", () => {
   withEnvironment(
     { OBJECT_STORAGE_DRIVER: undefined, OBJECT_STORAGE_ROOT: ".local/test-storage" },

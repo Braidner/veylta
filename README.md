@@ -33,6 +33,13 @@ or persists Codex OAuth tokens or API keys, and refuses proposals unless Codex
 confirms ChatGPT authentication. See
 [ADR 0007](docs/adr/0007-home-server-pwa-and-codex-runtime.md).
 
+Document detail also supports one persistent Russian Codex conversation. Each
+turn resumes its local Codex thread and receives a fresh loopback-only MCP
+capability for the exact authorized document. The first tool surface is
+read-only: Codex can inspect current metadata, processing state, and
+source-bound facts, but cannot access SQLite/filesystem directly or confirm a
+medical fact for the user. No LangGraph or frontend chat framework is needed.
+
 ## Project status
 
 The repository contains the source-first synthetic record path and is now
@@ -125,6 +132,9 @@ real-data readiness claim.
   implementation. Local bounded PDF/OCR transport produces page evidence;
   Codex classifies the document and returns a closed, source-bound schema.
   Results are rejected unless every fact cites an exact source fragment.
+- `document-agent/v1` stores an append-only Russian conversation and exact
+  Codex model/runtime provenance in SQLite. The official MCP SDK exposes one
+  short-lived, document-scoped read-only context tool to the local Codex CLI.
 - Versioned `home-care-plan/v1` read/write boundary backed by tenant-aware
   SQLite constraints. User actions are replay-safe and retained; a future
   Codex proposal must name its immutable summary, rule version, source when

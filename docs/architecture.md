@@ -190,6 +190,10 @@ required. Shared code is extracted only when two real consumers need it.
   only for a terminal failed job, a fresh immutable restart only for a terminal
   latest job, and an explicit fact review only with exact `Origin` and
   `Idempotency-Key`.
+- Persists one append-only Russian Codex dialogue per document. Each model turn
+  receives a fresh capability-bound, read-only MCP context tool; the model
+  cannot choose another tenant/profile/document or access SQLite, storage, or
+  document bytes directly.
 - Reads `observation-history/v1` only after profile authorization, uses opaque
   keyset pagination, and audits the payload-free history access. The returned
   source-document path remains a relative selector: the download endpoint
@@ -210,6 +214,26 @@ required. Shared code is extracted only when two real consumers need it.
   it uses opaque keyset pagination, adds one payload-free access event per
   successful page, and does not expose audit metadata or correlation IDs.
 - Proxies local document reads after authorization.
+
+### Document agent runtime
+
+- Uses the locally authenticated Codex CLI subscription and a persistent Codex
+  thread ID; Veylta never reads, copies, or stores OAuth credentials or API
+  keys.
+- Runs from an empty temporary directory in the read-only sandbox with shell,
+  browser, apps, plugins, memories, collaboration, computer use, and image
+  generation disabled.
+- Registers the official Model Context Protocol Streamable HTTP transport on a
+  loopback endpoint. A 256-bit bearer capability is stored only as a hash in
+  memory, expires within the bounded turn window, and is revoked when the CLI
+  process exits.
+- Exposes only `get_document_context` in Task 36. It re-authorizes the actor and
+  exact server-derived scope on every call and returns bounded source-first
+  projections, never credentials, storage keys, filesystem paths, or raw file
+  bytes.
+- Persists user/assistant messages and Codex model/runtime provenance in
+  SQLite. The first frontend uses ordinary React state and HTTP; no LangGraph
+  orchestration or chat-component framework is introduced.
 
 ### Worker
 

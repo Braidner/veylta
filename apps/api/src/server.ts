@@ -1,5 +1,10 @@
 import { createAccountService } from "./accounts/account-service.js";
 import { registerAccountRoutes } from "./accounts/routes.js";
+import { createCodexDocumentAgentRuntime } from "./agent/codex-document-agent-runtime.js";
+import { createDocumentAgentCapabilityStore } from "./agent/document-agent-mcp.js";
+import { createDocumentAgentService } from "./agent/document-agent-service.js";
+import { registerDocumentAgentMcpRoute } from "./agent/mcp-route.js";
+import { registerDocumentAgentRoutes } from "./agent/routes.js";
 import { buildApp } from "./app.js";
 import { createCarePlanService } from "./care-plan/care-plan-service.js";
 import { createCodexCarePlanGenerator } from "./care-plan/codex-care-plan-generator.js";
@@ -25,6 +30,22 @@ const familyService = createFamilyService(database, {
   secureCookie: config.secureSessionCookie,
   sessionTtlSeconds: config.sessionTtlSeconds,
 });
+const documentService = createDocumentService(database, storage, {
+  maxDocumentBytes: config.maxDocumentBytes,
+});
+const documentAgentCapabilities = createDocumentAgentCapabilityStore({
+  ttlMs: config.codexDocumentAgentTimeoutMs + 30_000,
+});
+const documentAgentService = createDocumentAgentService(
+  database,
+  documentService,
+  createCodexDocumentAgentRuntime({
+    mcpUrl: `http://127.0.0.1:${config.apiPort}/mcp/document-agent`,
+    modelId: config.codexDocumentAgentModel,
+    timeoutMs: config.codexDocumentAgentTimeoutMs,
+  }),
+  documentAgentCapabilities,
+);
 registerAccountRoutes(
   app,
   createAccountService(database, {
@@ -59,17 +80,14 @@ registerCarePlanRoutes(
     allowedMutationOrigins: [config.webOrigin],
   },
 );
-registerDocumentRoutes(
-  app,
-  familyService,
-  createDocumentService(database, storage, {
-    maxDocumentBytes: config.maxDocumentBytes,
-  }),
-  {
-    allowedMutationOrigins: [config.webOrigin],
-    maxDocumentBytes: config.maxDocumentBytes,
-  },
-);
+registerDocumentRoutes(app, familyService, documentService, {
+  allowedMutationOrigins: [config.webOrigin],
+  maxDocumentBytes: config.maxDocumentBytes,
+});
+registerDocumentAgentRoutes(app, familyService, documentAgentService, {
+  allowedMutationOrigins: [config.webOrigin],
+});
+registerDocumentAgentMcpRoute(app, documentAgentCapabilities, documentAgentService);
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info({ signal }, "api shutdown requested");

@@ -89,6 +89,12 @@ disabled through pnpm's `allowBuilds` policy. Any engine, language package,
 runtime binary, model, or version change needs a fresh exact-version review.
 LLM and external OCR providers remain absent.
 
+The local document dialogue uses exact `@modelcontextprotocol/sdk` 1.30.0
+(MIT) and `zod` 4.4.3 (MIT). Its transitive ISC utilities are reviewed as
+exact-version exceptions in `config/license-policy.json` and
+`THIRD_PARTY_NOTICES.md`; ISC is not added to the global allowlist. LangGraph
+and a frontend chat library are intentionally absent.
+
 ## Review workflow
 
 Before adding or upgrading a dependency:

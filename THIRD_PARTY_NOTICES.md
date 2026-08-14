@@ -64,7 +64,7 @@ change or by 2027-08-14.
 
 ## Exact permissive ISC reviews
 
-The following unavoidable transitive packages use the permissive ISC license.
+The following unavoidable direct or transitive packages use the permissive ISC license.
 They are exact-version exceptions rather than additions to the global allowlist:
 
 - `fastq` 1.20.1 (Fastify/avvio queue utility)
@@ -72,6 +72,13 @@ They are exact-version exceptions rather than additions to the global allowlist:
 - `semver` 7.8.5 (Fastify version parser)
 - `split2` 4.2.0 (pino stream utility)
 - `lucide-react` 1.21.0 (browser UI icon components)
+- `inherits` 2.0.4 (MCP SDK compatibility helper)
+- `isexe` 2.0.0 (MCP SDK executable-path helper)
+- `once` 1.4.0 (MCP SDK callback helper)
+- `setprototypeof` 1.2.0 (MCP SDK HTTP compatibility helper)
+- `which` 2.0.2 (MCP SDK executable lookup helper)
+- `wrappy` 1.0.2 (MCP SDK callback wrapper)
+- `zod-to-json-schema` 3.25.2 (MCP SDK schema conversion helper)
 
 Each installed package retains its ISC `LICENSE` file. Any version change fails
 the repository license gate until it is reviewed again.

@@ -4,6 +4,8 @@ export interface CodexExecutorFiles {
   cwd: string;
   outputPath: string;
   schemaPath: string;
+  /** Per-invocation secrets are passed only through the child environment, never CLI arguments. */
+  environment?: Readonly<Record<string, string>>;
   writeOutput(value: string): Promise<void>;
 }
 
@@ -25,7 +27,12 @@ async function runProcess(
   command: string,
   arguments_: readonly string[],
   input: string,
-  options: { timeoutMs: number; maximumInputBytes: number; maximumOutputBytes: number },
+  options: {
+    timeoutMs: number;
+    maximumInputBytes: number;
+    maximumOutputBytes: number;
+    environment?: Readonly<Record<string, string>>;
+  },
 ): Promise<{ stdout: string; stderr: string }> {
   if (Buffer.byteLength(input, "utf8") > options.maximumInputBytes) {
     throw new Error("Codex input exceeded its bounded transport");
@@ -36,6 +43,7 @@ async function runProcess(
     delete environment.OPENAI_BASE_URL;
     delete environment.OPENAI_ORG_ID;
     delete environment.OPENAI_PROJECT_ID;
+    Object.assign(environment, options.environment);
     const child = spawn(command, arguments_, {
       env: environment,
       stdio: ["pipe", "pipe", "pipe"],
@@ -87,7 +95,7 @@ export function createCodexCliExecutor(options: {
   maximumInputBytes: number;
   maximumOutputBytes: number;
 }): CodexCliExecutor {
-  return async (arguments_, input) => {
+  return async (arguments_, input, files) => {
     const commandOptions = {
       ...options,
       timeoutMs: Math.min(options.timeoutMs, 10_000),
@@ -101,7 +109,10 @@ export function createCodexCliExecutor(options: {
     if (!/Logged in using ChatGPT/i.test(`${login.stdout}\n${login.stderr}`)) {
       throw new Error("Codex ChatGPT subscription is unavailable");
     }
-    const result = await runProcess("codex", arguments_, input, options);
+    const result = await runProcess("codex", arguments_, input, {
+      ...options,
+      ...(files.environment === undefined ? {} : { environment: files.environment }),
+    });
     return { ...result, runtimeVersion };
   };
 }

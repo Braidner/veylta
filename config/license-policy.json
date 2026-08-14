@@ -10,6 +10,34 @@
       "license": "ISC",
       "reason": "Permissive Fastify queue utility; exact transitive version reviewed."
     },
+    "inherits@2.0.4": {
+      "license": "ISC",
+      "reason": "Permissive compatibility helper required by the official Model Context Protocol SDK; exact transitive version reviewed."
+    },
+    "isexe@2.0.0": {
+      "license": "ISC",
+      "reason": "Permissive executable-path helper required by the official Model Context Protocol SDK; exact transitive version reviewed."
+    },
+    "once@1.4.0": {
+      "license": "ISC",
+      "reason": "Permissive callback helper required by the official Model Context Protocol SDK; exact transitive version reviewed."
+    },
+    "setprototypeof@1.2.0": {
+      "license": "ISC",
+      "reason": "Permissive HTTP compatibility helper required by the official Model Context Protocol SDK; exact transitive version reviewed."
+    },
+    "which@2.0.2": {
+      "license": "ISC",
+      "reason": "Permissive executable lookup helper required by the official Model Context Protocol SDK; exact transitive version reviewed."
+    },
+    "wrappy@1.0.2": {
+      "license": "ISC",
+      "reason": "Permissive callback wrapper required by the official Model Context Protocol SDK; exact transitive version reviewed."
+    },
+    "zod-to-json-schema@3.25.2": {
+      "license": "ISC",
+      "reason": "Permissive schema conversion helper required by the official Model Context Protocol SDK; exact transitive version reviewed."
+    },
     "@fontsource-variable/geist@5.2.9": {
       "license": "OFL-1.1",
       "reason": "Exact self-hosted Geist variable font package used by the browser UI; OFL license and notices remain in the installed distribution and THIRD_PARTY_NOTICES.md."

@@ -5,11 +5,14 @@ import {
   AUDIT_LOG_CONTRACT_VERSION,
   type CarePlanProposalResponse,
   type CarePlanResponse,
+  DOCUMENT_AGENT_CONTRACT_VERSION,
+  DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA,
   DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
+  type DocumentAgentConversationResponse,
   type DocumentFactsResponse,
   type DocumentProcessingResponse,
   type DocumentProcessingRetryResponse,
@@ -69,6 +72,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v1");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
   assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v1");
+  assert.equal(DOCUMENT_AGENT_CONTRACT_VERSION, "document-agent/v1");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
@@ -89,6 +93,38 @@ test("public contracts carry explicit versions", () => {
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
+});
+
+test("document agent conversation is Russian, bounded, and keeps Codex provenance", () => {
+  const response = {
+    contractVersion: DOCUMENT_AGENT_CONTRACT_VERSION,
+    documentId: "00000000-0000-4000-8000-000000000001",
+    conversationId: "00000000-0000-4000-8000-000000000002",
+    messages: [
+      {
+        id: "00000000-0000-4000-8000-000000000003",
+        role: "user",
+        text: "Проверь лабораторию и дату биоматериала.",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        provenance: null,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000004",
+        role: "assistant",
+        text: "В исходнике лаборатория не указана. Уточните её название.",
+        createdAt: "2026-08-14T12:00:05.000Z",
+        provenance: {
+          provider: "codex",
+          modelId: "gpt-5.4-mini",
+          runtimeVersion: "codex-cli 0.147.0",
+        },
+      },
+    ],
+  } as const satisfies DocumentAgentConversationResponse;
+
+  assert.equal(response.messages[1].provenance?.provider, "codex");
+  assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.additionalProperties, false);
+  assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.properties.message.maxLength, 2_000);
 });
 
 test("home care plan separates evidence, proposals, and accepted user actions", () => {

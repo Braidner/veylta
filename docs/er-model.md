@@ -62,6 +62,9 @@ erDiagram
   Family ||--o{ AuditEvent : records
   Family ||--o{ ProcessingJob : queues
   ProcessingJob ||--o{ ProcessingRetryRequest : requeued_by
+  Document ||--o| DocumentAgentConversation : discussed_in
+  DocumentAgentConversation ||--o{ DocumentAgentMessage : contains
+  DocumentAgentConversation ||--o{ DocumentAgentMessageRequest : deduplicates
 ```
 
 `ProfileConsentGrant`, Task 20 `HealthSummary`, and Task 33a `CarePlanItem` are
@@ -234,6 +237,28 @@ type without treating the display filename as evidence.
 
 Unique `(document_version_id, page_number)`. Page text is sensitive medical data
 and must not enter general logs.
+
+### DocumentAgentConversation
+
+- `id`, `family_id`, `patient_profile_id`, `document_id`, `document_version_id`
+- `created_by_user_id`, optional immutable `codex_thread_id`
+- optional immutable `model_id`, `runtime_version`
+- `created_at`, `updated_at`
+
+One conversation is bound to one exact document/version. The Codex thread ID is
+local provider provenance, not a credential. Once established it cannot be
+replaced with another thread.
+
+### DocumentAgentMessage / DocumentAgentMessageRequest
+
+- message `id`, tenant/conversation, monotonic `sequence`, `user | assistant`
+  role, bounded text, optional Codex model/runtime provenance, `created_at`
+- request `id`, actor, SHA-256 idempotency digest, request digest, exact user and
+  assistant message IDs, `created_at`
+
+Messages and completed request records are append-only. User text is sensitive
+dialogue data kept in SQLite; audit events store only the `document-agent/v1`
+marker. The short-lived MCP bearer capability is never persisted in this model.
 
 ### ExtractionRun
 

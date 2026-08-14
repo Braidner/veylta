@@ -622,6 +622,37 @@ Status: delivered.
   deterministically, while prior provenance remains retained for later run
   history UX.
 
+### Task 36 — Persistent Codex document dialogue
+
+Commit intent: `feat: add codex document agent runtime`
+
+Status: delivered backend boundary.
+
+- One local, append-only Russian conversation is bound to an exact authorized
+  document and resumes the same Codex thread without copying OAuth tokens or
+  requiring an API key.
+- During each turn Codex receives a fresh short-lived bearer capability and a
+  single read-only `get_document_context` MCP tool. The capability is scoped to
+  the current actor/family/profile/document and is revoked when the CLI exits.
+- The MCP route rejects browser `Origin`, arbitrary document selectors, direct
+  SQLite/filesystem access, and unauthenticated calls. Shell, browser, plugins,
+  memories, apps, collaboration, computer use, and image generation remain
+  disabled in the Codex process.
+- Messages and model/runtime provenance are persisted locally; exact-key
+  replays return the stored exchange without another model call. Audit events
+  contain only the contract version, never the dialogue or medical payload.
+- The first dialogue boundary is read-only: Codex may explain missing context
+  and accept corrections conversationally, but cannot confirm a fact or mutate
+  a document. Explicit action tools remain a separate human-confirmed task.
+
+### Task 37 — Document dialogue interface
+
+Commit intent: `feat(web): add codex document dialogue`
+
+- Render the persisted Russian conversation beside the source-first review.
+- Disclose Codex model-service egress before the first message, keep the source
+  text visually distinct, and show bounded pending/error/replay states.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and

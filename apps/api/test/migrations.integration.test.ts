@@ -544,6 +544,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0019_document_agent");
     assert.equal(await migrateDown(database), "0018_document_reanalysis");
     assert.equal(await tableExists(database, "processing_restart_requests"), false);
     assert.equal(await migrateDown(database), "0017_analyte_catalog");
@@ -641,6 +642,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0016_document_intelligence",
       "0017_analyte_catalog",
       "0018_document_reanalysis",
+      "0019_document_agent",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -782,6 +784,7 @@ test("document intelligence keeps one immutable result per processing run and re
       [fixture.familyId, fixture.documentVersionId],
     );
     assert.equal(Number(results.rows[0]?.count), 2);
+    assert.equal(await migrateDown(database), "0019_document_agent");
     await assert.rejects(() => migrateDown(database));
     assert.equal(await tableExists(database, "processing_restart_requests"), true);
     const preserved = await database.query<{ count: number }>(
@@ -1051,6 +1054,7 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
+    assert.equal(await migrateDown(database), "0019_document_agent");
     assert.equal(await migrateDown(database), "0018_document_reanalysis");
     assert.equal(await migrateDown(database), "0017_analyte_catalog");
     assert.equal(await migrateDown(database), "0016_document_intelligence");
@@ -1145,6 +1149,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0019_document_agent");
     assert.equal(await migrateDown(database), "0018_document_reanalysis");
     assert.equal(await migrateDown(database), "0017_analyte_catalog");
     assert.equal(await migrateDown(database), "0016_document_intelligence");

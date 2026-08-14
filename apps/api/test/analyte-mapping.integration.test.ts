@@ -47,12 +47,14 @@ test("the local analyte catalog maps equivalent laboratory labels without mutati
       },
     );
 
+    assert.equal(await migrateDown(database), "0019_document_agent");
     assert.equal(await migrateDown(database), "0018_document_reanalysis");
     assert.equal(await migrateDown(database), "0017_analyte_catalog");
     await assert.rejects(() => database.query("SELECT * FROM analyte_aliases"), /no such table/);
     assert.deepEqual(await migrateUp(database), [
       "0017_analyte_catalog",
       "0018_document_reanalysis",
+      "0019_document_agent",
     ]);
   } finally {
     await database.close();
