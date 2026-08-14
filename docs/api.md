@@ -105,9 +105,10 @@ create isolated synthetic fixtures in browser/integration tests. The normal
 Creates an opaque local demo identity, session, family, owner membership, and
 first linked adult profile in one transaction. The route is available only when
 `DEMO_REGISTRATION_ENABLED=true`; it is disabled by default and rejected unless
-the API binds to a loopback host. The documented dev runner also binds the web
-proxy to loopback. This is synthetic local-development onboarding, not a
-production authentication or account-recovery mechanism.
+the API and every configured `WEB_ORIGINS` browser origin are loopback-only.
+The E2E runner meets that constraint explicitly. A LAN-accessible deployment
+must leave demo registration disabled. This is synthetic local-development
+onboarding, not a production authentication or account-recovery mechanism.
 
 ```json
 {

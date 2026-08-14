@@ -185,9 +185,14 @@ pnpm db:migrate
 pnpm dev
 ```
 
-The web app is available at <http://127.0.0.1:4300>, the API at
-<http://127.0.0.1:4301>, and worker health at <http://127.0.0.1:4302>. `pnpm dev`
-starts all three application processes. Structured state remains in
+The web app listens on port `4300` on every network interface and is available
+locally at <http://127.0.0.1:4300>. The API remains at
+<http://127.0.0.1:4301>, and worker health remains at
+<http://127.0.0.1:4302>. `pnpm dev` starts all three application processes.
+Browser origins are denied unless they appear exactly in `WEB_ORIGINS`; to use
+the app from the local network, copy `.env.example` to `.env`, replace its
+example LAN address with the server's current address, and open
+`http://<server-lan-address>:4300`. Structured state remains in
 `.local/veylta.sqlite` and document bytes remain below `.local/storage`
 across process restarts. The SQLite connection enables foreign keys, a bounded
 busy timeout, and WAL mode. Defaults match `.env.example`; copy it to `.env`
@@ -247,10 +252,12 @@ it fails closed rather than omitting older data. It is a local synthetic export,
 not a restore or production backup. Account setup asks for no email and stores a
 versioned scrypt password hash. The opaque session token exists only in an
 HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is disabled
-by default and enabled only by the E2E runner for legacy synthetic scenarios,
-while both web and API bind only to loopback.
-`DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
-state-changing requests require the exact configured `WEB_ORIGIN`.
+by default and enabled only by the E2E runner for legacy synthetic scenarios.
+The web proxy can accept trusted LAN clients, while the API, worker health
+endpoint, and document-agent MCP transport remain bound to loopback.
+`DEMO_REGISTRATION_ENABLED=true` is rejected when either the API or any trusted
+web origin is non-loopback, and state-changing requests require an exact match
+in the configured `WEB_ORIGINS` allowlist.
 
 An owner can also use the explicit `profile-archive/v1` workflow to hide a
 non-last active profile. Archiving changes only the profile's reversible access

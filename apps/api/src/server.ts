@@ -56,17 +56,17 @@ registerAccountRoutes(
     secureCookie: config.secureSessionCookie,
     sessionTtlSeconds: config.sessionTtlSeconds,
   }),
-  { allowedMutationOrigins: [config.webOrigin] },
+  { allowedMutationOrigins: config.webOrigins },
 );
 registerFamilyRoutes(app, familyService, {
-  allowedMutationOrigins: [config.webOrigin],
+  allowedMutationOrigins: config.webOrigins,
   demoRegistrationEnabled: config.demoRegistrationEnabled,
 });
 registerHomeSettingsRoutes(
   app,
   familyService,
   createHomeSettingsService(database, storage, createCodexRuntimeProbe(), codexPreferences),
-  { allowedMutationOrigins: [config.webOrigin] },
+  { allowedMutationOrigins: config.webOrigins },
 );
 registerCarePlanRoutes(
   app,
@@ -79,15 +79,15 @@ registerCarePlanRoutes(
     leaseDurationMs: config.codexCarePlanTimeoutMs + 30_000,
   }),
   {
-    allowedMutationOrigins: [config.webOrigin],
+    allowedMutationOrigins: config.webOrigins,
   },
 );
 registerDocumentRoutes(app, familyService, documentService, {
-  allowedMutationOrigins: [config.webOrigin],
+  allowedMutationOrigins: config.webOrigins,
   maxDocumentBytes: config.maxDocumentBytes,
 });
 registerDocumentAgentRoutes(app, familyService, documentAgentService, {
-  allowedMutationOrigins: [config.webOrigin],
+  allowedMutationOrigins: config.webOrigins,
 });
 registerDocumentAgentMcpRoute(app, documentAgentCapabilities, documentAgentService);
 

@@ -55,17 +55,33 @@ function optionalBoolean(name: string): boolean | undefined {
   return boolean(name, false);
 }
 
-function origin(name: string, fallback: string): string {
-  const value = process.env[name] ?? fallback;
-  const parsed = new URL(value);
+function exactOrigin(name: string, value: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`${name} must contain only http(s) origins without paths`);
+  }
   if (parsed.origin !== value || !["http:", "https:"].includes(parsed.protocol)) {
-    throw new Error(`${name} must be an http(s) origin without a path`);
+    throw new Error(`${name} must contain only http(s) origins without paths`);
   }
   return value;
 }
 
+function webOrigins(): readonly string[] {
+  const configured = process.env.WEB_ORIGINS;
+  if (configured === undefined) {
+    return [exactOrigin("WEB_ORIGIN", process.env.WEB_ORIGIN ?? "http://127.0.0.1:4300")];
+  }
+  const values = configured.split(",").map((value) => value.trim());
+  if (values.length > 16 || values.some((value) => value.length === 0)) {
+    throw new Error("WEB_ORIGINS must contain 1 to 16 exact origins");
+  }
+  return [...new Set(values.map((value) => exactOrigin("WEB_ORIGINS", value)))];
+}
+
 function isLoopback(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
+  return host === "127.0.0.1" || host === "::1" || host === "[::1]" || host === "localhost";
 }
 
 function databasePath(): string {
@@ -175,16 +191,23 @@ export interface RuntimeConfig {
   processingRetryDelayMs: number;
   secureSessionCookie: boolean;
   sessionTtlSeconds: number;
-  webOrigin: string;
+  webOrigins: readonly string[];
   workerHealthHost: string;
   workerHealthPort: number;
 }
 
 export function loadConfig(): RuntimeConfig {
   const apiHost = process.env.API_HOST ?? "127.0.0.1";
+  const trustedWebOrigins = webOrigins();
   const demoRegistrationEnabled = boolean("DEMO_REGISTRATION_ENABLED", false);
-  if (demoRegistrationEnabled && !isLoopback(apiHost)) {
-    throw new Error("DEMO_REGISTRATION_ENABLED requires a loopback API_HOST");
+  if (
+    demoRegistrationEnabled &&
+    (!isLoopback(apiHost) ||
+      trustedWebOrigins.some((value) => !isLoopback(new URL(value).hostname)))
+  ) {
+    throw new Error(
+      "DEMO_REGISTRATION_ENABLED requires a loopback API_HOST and loopback WEB_ORIGINS",
+    );
   }
   const maxDocumentBytes = integer("MAX_DOCUMENT_BYTES", MAX_SYNTHETIC_DOCUMENT_BYTES);
   if (maxDocumentBytes > MAX_SYNTHETIC_DOCUMENT_BYTES) {
@@ -218,7 +241,7 @@ export function loadConfig(): RuntimeConfig {
     processingRetryDelayMs: integer("PROCESSING_RETRY_DELAY_MS", 1_000),
     secureSessionCookie: boolean("SESSION_COOKIE_SECURE", false),
     sessionTtlSeconds: integer("SESSION_TTL_SECONDS", 2_592_000),
-    webOrigin: origin("WEB_ORIGIN", "http://127.0.0.1:4300"),
+    webOrigins: trustedWebOrigins,
     workerHealthHost: process.env.WORKER_HEALTH_HOST ?? "127.0.0.1",
     workerHealthPort: integer("WORKER_HEALTH_PORT", 4302),
   };
