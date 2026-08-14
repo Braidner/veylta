@@ -6,6 +6,7 @@ import {
   type CarePlanProposalResponse,
   type CarePlanResponse,
   DOCUMENT_AGENT_CONTRACT_VERSION,
+  DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA,
   DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA,
   DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
@@ -17,7 +18,7 @@ import {
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
   DOCUMENT_SEARCH_CONTRACT_VERSION,
-  type DocumentAgentConversationResponse,
+  type DocumentAgentWorkspaceResponse,
   type DocumentFactsResponse,
   type DocumentIntelligenceResult,
   type DocumentProcessingResponse,
@@ -81,7 +82,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v2");
   assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
   assert.equal(DOCUMENT_LIFECYCLE_CONTRACT_VERSION, "document-lifecycle/v1");
-  assert.equal(DOCUMENT_AGENT_CONTRACT_VERSION, "document-agent/v1");
+  assert.equal(DOCUMENT_AGENT_CONTRACT_VERSION, "document-agent/v2");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
@@ -215,11 +216,22 @@ test("home settings expose only Codex-advertised choices and bounded usage", () 
   assert.equal(response.codex.usageLimits[0].remainingPercent, 35);
 });
 
-test("document agent conversation is Russian, bounded, and keeps Codex provenance", () => {
+test("document agent workspace separates persistent conversations from ephemeral runs", () => {
   const response = {
     contractVersion: DOCUMENT_AGENT_CONTRACT_VERSION,
     documentId: "00000000-0000-4000-8000-000000000001",
-    conversationId: "00000000-0000-4000-8000-000000000002",
+    selectedConversationId: "00000000-0000-4000-8000-000000000002",
+    conversations: [
+      {
+        id: "00000000-0000-4000-8000-000000000002",
+        title: "Уточнение лаборатории",
+        messageCount: 2,
+        lastMessagePreview: "В исходнике лаборатория не указана.",
+        lastMessageAt: "2026-08-14T12:00:05.000Z",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        updatedAt: "2026-08-14T12:00:05.000Z",
+      },
+    ],
     messages: [
       {
         id: "00000000-0000-4000-8000-000000000003",
@@ -240,9 +252,28 @@ test("document agent conversation is Russian, bounded, and keeps Codex provenanc
         },
       },
     ],
-  } as const satisfies DocumentAgentConversationResponse;
+    runs: [
+      {
+        id: "00000000-0000-4000-8000-000000000005",
+        title: "Первичный анализ",
+        state: "completed",
+        attemptCount: 1,
+        createdAt: "2026-08-14T11:58:00.000Z",
+        completedAt: "2026-08-14T11:58:18.000Z",
+        ephemeral: true,
+        provenance: {
+          provider: "codex",
+          modelId: "gpt-5.4-mini",
+          runtimeVersion: "codex-cli 0.147.0",
+        },
+      },
+    ],
+  } as const satisfies DocumentAgentWorkspaceResponse;
 
   assert.equal(response.messages[1].provenance?.provider, "codex");
+  assert.equal(response.runs[0].ephemeral, true);
+  assert.equal(DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA.additionalProperties, false);
+  assert.equal(DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA.properties.title.maxLength, 80);
   assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.additionalProperties, false);
   assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.properties.message.maxLength, 2_000);
 });

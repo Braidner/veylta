@@ -18,6 +18,7 @@ test("document agent persistence is append-only and included in readiness", asyn
         WHERE type = 'table'
           AND name IN (
             'document_agent_conversations',
+            'document_agent_conversation_requests',
             'document_agent_messages',
             'document_agent_message_requests'
           )
@@ -26,6 +27,7 @@ test("document agent persistence is append-only and included in readiness", asyn
     assert.deepEqual(
       tables.rows.map((row) => row.name),
       [
+        "document_agent_conversation_requests",
         "document_agent_conversations",
         "document_agent_message_requests",
         "document_agent_messages",
@@ -41,6 +43,8 @@ test("document agent persistence is append-only and included in readiness", asyn
     assert.deepEqual(
       triggers.rows.map((row) => row.name),
       [
+        "document_agent_conversation_requests_delete_forbidden",
+        "document_agent_conversation_requests_update_forbidden",
         "document_agent_message_requests_delete_forbidden",
         "document_agent_message_requests_update_forbidden",
         "document_agent_messages_delete_forbidden",

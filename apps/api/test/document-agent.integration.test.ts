@@ -84,7 +84,7 @@ async function upload(app: FastifyInstance, owner: Identity): Promise<string> {
   return response.json().document.id as string;
 }
 
-test("document owner holds a replay-safe Russian Codex conversation", async () => {
+test("document owner manages replay-safe Codex threads beside real ephemeral runs", async () => {
   const root = await mkdtemp(join(tmpdir(), "veylta-agent-integration-"));
   const database: Database = createDatabase(join(root, "test.sqlite"));
   await migrateUp(database);
@@ -104,7 +104,11 @@ test("document owner holds a replay-safe Russian Codex conversation", async () =
     async respond(input) {
       runtimeCalls.push({ threadId: input.threadId, message: input.message });
       return {
-        threadId: "10000000-0000-4000-8000-000000000001",
+        threadId:
+          input.threadId ??
+          (input.message.includes("Второй")
+            ? "10000000-0000-4000-8000-000000000002"
+            : "10000000-0000-4000-8000-000000000001"),
         text:
           input.threadId === null
             ? "В исходнике не указана лаборатория. Напишите её название."
@@ -136,16 +140,38 @@ test("document owner holds a replay-safe Russian Codex conversation", async () =
 
     const empty = await app.inject({ method: "GET", url, headers: { cookie: owner.cookie } });
     assert.equal(empty.statusCode, 200);
-    assert.deepEqual(empty.json(), {
-      contractVersion: DOCUMENT_AGENT_CONTRACT_VERSION,
-      documentId,
-      conversationId: null,
-      messages: [],
-    });
+    assert.equal(empty.json().contractVersion, DOCUMENT_AGENT_CONTRACT_VERSION);
+    assert.equal(empty.json().documentId, documentId);
+    assert.equal(empty.json().selectedConversationId, null);
+    assert.deepEqual(empty.json().conversations, []);
+    assert.deepEqual(empty.json().messages, []);
+    assert.equal(empty.json().runs.length, 1);
+    assert.equal(empty.json().runs[0].state, "pending");
+    assert.equal(empty.json().runs[0].ephemeral, true);
+
+    const createConversation = {
+      method: "POST" as const,
+      url: `${url}/conversations`,
+      headers: {
+        cookie: owner.cookie,
+        origin: webOrigin,
+        "idempotency-key": "agent-conversation-one".padEnd(24, "_"),
+      },
+      payload: { title: "Уточнение лаборатории" },
+    };
+    const conversationCreated = await app.inject(createConversation);
+    assert.equal(conversationCreated.statusCode, 201);
+    assert.equal(conversationCreated.json().conversations.length, 1);
+    assert.equal(conversationCreated.json().conversations[0].title, "Уточнение лаборатории");
+    const conversationId = conversationCreated.json().selectedConversationId as string;
+
+    const conversationReplay = await app.inject(createConversation);
+    assert.equal(conversationReplay.statusCode, 200);
+    assert.equal(conversationReplay.json().selectedConversationId, conversationId);
 
     const command = {
       method: "POST" as const,
-      url: `${url}/messages`,
+      url: `${url}/conversations/${conversationId}/messages`,
       headers: {
         cookie: owner.cookie,
         origin: webOrigin,
@@ -174,6 +200,48 @@ test("document owner holds a replay-safe Russian Codex conversation", async () =
     assert.equal(second.statusCode, 201);
     assert.equal(second.json().messages.length, 4);
     assert.equal(runtimeCalls[1]?.threadId, "10000000-0000-4000-8000-000000000001");
+
+    const secondConversation = await app.inject({
+      ...createConversation,
+      headers: {
+        ...createConversation.headers,
+        "idempotency-key": "agent-conversation-two".padEnd(24, "_"),
+      },
+      payload: { title: "Второй разбор" },
+    });
+    assert.equal(secondConversation.statusCode, 201);
+    const secondConversationId = secondConversation.json().selectedConversationId as string;
+    assert.notEqual(secondConversationId, conversationId);
+
+    const secondThreadMessage = await app.inject({
+      method: "POST",
+      url: `${url}/conversations/${secondConversationId}/messages`,
+      headers: {
+        cookie: owner.cookie,
+        origin: webOrigin,
+        "idempotency-key": "agent-second-thread-message".padEnd(28, "_"),
+      },
+      payload: { message: "Второй независимый диалог." },
+    });
+    assert.equal(secondThreadMessage.statusCode, 201);
+    assert.equal(secondThreadMessage.json().messages.length, 2);
+    assert.equal(runtimeCalls[2]?.threadId, null);
+
+    const firstSelected = await app.inject({
+      method: "GET",
+      url: `${url}?conversationId=${conversationId}`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(firstSelected.statusCode, 200);
+    assert.equal(firstSelected.json().selectedConversationId, conversationId);
+    assert.equal(firstSelected.json().messages.length, 4);
+    assert.equal(firstSelected.json().conversations.length, 2);
+
+    const conversationConflict = await app.inject({
+      ...createConversation,
+      payload: { title: "Другой заголовок" },
+    });
+    assert.equal(conversationConflict.statusCode, 409);
 
     const conflict = await app.inject({
       ...command,
@@ -217,7 +285,7 @@ test("document owner holds a replay-safe Russian Codex conversation", async () =
       },
     });
     assert.equal(deletedMessage.statusCode, 404);
-    assert.equal(runtimeCalls.length, 2);
+    assert.equal(runtimeCalls.length, 3);
 
     const audits = await database.query<{ action: string; metadata: string }>(
       `SELECT action, metadata

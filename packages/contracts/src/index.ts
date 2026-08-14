@@ -8,7 +8,7 @@ export const DOCUMENT_CONTRACT_VERSION = "document/v5" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
 export const DOCUMENT_LIFECYCLE_CONTRACT_VERSION = "document-lifecycle/v1" as const;
-export const DOCUMENT_AGENT_CONTRACT_VERSION = "document-agent/v1" as const;
+export const DOCUMENT_AGENT_CONTRACT_VERSION = "document-agent/v2" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
@@ -782,12 +782,59 @@ export interface DocumentAgentMessage {
   } | null;
 }
 
-export interface DocumentAgentConversationResponse {
+export interface DocumentAgentConversationSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly messageCount: number;
+  readonly lastMessagePreview: string | null;
+  readonly lastMessageAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export type DocumentAgentRunState = "pending" | "running" | "retry_wait" | "completed" | "failed";
+
+export interface DocumentAgentRunSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly state: DocumentAgentRunState;
+  readonly attemptCount: number;
+  readonly createdAt: string;
+  readonly completedAt: string | null;
+  readonly ephemeral: true;
+  readonly provenance: {
+    readonly provider: "codex";
+    readonly modelId: string;
+    readonly runtimeVersion: string;
+  } | null;
+}
+
+export interface DocumentAgentWorkspaceResponse {
   readonly contractVersion: typeof DOCUMENT_AGENT_CONTRACT_VERSION;
   readonly documentId: string;
-  readonly conversationId: string | null;
+  readonly selectedConversationId: string | null;
+  readonly conversations: readonly DocumentAgentConversationSummary[];
   readonly messages: readonly DocumentAgentMessage[];
+  readonly runs: readonly DocumentAgentRunSummary[];
 }
+
+export interface DocumentAgentConversationCreateCommand {
+  readonly title: string;
+}
+
+export const DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["title"],
+  properties: {
+    title: {
+      type: "string",
+      minLength: 1,
+      maxLength: 80,
+      pattern: "^\\S(?:[\\s\\S]*\\S)?$",
+    },
+  },
+} as const;
 
 export interface DocumentAgentMessageCommand {
   readonly message: string;

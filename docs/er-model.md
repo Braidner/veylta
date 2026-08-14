@@ -241,13 +241,14 @@ and must not enter general logs.
 ### DocumentAgentConversation
 
 - `id`, `family_id`, `patient_profile_id`, `document_id`, `document_version_id`
-- `created_by_user_id`, optional immutable `codex_thread_id`
+- `created_by_user_id`, bounded `title`, optional immutable `codex_thread_id`
 - optional immutable `model_id`, `runtime_version`
 - `created_at`, `updated_at`
 
-One conversation is bound to one exact document/version. The Codex thread ID is
-local provider provenance, not a credential. Once established it cannot be
-replaced with another thread.
+Up to 20 independent conversations may be bound to one exact document/version.
+The Codex thread ID is local provider provenance, not a credential. Once
+established it cannot be replaced with another thread. Processing jobs are not
+conversations and remain ephemeral from the user's chat history.
 
 ### DocumentAgentMessage / DocumentAgentMessageRequest
 
@@ -256,9 +257,10 @@ replaced with another thread.
 - request `id`, actor, SHA-256 idempotency digest, request digest, exact user and
   assistant message IDs, `created_at`
 
-Messages and completed request records are append-only. User text is sensitive
-dialogue data kept in SQLite; audit events store only the `document-agent/v1`
-marker. The short-lived MCP bearer capability is never persisted in this model.
+Messages and completed request records are append-only. Conversation creation
+has a separate immutable idempotency journal. User text is sensitive dialogue
+data kept in SQLite; audit events store only the `document-agent/v2` marker. The
+short-lived MCP bearer capability is never persisted in this model.
 
 ### ExtractionRun
 

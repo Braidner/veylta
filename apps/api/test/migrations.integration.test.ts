@@ -544,6 +544,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0024_document_agent_threads");
     assert.equal(await migrateDown(database), "0023_document_lifecycle");
     assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
     assert.equal(await migrateDown(database), "0021_codex_preferences");
@@ -651,6 +652,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0021_codex_preferences",
       "0022_document_intelligence_v2",
       "0023_document_lifecycle",
+      "0024_document_agent_threads",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -835,6 +837,7 @@ test("document intelligence v2 stores bounded summaries, generic results, and se
       [fixture.familyId, fixture.documentVersionId],
     );
     assert.equal(Number(results.rows[0]?.count), 2);
+    assert.equal(await migrateDown(database), "0024_document_agent_threads");
     assert.equal(await migrateDown(database), "0023_document_lifecycle");
     await assert.rejects(() => migrateDown(database));
     assert.equal(await tableExists(database, "document_intelligence_results"), true);
@@ -1105,6 +1108,7 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
+    assert.equal(await migrateDown(database), "0024_document_agent_threads");
     assert.equal(await migrateDown(database), "0023_document_lifecycle");
     assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
     assert.equal(await migrateDown(database), "0021_codex_preferences");
@@ -1204,6 +1208,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0024_document_agent_threads");
     assert.equal(await migrateDown(database), "0023_document_lifecycle");
     assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
     assert.equal(await migrateDown(database), "0021_codex_preferences");
@@ -1718,6 +1723,7 @@ test("Codex preferences keep one validated server-wide execution profile", async
         database.query(`UPDATE codex_preferences SET service_tier = 'turbo' WHERE id = 'primary'`),
       "check",
     );
+    assert.equal(await migrateDown(database), "0024_document_agent_threads");
     assert.equal(await migrateDown(database), "0023_document_lifecycle");
     assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
     assert.equal(await migrateDown(database), "0021_codex_preferences");
@@ -1726,6 +1732,7 @@ test("Codex preferences keep one validated server-wide execution profile", async
       "0021_codex_preferences",
       "0022_document_intelligence_v2",
       "0023_document_lifecycle",
+      "0024_document_agent_threads",
     ]);
   } finally {
     await database.close();

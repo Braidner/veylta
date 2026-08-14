@@ -233,9 +233,10 @@ required. Shared code is extracted only when two real consumers need it.
 
 ### Document agent runtime
 
-- Uses the locally authenticated Codex CLI subscription and a persistent Codex
-  thread ID; Veylta never reads, copies, or stores OAuth credentials or API
-  keys.
+- Uses the locally authenticated Codex CLI subscription and one persistent
+  Codex thread ID per named document conversation; Veylta never reads, copies,
+  or stores OAuth credentials or API keys. Real document-processing jobs remain
+  ephemeral and are listed separately from saved conversations.
 - Runs from an empty temporary directory in the read-only sandbox with shell,
   browser, apps, plugins, memories, collaboration, computer use, and image
   generation disabled.
@@ -247,9 +248,9 @@ required. Shared code is extracted only when two real consumers need it.
   exact server-derived scope on every call and returns bounded source-first
   projections, never credentials, storage keys, filesystem paths, or raw file
   bytes.
-- Persists user/assistant messages and Codex model/runtime provenance in
-  SQLite. The first frontend uses ordinary React state and HTTP; no LangGraph
-  orchestration or chat-component framework is introduced.
+- Persists named conversations, user/assistant messages, and Codex model/runtime
+  provenance in SQLite. The frontend uses an ordinary React split-view and
+  HTTP; no LangGraph orchestration or chat-component framework is introduced.
 
 ### Worker
 
