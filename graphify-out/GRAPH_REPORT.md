@@ -1,16 +1,16 @@
 # Graph Report - health  (2026-08-15)
 
 ## Corpus Check
-- 211 files · ~195,768 words
+- 211 files · ~195,803 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 2180 nodes · 3956 edges · 129 communities (116 shown, 13 thin omitted)
+- 2180 nodes · 3956 edges · 130 communities (117 shown, 13 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 4 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `cd731fcb`
+- Built from commit: `b06843a3`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -134,6 +134,7 @@
 - [[_COMMUNITY_Community 122|Community 122]]
 - [[_COMMUNITY_Community 123|Community 123]]
 - [[_COMMUNITY_Community 124|Community 124]]
+- [[_COMMUNITY_Community 125|Community 125]]
 - [[_COMMUNITY_Community 127|Community 127]]
 - [[_COMMUNITY_Community 259|Community 259]]
 - [[_COMMUNITY_Community 301|Community 301]]
@@ -166,7 +167,7 @@
 ## Import Cycles
 - None detected.
 
-## Communities (129 total, 13 thin omitted)
+## Communities (130 total, 13 thin omitted)
 
 ### Community 0 - "Community 0"
 Cohesion: 0.25
@@ -353,8 +354,8 @@ Cohesion: 0.22
 Nodes (9): Assets, First-slice security invariants, Production gate for real data, Scope and status, Security verification, Threat actors and failure modes, Threat model, Threats and required controls (+1 more)
 
 ### Community 50 - "Community 50"
-Cohesion: 0.10
-Nodes (29): DocumentAgentService, DocumentAgentUnavailableError, DocumentAgentParams, DocumentAgentRouteOptions, InvalidDocumentAgentIdempotencyKeyError, paramsSchema, registerDocumentAgentRoutes(), sendAgentError() (+21 more)
+Cohesion: 0.11
+Nodes (26): AccountService, InvalidCredentialsError, newPasswordSchema, passwordSchema, usernameSchema, DocumentAgentService, DocumentAgentUnavailableError, DocumentAgentParams (+18 more)
 
 ### Community 51 - "Community 51"
 Cohesion: 0.13
@@ -397,8 +398,8 @@ Cohesion: 0.13
 Nodes (15): buildDocumentSearchPath(), canBulkConfirmFact(), documentResultMatchesFact(), documentResultMissingFields(), documentResultStatusCopy(), documentResultStatusPriority(), documentResultTypeCopy(), DocumentReviewPanel() (+7 more)
 
 ### Community 65 - "Community 65"
-Cohesion: 0.14
-Nodes (10): AccountService, AccountServiceOptions, AuthenticatedAccountResult, dummyPasswordHash, InvalidCredentialsError, newPasswordSchema, passwordSchema, usernameSchema (+2 more)
+Cohesion: 0.22
+Nodes (4): AccountServiceOptions, AuthenticatedAccountResult, dummyPasswordHash, DomainValidationError
 
 ### Community 66 - "Community 66"
 Cohesion: 0.16
@@ -513,8 +514,8 @@ Cohesion: 0.25
 Nodes (4): cookieFrom(), fixtureUrl, Identity, register()
 
 ### Community 98 - "Community 98"
-Cohesion: 0.09
-Nodes (20): ResourceNotFoundError, AppServerReader, AppServerSnapshot, CodexRuntimeProbe, CodexRuntimeProbeResult, CommandExecutor, CommandResult, createCodexRuntimeProbe() (+12 more)
+Cohesion: 0.14
+Nodes (16): AppServerReader, AppServerSnapshot, CodexRuntimeProbe, CommandExecutor, CommandResult, createCodexRuntimeProbe(), execute, executeCodex() (+8 more)
 
 ### Community 99 - "Community 99"
 Cohesion: 0.33
@@ -600,6 +601,10 @@ Nodes (8): ADR 0003: Extracted facts and confirmed observations, Consequences, C
 Cohesion: 0.33
 Nodes (6): API, Document agent runtime, Runtime responsibilities, SQLite, Web, Worker
 
+### Community 125 - "Community 125"
+Cohesion: 0.11
+Nodes (13): ResourceNotFoundError, CodexRuntimeProbeResult, AccountRow, CodexCatalogUnavailableError, CodexPreferenceUnsupportedError, createHomeSettingsService(), HomeSettingsService, registerHomeSettingsRoutes() (+5 more)
+
 ### Community 259 - "Community 259"
 Cohesion: 0.33
 Nodes (5): ADR 0009: Document knowledge and lifecycle, Consequences, Context, Decision, Rejected alternatives
@@ -618,7 +623,7 @@ _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `ObjectStorageKey` connect `Community 41` to `Community 44`, `Community 19`, `Community 93`, `Community 53`, `Community 119`, `Community 58`, `Community 29`?**
   _High betweenness centrality (0.023) - this node is a cross-community bridge._
-- **Why does `Database` connect `Community 99` to `Community 0`, `Community 29`, `Community 38`, `Community 44`, `Community 51`, `Community 53`, `Community 54`, `Community 58`, `Community 65`, `Community 73`, `Community 75`, `Community 76`, `Community 77`, `Community 81`, `Community 90`, `Community 93`, `Community 94`, `Community 98`, `Community 100`, `Community 101`, `Community 103`, `Community 106`, `Community 112`?**
+- **Why does `Database` connect `Community 99` to `Community 0`, `Community 29`, `Community 38`, `Community 44`, `Community 51`, `Community 53`, `Community 54`, `Community 58`, `Community 65`, `Community 73`, `Community 75`, `Community 76`, `Community 77`, `Community 81`, `Community 90`, `Community 93`, `Community 94`, `Community 100`, `Community 101`, `Community 103`, `Community 106`, `Community 112`, `Community 125`?**
   _High betweenness centrality (0.015) - this node is a cross-community bridge._
 - **Why does `now` connect `Community 44` to `Community 87`?**
   _High betweenness centrality (0.012) - this node is a cross-community bridge._

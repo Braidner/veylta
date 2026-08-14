@@ -500,10 +500,16 @@ function numericSourceValue(value: string | null | undefined): number | null {
 }
 
 function printedUpperRange(fragment: string): number | null {
-  const match = fragment.match(
-    /(?:reference|range|референс(?:ный)?(?:\s+диапазон)?|диапазон|норма)\s*:?\s*[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*(?:—|–|-|до)\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/iu,
+  const oneSided = fragment.match(
+    /(?:<=|<|≤)\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))|(?:до|up\s+to|maximum|max)\s*:?\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/iu,
   );
-  return numericSourceValue(match?.[1]);
+  const oneSidedValue = numericSourceValue(oneSided?.[1] ?? oneSided?.[2]);
+  if (oneSidedValue !== null) return oneSidedValue;
+
+  const interval = fragment.match(
+    /(?:reference|range|референс(?:ный)?(?:\s+диапазон)?|диапазон|норма)\s*:?\s*[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*(?:—|–|-)\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/iu,
+  );
+  return numericSourceValue(interval?.[1]);
 }
 
 function sourceProvesAboveRange(
@@ -701,15 +707,22 @@ function parseOutput(
           result.source.fragment.includes(fact.source.fragment)),
     );
     if (matchingFacts.length > 1) invalidOutput();
-    if (result.status === "above_range" && !sourceProvesAboveRange(result, matchingFacts[0])) {
+    const aboveRange = sourceProvesAboveRange(result, matchingFacts[0]);
+    if (result.status === "above_range" && !aboveRange) {
       invalidOutput();
     }
+    const normalizedResult =
+      aboveRange && result.status !== "above_range"
+        ? ({ ...result, status: "above_range" } as const)
+        : result;
     const sameKeyFact = facts.find((fact) => fact.factKey === result.resultKey);
     if (sameKeyFact !== undefined && !matchingFacts.includes(sameKeyFact)) invalidOutput();
     const resultKey = matchingFacts[0]?.factKey ?? result.resultKey;
     if (linkedResultKeys.has(resultKey)) invalidOutput();
     linkedResultKeys.add(resultKey);
-    return resultKey === result.resultKey ? result : { ...result, resultKey };
+    return resultKey === normalizedResult.resultKey
+      ? normalizedResult
+      : { ...normalizedResult, resultKey };
   });
   return {
     pages,
