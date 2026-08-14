@@ -114,7 +114,7 @@ test("nutrition and movement assistants stay honest when context is absent", () 
 
   assert.equal(model.assistants[1]?.id, "nutrition");
   assert.match(model.assistants[1]?.message ?? "", /недостаточно данных/i);
-  assert.equal(model.assistants[1]?.action.href, "#care-plan");
+  assert.match(model.assistants[1]?.action.href ?? "", /\?tab=plan$/);
   assert.equal(model.assistants[2]?.id, "movement");
   assert.match(model.assistants[2]?.message ?? "", /ограничения/i);
   assert.equal(model.signals.sources.value, "0");

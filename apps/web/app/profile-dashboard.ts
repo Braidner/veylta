@@ -36,6 +36,10 @@ function profilePath(familyId: string, profileId: string): string {
   return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;
 }
 
+function profileTabPath(familyId: string, profileId: string, tab: string): string {
+  return `${profilePath(familyId, profileId)}?tab=${tab}`;
+}
+
 function documentPath(familyId: string, profileId: string, documentId: string): string {
   return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }
@@ -64,7 +68,7 @@ function medicalNavigator(overview: ProfileOverviewResponse): DashboardAssistant
         label: "Проверить значения",
         href:
           firstReview === undefined
-            ? "#overview-review-title"
+            ? `${profileTabPath(overview.profile.familyId, overview.profile.id, "documents")}#overview-review-title`
             : documentPath(overview.profile.familyId, overview.profile.id, firstReview.id),
       },
     };
@@ -96,7 +100,10 @@ function medicalNavigator(overview: ProfileOverviewResponse): DashboardAssistant
       message:
         "Новых решений нет. Последние подтверждённые значения сохранены вместе с документом, страницей и фрагментом.",
       meta: "Без диагноза и скрытых выводов",
-      action: { label: "Открыть историю", href: "#observation-history" },
+      action: {
+        label: "Открыть историю",
+        href: profileTabPath(overview.profile.familyId, overview.profile.id, "history"),
+      },
     };
   }
 
@@ -132,7 +139,10 @@ export function buildProfileDashboardModel(
             ? "Пока недостаточно данных для безопасного предложения. Сначала нужны подтверждённые источники и ваши ограничения."
             : "Могу подготовить черновик для плана заботы только из подтверждённых значений и после вашего решения.",
         meta: "Не назначает рацион и добавки",
-        action: { label: "Открыть план", href: "#care-plan" },
+        action: {
+          label: "Открыть план",
+          href: profileTabPath(overview.profile.familyId, overview.profile.id, "plan"),
+        },
       },
       {
         id: "movement",
@@ -143,7 +153,10 @@ export function buildProfileDashboardModel(
             ? "Чтобы предложить безопасный следующий шаг, сначала укажите ограничения и подтвердите исходные данные."
             : "Могу собрать бережный черновик активности из вашего контекста. Он попадёт в план только после подтверждения.",
         meta: "Не заменяет тренера или врача",
-        action: { label: "Открыть план", href: "#care-plan" },
+        action: {
+          label: "Открыть план",
+          href: profileTabPath(overview.profile.familyId, overview.profile.id, "plan"),
+        },
       },
     ],
     signals: {

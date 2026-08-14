@@ -53,15 +53,28 @@ import {
   ClipboardList,
   Clock3,
   Files,
+  FileUp,
   History,
   House,
   LogOut,
   Search,
   Settings,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
@@ -153,6 +166,19 @@ function profilePath(familyId: string, profileId: string): string {
   return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;
 }
 
+const profileTabs = ["overview", "documents", "history", "plan"] as const;
+type ProfileTab = (typeof profileTabs)[number];
+type WorkspaceTab = ProfileTab | "settings";
+
+function normalizeProfileTab(value: string | undefined): ProfileTab {
+  return profileTabs.includes(value as ProfileTab) ? (value as ProfileTab) : "overview";
+}
+
+function profileTabPath(familyId: string, profileId: string, tab: ProfileTab): string {
+  const base = profilePath(familyId, profileId);
+  return tab === "overview" ? base : `${base}?tab=${tab}`;
+}
+
 function documentPath(familyId: string, profileId: string, documentId: string): string {
   return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }
@@ -229,6 +255,7 @@ interface VeyltaAppProps {
   requestedFamilyId?: string;
   requestedProfileId?: string;
   requestedDocumentId?: string;
+  requestedTab?: string | undefined;
   requestedSettings?: boolean;
 }
 
@@ -236,6 +263,7 @@ export function VeyltaApp({
   requestedFamilyId,
   requestedProfileId,
   requestedDocumentId,
+  requestedTab,
   requestedSettings = false,
 }: VeyltaAppProps) {
   const router = useRouter();
@@ -433,6 +461,12 @@ export function VeyltaApp({
       ? findProfileContext(session, requestedContext.familyId, requestedContext.profileId)
       : undefined;
   const redirectProfile = session === undefined ? undefined : firstProfile(session);
+  const navigationProfile = context?.profile ?? redirectProfile;
+  const activeTab: WorkspaceTab = requestedSettings
+    ? "settings"
+    : requestedDocumentId !== undefined
+      ? "documents"
+      : normalizeProfileTab(requestedTab);
   const pageTitle = requestedSettings
     ? "Настройки — Veylta"
     : context === undefined
@@ -443,62 +477,125 @@ export function VeyltaApp({
     document.title = pageTitle;
   }, [pageTitle]);
 
+  function handleTabKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLAnchorElement>('[role="tab"]'),
+    );
+    const current = tabs.indexOf(document.activeElement as HTMLAnchorElement);
+    if (current < 0 || tabs.length === 0) return;
+
+    event.preventDefault();
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[nextIndex]?.focus();
+    tabs[nextIndex]?.click();
+  }
+
   return (
     <>
       <a className="skip-link" href="#main-content">
         Перейти к содержанию
       </a>
       <header
-        className={context === undefined ? "workspace-bar" : "workspace-bar workspace-bar--profile"}
+        className={
+          navigationProfile === undefined ? "workspace-bar" : "workspace-bar workspace-bar--profile"
+        }
       >
         <Link className="wordmark" href="/" aria-label="Veylta — главная">
           <VeyltaMark className="wordmark__mark" />
           Veylta
         </Link>
-        {context !== undefined ? (
-          <nav className="workspace-primary-nav" aria-label="Основные разделы профиля">
-            <a
-              className="workspace-primary-nav__item workspace-primary-nav__item--active"
-              href="#profile-dashboard"
+        {navigationProfile !== undefined ? (
+          <div
+            className="workspace-primary-nav"
+            aria-label="Основные разделы профиля"
+            role="tablist"
+            onKeyDown={handleTabKeyDown}
+          >
+            <Link
+              id="workspace-tab-overview"
+              className={`workspace-primary-nav__item ${activeTab === "overview" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "overview")}
+              role="tab"
+              aria-selected={activeTab === "overview"}
+              aria-controls="workspace-panel-overview"
+              tabIndex={activeTab === "overview" ? 0 : -1}
             >
               <House size={17} aria-hidden="true" />
               Обзор
-            </a>
-            <a className="workspace-primary-nav__item" href="#document-inbox-title">
+            </Link>
+            <Link
+              id="workspace-tab-documents"
+              className={`workspace-primary-nav__item ${activeTab === "documents" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "documents")}
+              role="tab"
+              aria-selected={activeTab === "documents"}
+              aria-controls="workspace-panel-documents"
+              tabIndex={activeTab === "documents" ? 0 : -1}
+            >
               <Files size={17} aria-hidden="true" />
               Документы
-            </a>
-            <a className="workspace-primary-nav__item" href="#observation-history">
+            </Link>
+            <Link
+              id="workspace-tab-history"
+              className={`workspace-primary-nav__item ${activeTab === "history" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "history")}
+              role="tab"
+              aria-selected={activeTab === "history"}
+              aria-controls="workspace-panel-history"
+              tabIndex={activeTab === "history" ? 0 : -1}
+            >
               <History size={17} aria-hidden="true" />
               История
-            </a>
-            <a className="workspace-primary-nav__item" href="#care-plan">
+            </Link>
+            <Link
+              id="workspace-tab-plan"
+              className={`workspace-primary-nav__item ${activeTab === "plan" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "plan")}
+              role="tab"
+              aria-selected={activeTab === "plan"}
+              aria-controls="workspace-panel-plan"
+              tabIndex={activeTab === "plan" ? 0 : -1}
+            >
               <ClipboardList size={17} aria-hidden="true" />
               План
-            </a>
-          </nav>
+            </Link>
+            {session?.user.role === "admin" ? (
+              <Link
+                id="workspace-tab-settings"
+                className={`workspace-primary-nav__item ${activeTab === "settings" ? "workspace-primary-nav__item--active" : ""}`}
+                href="/settings"
+                role="tab"
+                aria-selected={activeTab === "settings"}
+                aria-controls="workspace-panel-settings"
+                tabIndex={activeTab === "settings" ? 0 : -1}
+              >
+                <Settings size={17} aria-hidden="true" />
+                Настройки
+              </Link>
+            ) : null}
+          </div>
         ) : null}
-        {context !== undefined ? (
-          <a className="workspace-search" href="#indicator-catalog" aria-label="Поиск по архиву">
+        {navigationProfile !== undefined ? (
+          <Link
+            className="workspace-search"
+            href={`${profileTabPath(navigationProfile.familyId, navigationProfile.id, "history")}#indicator-catalog`}
+            aria-label="Поиск по архиву"
+          >
             <Search size={18} aria-hidden="true" />
             <span>Поиск по архиву</span>
-          </a>
+          </Link>
         ) : null}
         <div className="workspace-actions">
           <span className="environment">
             <span aria-hidden="true" />
             Домашний сервер
           </span>
-          {session?.user.role === "admin" ? (
-            <Link
-              className="workspace-icon-action"
-              href={requestedSettings ? "/" : "/settings"}
-              aria-label={requestedSettings ? "Профили" : "Настройки"}
-              title={requestedSettings ? "Профили" : "Настройки"}
-            >
-              {requestedSettings ? <House size={19} /> : <Settings size={19} />}
-            </Link>
-          ) : null}
           {session !== undefined ? (
             <span className="workspace-identity">
               <span aria-hidden="true">{session.user.displayName.slice(0, 2).toUpperCase()}</span>
@@ -566,6 +663,7 @@ export function VeyltaApp({
             family={context.family}
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
+            activeTab={activeTab === "settings" ? "overview" : activeTab}
             addProfileOpen={addProfileOpen}
             action={action}
             error={actionError}
@@ -730,7 +828,13 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
     settings.codex.authenticated && settings.codex.authenticationMode === "chatgpt";
 
   return (
-    <section className="settings-shell" aria-labelledby="settings-title">
+    <section
+      id="workspace-panel-settings"
+      className="settings-shell workspace-tab-panel workspace-tab-panel--settings"
+      role="tabpanel"
+      aria-labelledby="workspace-tab-settings settings-title"
+      aria-label="Настройки"
+    >
       <div className="settings-heading">
         <div>
           <p className="context-line">Управление домашним контуром</p>
@@ -1258,6 +1362,7 @@ interface ProfileWorkspaceProps {
   family: SessionFamily;
   profile: PatientProfileSummary;
   requestedDocumentId: string | undefined;
+  activeTab: ProfileTab;
   addProfileOpen: boolean;
   action: "setup" | "login" | "add-profile" | "logout" | null;
   error: string | null;
@@ -1273,6 +1378,7 @@ function ProfileWorkspace({
   family,
   profile,
   requestedDocumentId,
+  activeTab,
   addProfileOpen,
   action,
   error,
@@ -1287,7 +1393,11 @@ function ProfileWorkspace({
   const ownerCanAddProfile = family.role === "owner";
   const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [selectedUpload, setSelectedUpload] = useState<File | null>(null);
+  const [dragActive, setDragActive] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const uploadDialog = useRef<HTMLDialogElement>(null);
   const uploadAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
   const now = new Date();
   const greeting =
@@ -1298,13 +1408,57 @@ function ProfileWorkspace({
     year: "numeric",
   }).format(now);
 
+  useEffect(() => {
+    const dialog = uploadDialog.current;
+    if (dialog === null) return;
+    if (uploadOpen && !dialog.open) dialog.showModal();
+    if (!uploadOpen && dialog.open) dialog.close();
+  }, [uploadOpen]);
+
+  function openUploadDialog() {
+    setSelectedUpload(null);
+    setDocumentError(null);
+    setDragActive(false);
+    setUploadOpen(true);
+  }
+
+  function closeUploadDialog() {
+    if (uploadPending) return;
+    setUploadOpen(false);
+  }
+
+  function selectUpload(file: File | undefined) {
+    if (file === undefined || file.size === 0) {
+      setSelectedUpload(null);
+      setDocumentError("Выберите один синтетический PDF, PNG или JPEG-файл.");
+      return;
+    }
+    if (!isSupportedSyntheticDocument(file)) {
+      setSelectedUpload(null);
+      setDocumentError("Поддерживаются только синтетические PDF, PNG и JPEG-файлы.");
+      return;
+    }
+    if (file.size > MAX_SYNTHETIC_DOCUMENT_BYTES) {
+      setSelectedUpload(null);
+      setDocumentError("Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.");
+      return;
+    }
+    setSelectedUpload(file);
+    setDocumentError(null);
+  }
+
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    selectUpload(event.dataTransfer.files[0]);
+  }
+
   async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setDocumentError(null);
 
-    const form = new FormData(event.currentTarget);
-    const file = form.get("file");
-    if (!(file instanceof File) || file.size === 0) {
+    const file = selectedUpload;
+    if (file === null || file.size === 0) {
       setDocumentError("Выберите один синтетический PDF, PNG или JPEG-файл.");
       return;
     }
@@ -1331,6 +1485,7 @@ function ProfileWorkspace({
         },
       );
       uploadAttempt.current = null;
+      setUploadOpen(false);
       router.push(documentPath(family.id, profile.id, response.document.id));
     } catch (error) {
       if (error instanceof ApiError && [400, 409, 413, 415].includes(error.status)) {
@@ -1343,7 +1498,10 @@ function ProfileWorkspace({
   }
 
   return (
-    <section className="profile-shell" aria-labelledby="profile-title">
+    <section
+      className={`profile-shell profile-shell--${requestedDocumentId === undefined ? activeTab : "documents"}`}
+      aria-labelledby="profile-title"
+    >
       <div className="profile-heading">
         <div>
           <p className="context-line">
@@ -1392,16 +1550,17 @@ function ProfileWorkspace({
             </select>
           </label>
           {canWriteProfile ? (
-            <a
+            <button
               className="profile-heading__upload"
-              href="#document-inbox-title"
+              type="button"
               aria-label="Загрузить документ"
+              onClick={openUploadDialog}
             >
               Загрузить
               <span aria-hidden="true">
                 <ArrowRight size={18} />
               </span>
-            </a>
+            </button>
           ) : null}
         </div>
       </div>
@@ -1412,149 +1571,286 @@ function ProfileWorkspace({
         </p>
       ) : null}
 
-      {requestedDocumentId === undefined ? (
-        <ProfileOverviewPanel
-          key={`overview:${family.id}:${profile.id}`}
-          familyId={family.id}
-          profileId={profile.id}
-          canWriteProfile={canWriteProfile}
-        />
+      {requestedDocumentId === undefined && activeTab === "overview" ? (
+        <div
+          id="workspace-panel-overview"
+          className="workspace-tab-panel workspace-tab-panel--overview"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-overview"
+          aria-label="Обзор"
+        >
+          <ProfileOverviewPanel
+            key={`overview:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            canWriteProfile={canWriteProfile}
+            view="dashboard"
+            onUpload={openUploadDialog}
+          />
+        </div>
       ) : null}
 
-      <div className="profile-workspace">
-        <div className="profile-workspace__main">
-          {requestedDocumentId === undefined ? (
-            <>
-              <HealthSummaryPanel
-                key={`summary:${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-              />
+      {requestedDocumentId === undefined && activeTab === "documents" ? (
+        <div
+          id="workspace-panel-documents"
+          className="workspace-tab-panel workspace-tab-panel--documents"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-documents"
+          aria-label="Документы"
+        >
+          <div className="profile-workspace">
+            <div className="profile-workspace__main">
               {canWriteProfile ? (
-                <DocumentInbox
-                  pending={uploadPending}
-                  error={documentError}
-                  onSubmit={handleDocumentUpload}
-                />
+                <DocumentInbox onUpload={openUploadDialog} />
               ) : (
-                <section className="read-only-profile" aria-labelledby="read-only-profile-title">
-                  <p className="context-line">Только чтение</p>
-                  <h2 id="read-only-profile-title">Доступ выдан владельцем профиля</h2>
-                  <p>
-                    Здесь можно читать источник и подтверждённую историю. Загрузка, повторная
-                    обработка и проверка извлечений остаются только у владельца или личного профиля.
-                  </p>
-                </section>
+                <ReadOnlyProfileNotice />
               )}
-              <ObservationHistoryPanel
-                key={`${family.id}:${profile.id}`}
+              <ProfileOverviewPanel
+                key={`documents:${family.id}:${profile.id}`}
                 familyId={family.id}
                 profileId={profile.id}
+                canWriteProfile={canWriteProfile}
+                view="documents"
+                onUpload={openUploadDialog}
               />
-              <IndicatorCatalogPanel
-                key={`indicators:${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-              />
-            </>
-          ) : (
-            <DocumentView
+            </div>
+            <ProfileManagementRail
               family={family}
               profile={profile}
-              documentId={requestedDocumentId}
-              canWriteProfile={canWriteProfile}
+              ownerCanAddProfile={ownerCanAddProfile}
+              addProfileOpen={addProfileOpen}
+              action={action}
+              error={error}
+              onAddProfileToggle={onAddProfileToggle}
+              onAddProfile={onAddProfile}
+              onProfileArchived={onProfileArchived}
+              onProfileRestored={onProfileRestored}
             />
-          )}
+          </div>
         </div>
+      ) : null}
 
-        <aside className="workspace-rail" aria-label="Действия с профилем">
-          {requestedDocumentId !== undefined ? (
-            <div className="rail-section">
-              <h2>Другой документ</h2>
-              <p>Вернитесь в профиль, чтобы загрузить следующий синтетический исходник.</p>
-              <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
-                Загрузить ещё документ
-              </Link>
+      {requestedDocumentId === undefined && activeTab === "history" ? (
+        <div
+          id="workspace-panel-history"
+          className="workspace-tab-panel workspace-tab-panel--history"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-history"
+          aria-label="История"
+        >
+          <ObservationHistoryPanel
+            key={`${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+          />
+          <IndicatorCatalogPanel
+            key={`indicators:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+          />
+        </div>
+      ) : null}
+
+      {requestedDocumentId === undefined && activeTab === "plan" ? (
+        <div
+          id="workspace-panel-plan"
+          className="workspace-tab-panel workspace-tab-panel--plan"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-plan"
+          aria-label="План"
+        >
+          <HealthSummaryPanel
+            key={`summary:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+          />
+          <CarePlanPanel
+            familyId={family.id}
+            profileId={profile.id}
+            canWriteProfile={canWriteProfile}
+          />
+        </div>
+      ) : null}
+
+      {requestedDocumentId !== undefined ? (
+        <div
+          id="workspace-panel-documents"
+          className="workspace-tab-panel workspace-tab-panel--documents"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-documents"
+          aria-label="Документы"
+        >
+          <div className="profile-workspace">
+            <div className="profile-workspace__main">
+              <DocumentView
+                family={family}
+                profile={profile}
+                documentId={requestedDocumentId}
+                canWriteProfile={canWriteProfile}
+              />
             </div>
-          ) : null}
-
-          {ownerCanAddProfile ? (
-            <div className="profile-addition">
-              <h2>Семейные профили</h2>
-              <p>Добавьте человека без отдельного входа, если это нужно для проверки сценария.</p>
-              <button
-                className="button button--secondary"
-                type="button"
-                aria-expanded={addProfileOpen}
-                aria-controls="add-profile-form"
-                onClick={onAddProfileToggle}
-              >
-                {addProfileOpen ? "Закрыть форму" : "Добавить профиль"}
-              </button>
-
-              {addProfileOpen ? (
-                <form
-                  id="add-profile-form"
-                  className="inline-form"
-                  onSubmit={(event) => onAddProfile(event, family)}
+            <aside className="workspace-rail" aria-label="Действия с документом">
+              <div className="rail-section">
+                <h2>Другой документ</h2>
+                <p>Вернитесь в архив или загрузите следующий синтетический исходник.</p>
+                <Link
+                  className="button button--secondary"
+                  href={profileTabPath(family.id, profile.id, "documents")}
                 >
-                  <div>
-                    <h3>Зависимый профиль</h3>
-                    <p>Для ребёнка или другого человека без отдельного входа.</p>
-                  </div>
-                  <label className="field">
-                    <span>Имя нового профиля</span>
-                    <input
-                      name="profileName"
-                      type="text"
-                      required
-                      minLength={1}
-                      maxLength={120}
-                      autoComplete="off"
-                      placeholder="Например, Подопечный 01"
-                      disabled={action === "add-profile"}
-                    />
-                  </label>
-                  {error !== null ? (
-                    <p className="form-error" role="alert">
-                      {error}
-                    </p>
-                  ) : null}
+                  Открыть документы
+                </Link>
+                {canWriteProfile ? (
                   <button
-                    className="button button--primary"
-                    type="submit"
-                    disabled={action === "add-profile"}
+                    className="button button--secondary"
+                    type="button"
+                    onClick={openUploadDialog}
                   >
-                    {action === "add-profile" ? "Создаём…" : "Создать профиль"}
+                    Загрузить ещё документ
                   </button>
-                </form>
-              ) : null}
-            </div>
-          ) : null}
-          {family.role === "owner" ? (
-            <ProfileArchivePanel
-              key={`archive:${family.id}:${profile.id}`}
-              familyId={family.id}
-              profile={profile}
-              activeProfileCount={family.profiles.length}
-              onArchived={onProfileArchived}
-              onRestored={onProfileRestored}
-            />
-          ) : null}
-          {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
-          {family.role === "owner" ? (
-            <ProfileConsentPanel
-              key={`consent:${family.id}:${profile.id}`}
-              familyId={family.id}
-              profileId={profile.id}
-            />
-          ) : null}
-          {family.role === "owner" ? (
-            <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
-          ) : null}
-        </aside>
-      </div>
+                ) : null}
+              </div>
+            </aside>
+          </div>
+        </div>
+      ) : null}
+
+      {canWriteProfile ? (
+        <DocumentUploadDialog
+          dialogRef={uploadDialog}
+          open={uploadOpen}
+          pending={uploadPending}
+          selectedFile={selectedUpload}
+          error={documentError}
+          dragActive={dragActive}
+          onClose={closeUploadDialog}
+          onClosed={() => {
+            setUploadOpen(false);
+            setSelectedUpload(null);
+            setDocumentError(null);
+            setDragActive(false);
+          }}
+          onDragActiveChange={setDragActive}
+          onDrop={handleDrop}
+          onSelect={selectUpload}
+          onSubmit={handleDocumentUpload}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function ReadOnlyProfileNotice() {
+  return (
+    <section className="read-only-profile" aria-labelledby="read-only-profile-title">
+      <p className="context-line">Только чтение</p>
+      <h2 id="read-only-profile-title">Доступ выдан владельцем профиля</h2>
+      <p>
+        Здесь можно читать источник и подтверждённую историю. Загрузка, повторная обработка и
+        проверка извлечений остаются только у владельца или личного профиля.
+      </p>
+    </section>
+  );
+}
+
+function ProfileManagementRail({
+  family,
+  profile,
+  ownerCanAddProfile,
+  addProfileOpen,
+  action,
+  error,
+  onAddProfileToggle,
+  onAddProfile,
+  onProfileArchived,
+  onProfileRestored,
+}: {
+  family: SessionFamily;
+  profile: PatientProfileSummary;
+  ownerCanAddProfile: boolean;
+  addProfileOpen: boolean;
+  action: "setup" | "login" | "add-profile" | "logout" | null;
+  error: string | null;
+  onAddProfileToggle: () => void;
+  onAddProfile: (event: FormEvent<HTMLFormElement>, family: SessionFamily) => void;
+  onProfileArchived: () => Promise<void>;
+  onProfileRestored: () => Promise<void>;
+}) {
+  return (
+    <aside className="workspace-rail" aria-label="Действия с профилем">
+      {ownerCanAddProfile ? (
+        <div className="profile-addition">
+          <h2>Семейные профили</h2>
+          <p>Добавьте человека без отдельного входа, если это нужно для проверки сценария.</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            aria-expanded={addProfileOpen}
+            aria-controls="add-profile-form"
+            onClick={onAddProfileToggle}
+          >
+            {addProfileOpen ? "Закрыть форму" : "Добавить профиль"}
+          </button>
+          {addProfileOpen ? (
+            <form
+              id="add-profile-form"
+              className="inline-form"
+              onSubmit={(event) => onAddProfile(event, family)}
+            >
+              <div>
+                <h3>Зависимый профиль</h3>
+                <p>Для ребёнка или другого человека без отдельного входа.</p>
+              </div>
+              <label className="field">
+                <span>Имя нового профиля</span>
+                <input
+                  name="profileName"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Например, Подопечный 01"
+                  disabled={action === "add-profile"}
+                />
+              </label>
+              {error !== null ? (
+                <p className="form-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={action === "add-profile"}
+              >
+                {action === "add-profile" ? "Создаём…" : "Создать профиль"}
+              </button>
+            </form>
+          ) : null}
+        </div>
+      ) : null}
+      {family.role === "owner" ? (
+        <ProfileArchivePanel
+          key={`archive:${family.id}:${profile.id}`}
+          familyId={family.id}
+          profile={profile}
+          activeProfileCount={family.profiles.length}
+          onArchived={onProfileArchived}
+          onRestored={onProfileRestored}
+        />
+      ) : null}
+      {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
+      {family.role === "owner" ? (
+        <ProfileConsentPanel
+          key={`consent:${family.id}:${profile.id}`}
+          familyId={family.id}
+          profileId={profile.id}
+        />
+      ) : null}
+      {family.role === "owner" ? (
+        <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
+      ) : null}
+    </aside>
   );
 }
 
@@ -2210,10 +2506,14 @@ function ProfileOverviewPanel({
   familyId,
   profileId,
   canWriteProfile,
+  view,
+  onUpload,
 }: {
   familyId: string;
   profileId: string;
   canWriteProfile: boolean;
+  view: "dashboard" | "documents";
+  onUpload: () => void;
 }) {
   const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
 
@@ -2241,13 +2541,14 @@ function ProfileOverviewPanel({
 
   return (
     <section
-      id="profile-dashboard"
-      className="profile-overview"
+      id={view === "dashboard" ? "profile-dashboard" : "document-archive"}
+      className={`profile-overview profile-overview--${view}`}
       aria-labelledby="profile-overview-title"
+      aria-label={view === "dashboard" ? "Обзор профиля" : "Архив документов"}
       aria-busy={state.kind === "loading"}
     >
       <h2 id="profile-overview-title" className="visually-hidden">
-        Обзор профиля
+        {view === "dashboard" ? "Обзор профиля" : "Архив документов"}
       </h2>
 
       {state.kind === "loading" ? (
@@ -2272,183 +2573,140 @@ function ProfileOverviewPanel({
       ) : null}
 
       {state.kind === "ready" ? (
-        <>
-          <ProfileDashboard overview={state.overview} />
-
-          {canWriteProfile ? (
-            <details className="profile-overview__exports">
-              <summary>Экспорт источников</summary>
-              <div>
-                <p className="profile-overview__export">
-                  <a
-                    className="text-link"
-                    href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-                    download
-                  >
-                    Скачать локальный пакет источников
-                  </a>
-                  <span>До 5 синтетических исходников; это не резервная копия.</span>
-                </p>
-                <p className="profile-overview__export">
-                  <a
-                    className="text-link"
-                    href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
-                    download
-                  >
-                    Скачать полный synthetic-экспорт профиля
-                  </a>
-                  <span>Все источники и подтверждённые записи в пределах локального лимита.</span>
-                </p>
-              </div>
-            </details>
-          ) : null}
-
-          <CarePlanPanel
-            familyId={familyId}
-            profileId={profileId}
-            canWriteProfile={canWriteProfile}
-          />
-
-          <div className="profile-overview__sections">
-            <section className="profile-overview__section" aria-labelledby="overview-review-title">
-              <div className="profile-overview__section-heading">
+        view === "dashboard" ? (
+          <ProfileDashboard overview={state.overview} onUpload={onUpload} />
+        ) : (
+          <>
+            {canWriteProfile ? (
+              <details className="profile-overview__exports">
+                <summary>Экспорт источников</summary>
                 <div>
-                  <p className="context-line">Следующее действие</p>
-                  <h3 id="overview-review-title">Проверка исходников</h3>
-                </div>
-                <span className="profile-overview__count">
-                  <span className="visually-hidden">Документов в очереди: </span>
-                  {state.overview.reviewQueue.documentCount}
-                </span>
-              </div>
-              {state.overview.reviewQueue.documentCount === 0 ? (
-                <div className="profile-overview__empty">
-                  <p>
-                    Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
-                  </p>
-                </div>
-              ) : (
-                <ol className="profile-overview__list">
-                  {state.overview.reviewQueue.documents.map((document) => (
-                    <li key={document.id} className="profile-overview__row">
-                      <div>
-                        <strong>{document.originalFilename}</strong>
-                        <span>
-                          {factCountCopy(document.pendingFactCount)} ждут решения
-                          {document.needsAttentionFactCount > 0
-                            ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
-                            : ""}
-                        </span>
-                      </div>
-                      <Link
-                        className="text-link"
-                        href={documentPath(familyId, profileId, document.id)}
-                      >
-                        Открыть проверку
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {state.overview.reviewQueue.documentCount >
-              state.overview.reviewQueue.documents.length ? (
-                <p className="profile-overview__more">
-                  Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
-                  очереди.
-                </p>
-              ) : null}
-            </section>
-
-            <section
-              className="profile-overview__section"
-              aria-labelledby="overview-documents-title"
-            >
-              <div className="profile-overview__section-heading">
-                <div>
-                  <p className="context-line">Неизменяемые байты</p>
-                  <h3 id="overview-documents-title">Архив исходников</h3>
-                </div>
-              </div>
-              {state.overview.recentDocuments.length === 0 ? (
-                <div className="profile-overview__empty">
-                  <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
-                  {canWriteProfile ? (
-                    <a className="text-link" href="#document-inbox-title">
-                      Добавить исходник
+                  <p className="profile-overview__export">
+                    <a
+                      className="text-link"
+                      href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+                      download
+                    >
+                      Скачать локальный пакет источников
                     </a>
-                  ) : null}
-                </div>
-              ) : (
-                <ol className="profile-overview__list">
-                  {state.overview.recentDocuments.map((document) => (
-                    <li key={document.id} className="profile-overview__row">
-                      <div>
-                        <strong>{document.originalFilename}</strong>
-                        <span>
-                          {documentKindLabel(document.contentType)} ·{" "}
-                          {formatDate(document.uploadedAt)} ·{" "}
-                          {profileOverviewProcessingCopy(document.processing)}
-                        </span>
-                      </div>
-                      <Link
-                        className="text-link"
-                        href={documentPath(familyId, profileId, document.id)}
-                      >
-                        Открыть источник
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-
-            <section
-              className="profile-overview__section"
-              aria-labelledby="overview-observations-title"
-            >
-              <div className="profile-overview__section-heading">
-                <div>
-                  <p className="context-line">Явно подтверждено</p>
-                  <h3 id="overview-observations-title">Последние значения</h3>
-                </div>
-                <a className="text-link" href="#observation-history">
-                  Вся история
-                </a>
-              </div>
-              {state.overview.recentObservations.length === 0 ? (
-                <div className="profile-overview__empty">
-                  <p>
-                    Подтверждённых значений пока нет. Они появятся здесь только после явного
-                    решения.
+                    <span>До 5 синтетических исходников; это не резервная копия.</span>
+                  </p>
+                  <p className="profile-overview__export">
+                    <a
+                      className="text-link"
+                      href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
+                      download
+                    >
+                      Скачать полный synthetic-экспорт профиля
+                    </a>
+                    <span>Все источники и подтверждённые записи в пределах локального лимита.</span>
                   </p>
                 </div>
-              ) : (
-                <ol className="profile-overview__list">
-                  {state.overview.recentObservations.map((observation) => (
-                    <li key={observation.id} className="profile-overview__row">
-                      <div>
-                        <strong>
-                          {observation.source.name}: {observation.source.value}{" "}
-                          {observation.source.unit}
-                        </strong>
-                        <span>
-                          Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
-                          {observation.sourceDocument.pageNumber}
-                        </span>
-                      </div>
-                      <Link
-                        className="text-link"
-                        href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+              </details>
+            ) : null}
+
+            <div className="profile-overview__sections">
+              <section
+                className="profile-overview__section"
+                aria-labelledby="overview-review-title"
+              >
+                <div className="profile-overview__section-heading">
+                  <div>
+                    <p className="context-line">Следующее действие</p>
+                    <h3 id="overview-review-title">Проверка исходников</h3>
+                  </div>
+                  <span className="profile-overview__count">
+                    <span className="visually-hidden">Документов в очереди: </span>
+                    {state.overview.reviewQueue.documentCount}
+                  </span>
+                </div>
+                {state.overview.reviewQueue.documentCount === 0 ? (
+                  <div className="profile-overview__empty">
+                    <p>
+                      Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                    </p>
+                  </div>
+                ) : (
+                  <ol className="profile-overview__list">
+                    {state.overview.reviewQueue.documents.map((document) => (
+                      <li key={document.id} className="profile-overview__row">
+                        <div>
+                          <strong>{document.originalFilename}</strong>
+                          <span>
+                            {factCountCopy(document.pendingFactCount)} ждут решения
+                            {document.needsAttentionFactCount > 0
+                              ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                              : ""}
+                          </span>
+                        </div>
+                        <Link
+                          className="text-link"
+                          href={documentPath(familyId, profileId, document.id)}
+                        >
+                          Открыть проверку
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {state.overview.reviewQueue.documentCount >
+                state.overview.reviewQueue.documents.length ? (
+                  <p className="profile-overview__more">
+                    Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
+                    очереди.
+                  </p>
+                ) : null}
+              </section>
+
+              <section
+                className="profile-overview__section"
+                aria-labelledby="overview-documents-title"
+              >
+                <div className="profile-overview__section-heading">
+                  <div>
+                    <p className="context-line">Неизменяемые байты</p>
+                    <h3 id="overview-documents-title">Архив исходников</h3>
+                  </div>
+                </div>
+                {state.overview.recentDocuments.length === 0 ? (
+                  <div className="profile-overview__empty">
+                    <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
+                    {canWriteProfile ? (
+                      <button
+                        className="text-link text-link--button"
+                        type="button"
+                        onClick={onUpload}
                       >
-                        Открыть источник
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-          </div>
-        </>
+                        Добавить исходник
+                      </button>
+                    ) : null}
+                  </div>
+                ) : (
+                  <ol className="profile-overview__list">
+                    {state.overview.recentDocuments.map((document) => (
+                      <li key={document.id} className="profile-overview__row">
+                        <div>
+                          <strong>{document.originalFilename}</strong>
+                          <span>
+                            {documentKindLabel(document.contentType)} ·{" "}
+                            {formatDate(document.uploadedAt)} ·{" "}
+                            {profileOverviewProcessingCopy(document.processing)}
+                          </span>
+                        </div>
+                        <Link
+                          className="text-link"
+                          href={documentPath(familyId, profileId, document.id)}
+                        >
+                          Открыть источник
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+              </section>
+            </div>
+          </>
+        )
       ) : null}
     </section>
   );
@@ -3184,9 +3442,9 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
             Сводка появится после завершения проверки хотя бы одного документа: все извлечённые
             значения должны получить явное решение.
           </p>
-          <a className="text-link" href="#document-inbox-title">
+          <Link className="text-link" href={profileTabPath(familyId, profileId, "documents")}>
             Добавить или проверить источник
-          </a>
+          </Link>
         </div>
       ) : null}
 
@@ -3388,20 +3646,26 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
   );
 }
 
-interface DocumentInboxProps {
-  pending: boolean;
-  error: string | null;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+const supportedSyntheticDocumentTypes = new Set(["application/pdf", "image/png", "image/jpeg"]);
+
+function isSupportedSyntheticDocument(file: File): boolean {
+  if (supportedSyntheticDocumentTypes.has(file.type.toLowerCase())) return true;
+  return /\.(pdf|png|jpe?g)$/i.test(file.name);
 }
 
-function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
+function formatUploadSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
+}
+
+function DocumentInbox({ onUpload }: { onUpload: () => void }) {
   return (
     <section className="document-inbox" aria-labelledby="document-inbox-title">
       <span className="source-mark" aria-hidden="true">
         PDF · PNG · JPEG
       </span>
       <p className="context-line">Исходные документы</p>
-      <h2 id="document-inbox-title">Добавьте синтетический исходник</h2>
+      <h2 id="document-inbox-title">Документы профиля</h2>
       <p className="document-intro">
         Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Затем локальная
         детерминированная обработка поставит в очередь черновое извлечение значений для проверки.
@@ -3411,37 +3675,149 @@ function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
         <strong>Не загружайте реальные медицинские данные.</strong>
         <span> Контур принимает только вымышленные PDF, PNG и JPEG до 5 МБ.</span>
       </div>
+      <button className="button button--primary" type="button" onClick={onUpload}>
+        <FileUp size={18} aria-hidden="true" />
+        Загрузить документ
+      </button>
+    </section>
+  );
+}
 
-      <form className="upload-form" onSubmit={onSubmit} aria-busy={pending}>
-        <label className="file-field">
-          <span>Синтетический документ</span>
+interface DocumentUploadDialogProps {
+  dialogRef: RefObject<HTMLDialogElement | null>;
+  open: boolean;
+  pending: boolean;
+  selectedFile: File | null;
+  error: string | null;
+  dragActive: boolean;
+  onClose: () => void;
+  onClosed: () => void;
+  onDragActiveChange: (active: boolean) => void;
+  onDrop: (event: DragEvent<HTMLLabelElement>) => void;
+  onSelect: (file: File | undefined) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}
+
+function DocumentUploadDialog({
+  dialogRef,
+  open,
+  pending,
+  selectedFile,
+  error,
+  dragActive,
+  onClose,
+  onClosed,
+  onDragActiveChange,
+  onDrop,
+  onSelect,
+  onSubmit,
+}: DocumentUploadDialogProps) {
+  return (
+    <dialog
+      ref={dialogRef}
+      className="upload-dialog"
+      aria-labelledby="upload-dialog-title"
+      data-state={open ? "open" : "closed"}
+      onClose={onClosed}
+      onCancel={(event) => {
+        if (pending) event.preventDefault();
+      }}
+    >
+      <form className="upload-dialog__surface" onSubmit={onSubmit} aria-busy={pending}>
+        <div className="upload-dialog__heading">
+          <div>
+            <p className="context-line">Новый источник</p>
+            <h2 id="upload-dialog-title">Загрузить синтетический документ</h2>
+            <p>Оригинал останется локально и неизменяемо свяжется с результатом проверки.</p>
+          </div>
+          <button
+            className="workspace-icon-action upload-dialog__close"
+            type="button"
+            aria-label="Закрыть загрузку"
+            onClick={onClose}
+            disabled={pending}
+          >
+            <X size={19} aria-hidden="true" />
+          </button>
+        </div>
+
+        <label
+          className={`upload-dropzone ${dragActive ? "upload-dropzone--active" : ""} ${selectedFile !== null ? "upload-dropzone--selected" : ""}`}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            onDragActiveChange(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            onDragActiveChange(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              onDragActiveChange(false);
+            }
+          }}
+          onDrop={onDrop}
+        >
           <input
-            name="file"
+            className="visually-hidden"
+            aria-label="Синтетический документ"
             type="file"
             accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
-            required
             disabled={pending}
-            aria-describedby="document-requirements"
+            onChange={(event) => onSelect(event.currentTarget.files?.[0])}
           />
+          <span className="upload-dropzone__icon" aria-hidden="true">
+            <FileUp size={26} strokeWidth={1.7} />
+          </span>
+          {selectedFile === null ? (
+            <span className="upload-dropzone__copy">
+              <strong>Перетащите файл сюда</strong>
+              <span>или нажмите, чтобы выбрать на диске</span>
+            </span>
+          ) : (
+            <span className="upload-dropzone__copy">
+              <strong>{selectedFile.name}</strong>
+              <span>{formatUploadSize(selectedFile.size)} · готов к локальной проверке</span>
+            </span>
+          )}
+          <span className="upload-dropzone__formats">PDF · PNG · JPEG · до 5 МБ</span>
         </label>
-        <p id="document-requirements" className="form-note">
-          Один PDF, PNG или JPEG, не больше 5 МБ. Имя файла используется только для отображения.
-        </p>
+
+        <div className="synthetic-reminder" role="note">
+          <strong>Не загружайте реальные медицинские данные.</strong>
+          <span> Этот demo-контур предназначен только для вымышленных документов.</span>
+        </div>
+
         {error !== null ? (
           <p className="form-error" role="alert">
             {error}
           </p>
         ) : null}
-        <button className="button button--primary" type="submit" disabled={pending}>
-          {pending ? "Сохраняем исходник…" : "Загрузить исходник"}
-        </button>
+
+        <div className="upload-dialog__actions">
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+          >
+            Отмена
+          </button>
+          <button
+            className="button button--primary"
+            type="submit"
+            disabled={pending || selectedFile === null}
+          >
+            {pending ? "Сохраняем исходник…" : "Загрузить исходник"}
+          </button>
+        </div>
         {pending ? (
           <p className="form-note" role="status">
-            Загружаем и проверяем исходник…
+            Загружаем, проверяем тип и считаем SHA-256…
           </p>
         ) : null}
       </form>
-    </section>
+    </dialog>
   );
 }
 
@@ -4262,7 +4638,10 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
           Документа нет или у этой сессии нет к нему доступа. Дополнительные сведения не
           раскрываются.
         </p>
-        <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
+        <Link
+          className="button button--secondary"
+          href={profileTabPath(family.id, profile.id, "documents")}
+        >
           Вернуться в профиль
         </Link>
       </section>
@@ -4291,7 +4670,7 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
 
   return (
     <section className="document-view" aria-labelledby="document-title">
-      <Link className="back-link" href={profilePath(family.id, profile.id)}>
+      <Link className="back-link" href={profileTabPath(family.id, profile.id, "documents")}>
         ← {profile.displayName}
       </Link>
       <p className="document-state">
@@ -4895,7 +5274,7 @@ function DocumentReviewPanel({
         </p>
         <Link
           className="document-review__history-link"
-          href={`${profilePath(familyId, profileId)}#observation-history`}
+          href={profileTabPath(familyId, profileId, "history")}
         >
           Открыть историю подтверждённых значений
         </Link>

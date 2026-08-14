@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { createSyntheticLabImage } from "../apps/api/test/synthetic-lab-image.js";
+import { uploadSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -34,10 +35,7 @@ async function uploadPdf(
   buffer: Buffer,
   mimeType = "application/pdf",
 ) {
-  await page
-    .getByLabel("Синтетический документ", { exact: true })
-    .setInputFiles({ name: filename, mimeType, buffer });
-  await page.getByRole("button", { name: "Загрузить исходник" }).click();
+  await uploadSyntheticDocument(page, { name: filename, mimeType, buffer });
 }
 
 test("a synthetic report is extracted, survives reload, downloads, and reports a family duplicate", async ({
@@ -68,9 +66,9 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe("document.pdf");
 
-  await page.getByRole("link", { name: "Загрузить ещё документ" }).click();
-  await expect(page).toHaveURL(profileUrl);
-  const overview = page.getByRole("region", { name: "Обзор профиля" });
+  await page.getByRole("link", { name: "Открыть документы" }).click();
+  await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
+  const overview = page.getByRole("region", { name: "Архив документов" });
   await expect(
     overview
       .getByRole("region", { name: "Проверка исходников" })

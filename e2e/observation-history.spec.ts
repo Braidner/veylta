@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { uploadSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -20,12 +21,11 @@ async function registerDemoFamily(page: Page): Promise<string> {
 }
 
 async function uploadAndOpenReview(page: Page, filename: string): Promise<void> {
-  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
+  await uploadSyntheticDocument(page, {
     name: filename,
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await page.getByRole("button", { name: "Загрузить исходник" }).click();
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
@@ -72,7 +72,7 @@ test("profile history shows confirmed and corrected observations with their auth
   await uploadAndOpenReview(page, `history-confirm-${crypto.randomUUID().slice(0, 8)}.pdf`);
   await confirmAndReject(page);
   await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
-  await expect(page).toHaveURL(`${profileUrl}#observation-history`);
+  await expect(page).toHaveURL(`${profileUrl}?tab=history`);
 
   const history = page.getByRole("region", { name: "История подтверждённых значений" });
   await expect(
@@ -83,17 +83,16 @@ test("profile history shows confirmed and corrected observations with their auth
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
   await expect(history.getByText("СИНТЕТИЧЕСКИЙ АНАЛИТ B", { exact: true })).toHaveCount(0);
 
-  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
+  await uploadSyntheticDocument(page, {
     name: `history-correct-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await page.getByRole("button", { name: "Загрузить исходник" }).click();
   await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
   await correctAndReject(page, "7.1");
 
   await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
-  await expect(page).toHaveURL(`${profileUrl}#observation-history`);
+  await expect(page).toHaveURL(`${profileUrl}?tab=history`);
   await expect(history.locator("tbody tr")).toHaveCount(2);
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
   await expect(history.getByText("7.1 synthetic-unit", { exact: true })).toBeVisible();
@@ -129,12 +128,11 @@ test("profile catalog compares only matching confirmed synthetic units", async (
     ),
   ).toBeVisible();
 
-  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
+  await uploadSyntheticDocument(page, {
     name: `indicator-second-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await page.getByRole("button", { name: "Загрузить исходник" }).click();
   await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
   await correctAndReject(page, "7.5");
   await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();

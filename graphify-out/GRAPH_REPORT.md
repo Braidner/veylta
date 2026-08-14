@@ -1,16 +1,16 @@
 # Graph Report - health  (2026-08-14)
 
 ## Corpus Check
-- 168 files · ~155,311 words
+- 169 files · ~156,678 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1865 nodes · 3245 edges · 108 communities (97 shown, 11 thin omitted)
+- 1880 nodes · 3282 edges · 114 communities (103 shown, 11 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 5 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `b22ccb04`
+- Built from commit: `0d355054`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -117,6 +117,12 @@
 - [[_COMMUNITY_Community 105|Community 105]]
 - [[_COMMUNITY_Community 106|Community 106]]
 - [[_COMMUNITY_Community 107|Community 107]]
+- [[_COMMUNITY_Community 108|Community 108]]
+- [[_COMMUNITY_Community 109|Community 109]]
+- [[_COMMUNITY_Community 110|Community 110]]
+- [[_COMMUNITY_Community 111|Community 111]]
+- [[_COMMUNITY_Community 112|Community 112]]
+- [[_COMMUNITY_Community 113|Community 113]]
 
 ## God Nodes (most connected - your core abstractions)
 1. `ObjectStorageKey` - 36 edges
@@ -134,22 +140,22 @@
 - `createLocalAgentBridge()` --calls--> `now`  [INFERRED]
   skills/veylta-agent/scripts/bridge-lib.mjs → apps/api/src/processing/document-extraction-processor.test.ts
 - `TestContext` --references--> `Database`  [EXTRACTED]
-  apps/api/test/document-review.integration.test.ts → apps/api/src/database/pool.ts
+  apps/api/test/observation-history.integration.test.ts → apps/api/src/database/pool.ts
 - `TestContext` --references--> `Database`  [EXTRACTED]
   apps/api/test/profile-overview.integration.test.ts → apps/api/src/database/pool.ts
-- `replaceObjectOnFirstGet()` --calls--> `createLocalObjectStorage()`  [EXTRACTED]
-  apps/api/test/document-upload.integration.test.ts → apps/api/src/storage/local-object-storage.ts
-- `ObjectStorageContractHarness` --references--> `ObjectStorage`  [EXTRACTED]
-  apps/api/src/storage/object-storage.contract.ts → apps/api/src/storage/object-storage.ts
+- `parsedExtraction()` --calls--> `parseSyntheticLabPages()`  [EXTRACTED]
+  apps/api/src/processing/processing-job-service.test.ts → apps/api/src/processing/synthetic-lab-parser.ts
+- `highConfidenceExtraction()` --calls--> `parseSyntheticLabPages()`  [EXTRACTED]
+  apps/api/src/processing/processing-job-service.test.ts → apps/api/src/processing/synthetic-lab-parser.ts
 
 ## Import Cycles
 - None detected.
 
-## Communities (108 total, 11 thin omitted)
+## Communities (114 total, 11 thin omitted)
 
 ### Community 0 - "Community 0"
-Cohesion: 0.20
-Nodes (18): buildApp(), createDocumentService(), registerDocumentRoutes(), createFamilyService(), registerFamilyRoutes(), createLocalObjectStorage(), cookieFrom(), fixtureUrl (+10 more)
+Cohesion: 0.24
+Nodes (23): buildApp(), createDocumentService(), registerDocumentRoutes(), createFamilyService(), registerFamilyRoutes(), createLocalObjectStorage(), createTestApp(), cookieFrom() (+15 more)
 
 ### Community 1 - "Community 1"
 Cohesion: 0.05
@@ -205,7 +211,7 @@ Nodes (11): Accessibility & Inclusion, Anti-references, Assistant Surfaces, Bran
 
 ### Community 14 - "Community 14"
 Cohesion: 0.08
-Nodes (38): asClaim(), asJob(), assertDate(), assertFact(), assertIdentifier(), assertPage(), AuditSourceRow, AutomatedProcessingOutcome (+30 more)
+Nodes (40): asClaim(), asJob(), assertDate(), assertFact(), assertIdentifier(), assertPage(), AuditSourceRow, AutomatedProcessingOutcome (+32 more)
 
 ### Community 15 - "Community 15"
 Cohesion: 0.20
@@ -224,8 +230,8 @@ Cohesion: 0.20
 Nodes (9): ADR 0002: Versioned document storage boundary, Consequences, Context, Decision, Deferred work, Negative, Positive, Rejected alternatives (+1 more)
 
 ### Community 19 - "Community 19"
-Cohesion: 0.16
-Nodes (22): assertContained(), assertExistingContainer(), assertExpectedMetadata(), assertPayloadIntegrity(), assertSafeDirectory(), isErrorCode(), isMissing(), LocalObjectStorage (+14 more)
+Cohesion: 0.20
+Nodes (19): assertContained(), assertExistingContainer(), assertExpectedMetadata(), assertPayloadIntegrity(), assertSafeDirectory(), isErrorCode(), isMissing(), LocalObjectStorage (+11 more)
 
 ### Community 20 - "Community 20"
 Cohesion: 0.25
@@ -241,7 +247,7 @@ Nodes (6): compilerOptions, declaration, outDir, rootDir, extends, include
 
 ### Community 23 - "Community 23"
 Cohesion: 0.03
-Nodes (34): AccountAccessScreenProps, ArchivedProfilesState, carePlanLanes, CarePlanState, ConfirmedCorrection, ConsentPanelState, DocumentInboxProps, DocumentProcessingPanelProps (+26 more)
+Nodes (38): AccountAccessScreenProps, ArchivedProfilesState, carePlanLanes, CarePlanState, ConfirmedCorrection, ConsentPanelState, DocumentProcessingPanelProps, DocumentReviewPanelProps (+30 more)
 
 ### Community 24 - "Community 24"
 Cohesion: 0.02
@@ -257,14 +263,14 @@ Nodes (3): PwaRegistration(), metadata, viewport
 
 ### Community 29 - "Community 29"
 Cohesion: 0.03
-Nodes (48): BlobRow, cursorTimestamp(), decimalDelta(), decodeIndicatorSeriesCursor(), decodeObservationHistoryCursor(), DocumentContent, DocumentRow, DocumentServiceOptions (+40 more)
+Nodes (48): BlobRow, canonicalDocumentScope(), canonicalFactScope(), canonicalProfileScope(), cursorTimestamp(), decimalDelta(), decodeIndicatorSeriesCursor(), decodeObservationHistoryCursor() (+40 more)
 
 ### Community 32 - "Community 32"
-Cohesion: 0.14
-Nodes (13): QueryResult, DocumentExtractionJobCoordinator, claim(), CoordinatorHarness, pdfBytes, pdfSha256, SourceDatabase, storageKey (+5 more)
+Cohesion: 0.12
+Nodes (11): createLocalSyntheticOcr(), englishData, LOCAL_SYNTHETIC_OCR_ENGINE, LOCAL_SYNTHETIC_OCR_LANGUAGE, LocalSyntheticOcr, LocalSyntheticOcrCapabilities, LocalSyntheticOcrError, LocalSyntheticOcrErrorCode (+3 more)
 
 ### Community 33 - "Community 33"
-Cohesion: 0.17
+Cohesion: 0.18
 Nodes (11): Audit behavior, Deferred APIs, Error envelope, `GET /v1/families/{familyId}/profiles/{profileId}/observations`, `GET /v1/families/{familyId}/profiles/{profileId}/overview`, HTTP API contract, Observation history and provenance (Task 7), Observation history and provenance (Task 7) (+3 more)
 
 ### Community 34 - "Community 34"
@@ -280,16 +286,16 @@ Cohesion: 0.07
 Nodes (30): DocumentService, HealthSummaryComparisonQuery, HealthSummaryHistoryQuery, HealthSummaryQuery, IdempotencyConflictError, IndicatorSeriesQuery, InvalidDocumentSignatureError, ObservationHistoryQuery (+22 more)
 
 ### Community 37 - "Community 37"
-Cohesion: 0.25
-Nodes (14): defaultDirectory, ensureMigrationTable(), migrateDown(), migrateUp(), run(), createDatabase(), withTestContext(), withTestContext() (+6 more)
+Cohesion: 0.15
+Nodes (17): createAccountService(), registerAccountRoutes(), defaultDirectory, ensureMigrationTable(), migrateDown(), migrateUp(), run(), createDatabase() (+9 more)
 
 ### Community 38 - "Community 38"
-Cohesion: 0.10
-Nodes (21): access(), boundedText(), canonicalItemId(), carePlanItem(), CarePlanItemRow, CarePlanProposalGenerationError, CarePlanScope, categorySet (+13 more)
+Cohesion: 0.11
+Nodes (20): access(), boundedText(), canonicalItemId(), carePlanItem(), CarePlanItemRow, CarePlanScope, categorySet, CODEX_CARE_PLAN_RULE_VERSION (+12 more)
 
 ### Community 39 - "Community 39"
-Cohesion: 0.11
-Nodes (26): highConfidenceExtraction(), parsedExtraction(), allowedFixtureIssues, assertPage(), boundedField(), ExtractedFactReviewStatus, ExtractedPageText, factField() (+18 more)
+Cohesion: 0.13
+Nodes (22): allowedFixtureIssues, assertPage(), boundedField(), ExtractedFactReviewStatus, ExtractedPageText, factField(), factFieldPrefixes, invalidOutput() (+14 more)
 
 ### Community 40 - "Community 40"
 Cohesion: 0.16
@@ -308,12 +314,12 @@ Cohesion: 0.25
 Nodes (8): Accepted path, Explicitly not accepted or deferred, First-slice acceptance evidence, Fresh local verification, Implementation lineage, Reproduction boundary, Requirement-to-evidence map, Safety and MIT boundary verified by this slice
 
 ### Community 44 - "Community 44"
-Cohesion: 0.08
-Nodes (26): DatabaseClient, finalObjectKey(), stagingObjectKey(), advance(), DocumentExtractionProcessor, DocumentExtractionProcessorDependencies, DocumentSource, DocumentSourceRow (+18 more)
+Cohesion: 0.07
+Nodes (34): DatabaseClient, QueryResult, advance(), DocumentExtractionJobCoordinator, DocumentExtractionProcessor, DocumentExtractionProcessorDependencies, DocumentSourceRow, DocumentSourceUnavailableError (+26 more)
 
 ### Community 45 - "Community 45"
-Cohesion: 0.15
-Nodes (5): findProfileContext(), firstProfile(), VeyltaApp(), DocumentPageProps, ProfilePageProps
+Cohesion: 0.14
+Nodes (6): findProfileContext(), firstProfile(), normalizeProfileTab(), VeyltaApp(), DocumentPageProps, ProfilePageProps
 
 ### Community 46 - "Community 46"
 Cohesion: 0.29
@@ -336,16 +342,16 @@ Cohesion: 0.15
 Nodes (14): FamilyAuditLogQuery, auditLogQuerySchema, consentGrantInputSchema, ConsentGrantParams, consentGrantParamsSchema, FamilyParams, familyParamsSchema, FamilyRouteOptions (+6 more)
 
 ### Community 51 - "Community 51"
-Cohesion: 0.10
-Nodes (12): AppDependencies, bindings(), constraintCodes, ConstraintKind, execute(), isSqliteConstraintError(), ReadinessProbe, sqliteErrorCode() (+4 more)
+Cohesion: 0.13
+Nodes (6): isSqliteConstraintError(), sqliteErrorCode(), DocumentFixture, ProcessingGraph, rejectsConstraint(), ReviewGraph
 
 ### Community 52 - "Community 52"
 Cohesion: 0.25
 Nodes (8): Current executable architecture, License, Local development, Product direction: a home health-care PWA, Product principles, Project status, Safety and data policy, Veylta
 
 ### Community 53 - "Community 53"
-Cohesion: 0.14
-Nodes (14): ObjectStorageRuntimeConfig, createObjectStorage(), ObjectStorage, RecoveryDeletionRequest, createS3ObjectStorage(), BlobRow, copyObject(), expected() (+6 more)
+Cohesion: 0.19
+Nodes (8): ObjectStorageRuntimeConfig, createObjectStorage(), ObjectStorage, createS3ObjectStorage(), copyObject(), RuntimeStorageController, settingsRow(), StorageController
 
 ### Community 54 - "Community 54"
 Cohesion: 0.26
@@ -356,8 +362,8 @@ Cohesion: 0.27
 Nodes (8): createDocumentExtractionProcessor(), cookieFrom(), fixtureUrl, Identity, multipartFile(), processOneDocument(), registerOwner(), upload()
 
 ### Community 57 - "Community 57"
-Cohesion: 0.13
-Nodes (15): DocumentProcessingPanel(), factCountCopy(), FamilyInvitationPanel(), formatDate(), HealthSummaryPanel(), isProcessingActive(), knownObservationDates(), ObservationHistoryRow() (+7 more)
+Cohesion: 0.14
+Nodes (15): documentKindLabel(), DocumentReviewPanel(), DocumentView(), downloadLabel(), FamilyInvitationPanel(), formatBytes(), formatDate(), HealthSummaryPanel() (+7 more)
 
 ### Community 58 - "Community 58"
 Cohesion: 0.33
@@ -365,35 +371,35 @@ Nodes (5): ADR 0007: Home-server PWA, local accounts, and Codex runtime, Consequ
 
 ### Community 59 - "Community 59"
 Cohesion: 0.12
-Nodes (17): carePlanPath(), documentFactsPath(), documentPath(), documentProcessingPath(), DocumentReviewPanel(), evidenceBundlePath(), indicatorsPath(), MissingProfileScreen() (+9 more)
+Nodes (18): carePlanPath(), documentFactsPath(), documentPath(), documentProcessingPath(), evidenceBundlePath(), healthSummaryComparisonPath(), healthSummaryHistoryPath(), healthSummaryPath() (+10 more)
 
 ### Community 60 - "Community 60"
 Cohesion: 0.40
 Nodes (5): isPendingReview(), proposedValue(), ReviewFactCard(), reviewStatusDescription(), reviewStatusLabel()
 
 ### Community 65 - "Community 65"
-Cohesion: 0.12
-Nodes (12): createProcessingJobService(), InvalidProcessingOutputError, InvalidProcessingStageTransitionError, ProcessingPersistenceConflictError, StaleProcessingLeaseError, advanceToValidation(), after(), AuditEventRow (+4 more)
+Cohesion: 0.11
+Nodes (14): createProcessingJobService(), InvalidProcessingOutputError, InvalidProcessingStageTransitionError, ProcessingPersistenceConflictError, StaleProcessingLeaseError, advanceToValidation(), after(), AuditEventRow (+6 more)
 
 ### Community 66 - "Community 66"
-Cohesion: 0.26
-Nodes (12): cookieFrom(), documentPath(), fixtureUrl, historyPath(), Identity, indicatorsPath(), multipartFile(), PreparedFact (+4 more)
+Cohesion: 0.23
+Nodes (13): cookieFrom(), documentPath(), fixtureUrl, historyPath(), Identity, indicatorsPath(), multipartFile(), PreparedFact (+5 more)
 
 ### Community 67 - "Community 67"
 Cohesion: 0.08
 Nodes (17): ArchivedProfileRow, AuditLogCursor, auditLogItem(), AuditLogRow, auditTimestamp(), consentGrant(), ConsentGrantRow, consentMember() (+9 more)
 
 ### Community 69 - "Community 69"
-Cohesion: 0.08
-Nodes (27): openSyntheticProfile(), syntheticLabFixture, openReview(), registerDemoFamily(), syntheticLabFixture, syntheticNames(), registerDemoFamily(), syntheticLabFixture (+19 more)
+Cohesion: 0.19
+Nodes (13): openProfileManagement(), registerDemoFamily(), syntheticNames(), factCard(), registerDemoFamily(), syntheticLabFixture, syntheticNames(), uploadAndFinishReview() (+5 more)
 
 ### Community 70 - "Community 70"
 Cohesion: 0.11
-Nodes (20): AssistantAction(), AssistantCard(), assistantIcons, currentWeek(), DashboardPlan(), HealthSignal(), ProfileDashboard(), signalClassName (+12 more)
+Nodes (21): AssistantAction(), AssistantCard(), assistantIcons, currentWeek(), DashboardPlan(), HealthSignal(), ProfileDashboard(), signalClassName (+13 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.06
-Nodes (40): dimensionsFromHeader(), extractImageTextWithLocalSyntheticOcr(), hasExpectedSignature(), ImageOcrExtractionError, ImageOcrExtractionErrorCode, jpegDimensions(), jpegSignature, LOCAL_SYNTHETIC_IMAGE_OCR_METHOD (+32 more)
+Cohesion: 0.19
+Nodes (14): dimensionsFromHeader(), extractImageTextWithLocalSyntheticOcr(), hasExpectedSignature(), ImageOcrExtractionError, ImageOcrExtractionErrorCode, jpegDimensions(), jpegSignature, LOCAL_SYNTHETIC_IMAGE_OCR_METHOD (+6 more)
 
 ### Community 72 - "Community 72"
 Cohesion: 0.33
@@ -401,23 +407,23 @@ Nodes (6): Document upload and status, `GET /v1/families/{familyId}/profiles/{pr
 
 ### Community 73 - "Community 73"
 Cohesion: 0.27
-Nodes (10): assertObjectStorageKey(), ObjectStorageKey, boundedString(), digestKey(), isNotFound(), isPreconditionFailed(), metadataFromHeaders(), providerErrorStatus() (+2 more)
+Nodes (9): ObjectStorageKey, boundedString(), digestKey(), isNotFound(), isPreconditionFailed(), metadataFromHeaders(), providerErrorStatus(), publicMetadata() (+1 more)
 
 ### Community 74 - "Community 74"
 Cohesion: 0.40
 Nodes (5): `GET /v1/setup`, Home-server setup and identity, Legacy synthetic test identity, `POST /v1/session`, `POST /v1/setup`
 
 ### Community 75 - "Community 75"
-Cohesion: 0.15
-Nodes (19): CarePlanService, ItemParams, itemParamsSchema, localDateSchema, ProfileParams, profileParamsSchema, registerCarePlanRoutes(), FamilyService (+11 more)
+Cohesion: 0.11
+Nodes (25): AccountService, InvalidCredentialsError, newPasswordSchema, passwordSchema, usernameSchema, CarePlanProposalGenerationError, CarePlanService, ItemParams (+17 more)
 
 ### Community 76 - "Community 76"
 Cohesion: 0.29
 Nodes (9): cookieFrom(), fixtureUrl, Identity, multipartFile(), overviewPath(), profilePath(), registerOwner(), TestContext (+1 more)
 
 ### Community 77 - "Community 77"
-Cohesion: 0.50
-Nodes (4): documentKindLabel(), DocumentView(), downloadLabel(), formatBytes()
+Cohesion: 0.17
+Nodes (13): normalizeLocalSyntheticOcrText(), canvasDimensions(), checkedPdf(), extractPdfTextWithLocalSyntheticOcr(), limitedPageCount(), LOCAL_SYNTHETIC_PDF_OCR_METHOD, LOCAL_SYNTHETIC_PDF_OCR_VERSION, OcrDocumentParameters (+5 more)
 
 ### Community 78 - "Community 78"
 Cohesion: 0.10
@@ -432,8 +438,8 @@ Cohesion: 0.22
 Nodes (11): asCount(), audit(), byteSize(), createHealthSummaryIfNeeded(), processingFailureCategory(), processingForDocument(), processingStatus(), profileOverviewDocument() (+3 more)
 
 ### Community 81 - "Community 81"
-Cohesion: 0.25
-Nodes (10): cookieFrom(), documentUrl(), fixtureUrl, Identity, multipartFile(), PreparedFact, registerOwner(), review() (+2 more)
+Cohesion: 0.18
+Nodes (10): createSyntheticLabImage(), SyntheticLabImageFormat, openSyntheticProfile(), syntheticLabFixture, registerDemoFamily(), syntheticLabFixture, syntheticNames(), uploadPdf() (+2 more)
 
 ### Community 82 - "Community 82"
 Cohesion: 0.50
@@ -460,8 +466,8 @@ Cohesion: 0.67
 Nodes (3): VeyltaAgentCommandBase, VeyltaAnalyzeDocumentCommand, VeyltaScanUnprocessedCommand
 
 ### Community 90 - "Community 90"
-Cohesion: 0.08
-Nodes (25): AccountService, AccountServiceOptions, AuthenticatedAccountResult, createAccountService(), dummyPasswordHash, InvalidCredentialsError, newPasswordSchema, passwordSchema (+17 more)
+Cohesion: 0.18
+Nodes (6): AccountServiceOptions, AuthenticatedAccountResult, dummyPasswordHash, ProcessingNotAvailableError, DomainConflictError, DomainValidationError
 
 ### Community 91 - "Community 91"
 Cohesion: 0.67
@@ -472,20 +478,20 @@ Cohesion: 0.67
 Nodes (3): Extracted facts and review (Tasks 5–6), `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/facts`, `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/facts/{factId}/review`
 
 ### Community 93 - "Community 93"
-Cohesion: 0.09
-Nodes (12): defineObjectStorageContract(), firstKey, ObjectStorageContractHarness, ObjectStorageContractHarnessFactory, stagingKey(), ObjectStorageSecurityError, ObjectStorageSizeLimitError, S3ObjectStorageOptions (+4 more)
+Cohesion: 0.10
+Nodes (14): finalObjectKey(), stagingObjectKey(), DocumentSource, sourceForClaim(), defineObjectStorageContract(), firstKey, ObjectStorageContractHarness, ObjectStorageContractHarnessFactory (+6 more)
 
 ### Community 94 - "Community 94"
-Cohesion: 0.67
-Nodes (3): healthSummaryComparisonPath(), healthSummaryHistoryPath(), healthSummaryPath()
+Cohesion: 0.18
+Nodes (9): createCarePlanService(), databaseReadiness(), app, config, database, familyService, storage, createHomeSettingsService() (+1 more)
 
 ### Community 96 - "Community 96"
 Cohesion: 0.11
 Nodes (13): CarePlanGeneratorEvidence, CarePlanGeneratorInput, CarePlanGeneratorItem, CarePlanGeneratorResult, CarePlanProposalGenerator, categories, contexts, createCodexCarePlanGenerator() (+5 more)
 
 ### Community 97 - "Community 97"
-Cohesion: 0.12
-Nodes (21): assertContentType(), assertMaxBytes(), ObjectStorageAlreadyExistsError, ObjectStorageIntegrityError, ObjectStorageNotFoundError, PutStagingRequest, StagedObjectMetadata, StagingObjectNotFoundError (+13 more)
+Cohesion: 0.08
+Nodes (33): assertMaxBytes(), assertRecoveryDeletionRequest(), ExpectedObjectMetadata, FinalizeObjectResult, ObjectMetadata, ObjectRead, ObjectStorageAlreadyExistsError, ObjectStorageIntegrityError (+25 more)
 
 ### Community 98 - "Community 98"
 Cohesion: 0.11
@@ -499,6 +505,10 @@ Nodes (7): cookieFrom(), Identity, multipartFile(), MultipartOptions, registerOw
 Cohesion: 0.50
 Nodes (4): `DELETE /v1/session`, Family and profile, `GET /v1/session`, `POST /v1/demo/registrations` (test-only)
 
+### Community 103 - "Community 103"
+Cohesion: 0.17
+Nodes (7): AppDependencies, bindings(), constraintCodes, ConstraintKind, execute(), ReadinessProbe, TransactionClient
+
 ### Community 104 - "Community 104"
 Cohesion: 0.60
 Nodes (3): adminSetupError(), AdminSetupFields, validateAdminSetup()
@@ -508,25 +518,45 @@ Cohesion: 0.40
 Nodes (5): `GET /v1/families/{familyId}/profiles/{profileId}/care-plan`, Household care plan (Task 33a), `POST /v1/families/{familyId}/profiles/{profileId}/care-plan/proposals`, `PUT /v1/families/{familyId}/profiles/{profileId}/care-plan/items/{itemId}`, `PUT /v1/families/{familyId}/profiles/{profileId}/care-plan/items/{itemId}/state`
 
 ### Community 107 - "Community 107"
+Cohesion: 0.36
+Nodes (3): bodyBytes(), InMemoryS3Client, s3Failure()
+
+### Community 108 - "Community 108"
+Cohesion: 0.29
+Nodes (4): cookieFrom(), fixtureUrl, Identity, register()
+
+### Community 109 - "Community 109"
+Cohesion: 0.29
+Nodes (7): DocumentProcessingPanel(), factCountCopy(), isProcessingActive(), processingFailureCopy(), ProcessingPresentation, profileOverviewProcessingCopy(), russianPlural()
+
+### Community 110 - "Community 110"
+Cohesion: 0.38
+Nodes (4): openReview(), registerDemoFamily(), syntheticLabFixture, syntheticNames()
+
+### Community 111 - "Community 111"
+Cohesion: 0.43
+Nodes (6): confirmAndReject(), correctAndReject(), factCard(), registerDemoFamily(), syntheticLabFixture, syntheticNames()
+
+### Community 112 - "Community 112"
 Cohesion: 0.67
-Nodes (3): canonicalDocumentScope(), canonicalFactScope(), canonicalProfileScope()
+Nodes (3): DocumentRow, EvidenceBundleDocumentRow, ProfileOverviewDocumentRow
 
 ## Knowledge Gaps
-- **782 isolated node(s):** `name`, `version`, `private`, `license`, `type` (+777 more)
+- **786 isolated node(s):** `name`, `version`, `private`, `license`, `type` (+781 more)
   These have ≤1 connection - possible missing edges or undocumented components.
 - **11 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `now` connect `Community 44` to `Community 32`, `Community 87`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
+- **Why does `now` connect `Community 44` to `Community 87`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
 - **Why does `createLocalAgentBridge()` connect `Community 87` to `Community 44`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
-- **Why does `ObjectStorage` connect `Community 53` to `Community 32`, `Community 97`, `Community 101`, `Community 73`, `Community 44`, `Community 19`, `Community 93`, `Community 29`?**
+  _High betweenness centrality (0.028) - this node is a cross-community bridge._
+- **Why does `ObjectStorage` connect `Community 53` to `Community 97`, `Community 101`, `Community 73`, `Community 44`, `Community 29`, `Community 19`, `Community 93`?**
   _High betweenness centrality (0.017) - this node is a cross-community bridge._
 - **What connects `name`, `version`, `private` to the rest of the system?**
-  _782 weakly-connected nodes found - possible documentation gaps or missing edges._
+  _786 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `Community 1` be split into smaller, more focused modules?**
   _Cohesion score 0.04878048780487805 - nodes in this community are weakly interconnected._
 - **Should `Community 3` be split into smaller, more focused modules?**

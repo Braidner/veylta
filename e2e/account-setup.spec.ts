@@ -31,9 +31,15 @@ test("first launch creates the administrator, opens their profile, and later log
   ).toBeVisible();
   await expect(page.getByText("Администратор системы")).toBeVisible();
 
-  await page.getByRole("link", { name: "Настройки" }).click();
+  await page.getByRole("tab", { name: "Настройки" }).click();
   await expect(page).toHaveURL("/settings");
   await expect(page.getByRole("heading", { level: 1, name: "Настройки сервера" })).toBeVisible();
+  await expect(page.locator(".workspace-bar--profile")).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Настройки" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByRole("tabpanel", { name: "Настройки" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Локальный агент без API-ключа" })).toBeVisible();
   await expect(page.getByText("отдельной оплаты за API-токены нет")).toBeVisible();
   await expect(page.getByRole("list", { name: "Учётные записи" })).toContainText(

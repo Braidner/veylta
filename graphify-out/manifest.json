@@ -265,13 +265,13 @@
     "semantic_hash": ""
   },
   "e2e/family-profile.spec.ts": {
-    "mtime": 1786695156.818809,
-    "ast_hash": "be08f8f964752b6beaea7ebc0906a95a",
+    "mtime": 1786703846.5000515,
+    "ast_hash": "d3415dceacd2ad9b1bef91681c5dad4d",
     "semantic_hash": ""
   },
   "apps/web/app/families/[familyId]/profiles/[profileId]/page.tsx": {
-    "mtime": 1786519300.9259555,
-    "ast_hash": "4ec2cd48b8e66fa924526c0fdfe2d6f2",
+    "mtime": 1786701723.9291782,
+    "ast_hash": "2f9b9b0c6747f4eb3d25290cf5a77078",
     "semantic_hash": ""
   },
   "apps/api/src/documents/document-service.ts": {
@@ -330,8 +330,8 @@
     "semantic_hash": ""
   },
   "e2e/document-upload.spec.ts": {
-    "mtime": 1786694687.0641735,
-    "ast_hash": "a3f18aa3cb36f988ff57dc6dab205165",
+    "mtime": 1786703594.5012534,
+    "ast_hash": "49cc67b350ed4fd3095d8e0d21a11323",
     "semantic_hash": ""
   },
   "docs/adr/0005-sqlite-persistence.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786698815.6720057,
-    "ast_hash": "84f7fadda4e2de5d2be434ae84caa585",
+    "mtime": 1786703722.8761082,
+    "ast_hash": "14e9b78245d32e1e0a1ad41e437e6857",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -430,8 +430,8 @@
     "semantic_hash": ""
   },
   "e2e/document-review.spec.ts": {
-    "mtime": 1786693091.34384,
-    "ast_hash": "fd1c113439242ae6a097586d5c39ef73",
+    "mtime": 1786703282.9977655,
+    "ast_hash": "effe4775c10c5a8bd553ccbaacab6f09",
     "semantic_hash": ""
   },
   "apps/api/test/observation-history.integration.test.ts": {
@@ -440,8 +440,8 @@
     "semantic_hash": ""
   },
   "e2e/observation-history.spec.ts": {
-    "mtime": 1786693091.345118,
-    "ast_hash": "25d6d02610f1e29a644f31b946e0ab61",
+    "mtime": 1786703308.4371257,
+    "ast_hash": "ca10f72ce81f4a690f0cc9fd823606b3",
     "semantic_hash": ""
   },
   "docs/first-slice-acceptance.md": {
@@ -615,8 +615,8 @@
     "semantic_hash": ""
   },
   "e2e/health-summary.spec.ts": {
-    "mtime": 1786693091.3448915,
-    "ast_hash": "052ca98ba3bf98057ccbdf10e456dd0c",
+    "mtime": 1786703308.4375205,
+    "ast_hash": "14e905971eed82771741d6605e921820",
     "semantic_hash": ""
   },
   "docs/adr/0006-user-owned-vault-and-connected-agent.md": {
@@ -745,8 +745,8 @@
     "semantic_hash": ""
   },
   "e2e/account-setup.spec.ts": {
-    "mtime": 1786693091.343279,
-    "ast_hash": "9e23aa415df4f7dcc3e00ce96a4e01ef",
+    "mtime": 1786704252.010945,
+    "ast_hash": "e34bf93f585aec32d1b43a5826dbb46a",
     "semantic_hash": ""
   },
   "e2e/support/synthetic-family.ts": {
@@ -830,8 +830,8 @@
     "semantic_hash": ""
   },
   "e2e/care-plan.spec.ts": {
-    "mtime": 1786693091.3435047,
-    "ast_hash": "9d014167750b29726be4d4870255e48a",
+    "mtime": 1786703282.9981308,
+    "ast_hash": "1b05c0c75e9008b540a14a5eae5708fd",
     "semantic_hash": ""
   },
   "apps/api/src/care-plan/codex-care-plan-generator.test.ts": {
@@ -865,8 +865,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/profile-dashboard.tsx": {
-    "mtime": 1786699382.4421773,
-    "ast_hash": "1d79a996632e60459ce8393dc5da6ec9",
+    "mtime": 1786702946.8545358,
+    "ast_hash": "c2a35c5f15c0b989a09779cb058dfc33",
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-mark.tsx": {
@@ -880,18 +880,23 @@
     "semantic_hash": ""
   },
   "apps/web/app/profile-dashboard.test.ts": {
-    "mtime": 1786694054.0368109,
-    "ast_hash": "f579a3705570651c379f4056f76ec193",
+    "mtime": 1786702580.7425888,
+    "ast_hash": "38afad35ac7f282e933a235aa0cc591a",
     "semantic_hash": ""
   },
   "apps/web/app/profile-dashboard.ts": {
-    "mtime": 1786695037.6590426,
-    "ast_hash": "4388c4541bd32f0b7261035af8bb1a4e",
+    "mtime": 1786701999.7538974,
+    "ast_hash": "35d622c4957fe164c785bbed05782b2f",
     "semantic_hash": ""
   },
   "e2e/dashboard-redesign.spec.ts": {
-    "mtime": 1786699068.4256601,
-    "ast_hash": "1a2f47d9b4049d45e101d838e52dc47e",
+    "mtime": 1786704252.0111732,
+    "ast_hash": "41ee0e64dbe3c7186fe0efc4bd831681",
+    "semantic_hash": ""
+  },
+  "e2e/support/document-upload.ts": {
+    "mtime": 1786703787.5388553,
+    "ast_hash": "b2c6e120cae5b2811bb8bf2b65ac04f5",
     "semantic_hash": ""
   }
 }

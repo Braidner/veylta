@@ -55,9 +55,11 @@ const signalClassName = cva("health-signal", {
 function AssistantAction({
   assistant,
   primary,
+  onUpload,
 }: {
   assistant: DashboardAssistant;
   primary: boolean;
+  onUpload: () => void;
 }) {
   const className = cn("assistant-card__action", primary && "assistant-card__action--primary");
   const content = (
@@ -67,7 +69,11 @@ function AssistantAction({
     </>
   );
 
-  return assistant.action.href.startsWith("/") ? (
+  return assistant.action.href === "#document-inbox-title" ? (
+    <button className={className} type="button" onClick={onUpload}>
+      {content}
+    </button>
+  ) : assistant.action.href.startsWith("/") ? (
     <Link className={className} href={assistant.action.href}>
       {content}
     </Link>
@@ -81,9 +87,11 @@ function AssistantAction({
 function AssistantCard({
   assistant,
   primary = false,
+  onUpload,
 }: {
   assistant: DashboardAssistant;
   primary?: boolean;
+  onUpload: () => void;
 }) {
   const AssistantIcon = assistantIcons[assistant.id];
   return (
@@ -103,7 +111,7 @@ function AssistantCard({
       <p className="assistant-card__message">{assistant.message}</p>
       <div className="assistant-card__footer">
         <span>{assistant.meta}</span>
-        <AssistantAction assistant={assistant} primary={primary} />
+        <AssistantAction assistant={assistant} primary={primary} onUpload={onUpload} />
       </div>
     </article>
   );
@@ -154,7 +162,13 @@ function formatShortDate(value: string): string {
   }).format(new Date(value));
 }
 
-function DashboardDocuments({ overview }: { overview: ProfileOverviewResponse }) {
+function DashboardDocuments({
+  overview,
+  onUpload,
+}: {
+  overview: ProfileOverviewResponse;
+  onUpload: () => void;
+}) {
   const documents = overview.recentDocuments.slice(0, 3);
   return (
     <section className="dashboard-documents" aria-labelledby="dashboard-documents-title">
@@ -163,16 +177,18 @@ function DashboardDocuments({ overview }: { overview: ProfileOverviewResponse })
           <FileText size={20} strokeWidth={1.8} />
         </span>
         <h3 id="dashboard-documents-title">Последний документ</h3>
-        <a href="#document-inbox-title" aria-label="Загрузить новый документ">
+        <button type="button" onClick={onUpload} aria-label="Загрузить новый документ">
           <ArrowUpRight size={18} aria-hidden="true" />
-        </a>
+        </button>
       </div>
 
       {documents.length === 0 ? (
         <div className="dashboard-documents__empty">
           <p>Архив пока пуст</p>
           <span>Добавьте первый синтетический источник — оригинал останется локально.</span>
-          <a href="#document-inbox-title">Загрузить первый документ</a>
+          <button type="button" onClick={onUpload}>
+            Загрузить первый документ
+          </button>
         </div>
       ) : (
         <ol className="dashboard-documents__list">
@@ -210,7 +226,7 @@ function currentWeek(): ReadonlyArray<{ label: string; date: number; active: boo
   });
 }
 
-function DashboardPlan() {
+function DashboardPlan({ href }: { href: string }) {
   return (
     <section className="dashboard-plan" aria-label="Календарь и быстрый доступ к плану">
       <div className="dashboard-card-heading">
@@ -218,9 +234,9 @@ function DashboardPlan() {
           <CalendarDays size={20} strokeWidth={1.8} />
         </span>
         <h3 id="dashboard-plan-title">План заботы</h3>
-        <a href="#care-plan" aria-label="Открыть план заботы">
+        <Link href={href} aria-label="Открыть план заботы">
           <ArrowUpRight size={18} aria-hidden="true" />
-        </a>
+        </Link>
       </div>
 
       <ol className="dashboard-plan__week" aria-label="Текущая неделя">
@@ -240,35 +256,48 @@ function DashboardPlan() {
         </p>
       </div>
 
-      <a className="dashboard-plan__source" href="#care-plan">
+      <Link className="dashboard-plan__source" href={href}>
         <span>
           <strong>Источник всегда рядом</strong>
           <small>Каждый пункт связан с подтверждёнными данными</small>
         </span>
         <ShieldCheck size={20} aria-hidden="true" />
-      </a>
+      </Link>
     </section>
   );
 }
 
-function DashboardTools() {
+function DashboardTools({ historyHref }: { historyHref: string }) {
   return (
     <nav className="dashboard-tools" aria-label="Быстрые действия обзора">
-      <a href="#indicator-catalog" aria-label="Найти показатель" title="Найти показатель">
+      <Link
+        href={`${historyHref}#indicator-catalog`}
+        aria-label="Найти показатель"
+        title="Найти показатель"
+      >
         <FolderSearch size={19} aria-hidden="true" />
-      </a>
+      </Link>
       <a href="#profile-dashboard" aria-label="Вернуться к началу обзора" title="Начало обзора">
         <Maximize2 size={19} aria-hidden="true" />
       </a>
-      <a href="#observation-history" aria-label="Открыть историю" title="История">
+      <Link href={historyHref} aria-label="Открыть историю" title="История">
         <History size={19} aria-hidden="true" />
-      </a>
+      </Link>
     </nav>
   );
 }
 
-export function ProfileDashboard({ overview }: { overview: ProfileOverviewResponse }) {
+export function ProfileDashboard({
+  overview,
+  onUpload,
+}: {
+  overview: ProfileOverviewResponse;
+  onUpload: () => void;
+}) {
   const model = buildProfileDashboardModel(overview);
+  const profileHref = `/families/${encodeURIComponent(overview.profile.familyId)}/profiles/${encodeURIComponent(overview.profile.id)}`;
+  const historyHref = `${profileHref}?tab=history`;
+  const planHref = `${profileHref}?tab=plan`;
   const signals = Object.entries(model.signals) as Array<
     [keyof ProfileDashboardModel["signals"], DashboardSignal]
   >;
@@ -290,14 +319,14 @@ export function ProfileDashboard({ overview }: { overview: ProfileOverviewRespon
           </span>
         </div>
 
-        <AssistantCard assistant={model.assistants[0]} primary />
+        <AssistantCard assistant={model.assistants[0]} primary onUpload={onUpload} />
         <div className="assistant-hub__secondary">
-          <AssistantCard assistant={model.assistants[1]} />
-          <AssistantCard assistant={model.assistants[2]} />
+          <AssistantCard assistant={model.assistants[1]} onUpload={onUpload} />
+          <AssistantCard assistant={model.assistants[2]} onUpload={onUpload} />
         </div>
       </section>
 
-      <DashboardTools />
+      <DashboardTools historyHref={historyHref} />
 
       <section className="health-signals" aria-labelledby="health-signals-title">
         <div className="dashboard-panel-heading">
@@ -321,8 +350,8 @@ export function ProfileDashboard({ overview }: { overview: ProfileOverviewRespon
         </p>
       </section>
 
-      <DashboardDocuments overview={overview} />
-      <DashboardPlan />
+      <DashboardDocuments overview={overview} onUpload={onUpload} />
+      <DashboardPlan href={planHref} />
     </div>
   );
 }
