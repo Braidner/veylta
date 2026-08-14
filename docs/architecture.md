@@ -49,7 +49,7 @@ audit events, and durable idempotent jobs. Original documents live behind versio
 directory, and an optional S3-compatible adapter preserves the same contract
 for synthetic deployments.
 
-The public document surface is `document/v3`: immutable extracted facts remain
+The public document surface is `document/v4`: immutable extracted facts remain
 separate from explicit, idempotent fact-review decisions. The separate read-only
 `observation-history/v1` boundary exposes only those immutable observations
 that were explicitly confirmed or corrected. `indicator-series/v1` is a second
@@ -247,6 +247,10 @@ required. Shared code is extracted only when two real consumers need it.
 - Exhausted Task 5 work moves to a visible dead-letter state.
 - A user-requested restart creates another job/run/result chain. Latest-result
   projections move forward without deleting or rewriting prior provenance.
+- Every real queue, claim, stage, completion, retry, and terminal-failure
+  transition also appends one closed-code `ProcessingJobEvent`. The public
+  journal exposes only code, attempt number, and timestamp; it is not stdout,
+  model token streaming, prompt content, or chain-of-thought.
 
 ### SQLite
 

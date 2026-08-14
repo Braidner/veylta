@@ -104,7 +104,7 @@ Commit intent: `feat: review and confirm extracted observations`
 - Transactional decision + observation + source reference/range + audit event.
 - Idempotency, stale-version, rollback, and cross-family tests.
 
-Delivered in the Task 6 implementation: `document/v3` adds a tenant-scoped
+Delivered in the Task 6 implementation: the document contract adds a tenant-scoped
 fact-review command requiring exact `Origin` and `Idempotency-Key`. It accepts
 `factVersion` plus `confirm`, `correct`, or `reject`; correction fields are
 required only for `correct`. The UI keeps source evidence and proposed values
@@ -645,11 +645,27 @@ Status: delivered backend boundary.
   and accept corrections conversationally, but cannot confirm a fact or mutate
   a document. Explicit action tools remain a separate human-confirmed task.
 
-### Task 37 — Document dialogue interface
+### Task 37 — Honest document processing activity
 
-Commit intent: `feat(web): add codex document dialogue`
+Commit intent: `feat: expose document processing activity`
+
+Status: delivered backend boundary.
+
+- Every real queue, worker claim, processing stage, saved result, scheduled
+  retry, and terminal failure appends one immutable closed-code event.
+- `document/v4` returns the ordered journal for the latest job with only event
+  code, attempt number, and timestamp. It never exposes source text, medical
+  values, model output, prompts, raw exceptions, or chain-of-thought.
+- The browser may poll and render these persisted events; it must not invent
+  intermediate activity or imitate token streaming.
+
+### Task 38 — Document dialogue and activity interface
+
+Commit intent: `feat(web): add codex document activity`
 
 - Render the persisted Russian conversation beside the source-first review.
+- Render the append-only processing journal while work is active and after a
+  reload, using ordinary status updates rather than fake character streaming.
 - Disclose Codex model-service egress before the first message, keep the source
   text visually distinct, and show bounded pending/error/replay states.
 

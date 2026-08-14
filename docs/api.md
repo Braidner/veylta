@@ -428,7 +428,7 @@ Response `202`:
 
 ```json
 {
-  "contractVersion": "document/v3",
+  "contractVersion": "document/v4",
   "document": {
     "id": "document_placeholder",
     "familyId": "family_placeholder",
@@ -495,16 +495,41 @@ Returns a compact status response and records a payload-free access audit event:
 
 ```json
 {
-  "contractVersion": "document/v3",
+  "contractVersion": "document/v4",
   "documentId": "document_placeholder",
   "processing": {
     "state": "awaiting_review",
     "updatedAt": "2026-08-12T00:00:00.000Z",
     "factCount": 2,
     "needsReviewCount": 1
-  }
+  },
+  "activity": [
+    {
+      "code": "queued",
+      "attempt": 0,
+      "occurredAt": "2026-08-12T00:00:00.000Z"
+    },
+    {
+      "code": "security_check_started",
+      "attempt": 1,
+      "occurredAt": "2026-08-12T00:00:01.000Z"
+    },
+    {
+      "code": "result_saved",
+      "attempt": 1,
+      "occurredAt": "2026-08-12T00:00:08.000Z"
+    }
+  ]
 }
 ```
+
+`activity` is an ordered, append-only journal for the latest processing job.
+Its closed codes describe only real persisted transitions: queued, source
+security check, text extraction, document classification, Codex analysis,
+result validation, saved result, scheduled retry, or terminal failure. It never
+contains source text, extracted values, model output, prompts, chain-of-thought,
+storage paths, or raw exceptions. The browser polls this read endpoint and does
+not fabricate intermediate events.
 
 `failed` contains only one of `document_unavailable`, `invalid_document`,
 `agent_unavailable`, `agent_output_invalid`, `extraction_failed`, `validation_failed`, or
@@ -521,7 +546,8 @@ one final review decision; the browser never fabricates either state.
 Requires the exact configured `Origin` and an `Idempotency-Key`. It accepts no
 body and is available only for the authorized document's `dead_letter` job. The
 server records an immutable retry request, resets that existing job to `queued`,
-and returns `202` with the same `document/v3` processing response shape.
+and returns `202` with the same `document/v4` processing status shape. The next
+processing read includes the appended requeue event in its journal.
 Replaying the same family/actor/key returns the original accepted retry; a key
 used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
 select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
@@ -679,7 +705,7 @@ The first accepted command returns `201`:
 
 ```json
 {
-  "contractVersion": "document/v3",
+  "contractVersion": "document/v4",
   "review": {
     "id": "review_placeholder",
     "factId": "fact_0123456789abcdef0123456789abcdef01234567",

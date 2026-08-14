@@ -219,6 +219,13 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
     assert.equal(queued.json().documentId, documentId);
     assert.equal(queued.json().processing.state, "queued");
     assert.match(queued.json().processing.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(
+      queued.json().activity.map(({ code, attempt }: { code: string; attempt: number }) => ({
+        code,
+        attempt,
+      })),
+      [{ code: "queued", attempt: 0 }],
+    );
 
     const processed = await processOneDocument(database, storageRoot);
     assert.equal(processed.status, "completed");
@@ -249,6 +256,21 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
       },
     );
     assert.match(processing.json().processing.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(
+      processing.json().activity.map(({ code, attempt }: { code: string; attempt: number }) => ({
+        code,
+        attempt,
+      })),
+      [
+        { code: "queued", attempt: 0 },
+        { code: "security_check_started", attempt: 1 },
+        { code: "text_extraction_started", attempt: 1 },
+        { code: "document_classification_started", attempt: 1 },
+        { code: "codex_analysis_started", attempt: 1 },
+        { code: "result_validation_started", attempt: 1 },
+        { code: "result_saved", attempt: 1 },
+      ],
+    );
 
     const facts = await app.inject({
       method: "GET",

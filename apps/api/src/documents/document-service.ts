@@ -4,8 +4,10 @@ import {
   DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  DOCUMENT_PROCESSING_EVENT_CODES,
   type DocumentFactsResponse,
   type DocumentIntelligenceSummary,
+  type DocumentProcessingActivityEvent,
   type DocumentProcessingResponse,
   type DocumentProcessingRestartResponse,
   type DocumentProcessingRetryResponse,
@@ -57,6 +59,7 @@ import {
 import { resolveAnalyteMapping } from "../processing/analyte-mapping.js";
 import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../processing/codex-document-intelligence-provider.js";
 import {
+  appendProcessingEventInTransaction,
   enqueueDocumentExtractionInTransaction,
   enqueueDocumentReanalysisInTransaction,
 } from "../processing/processing-job-service.js";
@@ -274,6 +277,12 @@ interface ProcessingCountsRow {
   extraction_run_id: string;
   fact_count: number;
   needs_review_count: number;
+}
+
+interface ProcessingEventRow {
+  code: string;
+  attempt: number;
+  occurred_at: string;
 }
 
 interface FactRow {
@@ -1587,6 +1596,39 @@ async function processingForDocument(
   return processingStatus(jobs.rows[0], results.rows[0]);
 }
 
+const processingEventCodes = new Set<string>(DOCUMENT_PROCESSING_EVENT_CODES);
+
+async function processingActivityForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<readonly DocumentProcessingActivityEvent[]> {
+  const events = await client.query<ProcessingEventRow>(
+    `SELECT e.code, e.attempt, e.occurred_at
+       FROM processing_job_events e
+      WHERE e.family_id = $1
+        AND e.processing_job_id = (
+          SELECT id
+            FROM processing_jobs
+           WHERE family_id = $1 AND document_version_id = $2
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1
+        )
+      ORDER BY e.sequence`,
+    [row.family_id, row.document_version_id],
+  );
+  return events.rows.map((event) => {
+    const attempt = asCount(event.attempt, "processing activity attempt");
+    if (attempt > 100 || !processingEventCodes.has(event.code)) {
+      throw new ObjectStorageIntegrityError("Stored processing activity is invalid");
+    }
+    return {
+      code: event.code as DocumentProcessingActivityEvent["code"],
+      attempt,
+      occurredAt: canonicalTimestamp(event.occurred_at),
+    };
+  });
+}
+
 function parseStoredObject<T>(value: string, label: string): T {
   try {
     const parsed: unknown = JSON.parse(value);
@@ -2357,6 +2399,14 @@ async function resetDeadLetterJob(
     [timestamp, scope.familyId, scope.documentVersionId, scope.jobId],
   );
   if (updated.rowCount !== 1) throw new ProcessingNotAvailableError();
+  await appendProcessingEventInTransaction(client, {
+    familyId: scope.familyId,
+    documentVersionId: scope.documentVersionId,
+    jobId: scope.jobId,
+    code: "queued",
+    attempt: 0,
+    occurredAt: now,
+  });
 }
 
 export function createDocumentService(
@@ -2803,6 +2853,7 @@ export function createDocumentService(
       return database.transaction(async (client) => {
         const row = await documentRow(client, actor, scope);
         const processing = await processingForDocument(client, row);
+        const activity = await processingActivityForDocument(client, row);
         await audit(client, {
           familyId: scope.familyId,
           actorUserId: actor.userId,
@@ -2815,6 +2866,7 @@ export function createDocumentService(
           contractVersion: DOCUMENT_CONTRACT_VERSION,
           documentId: row.id,
           processing,
+          activity,
         };
       });
     },

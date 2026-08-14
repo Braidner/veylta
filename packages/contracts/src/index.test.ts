@@ -10,6 +10,7 @@ import {
   DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  DOCUMENT_PROCESSING_EVENT_CODES,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
   type DocumentAgentConversationResponse,
@@ -70,7 +71,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
   assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v1");
-  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
+  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v4");
   assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v1");
   assert.equal(DOCUMENT_AGENT_CONTRACT_VERSION, "document-agent/v1");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
@@ -497,6 +498,18 @@ test("document processing exposes only supported observable states and sanitized
     contractVersion: DOCUMENT_CONTRACT_VERSION,
     documentId: "10000000-0000-4000-8000-000000000001",
     processing: failed,
+    activity: [
+      {
+        code: "queued",
+        attempt: 0,
+        occurredAt: "2026-08-12T11:59:58.000Z",
+      },
+      {
+        code: "failed",
+        attempt: 3,
+        occurredAt: "2026-08-12T12:00:00.000Z",
+      },
+    ],
   } satisfies DocumentProcessingResponse;
   const retry = {
     contractVersion: DOCUMENT_CONTRACT_VERSION,
@@ -508,11 +521,23 @@ test("document processing exposes only supported observable states and sanitized
   } satisfies DocumentProcessingRetryResponse;
 
   assert.equal(response.processing.category, "attempts_exhausted");
+  assert.deepEqual(DOCUMENT_PROCESSING_EVENT_CODES, [
+    "queued",
+    "security_check_started",
+    "text_extraction_started",
+    "document_classification_started",
+    "codex_analysis_started",
+    "result_validation_started",
+    "result_saved",
+    "retry_scheduled",
+    "failed",
+  ]);
+  assert.equal(response.activity[1]?.attempt, 3);
   assert.equal(retry.processing.state, "queued");
   assert.equal("message" in response.processing, false);
 });
 
-test("document v3 embeds discriminated processing status without changing original status", () => {
+test("document v4 embeds discriminated processing status without changing original status", () => {
   const response = {
     contractVersion: DOCUMENT_CONTRACT_VERSION,
     document: {

@@ -144,6 +144,9 @@ the family's trust boundary merely because it exposes an API.
   fact has such a final decision.
 - State changes and medical persistence are idempotent and transactional.
 - Logs, tests, and audit metadata contain no document bodies or medical values.
+- The processing journal contains only a closed event code, bounded attempt,
+  and timestamp. It is not a model transcript: prompts, token deltas, stdout,
+  chain-of-thought, extracted values, and raw errors are forbidden.
 - The delivered family audit-log read is owner-only, tenant-scoped, paginated,
   and payload-free; it serializes no metadata/correlation IDs and records its
   own payload-free access event. The narrow local `profile.read` grant is

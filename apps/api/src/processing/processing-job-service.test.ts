@@ -222,6 +222,10 @@ test("enqueue uses a stable document/version dedupe key", async () => {
       "SELECT count(*) AS count FROM processing_jobs",
     );
     assert.equal(Number(stored.rows[0]?.count), 1);
+    const activity = await database.query<{ attempt: number; code: string }>(
+      "SELECT code, attempt FROM processing_job_events ORDER BY sequence",
+    );
+    assert.deepEqual(activity.rows, [{ code: "queued", attempt: 0 }]);
   });
 });
 
@@ -377,13 +381,13 @@ test("failures wait for retry and exhaust into a visible dead-letter state", asy
       [
         {
           automated: true,
-          contractVersion: "document/v3",
+          contractVersion: "document/v4",
           errorCode: "EXTRACTION_FAILED",
           outcome: "retry_wait",
         },
         {
           automated: true,
-          contractVersion: "document/v3",
+          contractVersion: "document/v4",
           errorCode: "VALIDATION_FAILED",
           outcome: "dead_letter",
         },
@@ -421,7 +425,7 @@ test("an expired final attempt is dead-lettered instead of remaining leased fore
           correlationId: `worker:${job.id}`,
           metadata: {
             automated: true,
-            contractVersion: "document/v3",
+            contractVersion: "document/v4",
             errorCode: "ATTEMPT_LIMIT",
             outcome: "dead_letter",
           },
@@ -492,7 +496,7 @@ test("completion atomically persists provenance once and is idempotent on acknow
     );
     assert.deepEqual(JSON.parse(events[0]?.metadata ?? ""), {
       automated: true,
-      contractVersion: "document/v3",
+      contractVersion: "document/v4",
       outcome: "completed",
     });
     assert.doesNotMatch(events[0]?.metadata ?? "", /synthetic-analyte-a|reference|7\.0/i);

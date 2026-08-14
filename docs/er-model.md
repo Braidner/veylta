@@ -326,6 +326,15 @@ makes conflicting key reuse fail without creating another decision.
 Unique `(kind, dedupe_key)`. Payload contains identifiers, not document bytes or
 medical text.
 
+### ProcessingJobEvent
+
+- `id`, `family_id`, `document_version_id`, `processing_job_id`, `sequence`
+- closed payload-free `code`, bounded `attempt`, `occurred_at`
+
+Events are append-only and unique by job/sequence. They persist the exact
+observable worker timeline without storing document text, extracted values,
+model responses, prompts, raw errors, or hidden reasoning.
+
 ### ProcessingRetryRequest
 
 - `id`, `family_id`, `actor_user_id`, `document_version_id`, `processing_job_id`

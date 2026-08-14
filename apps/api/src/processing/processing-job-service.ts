@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import {
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  type DocumentProcessingEventCode,
   LAB_EXTRACTION_SCHEMA_VERSION,
 } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
@@ -333,6 +334,43 @@ function asClaim(row: ProcessingJobRow): LeasedProcessingJob {
   };
 }
 
+export async function appendProcessingEventInTransaction(
+  client: DatabaseClient,
+  input: {
+    familyId: string;
+    documentVersionId: string;
+    jobId: string;
+    code: DocumentProcessingEventCode;
+    attempt: number;
+    occurredAt: Date;
+  },
+): Promise<void> {
+  assertIdentifier(input.familyId, "familyId");
+  assertIdentifier(input.documentVersionId, "documentVersionId");
+  assertIdentifier(input.jobId, "jobId");
+  assertDate(input.occurredAt, "occurredAt");
+  if (!Number.isSafeInteger(input.attempt) || input.attempt < 0 || input.attempt > 100) {
+    throw new Error("attempt is invalid");
+  }
+  const inserted = await client.query(
+    `INSERT INTO processing_job_events
+       (id, family_id, document_version_id, processing_job_id, sequence, code, attempt, occurred_at)
+     SELECT $1, $2, $3, $4, COALESCE(MAX(sequence), 0) + 1, $5, $6, $7
+       FROM processing_job_events
+      WHERE family_id = $2 AND processing_job_id = $4`,
+    [
+      randomUUID(),
+      input.familyId,
+      input.documentVersionId,
+      input.jobId,
+      input.code,
+      input.attempt,
+      input.occurredAt.toISOString(),
+    ],
+  );
+  if (inserted.rowCount !== 1) throw new ProcessingPersistenceConflictError();
+}
+
 function dedupeKey(familyId: string, documentVersionId: string): string {
   return `extract:${familyId}:${documentVersionId}:${CODEX_DOCUMENT_INTELLIGENCE_VERSION}`;
 }
@@ -356,14 +394,15 @@ async function enqueueWithDedupeKey(
 ): Promise<ProcessingJob> {
   const maxAttempts = input.maxAttempts ?? 3;
   const now = input.now.toISOString();
-  await client.query(
+  const jobId = randomUUID();
+  const inserted = await client.query(
     `INSERT INTO processing_jobs
        (id, family_id, document_version_id, kind, dedupe_key, payload_version,
         state, attempt_count, max_attempts, available_at, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, 'pending', 0, $7, $8, $8, $8)
      ON CONFLICT (kind, dedupe_key) DO NOTHING`,
     [
-      randomUUID(),
+      jobId,
       input.familyId,
       input.documentVersionId,
       DOCUMENT_EXTRACTION_JOB_KIND,
@@ -385,6 +424,16 @@ async function enqueueWithDedupeKey(
     row.document_version_id !== input.documentVersionId
   ) {
     throw new ProcessingPersistenceConflictError();
+  }
+  if (inserted.rowCount === 1) {
+    await appendProcessingEventInTransaction(client, {
+      familyId: input.familyId,
+      documentVersionId: input.documentVersionId,
+      jobId,
+      code: "queued",
+      attempt: 0,
+      occurredAt: input.now,
+    });
   }
   return asJob(row);
 }
@@ -903,6 +952,14 @@ export function createProcessingJobService(
             ],
           );
           if (updatedExpiredLease.rowCount !== 1) continue;
+          await appendProcessingEventInTransaction(client, {
+            familyId: exhaustedLease.family_id,
+            documentVersionId: exhaustedLease.document_version_id,
+            jobId: exhaustedLease.id,
+            code: "failed",
+            attempt: Number(exhaustedLease.attempt_count),
+            occurredAt: input.now,
+          });
           await auditAutomatedProcessingOutcome(
             client,
             asClaim(exhaustedLease),
@@ -965,6 +1022,14 @@ export function createProcessingJobService(
         if (updated.rowCount !== 1) return null;
         const row = await jobRow(client, { familyId: candidate.family_id, jobId: candidate.id });
         if (row === undefined) throw new Error("Claimed processing job disappeared");
+        await appendProcessingEventInTransaction(client, {
+          familyId: row.family_id,
+          documentVersionId: row.document_version_id,
+          jobId: row.id,
+          code: "security_check_started",
+          attempt: Number(row.attempt_count),
+          occurredAt: input.now,
+        });
         return asClaim(row);
       });
     },
@@ -1002,6 +1067,21 @@ export function createProcessingJobService(
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
         const row = await jobRow(client, { familyId: claim.familyId, jobId: claim.id });
         if (row === undefined) throw new Error("Processing job disappeared");
+        const eventCode: Record<ProcessingStage, DocumentProcessingEventCode> = {
+          security_check: "security_check_started",
+          text_extraction: "text_extraction_started",
+          document_classification: "document_classification_started",
+          structured_extraction: "codex_analysis_started",
+          validation: "result_validation_started",
+        };
+        await appendProcessingEventInTransaction(client, {
+          familyId: row.family_id,
+          documentVersionId: row.document_version_id,
+          jobId: row.id,
+          code: eventCode[stage],
+          attempt: Number(row.attempt_count),
+          occurredAt: changedAt,
+        });
         return asClaim(row);
       });
     },
@@ -1100,6 +1180,14 @@ export function createProcessingJobService(
           [now, claim.id, claim.familyId, claim.leaseOwner],
         );
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
+        await appendProcessingEventInTransaction(client, {
+          familyId: stored.family_id,
+          documentVersionId: stored.document_version_id,
+          jobId: stored.id,
+          code: "result_saved",
+          attempt: Number(stored.attempt_count),
+          occurredAt: completedAt,
+        });
         await auditAutomatedProcessingOutcome(
           client,
           claim,
@@ -1160,6 +1248,14 @@ export function createProcessingJobService(
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
         const row = await jobRow(client, { familyId: claim.familyId, jobId: claim.id });
         if (row === undefined) throw new Error("Processing job disappeared");
+        await appendProcessingEventInTransaction(client, {
+          familyId: stored.family_id,
+          documentVersionId: stored.document_version_id,
+          jobId: stored.id,
+          code: exhausted ? "failed" : "retry_scheduled",
+          attempt: Number(stored.attempt_count),
+          occurredAt: input.now,
+        });
         await auditAutomatedProcessingOutcome(
           client,
           claim,

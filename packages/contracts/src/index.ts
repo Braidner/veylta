@@ -4,7 +4,7 @@ export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v1" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
-export const DOCUMENT_CONTRACT_VERSION = "document/v3" as const;
+export const DOCUMENT_CONTRACT_VERSION = "document/v4" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v1" as const;
 export const DOCUMENT_AGENT_CONTRACT_VERSION = "document-agent/v1" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
@@ -187,6 +187,22 @@ export const DOCUMENT_PROCESSING_FAILURE_CATEGORIES = [
   "extraction_failed",
   "validation_failed",
   "attempts_exhausted",
+] as const;
+
+/**
+ * Safe, payload-free facts recorded by the worker as processing advances.
+ * These are observable state transitions, never model reasoning or source text.
+ */
+export const DOCUMENT_PROCESSING_EVENT_CODES = [
+  "queued",
+  "security_check_started",
+  "text_extraction_started",
+  "document_classification_started",
+  "codex_analysis_started",
+  "result_validation_started",
+  "result_saved",
+  "retry_scheduled",
+  "failed",
 ] as const;
 
 export const DOCUMENT_CATEGORIES = [
@@ -507,6 +523,7 @@ export type SyntheticDocumentContentType = "application/pdf" | "image/png" | "im
 export type DocumentProcessingState = (typeof DOCUMENT_PROCESSING_STATES)[number];
 export type DocumentProcessingFailureCategory =
   (typeof DOCUMENT_PROCESSING_FAILURE_CATEGORIES)[number];
+export type DocumentProcessingEventCode = (typeof DOCUMENT_PROCESSING_EVENT_CODES)[number];
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
 
 /**
@@ -600,6 +617,14 @@ export interface DocumentProcessingResponse {
   readonly contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
   readonly documentId: string;
   readonly processing: DocumentProcessingStatus;
+  readonly activity: readonly DocumentProcessingActivityEvent[];
+}
+
+export interface DocumentProcessingActivityEvent {
+  readonly code: DocumentProcessingEventCode;
+  /** Zero means queued; positive values identify a real worker attempt. */
+  readonly attempt: number;
+  readonly occurredAt: string;
 }
 
 export interface DocumentProcessingRetryResponse {
