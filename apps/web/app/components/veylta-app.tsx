@@ -9,7 +9,10 @@ import type {
   CarePlanProposalResponse,
   CarePlanResponse,
   CodexRuntimeActionResponse,
+  DocumentAgentConversationResponse,
+  DocumentAgentMessage,
   DocumentFactsResponse,
+  DocumentProcessingActivityEvent,
   DocumentProcessingResponse,
   DocumentProcessingRestartResponse,
   DocumentProcessingStatus,
@@ -49,6 +52,7 @@ import type {
 import { DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import {
   ArrowRight,
+  Bot,
   CalendarDays,
   CheckCheck,
   ClipboardList,
@@ -58,7 +62,9 @@ import {
   History,
   House,
   LogOut,
+  MessageCircle,
   Search,
+  Send,
   Settings,
   X,
 } from "lucide-react";
@@ -190,6 +196,10 @@ function documentProcessingPath(familyId: string, profileId: string, documentId:
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
   return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
+}
+
+function documentAgentPath(familyId: string, profileId: string, documentId: string): string {
+  return `/v1${documentPath(familyId, profileId, documentId)}/agent`;
 }
 
 function profileOverviewPath(familyId: string, profileId: string): string {
@@ -5133,6 +5143,117 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
   }
 }
 
+interface ProcessingActivityCopy {
+  heading: string;
+  detail: string;
+}
+
+function processingActivityCopy(event: DocumentProcessingActivityEvent): ProcessingActivityCopy {
+  switch (event.code) {
+    case "queued":
+      return {
+        heading: "Документ поставлен в очередь",
+        detail: "Локальный worker принял задачу на обработку.",
+      };
+    case "security_check_started":
+      return {
+        heading: "Проверяем исходник",
+        detail: "Сверяем доступ, размер и контрольную сумму сохранённого файла.",
+      };
+    case "text_extraction_started":
+      return {
+        heading: "Извлекаем текст",
+        detail: "Текстовый слой или изображение подготавливается локально.",
+      };
+    case "document_classification_started":
+      return {
+        heading: "Определяем тип документа",
+        detail: "Codex выбирает раздел архива и понятное русское название.",
+      };
+    case "codex_analysis_started":
+      return {
+        heading: "Codex разбирает данные документа",
+        detail: "Модель формирует структурированный JSON со ссылками на фрагменты источника.",
+      };
+    case "result_validation_started":
+      return {
+        heading: "Проверяем ответ Codex",
+        detail: "Сервер проверяет структуру, типы и точные ссылки на источник.",
+      };
+    case "result_saved":
+      return {
+        heading: "Результат сохранён для проверки",
+        detail: "Черновые данные записаны отдельно от неизменяемого исходника.",
+      };
+    case "retry_scheduled":
+      return {
+        heading: "Назначена повторная попытка",
+        detail: "Предыдущая попытка завершилась безопасно; исходник не изменён.",
+      };
+    case "failed":
+      return {
+        heading: "Обработка остановлена",
+        detail: "Результат не принят. Исходник и предыдущая история сохранены.",
+      };
+  }
+}
+
+function DocumentProcessingActivity({
+  activity,
+  active,
+}: {
+  activity: readonly DocumentProcessingActivityEvent[];
+  active: boolean;
+}) {
+  return (
+    <section className="processing-activity" aria-labelledby="processing-activity-title">
+      <div className="processing-activity__heading">
+        <div>
+          <p className="context-line">Реальные события сервера</p>
+          <h3 id="processing-activity-title">Ход обработки</h3>
+        </div>
+        <span
+          className={active ? "processing-activity__live" : "processing-activity__live is-idle"}
+        >
+          <span aria-hidden="true" />
+          {active ? "Обновляется" : "Журнал сохранён"}
+        </span>
+      </div>
+      {activity.length === 0 ? (
+        <p className="processing-activity__empty">Ждём первое подтверждённое событие worker.</p>
+      ) : (
+        <ol className="processing-activity__list" aria-live="polite">
+          {activity.map((event, index) => {
+            const copy = processingActivityCopy(event);
+            const current = active && index === activity.length - 1;
+            return (
+              <li
+                className={
+                  current ? "processing-activity__event is-current" : "processing-activity__event"
+                }
+                key={`${event.occurredAt}:${event.code}:${event.attempt}`}
+              >
+                <span className="processing-activity__node" aria-hidden="true" />
+                <div>
+                  <div className="processing-activity__event-heading">
+                    <strong>{copy.heading}</strong>
+                    <time dateTime={event.occurredAt}>{formatTime(event.occurredAt)}</time>
+                  </div>
+                  <p>{copy.detail}</p>
+                  {event.attempt > 1 ? <small>Попытка {event.attempt}</small> : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <p className="processing-activity__boundary">
+        Журнал не показывает скрытые рассуждения, текст документа или служебный вывод Codex.
+      </p>
+    </section>
+  );
+}
+
 function DocumentProcessingPanel({
   familyId,
   profileId,
@@ -5140,6 +5261,7 @@ function DocumentProcessingPanel({
   canWriteProfile,
 }: DocumentProcessingPanelProps) {
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
+  const [activity, setActivity] = useState<readonly DocumentProcessingActivityEvent[]>([]);
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [restartPending, setRestartPending] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
@@ -5157,6 +5279,7 @@ function DocumentProcessingPanel({
         setProcessing((current) =>
           processingStatusesEqual(current, response.processing) ? current : response.processing,
         );
+        setActivity(response.activity);
       } catch {
         if (!signal?.aborted) setRefreshFailed(true);
       }
@@ -5171,6 +5294,7 @@ function DocumentProcessingPanel({
   useEffect(() => {
     setProcessing(savedDocument.processing);
     setRefreshFailed(false);
+    setActivity([]);
     setRestartError(null);
     restartKey.current = null;
   }, [savedDocument.processing]);
@@ -5270,6 +5394,16 @@ function DocumentProcessingPanel({
         </div>
       </section>
 
+      <DocumentProcessingActivity activity={activity} active={isProcessingActive(processing)} />
+
+      {canWriteProfile ? (
+        <DocumentAgentPanel
+          familyId={familyId}
+          profileId={profileId}
+          documentId={savedDocument.id}
+        />
+      ) : null}
+
       {canWriteProfile &&
       (processing.state === "awaiting_review" || processing.state === "completed") ? (
         <DocumentReviewPanel
@@ -5296,6 +5430,206 @@ function DocumentProcessingPanel({
         </dl>
       </details>
     </>
+  );
+}
+
+type DocumentAgentState =
+  | { kind: "loading" }
+  | { kind: "ready"; messages: readonly DocumentAgentMessage[] }
+  | { kind: "error" };
+
+interface DocumentAgentAttempt {
+  key: string;
+  message: string;
+}
+
+function DocumentAgentPanel({
+  familyId,
+  profileId,
+  documentId,
+}: {
+  familyId: string;
+  profileId: string;
+  documentId: string;
+}) {
+  const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
+  const [message, setMessage] = useState("");
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const attemptRef = useRef<DocumentAgentAttempt | null>(null);
+  const endpoint = documentAgentPath(familyId, profileId, documentId);
+
+  const loadConversation = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      try {
+        const response = await apiRequest<DocumentAgentConversationResponse>(
+          endpoint,
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", messages: response.messages });
+      } catch {
+        if (!signal?.aborted) setState({ kind: "error" });
+      }
+    },
+    [endpoint],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    setMessage("");
+    setPendingMessage(null);
+    setSendError(null);
+    attemptRef.current = null;
+    void loadConversation(controller.signal);
+    return () => controller.abort();
+  }, [loadConversation]);
+
+  async function handleSend(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const normalized = message.trim();
+    if (normalized.length === 0 || normalized.length > 2_000 || pendingMessage !== null) return;
+
+    const previousAttempt = attemptRef.current;
+    const attempt =
+      previousAttempt?.message === normalized
+        ? previousAttempt
+        : { key: crypto.randomUUID(), message: normalized };
+    attemptRef.current = attempt;
+    setPendingMessage(normalized);
+    setSendError(null);
+    try {
+      const response = await apiRequest<DocumentAgentConversationResponse>(`${endpoint}/messages`, {
+        method: "POST",
+        headers: { "Idempotency-Key": attempt.key },
+        body: JSON.stringify({ message: normalized }),
+      });
+      setState({ kind: "ready", messages: response.messages });
+      setMessage("");
+      attemptRef.current = null;
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) attemptRef.current = null;
+      setSendError(
+        error instanceof ApiError && error.status === 503
+          ? "Codex сейчас недоступен. Сообщение не потеряно — повторите отправку позже."
+          : "Не удалось получить ответ Codex. Проверьте соединение и повторите отправку.",
+      );
+    } finally {
+      setPendingMessage(null);
+    }
+  }
+
+  const messages = state.kind === "ready" ? state.messages : [];
+
+  return (
+    <section className="document-agent" aria-labelledby="document-agent-title">
+      <header className="document-agent__heading">
+        <span className="document-agent__icon" aria-hidden="true">
+          <MessageCircle size={20} strokeWidth={1.8} />
+        </span>
+        <div>
+          <p className="context-line">Контекст этого источника</p>
+          <h3 id="document-agent-title">Диалог с Codex</h3>
+          <p>Уточняйте пропущенные поля и направляйте повторную проверку обычным русским языком.</p>
+        </div>
+      </header>
+
+      <div className="document-agent__disclosure">
+        <Bot size={18} strokeWidth={1.8} aria-hidden="true" />
+        <div>
+          <strong>Codex получает только контекст этого документа</strong>
+          <p>
+            Сообщение и ограниченные извлечённые данные уходят в модель через вашу локальную
+            подписку. Исходный файл остаётся в хранилище Veylta. Codex ничего не подтверждает и не
+            меняет автоматически.
+          </p>
+        </div>
+      </div>
+
+      <div className="document-agent__conversation" aria-live="polite">
+        {state.kind === "loading" ? (
+          <div className="document-agent__loading" role="status" aria-label="Загружаем диалог">
+            <span />
+            <span />
+            <span />
+          </div>
+        ) : null}
+        {state.kind === "error" ? (
+          <div className="document-agent__empty" role="status">
+            <strong>Диалог пока не открылся</strong>
+            <p>Документ не изменён. Попробуйте обновить страницу.</p>
+          </div>
+        ) : null}
+        {state.kind === "ready" && messages.length === 0 ? (
+          <div className="document-agent__empty">
+            <strong>Начните с конкретного вопроса</strong>
+            <p>Например: «Каких полей не хватает?» или «Проверь ещё раз дату биоматериала».</p>
+          </div>
+        ) : null}
+        {messages.map((item) => (
+          <article
+            className={`document-agent__message document-agent__message--${item.role}`}
+            key={item.id}
+          >
+            <div className="document-agent__message-meta">
+              <strong>{item.role === "assistant" ? "Codex" : "Вы"}</strong>
+              <time dateTime={item.createdAt}>{formatTime(item.createdAt)}</time>
+            </div>
+            <p>{item.text}</p>
+            {item.provenance !== null ? <small>{item.provenance.modelId}</small> : null}
+          </article>
+        ))}
+        {pendingMessage !== null ? (
+          <>
+            <article className="document-agent__message document-agent__message--user is-pending">
+              <div className="document-agent__message-meta">
+                <strong>Вы</strong>
+                <span>Отправляется</span>
+              </div>
+              <p>{pendingMessage}</p>
+            </article>
+            <div className="document-agent__waiting" role="status">
+              <Bot size={18} strokeWidth={1.8} aria-hidden="true" />
+              <span>Ждём полный проверенный ответ Codex…</span>
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      <form className="document-agent__composer" onSubmit={handleSend}>
+        <label htmlFor="document-agent-message">Сообщение для Codex</label>
+        <div className="document-agent__composer-row">
+          <textarea
+            id="document-agent-message"
+            value={message}
+            maxLength={2_000}
+            rows={3}
+            placeholder="Например: проверь ещё раз лабораторию и дату биоматериала"
+            onChange={(event) => setMessage(event.target.value)}
+            disabled={pendingMessage !== null || state.kind === "loading"}
+          />
+          <button
+            className="button button--primary document-agent__send"
+            type="submit"
+            disabled={
+              message.trim().length === 0 || pendingMessage !== null || state.kind !== "ready"
+            }
+          >
+            <span>Отправить</span>
+            <Send size={17} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="document-agent__composer-meta">
+          <span>{message.length} / 2000</span>
+          <span>Ответ появится целиком после проверки структуры.</span>
+        </div>
+        {sendError !== null ? (
+          <p className="form-error" role="alert">
+            {sendError}
+          </p>
+        ) : null}
+      </form>
+    </section>
   );
 }
 
@@ -5938,5 +6272,13 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat("ru-RU", {
     dateStyle: "long",
     timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   }).format(new Date(value));
 }

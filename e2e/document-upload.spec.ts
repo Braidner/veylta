@@ -56,6 +56,10 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
+  const activity = page.getByRole("region", { name: "Ход обработки" });
+  await expect(activity.getByText("Документ поставлен в очередь")).toBeVisible();
+  await expect(activity.getByText("Codex разбирает данные документа")).toBeVisible();
+  await expect(activity.getByText("Результат сохранён для проверки")).toBeVisible();
 
   await page.reload();
   await expect(page).toHaveURL(firstDocumentUrl);
@@ -63,6 +67,11 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
     page.getByRole("heading", { level: 2, name: "Синтетические лабораторные результаты" }),
   ).toBeVisible();
   await expect(page.getByText(filename, { exact: false })).toBeVisible();
+  await expect(
+    page
+      .getByRole("region", { name: "Ход обработки" })
+      .getByText("Результат сохранён для проверки"),
+  ).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("link", { name: "Скачать исходный PDF" }).click();

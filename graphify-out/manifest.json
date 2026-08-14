@@ -165,8 +165,8 @@
     "semantic_hash": ""
   },
   "README.md": {
-    "mtime": 1786722536.177154,
-    "ast_hash": "c3a474aa7876875235a3ff80ae5d1138",
+    "mtime": 1786723896.3961506,
+    "ast_hash": "9f19a968064814a116ba2ff97abc7ad8",
     "semantic_hash": ""
   },
   "THIRD_PARTY_NOTICES.md": {
@@ -220,8 +220,8 @@
     "semantic_hash": ""
   },
   "docs/slices.md": {
-    "mtime": 1786723339.646145,
-    "ast_hash": "1bedfd39b92d78ab591eb46e5d7603ca",
+    "mtime": 1786723896.3969324,
+    "ast_hash": "daf173f25670ee01d327c0e03dbe7a90",
     "semantic_hash": ""
   },
   "docs/threat-model.md": {
@@ -330,8 +330,8 @@
     "semantic_hash": ""
   },
   "e2e/document-upload.spec.ts": {
-    "mtime": 1786723355.572298,
-    "ast_hash": "b793819e39199a381bef4e73a0be674e",
+    "mtime": 1786723779.2127256,
+    "ast_hash": "81dc49e0bc03f6ba6f42074ac3f9d3da",
     "semantic_hash": ""
   },
   "docs/adr/0005-sqlite-persistence.md": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786721072.5384176,
-    "ast_hash": "12fc41bf0353baeae98d471b0a457adb",
+    "mtime": 1786723779.2968953,
+    "ast_hash": "35d336847d5c2efcc3bc8e91a8cb21d2",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -1037,6 +1037,11 @@
   "db/migrations/0020_processing_activity.up.sql": {
     "mtime": 1786723101.5704253,
     "ast_hash": "f474027190ad6fddf9bce602e3c99bba",
+    "semantic_hash": ""
+  },
+  "e2e/document-agent.spec.ts": {
+    "mtime": 1786723953.3230705,
+    "ast_hash": "a5f68182797f8348976ea150de40a942",
     "semantic_hash": ""
   }
 }

@@ -39,6 +39,9 @@ capability for the exact authorized document. The first tool surface is
 read-only: Codex can inspect current metadata, processing state, and
 source-bound facts, but cannot access SQLite/filesystem directly or confirm a
 medical fact for the user. No LangGraph or frontend chat framework is needed.
+The same document surface shows an append-only processing journal: it renders
+only real server transitions and never imitates token streaming or exposes
+model reasoning, raw output, or medical payloads as logs.
 
 ## Project status
 
@@ -93,6 +96,10 @@ The full first slice remains deliberately narrow:
     Codex may select bounded drafts from the latest confirmed summary; every
     draft is provenance-locked and remains `proposed` until a person decides
     (Tasks 33a/33b, delivered).
+18. follow real document-processing stages after reload and hold one persistent
+    Russian Codex dialogue scoped to that exact authorized document. The UI
+    waits for a complete validated response instead of simulating a token stream
+    (Tasks 37/38, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
@@ -135,6 +142,8 @@ real-data readiness claim.
 - `document-agent/v1` stores an append-only Russian conversation and exact
   Codex model/runtime provenance in SQLite. The official MCP SDK exposes one
   short-lived, document-scoped read-only context tool to the local Codex CLI.
+- `document/v4` exposes an ordered payload-free timeline for the latest job;
+  the web UI polls and renders only persisted queue/stage/result events.
 - Versioned `home-care-plan/v1` read/write boundary backed by tenant-aware
   SQLite constraints. User actions are replay-safe and retained; a future
   Codex proposal must name its immutable summary, rule version, source when

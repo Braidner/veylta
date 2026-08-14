@@ -663,11 +663,16 @@ Status: delivered backend boundary.
 
 Commit intent: `feat(web): add codex document activity`
 
+Status: delivered.
+
 - Render the persisted Russian conversation beside the source-first review.
 - Render the append-only processing journal while work is active and after a
   reload, using ordinary status updates rather than fake character streaming.
 - Disclose Codex model-service egress before the first message, keep the source
   text visually distinct, and show bounded pending/error/replay states.
+- The first interface uses React state and ordinary HTTP polling only; no chat
+  component dependency, LangGraph runtime, fake token stream, or chain-of-thought
+  display is introduced.
 
 ## Later MVP slices
 
