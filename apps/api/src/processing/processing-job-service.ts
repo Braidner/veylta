@@ -5,6 +5,7 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
 } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
+import { enrichFactFromAnalyteMappings } from "./analyte-mapping.js";
 import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "./codex-document-intelligence-provider.js";
 import type { DocumentIntelligenceOutput } from "./document-intelligence-provider.js";
 import {
@@ -1049,7 +1050,14 @@ export function createProcessingJobService(
         );
         for (const page of output.pages) await insertOrVerifyPage(client, claim, page, now);
         for (const fact of output.extraction.items) {
-          await insertOrVerifyFact(client, claim, fact, pages, now, extractorVersion);
+          await insertOrVerifyFact(
+            client,
+            claim,
+            await enrichFactFromAnalyteMappings(client, fact),
+            pages,
+            now,
+            extractorVersion,
+          );
         }
         if (isCodexOutput) {
           await insertOrVerifyIntelligence(client, claim, source.document_id, output, now);

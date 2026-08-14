@@ -574,6 +574,7 @@ test("lab extraction contract preserves immutable source data and page provenanc
         ...extraction.items[0],
         id: "10000000-0000-4000-8000-000000000005",
         factVersion: 1,
+        canonicalDisplayName: "Синтетический аналит A",
         reviewStatus: "needs_review",
         review: null,
         source: {

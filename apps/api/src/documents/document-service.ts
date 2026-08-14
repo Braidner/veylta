@@ -53,6 +53,8 @@ import {
   ResourceNotFoundError,
   type SessionActor,
 } from "../family/family-service.js";
+import { resolveAnalyteMapping } from "../processing/analyte-mapping.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../processing/codex-document-intelligence-provider.js";
 import { enqueueDocumentExtractionInTransaction } from "../processing/processing-job-service.js";
 import {
   createObjectStorageKey,
@@ -291,6 +293,7 @@ interface FactRow {
   corrected_source_name: string | null;
   corrected_source_value: string | null;
   corrected_source_unit: string | null;
+  canonical_display_name: string | null;
 }
 
 interface FactForReviewRow {
@@ -303,6 +306,8 @@ interface FactForReviewRow {
   source_value: string;
   source_unit: string;
   proposed_canonical_code: string | null;
+  proposed_normalized_value: string | null;
+  proposed_normalized_unit: string | null;
   proposed_reference_range: string | null;
   proposed_specimen: string | null;
   proposed_sampled_at: string | null;
@@ -378,8 +383,9 @@ interface ObservationHistoryCursor {
 
 interface IndicatorCatalogRow {
   canonical_code: string;
-  source_unit: string;
-  source_value: string;
+  comparison_unit: string;
+  comparison_value: string;
+  display_name: string;
   timeline_at: string;
   id: string;
 }
@@ -389,6 +395,7 @@ interface IndicatorSeriesCursor {
   unit: string;
   id: string;
   timelineAt: string;
+  confirmedAt: string;
 }
 
 interface ProfileOverviewDocumentRow extends DocumentRow {
@@ -591,8 +598,9 @@ const canonicalUuidPattern =
 const historyCursorPattern = /^[A-Za-z0-9_-]{1,500}$/;
 const defaultObservationHistoryPageSize = 50;
 const defaultIndicatorSeriesPageSize = 100;
-const syntheticIndicatorCatalog: ReadonlyMap<string, (typeof SYNTHETIC_INDICATOR_CATALOG)[number]> =
-  new Map(SYNTHETIC_INDICATOR_CATALOG.map((indicator) => [indicator.canonicalCode, indicator]));
+const syntheticIndicatorCatalog: ReadonlySet<string> = new Set(
+  SYNTHETIC_INDICATOR_CATALOG.map((indicator) => indicator.canonicalCode),
+);
 
 function historyCanonicalCode(value: string | undefined): string | null {
   if (value === undefined) return null;
@@ -726,14 +734,20 @@ function decodeIndicatorSeriesCursor(
       throw new Error("Invalid cursor object");
     }
     const record = parsed as Record<string, unknown>;
-    if (Object.keys(record).sort().join(",") !== "c,id,t,u,v" || record.v !== 1) {
+    if (Object.keys(record).sort().join(",") !== "c,ca,id,t,u,v" || record.v !== 2) {
       throw new Error("Invalid cursor shape");
     }
     if (record.c !== canonicalCode || record.u !== unit || typeof record.id !== "string") {
       throw new Error("Cursor query mismatch");
     }
     if (!canonicalUuidPattern.test(record.id)) throw new Error("Invalid cursor id");
-    return { canonicalCode, unit, id: record.id, timelineAt: cursorTimestamp(record.t) };
+    return {
+      canonicalCode,
+      unit,
+      id: record.id,
+      timelineAt: cursorTimestamp(record.t),
+      confirmedAt: cursorTimestamp(record.ca),
+    };
   } catch (error) {
     if (error instanceof DomainValidationError) throw error;
     throw new DomainValidationError();
@@ -743,8 +757,9 @@ function decodeIndicatorSeriesCursor(
 function encodeIndicatorSeriesCursor(cursor: IndicatorSeriesCursor): string {
   return Buffer.from(
     JSON.stringify({
-      v: 1,
+      v: 2,
       t: cursor.timelineAt,
+      ca: cursor.confirmedAt,
       id: cursor.id,
       c: cursor.canonicalCode,
       u: cursor.unit,
@@ -1851,6 +1866,11 @@ function factResponse(
     items: rows.map((row) => ({
       id: row.id,
       factVersion: 1,
+      canonicalDisplayName: nullableBoundedString(
+        row.canonical_display_name,
+        200,
+        "fact canonical display name",
+      ),
       factKey: requiredBoundedString(row.fact_key, 100, "fact key"),
       sourceName: requiredBoundedString(row.source_name, 200, "fact source name"),
       sourceValue: requiredBoundedString(row.source_value, 100, "fact source value"),
@@ -1902,6 +1922,34 @@ function factResponse(
         fragment: requiredBoundedString(row.source_fragment, 2_000, "fact source fragment"),
       },
     })),
+  };
+}
+
+async function enrichStoredFactRow(client: DatabaseClient, row: FactRow): Promise<FactRow> {
+  const mapped = await resolveAnalyteMapping(client, {
+    sourceName: row.source_name,
+    sourceUnit: row.source_unit,
+    sourceValue: row.source_value,
+    proposedLaboratory: row.proposed_laboratory,
+    proposedNormalizedValue: row.proposed_normalized_value,
+  });
+  const canonicalCode = mapped?.canonicalCode ?? row.proposed_canonical_code;
+  if (canonicalCode === null) return { ...row, canonical_display_name: null };
+  const displayName =
+    mapped?.displayName ??
+    (
+      await client.query<{ display_name: string }>(
+        "SELECT display_name FROM analyte_catalog WHERE canonical_code = $1",
+        [canonicalCode],
+      )
+    ).rows[0]?.display_name ??
+    null;
+  return {
+    ...row,
+    canonical_display_name: displayName,
+    proposed_canonical_code: canonicalCode,
+    proposed_normalized_value: mapped?.normalizedValue ?? row.proposed_normalized_value,
+    proposed_normalized_unit: mapped?.normalizedUnit ?? row.proposed_normalized_unit,
   };
 }
 
@@ -2778,7 +2826,7 @@ export function createDocumentService(
                   d.decided_at AS review_decided_at,
                   d.observation_id AS review_observation_id,
                   d.corrected_source_name, d.corrected_source_value,
-                  d.corrected_source_unit
+                  d.corrected_source_unit, NULL AS canonical_display_name
              FROM extracted_facts f
              JOIN document_pages p
                ON p.family_id = f.family_id AND p.id = f.document_page_id
@@ -2788,7 +2836,10 @@ export function createDocumentService(
             ORDER BY p.page_number, f.fact_key`,
           [scope.familyId, run.id],
         );
-        const response = factResponse(run, facts.rows);
+        const response = factResponse(
+          run,
+          await Promise.all(facts.rows.map((fact) => enrichStoredFactRow(client, fact))),
+        );
         await audit(client, {
           familyId: scope.familyId,
           actorUserId: actor.userId,
@@ -3527,15 +3578,20 @@ export function createDocumentService(
       return database.transaction(async (client) => {
         await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
         const rows = await client.query<IndicatorCatalogRow>(
-          `SELECT o.canonical_code, o.source_unit, o.source_value,
+          `SELECT o.canonical_code,
+                  COALESCE(o.normalized_unit, o.source_unit) AS comparison_unit,
+                  COALESCE(o.normalized_value, o.source_value) AS comparison_value,
+                  catalog.display_name,
                   COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at, o.id
              FROM observations o
+             JOIN analyte_catalog catalog ON catalog.canonical_code = o.canonical_code
             WHERE o.family_id = $1
               AND o.patient_profile_id = $2
               AND o.status = 'confirmed'
               AND o.canonical_code IS NOT NULL
-            ORDER BY o.canonical_code, o.source_unit,
-                     COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC`,
+            ORDER BY o.canonical_code, comparison_unit,
+                     COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC,
+                     o.confirmed_at DESC, o.id DESC`,
           [scope.familyId, scope.profileId],
         );
         const grouped = new Map<
@@ -3546,10 +3602,12 @@ export function createDocumentService(
           if (!canonicalCodePattern.test(row.canonical_code)) {
             throw new ObjectStorageIntegrityError("Stored observation canonical code is invalid");
           }
-          const indicator = syntheticIndicatorCatalog.get(row.canonical_code);
-          if (indicator === undefined) continue;
-          const unit = indicatorUnit(row.source_unit);
-          const value = requiredBoundedString(row.source_value, 100, "observation source value");
+          const unit = indicatorUnit(row.comparison_unit);
+          const value = requiredBoundedString(
+            row.comparison_value,
+            100,
+            "observation comparison value",
+          );
           const timelineAt = canonicalTimestamp(row.timeline_at);
           const units = grouped.get(row.canonical_code) ?? new Map();
           const current = units.get(unit);
@@ -3562,11 +3620,21 @@ export function createDocumentService(
         const response: IndicatorCatalogResponse = {
           contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
           items: [...grouped.entries()].map(([canonicalCode, units]) => {
-            const indicator = syntheticIndicatorCatalog.get(canonicalCode);
-            if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
+            const displayNames = new Set(
+              rows.rows
+                .filter((row) => row.canonical_code === canonicalCode)
+                .map((row) => requiredBoundedString(row.display_name, 200, "indicator name")),
+            );
+            if (displayNames.size !== 1) {
+              throw new ObjectStorageIntegrityError("Stored indicator names are inconsistent");
+            }
+            const displayName = displayNames.values().next().value;
+            if (displayName === undefined) {
+              throw new ObjectStorageIntegrityError("Stored indicator name is missing");
+            }
             return {
               canonicalCode,
-              displayName: indicator.displayName,
+              displayName,
               units: [...units.entries()].map(([unit, summary]) => ({ unit, ...summary })),
             };
           }),
@@ -3588,9 +3656,7 @@ export function createDocumentService(
     async getIndicatorSeries(actor, requestedScope, requestedQuery, correlationId) {
       const profileScope = canonicalProfileScope(requestedScope);
       const canonicalCode = historyCanonicalCode(requestedScope.canonicalCode);
-      if (canonicalCode === null || syntheticIndicatorCatalog.get(canonicalCode) === undefined) {
-        throw new ResourceNotFoundError();
-      }
+      if (canonicalCode === null) throw new ResourceNotFoundError();
       const unit = indicatorUnit(requestedQuery.unit);
       const limit = indicatorSeriesLimit(requestedQuery.limit);
       return database.transaction(async (client) => {
@@ -3600,6 +3666,13 @@ export function createDocumentService(
           profileScope.familyId,
           profileScope.profileId,
         );
+        const indicator = (
+          await client.query<{ display_name: string }>(
+            "SELECT display_name FROM analyte_catalog WHERE canonical_code = $1",
+            [canonicalCode],
+          )
+        ).rows[0];
+        if (indicator === undefined) throw new ResourceNotFoundError();
         const cursor = decodeIndicatorSeriesCursor(requestedQuery.cursor, canonicalCode, unit);
         const comparisonRows = await client.query<ObservationHistoryRow>(
           `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
@@ -3631,8 +3704,9 @@ export function createDocumentService(
               AND o.patient_profile_id = $2
               AND o.status = 'confirmed'
               AND o.canonical_code = $3
-              AND o.source_unit = $4
-            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+              AND COALESCE(o.normalized_unit, o.source_unit) = $4
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC,
+                     o.confirmed_at DESC, o.id DESC
             LIMIT 2`,
           [profileScope.familyId, profileScope.profileId, canonicalCode, unit],
         );
@@ -3666,23 +3740,30 @@ export function createDocumentService(
               AND o.patient_profile_id = $2
               AND o.status = 'confirmed'
               AND o.canonical_code = $3
-              AND o.source_unit = $4
+              AND COALESCE(o.normalized_unit, o.source_unit) = $4
               AND (
                 $5 IS NULL
                 OR COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) < $5
                 OR (
                   COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) = $5
-                  AND o.id < $6
+                  AND o.confirmed_at < $6
+                )
+                OR (
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) = $5
+                  AND o.confirmed_at = $6
+                  AND o.id < $7
                 )
               )
-            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
-            LIMIT $7`,
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC,
+                     o.confirmed_at DESC, o.id DESC
+            LIMIT $8`,
           [
             profileScope.familyId,
             profileScope.profileId,
             canonicalCode,
             unit,
             cursor?.timelineAt ?? null,
+            cursor?.confirmedAt ?? null,
             cursor?.id ?? null,
             limit + 1,
           ],
@@ -3697,6 +3778,7 @@ export function createDocumentService(
                 unit,
                 id: lastItem.id,
                 timelineAt: lastItem.timelineAt,
+                confirmedAt: lastItem.confirmed.at,
               })
             : null;
         const first = comparisonRows.rows[0]
@@ -3709,24 +3791,29 @@ export function createDocumentService(
           first === undefined || second === undefined
             ? { state: "insufficient_data" }
             : (() => {
-                const delta = decimalDelta(first.source.value, second.source.value);
+                const delta = decimalDelta(
+                  first.normalized.value ?? first.source.value,
+                  second.normalized.value ?? second.source.value,
+                );
                 if (delta === null)
                   return { state: "unavailable", reason: "non_numeric_source_value" };
                 return {
                   state: "available",
                   previous: {
                     id: second.id,
-                    value: second.source.value,
+                    value: second.normalized.value ?? second.source.value,
                     timelineAt: second.timelineAt,
                   },
                   delta,
                 };
               })();
-        const indicator = syntheticIndicatorCatalog.get(canonicalCode);
-        if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
         const response: IndicatorSeriesResponse = {
           contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
-          indicator: { canonicalCode, displayName: indicator.displayName, unit },
+          indicator: {
+            canonicalCode,
+            displayName: requiredBoundedString(indicator.display_name, 200, "indicator name"),
+            unit,
+          },
           items,
           comparison,
           nextCursor,
@@ -3756,7 +3843,8 @@ export function createDocumentService(
           await client.query<FactForReviewRow>(
             `SELECT f.id, f.document_version_id, f.document_page_id, f.extraction_run_id,
                     f.source_fragment, f.source_name, f.source_value, f.source_unit,
-                    f.proposed_canonical_code, f.proposed_reference_range,
+                    f.proposed_canonical_code, f.proposed_normalized_value,
+                    f.proposed_normalized_unit, f.proposed_reference_range,
                     f.proposed_specimen, f.proposed_sampled_at, f.proposed_resulted_at,
                     f.proposed_laboratory, f.confidence
                FROM extracted_facts f
@@ -3842,11 +3930,43 @@ export function createDocumentService(
           throw new DomainValidationError();
         }
 
+        const mappedAnalyte = await resolveAnalyteMapping(client, {
+          sourceName: fact.source_name,
+          sourceUnit: fact.source_unit,
+          sourceValue: fact.source_value,
+          proposedLaboratory: fact.proposed_laboratory,
+          proposedNormalizedValue: fact.proposed_normalized_value,
+        });
         const canonicalCode = nullableBoundedString(
-          fact.proposed_canonical_code,
+          mappedAnalyte?.canonicalCode ?? fact.proposed_canonical_code,
           100,
           "fact canonical code",
         );
+        const normalizedValue =
+          command.decision === "correct"
+            ? null
+            : nullableBoundedString(
+                mappedAnalyte?.normalizedValue ?? fact.proposed_normalized_value,
+                100,
+                "fact normalized value",
+              );
+        const normalizedUnit =
+          command.decision === "correct"
+            ? null
+            : nullableBoundedString(
+                mappedAnalyte?.normalizedUnit ?? fact.proposed_normalized_unit,
+                100,
+                "fact normalized unit",
+              );
+        if ((normalizedValue === null) !== (normalizedUnit === null)) {
+          throw new ObjectStorageIntegrityError("Stored fact normalization is invalid");
+        }
+        const conversionVersion =
+          normalizedValue === null
+            ? null
+            : mappedAnalyte === null
+              ? CODEX_DOCUMENT_INTELLIGENCE_VERSION
+              : "analyte-alias/v1";
         const reference =
           fact.proposed_reference_range === null
             ? null
@@ -3874,8 +3994,8 @@ export function createDocumentService(
                 source_fragment, extraction_confidence, confirmed_by_user_id,
                 confirmed_at, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
-                     $9, $10, $11, $12, NULL, NULL, NULL, $13, $14, $15, $16,
-                     $17, $18, $19, $20, $21, $21)`,
+                     $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+                     $20, $21, $22, $23, $24, $24)`,
             [
               observationId,
               scope.familyId,
@@ -3889,6 +4009,9 @@ export function createDocumentService(
               sourceName,
               sourceValue,
               sourceUnit,
+              normalizedValue,
+              normalizedUnit,
+              conversionVersion,
               sampledAt,
               resultedAt,
               canonicalTimestamp(document.uploaded_at),

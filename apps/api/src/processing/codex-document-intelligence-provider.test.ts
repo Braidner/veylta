@@ -48,6 +48,10 @@ test("Codex classifies a document and returns only source-bound review drafts", 
           category: "laboratory",
           title: "Синтетический лабораторный отчёт",
           documentDate: "2026-08-12",
+          sampledAt: "2026-08-11T07:30:00.000Z",
+          resultedAt: "2026-08-12T00:00:00.000Z",
+          specimenType: "Венозная кровь",
+          laboratory: "Синтетическая лаборатория",
           confidence: 0.96,
         },
         facts: [
@@ -92,6 +96,20 @@ test("Codex classifies a document and returns only source-bound review drafts", 
   assert.equal(result.intelligence.provider, "codex");
   assert.equal(result.intelligence.category, "laboratory");
   assert.equal(result.extraction.items.length, 1);
+  assert.deepEqual(
+    {
+      laboratory: result.extraction.items[0]?.proposedLaboratory,
+      resultedAt: result.extraction.items[0]?.proposedResultedAt,
+      sampledAt: result.extraction.items[0]?.proposedSampledAt,
+      specimenType: result.extraction.items[0]?.proposedSpecimenType,
+    },
+    {
+      laboratory: "Синтетическая лаборатория",
+      resultedAt: "2026-08-12T00:00:00.000Z",
+      sampledAt: "2026-08-11T07:30:00.000Z",
+      specimenType: "Венозная кровь",
+    },
+  );
   assert.equal(
     result.extraction.items[0]?.source.fragment,
     pages[0]?.text.split("\n").slice(2).join("\n"),
@@ -142,6 +160,7 @@ test("Codex classifies a document and returns only source-bound review drafts", 
   assert.match(calls[0]?.input ?? "", /normalized value and normalized unit together/i);
   assert.match(calls[0]?.input ?? "", /sample time must not be later than the result time/i);
   assert.match(calls[0]?.input ?? "", /validationIssues must not contain duplicates/i);
+  assert.match(calls[0]?.input ?? "", /document-level metadata/i);
 });
 
 test("Codex can sort a non-laboratory document without inventing facts", async () => {
@@ -153,6 +172,10 @@ test("Codex can sort a non-laboratory document without inventing facts", async (
           category: "consultation",
           title: "Синтетическая консультация",
           documentDate: null,
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
           confidence: 0.84,
         },
         facts: [],
@@ -176,6 +199,10 @@ test("Codex provenance expands an exact context fragment to its complete source 
           category: "laboratory",
           title: "Синтетический лабораторный отчёт",
           documentDate: "2026-08-12",
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
           confidence: 0.96,
         },
         facts: [
@@ -242,6 +269,10 @@ test("Codex keeps source-bound facts when another proposed fact fails validation
           category: "laboratory",
           title: "Синтетический лабораторный отчёт",
           documentDate: "2026-08-12",
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
           confidence: 0.96,
         },
         facts: [
@@ -272,6 +303,10 @@ test("Codex output fails closed when provenance is not an exact page fragment", 
           category: "laboratory",
           title: "Синтетический отчёт",
           documentDate: null,
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
           confidence: 0.9,
         },
         facts: [

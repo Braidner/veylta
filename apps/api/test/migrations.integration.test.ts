@@ -529,6 +529,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "care_plan_proposal_runs"), true);
     assert.equal(await tableExists(database, "care_plan_codex_provenance"), true);
     assert.equal(await tableExists(database, "document_intelligence_results"), true);
+    assert.equal(await tableExists(database, "analyte_catalog"), true);
+    assert.equal(await tableExists(database, "analyte_aliases"), true);
     await database.query(
       `INSERT INTO home_storage_settings
          (singleton, driver, current_root, state, generation)
@@ -541,6 +543,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0017_analyte_catalog");
+    assert.equal(await tableExists(database, "analyte_catalog"), false);
     assert.equal(await migrateDown(database), "0016_document_intelligence");
     assert.equal(await tableExists(database, "document_intelligence_results"), false);
     assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
@@ -632,6 +636,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0014_home_care_plan",
       "0015_codex_care_plan_proposals",
       "0016_document_intelligence",
+      "0017_analyte_catalog",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -993,6 +998,7 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
+    assert.equal(await migrateDown(database), "0017_analyte_catalog");
     assert.equal(await migrateDown(database), "0016_document_intelligence");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     assert.equal(await tableExists(database, "care_plan_items"), true);
@@ -1085,6 +1091,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0017_analyte_catalog");
     assert.equal(await migrateDown(database), "0016_document_intelligence");
     assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
     assert.equal(await migrateDown(database), "0014_home_care_plan");

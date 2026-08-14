@@ -940,6 +940,8 @@ export interface LabExtractionResult {
 export interface ExtractedLabFact extends LabExtractionFact {
   readonly id: string;
   readonly factVersion: number;
+  /** Russian household display name from the confirmed local analyte catalog. */
+  readonly canonicalDisplayName: string | null;
   readonly reviewStatus: ExtractedFactReviewStatus;
   /** Null until an explicit immutable review decision has been stored. */
   readonly review: ExtractedFactReviewSummary | null;

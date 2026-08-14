@@ -74,6 +74,10 @@ if (args[0] === "--version") {
         category: facts.length > 0 ? "laboratory" : "other",
         title: facts.length > 0 ? "Синтетические лабораторные результаты" : "Синтетический документ",
         documentDate: null,
+        sampledAt: facts.length > 0 ? "2026-08-10T08:00:00.000Z" : null,
+        resultedAt: facts.length > 0 ? "2026-08-10T12:00:00.000Z" : null,
+        specimenType: facts.length > 0 ? "Синтетическая кровь" : null,
+        laboratory: facts.length > 0 ? "Синтетическая лаборатория" : null,
         confidence: 0.94
       },
       facts

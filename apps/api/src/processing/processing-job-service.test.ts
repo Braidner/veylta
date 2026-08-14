@@ -544,6 +544,77 @@ test("Codex completion stores immutable classification beside source-bound facts
   });
 });
 
+test("completion resolves a known laboratory alias through the local analyte catalog", async () => {
+  await withDatabase(async (database, fixture) => {
+    const jobs = createProcessingJobService(database);
+    await jobs.enqueueDocumentExtraction({ ...fixture, now: start });
+    const claim = await jobs.claimNext({
+      workerId: "worker-analyte-map",
+      now: start,
+      leaseDurationMs: 60_000,
+    });
+    assert.ok(claim !== null);
+    await advanceToValidation(jobs, claim);
+
+    const output = codexExtraction();
+    const sourceFact = output.extraction.items[0];
+    assert.ok(sourceFact !== undefined);
+    const sourceFragment = "9,9 Билирубин общий (ТВ) мкмоль/л 3,4 - 20,5";
+    const mappedOutput: DocumentIntelligenceOutput = {
+      ...output,
+      pages: [
+        {
+          pageNumber: 1,
+          text: sourceFragment,
+          extractionMethod: "pdf_text_layer",
+          extractionVersion: "pdfjs-dist/6.2.108",
+          textSha256: createHash("sha256").update(sourceFragment).digest("hex"),
+        },
+      ],
+      extraction: {
+        ...output.extraction,
+        items: [
+          {
+            ...sourceFact,
+            factKey: "bilirubin-total",
+            sourceName: "Билирубин общий (ТВ)",
+            sourceValue: "9,9",
+            sourceUnit: "мкмоль/л",
+            proposedCanonicalCode: null,
+            proposedNormalizedValue: null,
+            proposedNormalizedUnit: null,
+            source: { pageNumber: 1, fragment: sourceFragment },
+          },
+        ],
+      },
+    };
+
+    await jobs.completeExtraction(claim, mappedOutput, after(500));
+    const stored = await database.query<{
+      proposed_canonical_code: string | null;
+      proposed_normalized_unit: string | null;
+      proposed_normalized_value: string | null;
+      source_unit: string;
+      source_value: string;
+    }>(
+      `SELECT proposed_canonical_code, proposed_normalized_value, proposed_normalized_unit,
+              source_value, source_unit
+         FROM extracted_facts
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.deepEqual(stored.rows, [
+      {
+        proposed_canonical_code: "bilirubin.total",
+        proposed_normalized_value: "9.9",
+        proposed_normalized_unit: "µmol/L",
+        source_value: "9,9",
+        source_unit: "мкмоль/л",
+      },
+    ]);
+  });
+});
+
 test("completion keeps a high-confidence extraction awaiting an explicit final review", async () => {
   await withDatabase(async (database, fixture) => {
     const jobs = createProcessingJobService(database);

@@ -5675,6 +5675,7 @@ function ReviewFactCard({
     maximumFractionDigits: 0,
   }).format(fact.confidence);
   const isDisabled = anyPending;
+  const displayName = fact.canonicalDisplayName ?? fact.sourceName;
 
   async function submitCorrection(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -5695,7 +5696,7 @@ function ReviewFactCard({
       <div className="review-fact__summary">
         <div>
           <p className="review-fact__key">Извлечённый факт</p>
-          <h4 id={`review-fact-${fact.id}`}>{fact.sourceName}</h4>
+          <h4 id={`review-fact-${fact.id}`}>{displayName}</h4>
         </div>
         <p className={`review-fact__state review-fact__state--${fact.reviewStatus}`}>
           <strong>{reviewStatusLabel(fact.reviewStatus)}</strong>
@@ -5707,6 +5708,10 @@ function ReviewFactCard({
         <section className="review-fact__source" aria-label={`Источник: ${fact.sourceName}`}>
           <h5>Источник</h5>
           <dl>
+            <div>
+              <dt>Название в документе</dt>
+              <dd>{fact.sourceName}</dd>
+            </div>
             <div>
               <dt>Как в документе</dt>
               <dd>
@@ -5738,7 +5743,11 @@ function ReviewFactCard({
           <dl>
             <div>
               <dt>Код показателя</dt>
-              <dd>{proposedValue(fact.proposedCanonicalCode)}</dd>
+              <dd>
+                {fact.canonicalDisplayName === null
+                  ? proposedValue(fact.proposedCanonicalCode)
+                  : `${fact.canonicalDisplayName} · ${proposedValue(fact.proposedCanonicalCode)}`}
+              </dd>
             </div>
             <div>
               <dt>Нормализованное значение</dt>
