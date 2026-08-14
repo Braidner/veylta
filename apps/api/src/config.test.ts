@@ -69,7 +69,7 @@ test("processing worker timings have safe defaults and reject non-positive value
     },
     () => {
       const config = loadConfig();
-      assert.equal(config.processingLeaseDurationMs, 240_000);
+      assert.equal(config.processingLeaseDurationMs, 360_000);
       assert.equal(config.processingPollIntervalMs, 500);
       assert.equal(config.processingRetryDelayMs, 1_000);
     },
@@ -113,7 +113,7 @@ test("Codex document intelligence has an explicit model and bounded timeout", ()
   withEnvironment({ CODEX_DOCUMENT_MODEL: undefined, CODEX_DOCUMENT_TIMEOUT_MS: undefined }, () => {
     const config = loadConfig();
     assert.equal(config.codexDocumentModel, "gpt-5.4-mini");
-    assert.equal(config.codexDocumentTimeoutMs, 180_000);
+    assert.equal(config.codexDocumentTimeoutMs, 300_000);
   });
   withEnvironment({ CODEX_DOCUMENT_MODEL: "bad model" }, () => {
     assert.throws(() => loadConfig(), /CODEX_DOCUMENT_MODEL/);

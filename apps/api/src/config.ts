@@ -181,8 +181,8 @@ export function loadConfig(): RuntimeConfig {
   if (maxDocumentBytes > MAX_SYNTHETIC_DOCUMENT_BYTES) {
     throw new Error(`MAX_DOCUMENT_BYTES must not exceed ${MAX_SYNTHETIC_DOCUMENT_BYTES}`);
   }
-  const codexDocumentTimeoutMs = boundedInteger("CODEX_DOCUMENT_TIMEOUT_MS", 180_000, 600_000);
-  const processingLeaseDurationMs = integer("PROCESSING_LEASE_DURATION_MS", 240_000);
+  const codexDocumentTimeoutMs = boundedInteger("CODEX_DOCUMENT_TIMEOUT_MS", 300_000, 600_000);
+  const processingLeaseDurationMs = integer("PROCESSING_LEASE_DURATION_MS", 360_000);
   if (processingLeaseDurationMs < codexDocumentTimeoutMs + 30_000) {
     throw new Error(
       "PROCESSING_LEASE_DURATION_MS must exceed CODEX_DOCUMENT_TIMEOUT_MS by at least 30000",
