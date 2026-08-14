@@ -138,6 +138,10 @@ test("Codex classifies a document and returns only source-bound review drafts", 
   );
   assert.match(calls[0]?.input ?? "", /canonical UTC timestamp/i);
   assert.match(calls[0]?.input ?? "", /null instead of an empty string/i);
+  assert.match(calls[0]?.input ?? "", /unique factKey/i);
+  assert.match(calls[0]?.input ?? "", /normalized value and normalized unit together/i);
+  assert.match(calls[0]?.input ?? "", /sample time must not be later than the result time/i);
+  assert.match(calls[0]?.input ?? "", /validationIssues must not contain duplicates/i);
 });
 
 test("Codex can sort a non-laboratory document without inventing facts", async () => {

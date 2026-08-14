@@ -376,6 +376,7 @@ function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocument
     "Classify the document into exactly one allowed category. Create a short factual title and optional document date.",
     "Extract only explicit quantitative laboratory measurements. Do not diagnose, treat, prescribe, triage, recommend, or infer missing values.",
     "Return proposed dates only as canonical UTC timestamps. For an explicit date without a time, use 00:00:00.000Z. Use null instead of an empty string for every missing optional field.",
+    "Give every fact a unique factKey. Return a normalized value and normalized unit together or return both as null. A sample time must not be later than the result time. validationIssues must not contain duplicates.",
     "Every fact source.fragment must copy the exact complete source line or contiguous lines from the specified page text, including the measurement name, value, and unit; never return only a value.",
     "Return zero facts for documents without explicit quantitative laboratory measurements. Return only the requested JSON shape.",
     JSON.stringify({
