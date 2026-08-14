@@ -63,16 +63,12 @@ test("an owner explicitly sends a confirmed summary to the ChatGPT Codex session
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
-  const facts = page.locator(".review-fact");
-  await facts
-    .first()
-    .getByRole("button", { name: /^Подтвердить / })
-    .click();
-  await facts
-    .nth(1)
-    .getByRole("button", { name: /^Отклонить / })
-    .click();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
+  const facts = page.locator(".document-result-card--selectable");
+  await facts.first().click();
+  await page.getByRole("button", { name: "Подтвердить результат" }).click();
+  await facts.nth(1).click();
+  await page.getByRole("button", { name: "Отклонить результат" }).click();
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
 
   await page.goto(profileUrl);

@@ -21,7 +21,7 @@ async function registerDemoFamily(page: Page): Promise<string> {
 }
 
 function factCard(page: Page, index: number): Locator {
-  return page.locator(".review-fact").nth(index);
+  return page.locator(".document-result-card--selectable").nth(index);
 }
 
 async function uploadAndFinishReview(
@@ -34,22 +34,21 @@ async function uploadAndFinishReview(
     mimeType: "application/pdf",
     buffer: distinctSyntheticDocument(syntheticLabBytes, filename),
   });
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
   if (decision === "confirm") {
-    await factCard(page, 0)
-      .getByRole("button", { name: /^Подтвердить / })
-      .click();
+    await factCard(page, 0).click();
+    await page.getByRole("button", { name: "Подтвердить результат" }).click();
   } else {
     const first = factCard(page, 0);
-    await first.getByRole("button", { name: /^Исправить / }).click();
-    await first.getByLabel("Корректное значение").fill("7.1");
-    await first.getByRole("button", { name: "Сохранить исправление" }).click();
+    await first.click();
+    await page.getByRole("button", { name: "Исправить результат" }).click();
+    await page.getByLabel("Корректное значение").fill("7.1");
+    await page.getByRole("button", { name: "Сохранить исправление" }).click();
   }
-  await factCard(page, 1)
-    .getByRole("button", { name: /^Отклонить / })
-    .click();
+  await factCard(page, 1).click();
+  await page.getByRole("button", { name: "Отклонить результат" }).click();
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
-  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+  await page.getByRole("tab", { name: "История", exact: true }).click();
   await page.getByRole("tab", { name: "План", exact: true }).click();
 }
 
@@ -73,17 +72,15 @@ test("profile summary is a source-first immutable version after final human revi
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
 
-  await factCard(page, 0)
-    .getByRole("button", { name: /^Подтвердить / })
-    .click();
-  await factCard(page, 1)
-    .getByRole("button", { name: /^Отклонить / })
-    .click();
+  await factCard(page, 0).click();
+  await page.getByRole("button", { name: "Подтвердить результат" }).click();
+  await factCard(page, 1).click();
+  await page.getByRole("button", { name: "Отклонить результат" }).click();
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
 
-  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+  await page.getByRole("tab", { name: "История", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=history`);
   await page.getByRole("tab", { name: "План", exact: true }).click();
   await expect(summary.getByLabel("Версия сводки")).toHaveValue("1");
@@ -101,7 +98,7 @@ test("profile summary is a source-first immutable version after final human revi
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
-  await expect(page.getByRole("link", { name: "Скачать оригинал" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Скачать" })).toBeVisible();
 });
 
 test("summary selector opens an older immutable source snapshot without deriving a change", async ({

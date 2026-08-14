@@ -149,8 +149,15 @@ real-data readiness claim.
 - `document-agent/v1` stores an append-only Russian conversation and exact
   Codex model/runtime provenance in SQLite. The official MCP SDK exposes one
   short-lived, document-scoped read-only context tool to the local Codex CLI.
-- `document/v4` exposes an ordered payload-free timeline for the latest job;
+- `document/v5` exposes an ordered payload-free timeline for the latest job
+  and immutable review summaries with the deciding account and decision time;
   the web UI polls and renders only persisted queue/stage/result events.
+- The document workspace keeps one selected result in context: it shows the
+  exact page/fragment beside that result, clear missing-field disclosure, and
+  only the applicable human actions (confirm, correct, or reject). Bulk
+  confirmation includes only facts with no extraction warnings; `needs_review`
+  facts always require an individual source check. Every accepted bulk item is
+  still stored as its own explicit immutable decision.
 - Versioned `home-care-plan/v1` read/write boundary backed by tenant-aware
   SQLite constraints. User actions are replay-safe and retained; a future
   Codex proposal must name its immutable summary, rule version, source when

@@ -129,6 +129,7 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     "В документе указан один синтетический лабораторный результат.",
   );
   assert.equal(result.intelligence.structuredResults[0]?.type, "measurement");
+  assert.equal(result.intelligence.structuredResults[0]?.resultKey, "synthetic-glucose");
   assert.equal(
     result.intelligence.structuredResults[0]?.source.fragment,
     "Synthetic glucose: 7.0 synthetic-unit",
@@ -242,6 +243,78 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     /complete source line/i,
   );
   assert.equal(calls.length, 1);
+});
+
+test("Codex output fails closed when a shared result key contradicts the review fact", async () => {
+  const provider = createCodexDocumentIntelligenceProvider(
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
+    executorFor(
+      {
+        classification: {
+          category: "laboratory",
+          title: "Синтетический лабораторный отчёт",
+          shortSummary: "В документе указан один синтетический лабораторный результат.",
+          detailedSummary:
+            "Документ содержит синтетическое измерение глюкозы и исходный лабораторный диапазон.",
+          documentDate: "2026-08-12",
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
+          confidence: 0.96,
+        },
+        structuredResults: [
+          {
+            resultKey: "synthetic-glucose",
+            type: "measurement",
+            label: "Синтетическая глюкоза",
+            value: "7.1",
+            unit: "synthetic-unit",
+            code: null,
+            lab: null,
+            specimen: null,
+            date: null,
+            status: "unknown",
+            confidence: 0.91,
+            source: { pageNumber: 1, fragment: "Synthetic glucose: 7.0 synthetic-unit" },
+          },
+        ],
+        facts: [
+          {
+            factKey: "synthetic-glucose",
+            sourceName: "Synthetic glucose",
+            sourceValue: "7.0",
+            sourceUnit: "synthetic-unit",
+            proposedCanonicalCode: null,
+            proposedNormalizedValue: null,
+            proposedNormalizedUnit: null,
+            proposedSampledAt: null,
+            proposedResultedAt: null,
+            proposedSpecimenType: null,
+            proposedLaboratory: null,
+            referenceRange: null,
+            confidence: 0.91,
+            validationIssues: [],
+            source: { pageNumber: 1, fragment: "Synthetic glucose: 7.0 synthetic-unit" },
+          },
+        ],
+      },
+      [],
+    ),
+  );
+
+  await assert.rejects(
+    () => provider.analyze({ contentType: "application/pdf", pages }),
+    (error: unknown) =>
+      error instanceof CodexDocumentIntelligenceError && error.code === "OUTPUT_INVALID",
+  );
 });
 
 test("Codex can sort a non-laboratory document without inventing facts", async () => {

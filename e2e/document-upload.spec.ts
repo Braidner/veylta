@@ -51,8 +51,7 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
   const firstDocumentUrl = page.url();
-  await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
-  await expect(page.getByText("Оригинал сохранён")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: filename })).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
@@ -64,7 +63,7 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   await page.reload();
   await expect(page).toHaveURL(firstDocumentUrl);
   await expect(
-    page.getByRole("heading", { level: 2, name: "Синтетические лабораторные результаты" }),
+    page.getByRole("heading", { level: 1, name: "Синтетические лабораторные результаты" }),
   ).toBeVisible();
   await expect(page.getByText(filename, { exact: false })).toBeVisible();
   await expect(
@@ -74,11 +73,11 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   ).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Скачать оригинал" }).click();
+  await page.getByRole("link", { name: "Скачать" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(filename);
 
-  await page.getByRole("link", { name: "Все документы" }).click();
+  await page.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
   const overview = page.getByRole("region", { name: "Архив документов" });
   await expect(
@@ -133,14 +132,14 @@ test("a direct synthetic PNG is accepted, OCRed, and downloaded with its origina
   );
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
-  await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: filename })).toBeVisible();
   await expect(page.locator(".document-meta")).toContainText("PNG");
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Скачать оригинал" }).click();
+  await page.getByRole("link", { name: "Скачать" }).click();
   const download = await downloadPromise;
   expect(download.suggestedFilename()).toBe(filename);
 });
@@ -175,7 +174,7 @@ test("a restart command reuses its idempotency key after a transient browser fai
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v4",
+          contractVersion: "document/v5",
           documentId,
           processing,
           activity:
@@ -199,7 +198,7 @@ test("a restart command reuses its idempotency key after a transient browser fai
         status: 202,
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v4",
+          contractVersion: "document/v5",
           documentId,
           processing: { state: "queued", updatedAt: "2026-08-12T12:00:01.000Z" },
         }),
@@ -235,7 +234,7 @@ test("document archive searches summaries and deletion requires an explicit conf
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
 
-  await page.getByRole("link", { name: "Все документы" }).click();
+  await page.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
   const archive = page.getByRole("region", { name: "Архив документов" });
   const search = archive.getByPlaceholder("Поиск по саммари и результатам");
@@ -251,7 +250,7 @@ test("document archive searches summaries and deletion requires an explicit conf
   const confirmation = page.getByRole("dialog", { name: "Удалить документ из Veylta?" });
   await expect(confirmation).toContainText("исчезнет из активного архива и поиска");
   await confirmation.getByRole("button", { name: "Отмена" }).click();
-  await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
 
   await page.getByRole("button", { name: "Удалить" }).click();
   await page
@@ -284,7 +283,7 @@ test("another family session cannot see a document or its filename", async ({ pa
   await registerDemoFamily(page);
   const privateFilename = `foreign-family-${crypto.randomUUID().slice(0, 8)}.pdf`;
   await uploadPdf(page, privateFilename, syntheticPdf("foreign-family-boundary"));
-  await expect(page.getByRole("heading", { level: 2, name: privateFilename })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: privateFilename })).toBeVisible();
   const foreignDocumentUrl = page.url();
 
   await page.getByRole("button", { name: "Выйти" }).click();

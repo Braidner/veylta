@@ -99,9 +99,19 @@ The first slice proves one complete and safe path with synthetic data:
 8. A user explicitly confirms, corrects, or rejects each fact. Confirmation or
    correction atomically creates an `Observation` and audit event without
    altering the raw extracted fact; rejection creates no observation (Task 6,
-   delivered).
+   delivered). The document workspace makes one selected result the active
+   context: its source page and fragment, raw/proposed values, decision controls,
+   and immutable decision journal appear together. A person may bulk-confirm
+   only pending facts without extraction warnings; every `needs_review` fact
+   requires its own source check. Veylta still writes one explicit immutable
+   decision per accepted fact and stops on any failed command.
+   Missing laboratory, biomaterial date, or indicator code is disclosed rather
+   than inferred; the person can ask Codex to investigate it through the bounded
+   document conversation.
 9. Indicator history displays the confirmed value, unit/reference, and an
-   authorized link to its source (Task 7, delivered).
+   authorized link to its source (Task 7, delivered). Where a fact has an exact
+   canonical code, the workspace may show only that authorized source-first
+   history; it never compares unknown codes or silently converts units.
 10. The two explicit synthetic analytes receive deterministic demonstration
     codes. A profile catalog and a compact chart compare only confirmed values
     with an identical code and exact source unit (Task 9, delivered).
@@ -230,6 +240,10 @@ independently reviewed.
 - The profile overview is bounded, profile-authorized, source-first, and links
   only to already-authorized document detail paths; opening it neither creates
   a clinical summary nor changes a record.
+- The document-detail shell is compact and uses the same dashboard system as
+  the profile without repeating its greeting/header. It leads with the archive
+  context, document title, one short factual summary, selected result and source
+  evidence; download, restart, and deletion remain secondary lifecycle actions.
 - The health summary is a bounded, profile-authorized, versioned snapshot of
   confirmed observations. It distinguishes new evidence from carried-forward
   evidence, has no clinical interpretation, and re-authorizes each source link.

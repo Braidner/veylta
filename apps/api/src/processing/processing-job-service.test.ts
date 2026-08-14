@@ -103,7 +103,7 @@ function codexExtraction(): DocumentIntelligenceV2Output {
         "Документ содержит синтетическое измерение, которое остаётся черновиком до проверки пользователем.",
       structuredResults: [
         {
-          resultKey: "synthetic-analyte-a-result",
+          resultKey: "synthetic-analyte-a",
           type: "measurement",
           label: "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
           value: "7.0",
@@ -407,13 +407,13 @@ test("failures wait for retry and exhaust into a visible dead-letter state", asy
       [
         {
           automated: true,
-          contractVersion: "document/v4",
+          contractVersion: "document/v5",
           errorCode: "EXTRACTION_FAILED",
           outcome: "retry_wait",
         },
         {
           automated: true,
-          contractVersion: "document/v4",
+          contractVersion: "document/v5",
           errorCode: "VALIDATION_FAILED",
           outcome: "dead_letter",
         },
@@ -451,7 +451,7 @@ test("an expired final attempt is dead-lettered instead of remaining leased fore
           correlationId: `worker:${job.id}`,
           metadata: {
             automated: true,
-            contractVersion: "document/v4",
+            contractVersion: "document/v5",
             errorCode: "ATTEMPT_LIMIT",
             outcome: "dead_letter",
           },
@@ -522,7 +522,7 @@ test("completion atomically persists provenance once and is idempotent on acknow
     );
     assert.deepEqual(JSON.parse(events[0]?.metadata ?? ""), {
       automated: true,
-      contractVersion: "document/v4",
+      contractVersion: "document/v5",
       outcome: "completed",
     });
     assert.doesNotMatch(events[0]?.metadata ?? "", /synthetic-analyte-a|reference|7\.0/i);

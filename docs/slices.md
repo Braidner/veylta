@@ -653,7 +653,7 @@ Status: delivered backend boundary.
 
 - Every real queue, worker claim, processing stage, saved result, scheduled
   retry, and terminal failure appends one immutable closed-code event.
-- `document/v4` returns the ordered journal for the latest job with only event
+- `document/v5` returns the ordered journal for the latest job with only event
   code, attempt number, and timestamp. It never exposes source text, medical
   values, model output, prompts, raw exceptions, or chain-of-thought.
 - The browser may poll and render these persisted events; it must not invent
@@ -712,7 +712,13 @@ Status: delivered.
 - The document route uses a dense responsive dashboard: short summary and
   structured results are primary; detailed summary, source integrity,
   processing activity, conversation, review, restart, download, and deletion
-  remain clearly separated.
+  remain clearly separated. The evolved detail workspace keeps the selected
+  result beside its source evidence and review decision rather than duplicating
+  a profile-level heading. It discloses missing laboratory/sample-date/code
+  fields, routes a contextual question to Codex, exposes compatible canonical
+  history, and preserves one immutable reviewer/time/run/source-version journal
+  entry for every final decision. Bulk confirmation includes only warning-free
+  extracted facts; ambiguous or low-confidence facts remain individual actions.
 
 ## Later MVP slices
 

@@ -472,7 +472,7 @@ Response `202`:
 
 ```json
 {
-  "contractVersion": "document/v4",
+  "contractVersion": "document/v5",
   "disposition": "created",
   "document": {
     "id": "document_placeholder",
@@ -564,7 +564,7 @@ Returns a compact status response and records a payload-free access audit event:
 
 ```json
 {
-  "contractVersion": "document/v4",
+  "contractVersion": "document/v5",
   "documentId": "document_placeholder",
   "processing": {
     "state": "awaiting_review",
@@ -615,7 +615,7 @@ one final review decision; the browser never fabricates either state.
 Requires the exact configured `Origin` and an `Idempotency-Key`. It accepts no
 body and is available only for the authorized document's `dead_letter` job. The
 server records an immutable retry request, resets that existing job to `queued`,
-and returns `202` with the same `document/v4` processing status shape. The next
+and returns `202` with the same `document/v5` processing status shape. The next
 processing read includes the appended requeue event in its journal.
 Replaying the same family/actor/key returns the original accepted retry; a key
 used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
@@ -731,10 +731,30 @@ is not changed by review.
 ```
 
 `review` is `null` until the explicit decision is stored; afterwards it is the
-immutable decision summary, including its outcome, time, optional observation
-identifier, and (for `correct`) the confirmed source correction. The UI must
-display source and proposed fields distinctly. A low-confidence or ambiguous
-fact cannot be silently confirmed.
+immutable decision summary, including its outcome, deciding account, decision
+time, optional observation identifier, and (for `correct`) the confirmed source
+correction. The enclosing facts response retains the extraction run and source
+version. The UI must display source and proposed fields distinctly. A
+low-confidence or ambiguous fact cannot be silently confirmed.
+
+A bulk UI action may include only `reviewStatus: "extracted"` facts with an
+empty `validationIssues` array. Every `needs_review` fact remains an individual
+decision. When document intelligence and the lab extraction describe the same
+measurement, the client pairs them only after exact page/fragment, source value,
+and unit provenance match. The provider may then normalize a differing generic
+result key to the fact key; a shared key never overrides conflicting provenance.
+The client must not render two decision contexts for
+one source measurement.
+
+The document workspace may select one fact at a time and place its source page
+and exact fragment beside the actions. It must disclose missing laboratory,
+sample-date, and canonical-code fields as missing rather than manufacture them.
+For an exact existing canonical code it may request the authorized
+`observation-history/v1` filter and show that source-first history. The full
+history link must preserve that exact `canonicalCode`; pagination remains bound
+to the same filter. A contextual
+"ask Codex" action only opens the existing document conversation; it does not
+change a fact or create a decision.
 
 ### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/facts/{factId}/review`
 
@@ -775,21 +795,28 @@ The first accepted command returns `201`:
 
 ```json
 {
-  "contractVersion": "document/v4",
+  "contractVersion": "document/v5",
   "review": {
     "id": "review_placeholder",
     "factId": "fact_0123456789abcdef0123456789abcdef01234567",
     "factVersion": 1,
     "outcome": "confirmed",
     "decidedAt": "2026-08-12T00:00:00.000Z",
+    "decidedBy": {
+      "id": "user_placeholder",
+      "displayName": "Synthetic owner"
+    },
     "observationId": "observation_placeholder"
   }
 }
 ```
 
 `outcome` is `confirmed`, `corrected`, or `rejected`; `observationId` is `null`
-for a rejection. The same family, actor, idempotency key, fact, and canonical
-command replay the original response with `200`. A conflicting key reuse,
+for a rejection. `decidedBy` and `decidedAt` identify the immutable human
+decision; the associated facts read also retains its extraction run and source
+version, so clients can render a decision journal without rewriting the source.
+The same family, actor, idempotency key, fact, and canonical command replay the
+original response with `200`. A conflicting key reuse,
 stale version, or a different command after the fact has its final decision
 returns `409`; inaccessible resources return `404`.
 

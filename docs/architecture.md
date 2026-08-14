@@ -52,8 +52,15 @@ audit events, and durable idempotent jobs. Original documents live behind versio
 directory, and an optional S3-compatible adapter preserves the same contract
 for synthetic deployments.
 
-The public document surface is `document/v4`: immutable extracted facts remain
-separate from explicit, idempotent fact-review decisions. The separate read-only
+The public document surface is `document/v5`: immutable extracted facts remain
+separate from explicit, idempotent fact-review decisions. Each persisted decision
+summary carries the deciding account and decision time; the immutable facts read
+retains the extraction run and source version that supplied it. Together they let
+a document workspace show a decision journal without changing raw evidence. The
+workspace keeps warning-bearing facts out of bulk confirmation, pairs duplicate
+generic/lab projections by exact source provenance, and binds a full-history
+navigation to the selected canonical code. The
+separate read-only
 `observation-history/v1` boundary exposes only those immutable observations
 that were explicitly confirmed or corrected. `indicator-series/v1` is a second
 read boundary that groups only the deterministic synthetic canonical codes and

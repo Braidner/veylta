@@ -559,7 +559,7 @@ function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocument
     "Also extract explicit quantitative laboratory measurements into facts for the existing human review pipeline. Do not diagnose, treat, prescribe, triage, recommend, or infer missing values.",
     "Extract explicit document-level metadata once: laboratory, specimen type, sample time, and result time. These defaults apply to every fact unless that fact has different explicit metadata.",
     "Return proposed dates only as canonical UTC timestamps. For an explicit date without a time, use 00:00:00.000Z. Use null instead of an empty string for every missing optional field.",
-    "Give every fact a unique factKey. Return a normalized value and normalized unit together or return both as null. A sample time must not be later than the result time. validationIssues must not contain duplicates.",
+    "Give every fact a unique factKey. When one quantitative laboratory measurement appears in both structuredResults and facts, use exactly the same resultKey and factKey. Return a normalized value and normalized unit together or return both as null. A sample time must not be later than the result time. validationIssues must not contain duplicates.",
     "Every structured result and fact source.fragment must copy the minimal exact complete source line or contiguous lines from the specified page text; never return only a detached value and avoid unrelated personal data.",
     "Return zero facts for documents without explicit quantitative laboratory measurements. Return only the requested JSON shape.",
     JSON.stringify({
@@ -648,6 +648,25 @@ function parseOutput(
     }
   }
   if (root.facts.length > 0 && facts.length === 0) invalidOutput();
+  const linkedResultKeys = new Set<string>();
+  const linkedStructuredResults = structuredResults.map((result) => {
+    const matchingFacts = facts.filter(
+      (fact) =>
+        result.type === "measurement" &&
+        result.value === fact.sourceValue &&
+        (result.unit ?? "") === fact.sourceUnit &&
+        result.source.pageNumber === fact.source.pageNumber &&
+        (fact.source.fragment.includes(result.source.fragment) ||
+          result.source.fragment.includes(fact.source.fragment)),
+    );
+    if (matchingFacts.length > 1) invalidOutput();
+    const sameKeyFact = facts.find((fact) => fact.factKey === result.resultKey);
+    if (sameKeyFact !== undefined && !matchingFacts.includes(sameKeyFact)) invalidOutput();
+    const resultKey = matchingFacts[0]?.factKey ?? result.resultKey;
+    if (linkedResultKeys.has(resultKey)) invalidOutput();
+    linkedResultKeys.add(resultKey);
+    return resultKey === result.resultKey ? result : { ...result, resultKey };
+  });
   return {
     pages,
     extraction: {
@@ -666,7 +685,7 @@ function parseOutput(
       confidence: confidence(classification.confidence),
       shortSummary: russianBoundedString(classification.shortSummary, 500),
       detailedSummary: russianBoundedString(classification.detailedSummary, 4_000),
-      structuredResults,
+      structuredResults: linkedStructuredResults,
     },
   };
 }

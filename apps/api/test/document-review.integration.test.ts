@@ -127,6 +127,24 @@ async function registerOwner(app: FastifyInstance, suffix: string): Promise<Iden
   return { body: response.json(), cookie: cookieFrom(response) };
 }
 
+async function registeredReviewer(
+  database: Database,
+  owner: Identity,
+): Promise<{ id: string; displayName: string }> {
+  const row = (
+    await database.query<{ id: string; display_name: string }>(
+      `SELECT u.id, u.display_name
+         FROM users u
+         JOIN family_memberships membership
+           ON membership.user_id = u.id
+        WHERE membership.family_id = $1 AND membership.role = 'owner' AND membership.status = 'active'`,
+      [owner.body.family.id],
+    )
+  ).rows[0];
+  if (row === undefined) throw new Error("Expected registered family owner");
+  return { id: row.id, displayName: row.display_name };
+}
+
 async function uploadAndExtract(
   context: TestContext,
   owner: Identity,
@@ -193,6 +211,7 @@ async function review(
 test("a fact confirmation atomically records an immutable decision, observation, range, and audit event", async () => {
   await withTestContext(async (context) => {
     const owner = await registerOwner(context.app, "Confirm");
+    const reviewer = await registeredReviewer(context.database, owner);
     const prepared = await uploadAndExtract(context, owner, "review-confirm-upload");
     assert.deepEqual(
       prepared.facts.map((item) => item.review),
@@ -228,6 +247,10 @@ test("a fact confirmation atomically records an immutable decision, observation,
     assert.match(created.json().review.id, /^[0-9a-f-]{36}$/);
     assert.match(created.json().review.decidedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.match(created.json().review.observationId, /^[0-9a-f-]{36}$/);
+    assert.deepEqual(created.json().review.decidedBy, {
+      id: reviewer.id,
+      displayName: reviewer.displayName,
+    });
 
     const persisted = await context.database.query<{
       outcome: string;
@@ -283,6 +306,10 @@ test("a fact confirmation atomically records an immutable decision, observation,
       decidedAt: created.json().review.decidedAt,
       observationId: created.json().review.observationId,
       correction: null,
+      decidedBy: {
+        id: reviewer.id,
+        displayName: reviewer.displayName,
+      },
     });
     const partialProcessing = await context.app.inject({
       method: "GET",
@@ -371,6 +398,7 @@ test("a fact confirmation atomically records an immutable decision, observation,
 test("a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation", async () => {
   await withTestContext(async (context) => {
     const owner = await registerOwner(context.app, "Correct and reject");
+    const reviewer = await registeredReviewer(context.database, owner);
     const prepared = await uploadAndExtract(context, owner, "review-correct-upload");
     const correcting = prepared.facts.find((item) => item.factKey === "synthetic-analyte-a");
     const rejecting = prepared.facts.find((item) => item.factKey === "synthetic-analyte-b");
@@ -471,6 +499,7 @@ test("a correction creates a confirmed observation without changing raw extracti
       outcome: "corrected",
       decidedAt: corrected.json().review.decidedAt,
       observationId: corrected.json().review.observationId,
+      decidedBy: reviewer,
       correction: {
         sourceName: "Corrected synthetic analyte",
         sourceValue: "8.25",
@@ -485,6 +514,7 @@ test("a correction creates a confirmed observation without changing raw extracti
       outcome: "rejected",
       decidedAt: rejected.json().review.decidedAt,
       observationId: null,
+      decidedBy: reviewer,
       correction: null,
     });
   });

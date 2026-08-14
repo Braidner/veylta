@@ -18,10 +18,11 @@ function syntheticNames() {
 async function registerDemoFamily(page: Page) {
   const names = syntheticNames();
   await createSyntheticFamily(page, names);
+  return names;
 }
 
-async function openReview(page: Page): Promise<void> {
-  await registerDemoFamily(page);
+async function openReview(page: Page) {
+  const names = await registerDemoFamily(page);
   const filename = `review-${crypto.randomUUID().slice(0, 8)}.pdf`;
   await uploadSyntheticDocument(page, {
     name: filename,
@@ -31,74 +32,105 @@ async function openReview(page: Page): Promise<void> {
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
+  return names;
 }
 
-function factCard(page: Page, factKey: string): Locator {
-  const cards = page.locator(".review-fact");
-  return factKey === "synthetic-analyte-a" ? cards.first() : cards.nth(1);
+function resultCard(page: Page, factKey: string): Locator {
+  return page.getByTestId(`document-result-card-${factKey}`);
 }
 
-function factStatus(fact: Locator): Locator {
-  return fact.locator(".review-fact__state strong");
+function reviewWorkspace(page: Page): Locator {
+  return page.getByTestId("document-review-workspace");
 }
 
-test("review presents source evidence before an explicit confirmation and keeps it after reload", async ({
-  page,
-}) => {
+test("selecting a result keeps its evidence in one contextual review rail", async ({ page }) => {
   await openReview(page);
 
-  const firstFact = factCard(page, "synthetic-analyte-a");
-  await expect(firstFact).toHaveCount(1);
-  await expect(firstFact.locator("h4")).toHaveText(/\S+/);
-  await expect(firstFact.getByText("Источник", { exact: true })).toBeVisible();
-  await expect(firstFact.getByText("Предложенные поля", { exact: true })).toBeVisible();
-  await expect(firstFact.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
-  await expect(firstFact.getByText("Страница 1")).toBeVisible();
-  await expect(firstFact.getByText("Неоднозначная единица")).toBeVisible();
-  await expect(firstFact.getByText(/Уверенность извлечения: 60\s?%/)).toBeVisible();
-  await expect(firstFact.getByText("FACT|synthetic-analyte-a")).toBeVisible();
-  await expect(factStatus(firstFact)).toHaveText("Не подтверждено");
+  const firstResult = resultCard(page, "synthetic-analyte-a");
+  const secondResult = resultCard(page, "synthetic-analyte-b");
+  const workspace = reviewWorkspace(page);
+  const source = workspace.getByTestId("document-review-source");
+  const resultsPanel = workspace.locator(".document-review-workspace__body");
+  const hero = page.getByTestId("document-hero");
 
-  await firstFact.getByRole("button", { name: /^Подтвердить / }).click();
-  await expect(factStatus(firstFact)).toHaveText("Подтверждено пользователем");
+  await expect(firstResult).toHaveAttribute("aria-pressed", "true");
+  await expect(secondResult).toHaveAttribute("aria-pressed", "false");
+  await expect(source.getByText("Источник результата", { exact: true })).toBeVisible();
+  await expect(source.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
+  await expect(source.getByText("Страница 1", { exact: true })).toBeVisible();
+  await expect(source.getByText("FACT|synthetic-analyte-a")).toBeVisible();
+  await expect(source.getByText("Уверенность извлечения", { exact: true })).toBeVisible();
+  await expect(source.getByText(/60\s*%/)).toBeVisible();
+  await expect(source.getByText("Неоднозначная единица", { exact: true })).toBeVisible();
+  await expect(source.getByText("Диапазон в документе", { exact: true })).toBeVisible();
+  await expect(source.getByText("5.0–8.0 synthetic-unit", { exact: true })).toBeVisible();
+  expect(await source.evaluate((element) => getComputedStyle(element).position)).toBe("static");
+  const [heroBox, sourceBox, resultsPanelBox, firstResultBox] = await Promise.all([
+    hero.boundingBox(),
+    source.boundingBox(),
+    resultsPanel.boundingBox(),
+    firstResult.boundingBox(),
+  ]);
+  expect(heroBox).not.toBeNull();
+  expect(sourceBox).not.toBeNull();
+  expect(resultsPanelBox).not.toBeNull();
+  expect(firstResultBox).not.toBeNull();
+  expect(Math.abs((resultsPanelBox?.y ?? 0) - (sourceBox?.y ?? 0))).toBeLessThanOrEqual(2);
+  expect(firstResultBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
+  expect(sourceBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
 
-  await page.reload();
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
-  await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText(
-    "Подтверждено пользователем",
-  );
-  await expect(
-    factCard(page, "synthetic-analyte-a").getByRole("button", { name: /^Подтвердить / }),
-  ).toHaveCount(0);
+  await secondResult.click();
+  await expect(secondResult).toHaveAttribute("aria-pressed", "true");
+  await expect(firstResult).toHaveAttribute("aria-pressed", "false");
+  await expect(source.getByText("FACT|synthetic-analyte-b")).toBeVisible();
 });
 
-test("all pending facts can be confirmed together and remain confirmed after reload", async ({
+test("confirming one selected result selects the next pending result and writes a durable decision journal", async ({
+  page,
+}) => {
+  const names = await openReview(page);
+  const firstResult = resultCard(page, "synthetic-analyte-a");
+  const secondResult = resultCard(page, "synthetic-analyte-b");
+  const workspace = reviewWorkspace(page);
+
+  await expect(firstResult).toHaveAttribute("aria-pressed", "true");
+  await workspace.getByRole("button", { name: "Подтвердить результат" }).click();
+
+  await expect(secondResult).toHaveAttribute("aria-pressed", "true");
+  await expect(workspace.getByTestId("document-review-journal")).toHaveCount(0);
+  await expect(workspace.locator(".document-review-workspace__notice")).toHaveText(
+    "Подтверждено пользователем",
+  );
+  await firstResult.click();
+  const journal = workspace.getByTestId("document-review-journal");
+  await expect(journal.getByText("Подтверждено пользователем", { exact: true })).toBeVisible();
+  await expect(journal.getByText(names.owner, { exact: true })).toBeVisible();
+  await expect(journal.locator("time")).toHaveAttribute("datetime", /2026-08-14T/);
+  await expect(journal.getByText("Идентификатор разбора", { exact: true })).toBeVisible();
+  await expect(journal.getByText("Версия экстрактора", { exact: true })).toBeVisible();
+
+  await page.reload();
+  await resultCard(page, "synthetic-analyte-a").click();
+  const reloadedJournal = reviewWorkspace(page).getByTestId("document-review-journal");
+  await expect(reloadedJournal.getByText(names.owner, { exact: true })).toBeVisible();
+  await expect(reloadedJournal.locator("time")).toHaveAttribute("datetime", /2026-08-14T/);
+});
+
+test("bulk confirmation leaves warning-bearing results for an individual decision", async ({
   page,
 }) => {
   await openReview(page);
+  const workspace = reviewWorkspace(page);
 
-  const confirmAll = page.getByRole("button", { name: "Подтвердить все 2" });
+  const confirmAll = workspace.getByRole("button", { name: "Подтвердить без замечаний 1" });
   await expect(confirmAll).toBeVisible();
   await confirmAll.click();
 
-  await expect(page.getByText("Подтверждено 2 значения", { exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
+  await expect(workspace.getByText("Подтверждено 1 значение", { exact: true })).toBeVisible();
   await expect(confirmAll).toHaveCount(0);
-  await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText(
-    "Подтверждено пользователем",
-  );
-  await expect(factStatus(factCard(page, "synthetic-analyte-b"))).toHaveText(
-    "Подтверждено пользователем",
-  );
-
-  await page.reload();
-  await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText(
-    "Подтверждено пользователем",
-  );
-  await expect(factStatus(factCard(page, "synthetic-analyte-b"))).toHaveText(
-    "Подтверждено пользователем",
-  );
+  await expect(resultCard(page, "synthetic-analyte-a")).toContainText("Нужна отдельная проверка");
+  await expect(resultCard(page, "synthetic-analyte-b")).toContainText("Подтверждено");
 });
 
 test("a retried review command reuses its idempotency key after a transient browser failure", async ({
@@ -127,7 +159,7 @@ test("a retried review command reuses its idempotency key after a transient brow
       status: 201,
       contentType: "application/json",
       body: JSON.stringify({
-        contractVersion: "document/v4",
+        contractVersion: "document/v5",
         review: {
           id: "00000000-0000-4000-8000-000000000001",
           factId: "00000000-0000-4000-8000-000000000002",
@@ -135,14 +167,16 @@ test("a retried review command reuses its idempotency key after a transient brow
           outcome: "confirmed",
           decidedAt: "2026-08-12T12:00:00.000Z",
           observationId: "00000000-0000-4000-8000-000000000003",
+          decidedBy: {
+            id: "00000000-0000-4000-8000-000000000004",
+            displayName: "Владелец review",
+          },
         },
       }),
     });
   });
 
-  const confirm = factCard(page, "synthetic-analyte-a").getByRole("button", {
-    name: /^Подтвердить /,
-  });
+  const confirm = reviewWorkspace(page).getByRole("button", { name: "Подтвердить результат" });
   await confirm.click();
   await expect(
     page.getByText("Не удалось сохранить решение. Исходное извлечение не изменилось."),
@@ -153,84 +187,84 @@ test("a retried review command reuses its idempotency key after a transient brow
   expect(idempotencyKeys[0]).toEqual(idempotencyKeys[1]);
 });
 
-test("a correction preserves the displayed source while a second fact can be explicitly rejected", async ({
+test("inline correction preserves the source and the selected result can be rejected", async ({
   page,
 }) => {
   await openReview(page);
+  const workspace = reviewWorkspace(page);
+  const source = workspace.getByTestId("document-review-source");
 
-  const firstFact = factCard(page, "synthetic-analyte-a");
-  const secondFact = factCard(page, "synthetic-analyte-b");
-  await expect(firstFact).toHaveCount(1);
-  await expect(secondFact).toHaveCount(1);
-  await firstFact.getByRole("button", { name: /^Исправить / }).click();
-  await expect(firstFact.getByRole("form", { name: /^Исправление:/ })).toBeVisible();
-  await firstFact.getByLabel("Корректное значение").fill("7.1");
-  await firstFact.getByRole("button", { name: "Сохранить исправление" }).click();
-  await expect(firstFact.getByText("Исправлено и подтверждено", { exact: true })).toBeVisible();
-  await expect(firstFact.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
-  const corrected = firstFact.getByRole("region", { name: /Подтверждённое исправление/ });
+  await workspace.getByRole("button", { name: "Исправить результат" }).click();
+  const correction = workspace.getByRole("form", { name: "Исправление результата" });
+  await expect(correction).toBeVisible();
+  await correction.getByLabel("Корректное значение").fill("7.1");
+  await correction.getByRole("button", { name: "Сохранить исправление" }).click();
+  await resultCard(page, "synthetic-analyte-a").click();
+  await expect(workspace.getByText("Исправлено и подтверждено", { exact: true })).toBeVisible();
+  await expect(source.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
+  const corrected = workspace.getByRole("region", { name: "Подтверждённое исправление" });
   await expect(corrected.getByText("Название", { exact: true })).toBeVisible();
   await expect(corrected.getByText("Значение", { exact: true })).toBeVisible();
   await expect(corrected.getByText("Единица", { exact: true })).toBeVisible();
   await expect(corrected.getByText("7.1 synthetic-unit", { exact: true })).toBeVisible();
 
-  await secondFact.getByRole("button", { name: /^Отклонить / }).click();
-  await expect(factStatus(secondFact)).toHaveText("Отклонено пользователем");
-  await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
-
-  await page.reload();
-  const reloadedFirstFact = factCard(page, "synthetic-analyte-a");
-  await expect(reloadedFirstFact.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
-  const reloadedCorrection = reloadedFirstFact.getByRole("region", {
-    name: /Подтверждённое исправление/,
-  });
-  await expect(reloadedCorrection.getByText("7.1 synthetic-unit", { exact: true })).toBeVisible();
-  await expect(factStatus(reloadedFirstFact)).toHaveText("Подтверждено пользователем");
-  await expect(factStatus(factCard(page, "synthetic-analyte-b"))).toHaveText(
-    "Отклонено пользователем",
-  );
+  await resultCard(page, "synthetic-analyte-b").click();
+  await workspace.getByRole("button", { name: "Отклонить результат" }).click();
+  await expect(
+    workspace.locator(".review-fact__notice").filter({ hasText: "Отклонено пользователем" }),
+  ).toBeVisible();
 });
 
-test("an owner restarts Codex analysis without losing a prior confirmed observation", async ({
+test("missing critical fields can be handed to Codex and a mapped indicator shows its history", async ({
   page,
 }) => {
   await openReview(page);
-
-  let detailReadsAfterRestart = 0;
-  page.on("request", (request) => {
-    const pathname = new URL(request.url()).pathname;
-    if (
-      request.method() === "GET" &&
-      /^\/health-api\/v1\/families\/[^/]+\/profiles\/[^/]+\/documents\/[^/]+$/.test(pathname)
-    ) {
-      detailReadsAfterRestart += 1;
-    }
+  await page.route("**/health-api/**/documents/*/facts", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as {
+      items: Array<{ proposedSampledAt: string | null; proposedLaboratory: string | null }>;
+    };
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        items: body.items.map((item) => ({
+          ...item,
+          proposedSampledAt: null,
+          proposedLaboratory: null,
+        })),
+      },
+    });
   });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
+  const workspace = reviewWorkspace(page);
+  const completeness = workspace.getByTestId("document-review-completeness");
+  await expect(completeness.getByText("Дата биоматериала", { exact: true })).toBeVisible();
+  await expect(completeness.getByText("Лаборатория", { exact: true })).toBeVisible();
 
-  const firstFact = factCard(page, "synthetic-analyte-a");
-  await firstFact.getByRole("button", { name: /^Подтвердить / }).click();
-  await expect(factStatus(firstFact)).toHaveText("Подтверждено пользователем");
-
-  const restartRequest = page.waitForRequest(
-    (request) => request.method() === "POST" && request.url().endsWith("/processing/restart"),
+  await completeness.getByRole("button", { name: "Уточнить у Codex" }).click();
+  await expect(page.getByLabel("Сообщение для Codex")).toHaveValue(
+    /лабораторию.*дату биоматериала.*код показателя/i,
   );
-  await page.getByRole("button", { name: "Перезапустить разбор" }).click();
-  await restartRequest;
 
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect.poll(() => detailReadsAfterRestart).toBeGreaterThan(0);
-  await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText("Не подтверждено");
-  await expect(
-    page.getByText(
-      "Создаст новый результат. Предыдущий разбор и подтверждённая история сохранятся.",
-      { exact: true },
-    ),
-  ).toBeVisible();
-
-  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
-  const history = page.getByRole("region", { name: "История подтверждённых значений" });
+  await workspace.getByRole("button", { name: "Подтвердить результат" }).click();
+  await resultCard(page, "synthetic-analyte-a").click();
+  const history = workspace.getByTestId("document-review-history");
+  await expect(history.getByRole("heading", { name: "История показателя" })).toBeVisible();
+  await expect(history.getByText("Синтетический аналит A", { exact: true })).toBeVisible();
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
-  await expect(history.locator("tbody tr")).toHaveCount(1);
+  const fullHistory = history.getByRole("link", { name: "Открыть всю историю" });
+  await expect(fullHistory).toHaveAttribute("href", /canonicalCode=synthetic-analyte-a/);
+  await fullHistory.click();
+  await expect(page).toHaveURL(/tab=history&canonicalCode=synthetic-analyte-a/);
+  await expect(
+    page.getByRole("heading", { name: "История подтверждённых значений" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table").getByText("synthetic-analyte-a", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("table").getByText("synthetic-analyte-b", { exact: true }),
+  ).toHaveCount(0);
 });

@@ -3,10 +3,66 @@ import test from "node:test";
 import type { DocumentSummary } from "@veylta/contracts";
 import {
   buildDocumentSearchPath,
+  buildIndicatorHistoryPath,
+  canBulkConfirmFact,
+  documentResultAvailabilityCopy,
+  documentResultMatchesFact,
+  documentResultMissingFields,
   documentResultStatusCopy,
   documentResultTypeCopy,
   normalizeDocumentSearchResponse,
 } from "./components/veylta-app";
+
+test("generic measurements reuse their review fact by exact source provenance", () => {
+  const fact = {
+    factKey: "synthetic-glucose",
+    sourceValue: "7.0",
+    sourceUnit: "mmol/L",
+    source: { pageNumber: 1, fragment: "Глюкоза 7.0 mmol/L\nРеференс 4.0–6.0" },
+  };
+
+  assert.equal(
+    documentResultMatchesFact(
+      {
+        resultKey: "synthetic-glucose-result",
+        type: "measurement",
+        value: "7.0",
+        unit: "mmol/L",
+        source: { pageNumber: 1, fragment: "Глюкоза 7.0 mmol/L" },
+      },
+      fact,
+    ),
+    true,
+  );
+  assert.equal(
+    documentResultMatchesFact(
+      {
+        resultKey: "synthetic-glucose",
+        type: "measurement",
+        value: "7.1",
+        unit: "mmol/L",
+        source: { pageNumber: 1, fragment: "Глюкоза 7.0 mmol/L" },
+      },
+      fact,
+    ),
+    false,
+  );
+});
+
+test("bulk confirmation excludes facts that carry extraction warnings", () => {
+  assert.equal(canBulkConfirmFact({ reviewStatus: "extracted", validationIssues: [] }), true);
+  assert.equal(
+    canBulkConfirmFact({ reviewStatus: "needs_review", validationIssues: ["AMBIGUOUS_UNIT"] }),
+    false,
+  );
+  assert.equal(canBulkConfirmFact({ reviewStatus: "confirmed", validationIssues: [] }), false);
+});
+
+test("document summary names the absence of structured results without inventing data", () => {
+  assert.equal(documentResultAvailabilityCopy(0, 0), "Структурированных результатов нет");
+  assert.equal(documentResultAvailabilityCopy(0, 2), null);
+  assert.equal(documentResultAvailabilityCopy(2, 0), null);
+});
 
 const document = {
   id: "00000000-0000-4000-8000-000000000003",
@@ -27,6 +83,37 @@ test("document search path safely preserves a Russian query", () => {
   assert.equal(
     buildDocumentSearchPath("family/id", "profile id", "  гемохроматоз HFE  "),
     "/v1/families/family%2Fid/profiles/profile%20id/documents?q=%D0%B3%D0%B5%D0%BC%D0%BE%D1%85%D1%80%D0%BE%D0%BC%D0%B0%D1%82%D0%BE%D0%B7+HFE",
+  );
+});
+
+test("indicator history is scoped to the canonical code and keeps identifier characters safe", () => {
+  assert.equal(
+    buildIndicatorHistoryPath("family/id", "profile id", "LOINC/718-7 & trend"),
+    "/v1/families/family%2Fid/profiles/profile%20id/observations?canonicalCode=LOINC%2F718-7+%26+trend&limit=5",
+  );
+});
+
+test("result completeness makes the three critical missing source fields explicit", () => {
+  assert.deepEqual(documentResultMissingFields({ code: null, date: null, lab: null }), [
+    "Код показателя",
+    "Дата биоматериала",
+    "Лаборатория",
+  ]);
+  assert.deepEqual(
+    documentResultMissingFields({
+      code: "synthetic-analyte-a",
+      date: "2026-08-10T08:00:00.000Z",
+      lab: null,
+    }),
+    ["Лаборатория"],
+  );
+  assert.deepEqual(
+    documentResultMissingFields({
+      code: "synthetic-analyte-a",
+      date: "2026-08-10T08:00:00.000Z",
+      lab: "Синтетическая лаборатория",
+    }),
+    [],
   );
 });
 

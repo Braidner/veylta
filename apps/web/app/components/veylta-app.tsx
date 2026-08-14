@@ -20,6 +20,7 @@ import type {
   DocumentDetailResponse,
   DocumentFactsResponse,
   DocumentIntelligenceResultStatus,
+  DocumentIntelligenceStructuredResult,
   DocumentProcessingActivityEvent,
   DocumentProcessingResponse,
   DocumentProcessingRestartResponse,
@@ -278,6 +279,27 @@ function observationHistoryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/observations`;
 }
 
+export function buildIndicatorHistoryPath(
+  familyId: string,
+  profileId: string,
+  canonicalCode: string,
+): string {
+  const query = new URLSearchParams({ canonicalCode, limit: "5" });
+  return `${observationHistoryPath(familyId, profileId)}?${query.toString()}`;
+}
+
+export function documentResultMissingFields(result: {
+  readonly code: string | null;
+  readonly date: string | null;
+  readonly lab: string | null;
+}): readonly string[] {
+  return [
+    result.code === null ? "Код показателя" : null,
+    result.date === null ? "Дата биоматериала" : null,
+    result.lab === null ? "Лаборатория" : null,
+  ].filter((value): value is string => value !== null);
+}
+
 function indicatorsPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/indicators`;
 }
@@ -311,6 +333,7 @@ interface VeyltaAppProps {
   requestedProfileId?: string;
   requestedDocumentId?: string;
   requestedTab?: string | undefined;
+  requestedCanonicalCode?: string | undefined;
   requestedSettings?: boolean;
 }
 
@@ -319,6 +342,7 @@ export function VeyltaApp({
   requestedProfileId,
   requestedDocumentId,
   requestedTab,
+  requestedCanonicalCode,
   requestedSettings = false,
 }: VeyltaAppProps) {
   const router = useRouter();
@@ -719,6 +743,7 @@ export function VeyltaApp({
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
             activeTab={activeTab === "settings" ? "overview" : activeTab}
+            requestedCanonicalCode={requestedCanonicalCode}
             addProfileOpen={addProfileOpen}
             action={action}
             error={actionError}
@@ -1639,6 +1664,7 @@ interface ProfileWorkspaceProps {
   profile: PatientProfileSummary;
   requestedDocumentId: string | undefined;
   activeTab: ProfileTab;
+  requestedCanonicalCode?: string | undefined;
   addProfileOpen: boolean;
   action: "setup" | "login" | "add-profile" | "logout" | null;
   error: string | null;
@@ -1655,6 +1681,7 @@ function ProfileWorkspace({
   profile,
   requestedDocumentId,
   activeTab,
+  requestedCanonicalCode,
   addProfileOpen,
   action,
   error,
@@ -1872,70 +1899,115 @@ function ProfileWorkspace({
   return (
     <section
       className={`profile-shell profile-shell--${requestedDocumentId === undefined ? activeTab : "documents"}`}
-      aria-labelledby="profile-title"
+      aria-label={requestedDocumentId === undefined ? undefined : "Документ профиля"}
+      aria-labelledby={requestedDocumentId === undefined ? "profile-title" : undefined}
     >
-      <div className="profile-heading">
-        <div>
-          <p className="context-line">
-            <span>{family.displayName}</span>
-            <span aria-hidden="true">/</span>
-            <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
-          </p>
-          <h1 id="profile-title" aria-label={profile.displayName}>
-            {greeting}, {profile.displayName.split(" ")[0]}
-          </h1>
-          <p className="profile-owner">
-            Документы, сигналы и план заботы этого профиля — в одном месте.
-          </p>
-          <div className="profile-heading__access">
-            <span>
-              {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}
+      {requestedDocumentId === undefined ? (
+        <div className="profile-heading">
+          <div>
+            <p className="context-line">
+              <span>{family.displayName}</span>
+              <span aria-hidden="true">/</span>
+              <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
+            </p>
+            <h1 id="profile-title" aria-label={profile.displayName}>
+              {greeting}, {profile.displayName.split(" ")[0]}
+            </h1>
+            <p className="profile-owner">
+              Документы, сигналы и план заботы этого профиля — в одном месте.
+            </p>
+            <div className="profile-heading__access">
+              <span>
+                {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}
+              </span>
+              {profile.access === "granted_read" ? <span>Только чтение</span> : null}
+            </div>
+          </div>
+
+          <div className="profile-heading__controls">
+            <span className="profile-heading__control">
+              <CalendarDays size={18} aria-hidden="true" />
+              {dashboardDate}
             </span>
-            {profile.access === "granted_read" ? <span>Только чтение</span> : null}
+            <span className="profile-heading__control">
+              <Clock3 size={18} aria-hidden="true" />
+              30 дней
+            </span>
+            <label className="profile-switcher">
+              <span className="visually-hidden">Активный профиль</span>
+              <select
+                aria-label="Активный профиль"
+                value={profile.id}
+                onChange={(event) => {
+                  const selected = profiles.find((item) => item.id === event.target.value);
+                  if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
+                }}
+              >
+                {profiles.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {canWriteProfile ? (
+              <button
+                className="profile-heading__upload"
+                type="button"
+                aria-label="Загрузить документ"
+                onClick={openUploadDialog}
+              >
+                Загрузить
+                <span aria-hidden="true">
+                  <ArrowRight size={18} />
+                </span>
+              </button>
+            ) : null}
           </div>
         </div>
-
-        <div className="profile-heading__controls">
-          <span className="profile-heading__control">
-            <CalendarDays size={18} aria-hidden="true" />
-            {dashboardDate}
-          </span>
-          <span className="profile-heading__control">
-            <Clock3 size={18} aria-hidden="true" />
-            30 дней
-          </span>
-          <label className="profile-switcher">
-            <span className="visually-hidden">Активный профиль</span>
-            <select
-              aria-label="Активный профиль"
-              value={profile.id}
-              onChange={(event) => {
-                const selected = profiles.find((item) => item.id === event.target.value);
-                if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
-              }}
-            >
-              {profiles.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.displayName}
-                </option>
-              ))}
-            </select>
-          </label>
-          {canWriteProfile ? (
-            <button
-              className="profile-heading__upload"
-              type="button"
-              aria-label="Загрузить документ"
-              onClick={openUploadDialog}
-            >
-              Загрузить
-              <span aria-hidden="true">
-                <ArrowRight size={18} />
-              </span>
-            </button>
-          ) : null}
+      ) : (
+        <div className="document-context-bar">
+          <p>
+            <span>{family.displayName}</span>
+            <span aria-hidden="true">/</span>
+            <strong>{profile.displayName}</strong>
+            <span aria-hidden="true">/</span>
+            <span>Документы</span>
+          </p>
+          <div className="document-context-bar__actions">
+            <label className="profile-switcher">
+              <span className="visually-hidden">Активный профиль</span>
+              <select
+                aria-label="Активный профиль"
+                value={profile.id}
+                onChange={(event) => {
+                  const selected = profiles.find((item) => item.id === event.target.value);
+                  if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
+                }}
+              >
+                {profiles.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {canWriteProfile ? (
+              <button
+                className="profile-heading__upload"
+                type="button"
+                aria-label="Загрузить документ"
+                onClick={openUploadDialog}
+              >
+                Загрузить
+                <span aria-hidden="true">
+                  <ArrowRight size={18} />
+                </span>
+              </button>
+            ) : null}
+          </div>
         </div>
-      </div>
+      )}
 
       {error !== null && !addProfileOpen ? (
         <p className="form-error workspace-error" role="alert">
@@ -2031,11 +2103,13 @@ function ProfileWorkspace({
             key={`${family.id}:${profile.id}`}
             familyId={family.id}
             profileId={profile.id}
+            canonicalCode={requestedCanonicalCode}
           />
           <IndicatorCatalogPanel
             key={`indicators:${family.id}:${profile.id}`}
             familyId={family.id}
             profileId={profile.id}
+            canonicalCode={requestedCanonicalCode}
           />
         </div>
       ) : null}
@@ -2064,7 +2138,7 @@ function ProfileWorkspace({
       {requestedDocumentId !== undefined ? (
         <div
           id="workspace-panel-documents"
-          className="workspace-tab-panel workspace-tab-panel--documents"
+          className="workspace-tab-panel workspace-tab-panel--documents workspace-tab-panel--document-detail"
           role="tabpanel"
           aria-labelledby="workspace-tab-documents"
           aria-label="Документы"
@@ -4497,6 +4571,22 @@ type ObservationHistoryState =
 interface ObservationHistoryPanelProps {
   familyId: string;
   profileId: string;
+  canonicalCode?: string | undefined;
+}
+
+function observationHistoryRequestPath(
+  familyId: string,
+  profileId: string,
+  canonicalCode?: string,
+  cursor?: string,
+): string {
+  const parameters = new URLSearchParams();
+  if (canonicalCode !== undefined && canonicalCode.length > 0) {
+    parameters.set("canonicalCode", canonicalCode);
+  }
+  if (cursor !== undefined) parameters.set("cursor", cursor);
+  const query = parameters.toString();
+  return `${observationHistoryPath(familyId, profileId)}${query.length === 0 ? "" : `?${query}`}`;
 }
 
 interface ObservationDate {
@@ -4546,7 +4636,11 @@ function referenceRangeCopy(
   return referenceRange.sourceUnit === null ? bounds : `${bounds} ${referenceRange.sourceUnit}`;
 }
 
-function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPanelProps) {
+function ObservationHistoryPanel({
+  familyId,
+  profileId,
+  canonicalCode,
+}: ObservationHistoryPanelProps) {
   const [history, setHistory] = useState<ObservationHistoryState>({ kind: "loading" });
   const [loadMorePending, setLoadMorePending] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
@@ -4558,7 +4652,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
       setLoadMoreError(null);
       try {
         const response = await apiRequest<ObservationHistoryResponse>(
-          observationHistoryPath(familyId, profileId),
+          observationHistoryRequestPath(familyId, profileId, canonicalCode),
           signal === undefined ? undefined : { signal },
         );
         if (signal?.aborted) return;
@@ -4572,7 +4666,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
           setHistory({ kind: "error", copy: observationHistoryErrorCopy(error) });
       }
     },
-    [familyId, profileId],
+    [canonicalCode, familyId, profileId],
   );
 
   useEffect(() => {
@@ -4594,7 +4688,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
     setLoadMoreError(null);
     try {
       const response = await apiRequest<ObservationHistoryResponse>(
-        `${observationHistoryPath(familyId, profileId)}?cursor=${encodeURIComponent(history.nextCursor)}`,
+        observationHistoryRequestPath(familyId, profileId, canonicalCode, history.nextCursor),
         { signal: controller.signal },
       );
       if (controller.signal.aborted) return;
@@ -4843,7 +4937,11 @@ function indicatorCatalogErrorCopy(error: unknown): string {
   return "Не удалось загрузить каталог. Подтверждённые значения и исходные документы не изменены.";
 }
 
-function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelProps) {
+function IndicatorCatalogPanel({
+  familyId,
+  profileId,
+  canonicalCode,
+}: ObservationHistoryPanelProps) {
   const [catalog, setCatalog] = useState<IndicatorCatalogState>({ kind: "loading" });
   const [selected, setSelected] = useState<{ canonicalCode: string; unit: string } | null>(null);
 
@@ -4868,7 +4966,9 @@ function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelP
           ) {
             return current;
           }
-          const first = response.items[0];
+          const first =
+            response.items.find((item) => item.canonicalCode === canonicalCode) ??
+            response.items[0];
           const firstUnit = first?.units[0];
           return first === undefined || firstUnit === undefined
             ? null
@@ -4878,7 +4978,7 @@ function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelP
         if (!signal?.aborted) setCatalog({ kind: "error", copy: indicatorCatalogErrorCopy(error) });
       }
     },
-    [familyId, profileId],
+    [canonicalCode, familyId, profileId],
   );
 
   useEffect(() => {
@@ -5293,6 +5393,11 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [restartPending, setRestartPending] = useState(false);
   const [restartError, setRestartError] = useState<string | null>(null);
+  const [suggestedAgentMessage, setSuggestedAgentMessage] = useState<{
+    id: string;
+    prompt: string;
+  } | null>(null);
+  const [reviewRevision, setReviewRevision] = useState(0);
   const deleteKey = useRef<string | null>(null);
   const restartKey = useRef<string | null>(null);
   const refreshedTerminalProcessing = useRef<string | null>(null);
@@ -5429,6 +5534,11 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
   const intelligence = savedDocument.intelligence;
   const results = intelligence?.structuredResults ?? [];
   const processing = savedDocument.processing;
+  const terminalFactCount =
+    processing.state === "awaiting_review" || processing.state === "completed"
+      ? processing.factCount
+      : 0;
+  const resultAvailability = documentResultAvailabilityCopy(results.length, terminalFactCount);
   const canRestart =
     canWriteProfile &&
     (processing.state === "failed" ||
@@ -5482,26 +5592,20 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
 
   return (
     <section className="document-view" aria-labelledby="document-title">
-      <header className="document-page-header">
+      <header className="document-page-header document-page-hero" data-testid="document-hero">
         <div className="document-page-header__identity">
-          <Link className="back-link" href={profileTabPath(family.id, profile.id, "documents")}>
-            ← Все документы
-          </Link>
-          <p className="document-state">
-            <span aria-hidden="true" />
-            Оригинал сохранён
-          </p>
-          <h2 id="document-title">{intelligence?.title ?? savedDocument.originalFilename}</h2>
+          <p className="context-line">Документ профиля</p>
+          <h1 id="document-title">{intelligence?.title ?? savedDocument.originalFilename}</h1>
           <p className="document-meta">
-            {profile.displayName} · {documentKindLabel(savedDocument.contentType)} ·{" "}
-            {formatBytes(savedDocument.byteSize)} · {formatDate(savedDocument.uploadedAt)}
+            {documentKindLabel(savedDocument.contentType)} · {formatBytes(savedDocument.byteSize)} ·{" "}
+            {formatDate(savedDocument.uploadedAt)}
           </p>
         </div>
         <fieldset className="document-page-header__actions">
           <legend className="visually-hidden">Действия с документом</legend>
-          <a className="button button--primary" href={contentUrl} download>
+          <a className="button button--secondary" href={contentUrl} download>
             <Download size={17} aria-hidden="true" />
-            Скачать оригинал
+            Скачать
           </a>
           {canRestart ? (
             <button
@@ -5525,16 +5629,31 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
             </button>
           ) : null}
         </fieldset>
-        {canRestart ? (
-          <p className="document-page-header__restart-note">
-            Создаст новый результат. Предыдущий разбор и подтверждённая история сохранятся.
-          </p>
-        ) : null}
         {restartError === null ? null : (
           <p className="form-error document-page-header__error" role="alert">
             {restartError}
           </p>
         )}
+        <div className="document-page-hero__summary">
+          <div className="document-section-heading">
+            <div>
+              <p className="context-line">Коротко о документе</p>
+              <h2>Саммари Codex</h2>
+            </div>
+            <Bot size={22} aria-hidden="true" />
+          </div>
+          <p>
+            {intelligence?.shortSummary ??
+              "Короткое саммари появится здесь после завершения нового разбора документа."}
+          </p>
+          {(processing.state === "awaiting_review" || processing.state === "completed") &&
+          resultAvailability !== null ? (
+            <p className="document-page-hero__result-state" role="status">
+              {resultAvailability}
+            </p>
+          ) : null}
+          <small>Фактическое описание источника, не диагноз и не медицинская рекомендация.</small>
+        </div>
       </header>
 
       {savedDocument.duplicate.possible ? (
@@ -5546,74 +5665,18 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
 
       <div className="document-dashboard-grid">
         <div className="document-dashboard-grid__main">
-          <section className="document-summary-card" aria-labelledby="document-summary-title">
-            <div className="document-section-heading">
-              <div>
-                <p className="context-line">Коротко о документе</p>
-                <h3 id="document-summary-title">Саммари Codex</h3>
-              </div>
-              <Bot size={22} aria-hidden="true" />
-            </div>
-            <p>
-              {intelligence?.shortSummary ??
-                "Короткое саммари появится здесь после завершения нового разбора документа."}
-            </p>
-            <small>Фактическое описание источника, не диагноз и не медицинская рекомендация.</small>
-          </section>
-
-          <section className="document-results" aria-labelledby="document-results-title">
-            <div className="document-section-heading">
-              <div>
-                <p className="context-line">Структурированные данные</p>
-                <h3 id="document-results-title">Результаты исследования</h3>
-              </div>
-              <span className="document-results__count">{results.length}</span>
-            </div>
-            {results.length === 0 ? (
-              <div className="document-results__empty" role="status">
-                <FileText size={20} aria-hidden="true" />
-                <p>
-                  Структурированные результаты появятся после разбора. Исследования без числовых
-                  значений тоже поддерживаются.
-                </p>
-              </div>
-            ) : (
-              <ol className="document-result-grid">
-                {results.map((result) => (
-                  <li className="document-result-card" key={result.resultKey}>
-                    <div className="document-result-card__heading">
-                      <div>
-                        <span>
-                          {[result.code, documentResultTypeCopy(result.type)]
-                            .filter(Boolean)
-                            .join(" · ")}
-                        </span>
-                        <h4>{result.label}</h4>
-                      </div>
-                      <span
-                        className={`document-result-status document-result-status--${result.status}`}
-                      >
-                        {documentResultStatusCopy(result.status)}
-                      </span>
-                    </div>
-                    <p className="document-result-card__value">
-                      {result.value ?? "Не указано"}
-                      {result.unit === null ? null : <small>{result.unit}</small>}
-                    </p>
-                    {result.lab !== null || result.date !== null || result.specimen !== null ? (
-                      <p className="document-result-card__meta">
-                        {[result.lab, result.specimen, result.date].filter(Boolean).join(" · ")}
-                      </p>
-                    ) : null}
-                    <details className="document-result-card__source">
-                      <summary>Источник · стр. {result.source.pageNumber}</summary>
-                      <p>{result.source.fragment}</p>
-                    </details>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </section>
+          <DocumentReviewPanel
+            key={`${family.id}:${profile.id}:${savedDocument.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            documentId={savedDocument.id}
+            results={results}
+            processing={processing}
+            contentUrl={contentUrl}
+            canWriteProfile={canWriteProfile}
+            onReviewSaved={() => setReviewRevision((current) => current + 1)}
+            onAskCodex={(prompt) => setSuggestedAgentMessage({ id: crypto.randomUUID(), prompt })}
+          />
 
           <section className="document-detailed-summary" aria-labelledby="document-detail-title">
             <div className="document-section-heading">
@@ -5704,6 +5767,8 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
         document={savedDocument}
         canWriteProfile={canWriteProfile}
         onProcessingChange={handleProcessingChange}
+        reviewRevision={reviewRevision}
+        suggestedAgentMessage={suggestedAgentMessage}
       />
 
       {deleteDialogOpen ? (
@@ -5770,6 +5835,8 @@ interface DocumentProcessingPanelProps {
   document: DocumentSummary;
   canWriteProfile: boolean;
   onProcessingChange?: (processing: DocumentProcessingStatus) => void;
+  reviewRevision: number;
+  suggestedAgentMessage: { id: string; prompt: string } | null;
 }
 
 interface ProcessingPresentation {
@@ -6077,6 +6144,8 @@ function DocumentProcessingPanel({
   document: savedDocument,
   canWriteProfile,
   onProcessingChange,
+  reviewRevision,
+  suggestedAgentMessage,
 }: DocumentProcessingPanelProps) {
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
   const [activity, setActivity] = useState<readonly DocumentProcessingActivityEvent[]>([]);
@@ -6103,10 +6172,6 @@ function DocumentProcessingPanel({
     [familyId, onProcessingChange, profileId, savedDocument.id],
   );
 
-  const refreshAfterReview = useCallback(() => {
-    void refreshProcessing();
-  }, [refreshProcessing]);
-
   useEffect(() => {
     setProcessing(savedDocument.processing);
     setRefreshFailed(false);
@@ -6131,6 +6196,10 @@ function DocumentProcessingPanel({
       window.clearInterval(interval);
     };
   }, [processing, refreshProcessing]);
+
+  useEffect(() => {
+    if (reviewRevision > 0) void refreshProcessing();
+  }, [refreshProcessing, reviewRevision]);
 
   const presentation = processingPresentation(processing);
 
@@ -6168,16 +6237,7 @@ function DocumentProcessingPanel({
           familyId={familyId}
           profileId={profileId}
           documentId={savedDocument.id}
-        />
-      ) : null}
-
-      {canWriteProfile &&
-      (processing.state === "awaiting_review" || processing.state === "completed") ? (
-        <DocumentReviewPanel
-          familyId={familyId}
-          profileId={profileId}
-          documentId={savedDocument.id}
-          onReviewSaved={refreshAfterReview}
+          suggestedMessage={suggestedAgentMessage}
         />
       ) : null}
     </div>
@@ -6198,16 +6258,19 @@ function DocumentAgentPanel({
   familyId,
   profileId,
   documentId,
+  suggestedMessage,
 }: {
   familyId: string;
   profileId: string;
   documentId: string;
+  suggestedMessage: { id: string; prompt: string } | null;
 }) {
   const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
   const [message, setMessage] = useState("");
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const attemptRef = useRef<DocumentAgentAttempt | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
   const endpoint = documentAgentPath(familyId, profileId, documentId);
 
   const loadConversation = useCallback(
@@ -6235,6 +6298,13 @@ function DocumentAgentPanel({
     void loadConversation(controller.signal);
     return () => controller.abort();
   }, [loadConversation]);
+
+  useEffect(() => {
+    if (suggestedMessage === null) return;
+    setMessage(suggestedMessage.prompt);
+    composerRef.current?.focus();
+    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [suggestedMessage]);
 
   async function handleSend(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -6351,6 +6421,7 @@ function DocumentAgentPanel({
         <label htmlFor="document-agent-message">Сообщение для Codex</label>
         <div className="document-agent__composer-row">
           <textarea
+            ref={composerRef}
             id="document-agent-message"
             value={message}
             maxLength={2_000}
@@ -6389,7 +6460,12 @@ type ReviewFact = DocumentFactsResponse["items"][number];
 
 type FactListState =
   | { kind: "loading" }
-  | { kind: "ready"; items: readonly ReviewFact[] }
+  | {
+      kind: "ready";
+      items: readonly ReviewFact[];
+      extractionRunId: string;
+      extractorVersion: string;
+    }
   | { kind: "error" };
 
 type ReviewCommand = FactReviewCommand;
@@ -6410,11 +6486,57 @@ function isPendingReview(status: ReviewFactStatus): boolean {
   return status === "extracted" || status === "needs_review";
 }
 
+export function canBulkConfirmFact(fact: {
+  readonly reviewStatus: ExtractedFactReviewStatus;
+  readonly validationIssues: readonly string[];
+}): boolean {
+  return fact.reviewStatus === "extracted" && fact.validationIssues.length === 0;
+}
+
+export function documentResultAvailabilityCopy(
+  structuredResultCount: number,
+  extractedFactCount: number,
+): string | null {
+  return structuredResultCount === 0 && extractedFactCount === 0
+    ? "Структурированных результатов нет"
+    : null;
+}
+
+export function documentResultMatchesFact(
+  result: {
+    readonly resultKey: string;
+    readonly type: DocumentIntelligenceStructuredResult["type"];
+    readonly value: string | null;
+    readonly unit: string | null;
+    readonly source: { readonly pageNumber: number; readonly fragment: string };
+  },
+  fact: {
+    readonly factKey: string;
+    readonly sourceValue: string;
+    readonly sourceUnit: string;
+    readonly source: { readonly pageNumber: number; readonly fragment: string };
+  },
+): boolean {
+  if (
+    result.type !== "measurement" ||
+    result.value !== fact.sourceValue ||
+    (result.unit ?? "") !== fact.sourceUnit ||
+    result.source.pageNumber !== fact.source.pageNumber
+  ) {
+    return false;
+  }
+  return (
+    fact.source.fragment.includes(result.source.fragment) ||
+    result.source.fragment.includes(fact.source.fragment)
+  );
+}
+
 function reviewStatusLabel(status: ReviewFactStatus): string {
   switch (status) {
     case "extracted":
+      return "Готово к подтверждению";
     case "needs_review":
-      return "Не подтверждено";
+      return "Нужна отдельная проверка";
     case "confirmed":
       return "Подтверждено пользователем";
     case "rejected":
@@ -6425,13 +6547,13 @@ function reviewStatusLabel(status: ReviewFactStatus): string {
 function reviewStatusDescription(status: ReviewFactStatus): string {
   switch (status) {
     case "extracted":
-      return "Автоматическое извлечение ожидает явного решения пользователя.";
+      return "Замечаний извлечения нет, но решение всё равно принимает человек.";
     case "needs_review":
-      return "Есть неопределённость в извлечении; решение нельзя принять автоматически.";
+      return "Есть неопределённость: сверьте источник и примите решение отдельно.";
     case "confirmed":
-      return "Создано подтверждённое значение с сохранённой ссылкой на источник.";
+      return "Значение подтверждено пользователем с сохранённой ссылкой на источник.";
     case "rejected":
-      return "Исходное извлечение сохранено как источник, но не стало подтверждённым значением.";
+      return "Извлечение сохранено как источник, но не стало подтверждённым значением.";
   }
 }
 
@@ -6456,6 +6578,13 @@ function proposedValue(value: string | null): string {
   return value ?? "Не предложено";
 }
 
+function labReferenceRangeCopy(range: NonNullable<ReviewFact["referenceRange"]>): string {
+  if (range.sourceText !== null) return range.sourceText;
+  if (range.sourceLow === null && range.sourceHigh === null) return "Не указан";
+  const bounds = `${range.sourceLow ?? "…"}–${range.sourceHigh ?? "…"}`;
+  return range.sourceUnit === null ? bounds : `${bounds} ${range.sourceUnit}`;
+}
+
 function reviewErrorCopy(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
     return "Версия извлечения уже изменилась. Обновите список и проверьте источник ещё раз.";
@@ -6470,14 +6599,24 @@ interface DocumentReviewPanelProps {
   familyId: string;
   profileId: string;
   documentId: string;
+  results: readonly DocumentIntelligenceStructuredResult[];
+  processing: DocumentProcessingStatus;
+  contentUrl: string;
+  canWriteProfile: boolean;
   onReviewSaved: () => void;
+  onAskCodex: (prompt: string) => void;
 }
 
 function DocumentReviewPanel({
   familyId,
   profileId,
   documentId,
+  results,
+  processing,
+  contentUrl,
+  canWriteProfile,
   onReviewSaved,
+  onAskCodex,
 }: DocumentReviewPanelProps) {
   const [facts, setFacts] = useState<FactListState>({ kind: "loading" });
   const [pendingFactId, setPendingFactId] = useState<string | null>(null);
@@ -6488,6 +6627,7 @@ function DocumentReviewPanel({
     ReadonlyMap<string, ConfirmedCorrection>
   >(() => new Map());
   const [bulkReview, setBulkReview] = useState<BulkReviewState>({ kind: "idle" });
+  const [selectedResultKey, setSelectedResultKey] = useState<string | null>(null);
   const commandAttempts = useRef<Map<string, ReviewCommandAttempt>>(new Map());
 
   const loadFacts = useCallback(
@@ -6502,6 +6642,8 @@ function DocumentReviewPanel({
         setFacts({
           kind: "ready",
           items: response.items,
+          extractionRunId: response.extractionRunId,
+          extractorVersion: response.extractorVersion,
         });
       } catch {
         if (!signal?.aborted) setFacts({ kind: "error" });
@@ -6512,12 +6654,25 @@ function DocumentReviewPanel({
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadFacts(controller.signal);
+    const reviewAvailable =
+      processing.state === "awaiting_review" || processing.state === "completed";
+    setFacts({ kind: "loading" });
+    setPendingFactId(null);
+    setReviewError(null);
+    setReviewNotice(null);
+    setCorrectionFactId(null);
+    setConfirmedCorrections(new Map());
+    setBulkReview({ kind: "idle" });
+    setSelectedResultKey(null);
+    commandAttempts.current.clear();
+    if (reviewAvailable) {
+      void loadFacts(controller.signal);
+    }
 
     return () => {
       controller.abort();
     };
-  }, [loadFacts]);
+  }, [loadFacts, processing.state]);
 
   async function persistDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
     const fingerprint = JSON.stringify(command);
@@ -6554,6 +6709,8 @@ function DocumentReviewPanel({
             items: current.items.map((item) =>
               item.id === factId ? { ...item, reviewStatus: status } : item,
             ),
+            extractionRunId: current.extractionRunId,
+            extractorVersion: current.extractorVersion,
           },
     );
   }
@@ -6585,6 +6742,13 @@ function DocumentReviewPanel({
               ? "Исправлено и подтверждено"
               : "Подтверждено пользователем",
       });
+      const nextPending =
+        facts.kind === "ready"
+          ? facts.items.find(
+              (candidate) => candidate.id !== fact.id && isPendingReview(candidate.reviewStatus),
+            )
+          : undefined;
+      if (nextPending !== undefined) setSelectedResultKey(nextPending.factKey);
       onReviewSaved();
       void loadFacts();
     } catch (error) {
@@ -6628,43 +6792,111 @@ function DocumentReviewPanel({
 
   const pendingFacts =
     facts.kind === "ready" ? facts.items.filter((fact) => isPendingReview(fact.reviewStatus)) : [];
+  const bulkConfirmableFacts = pendingFacts.filter(canBulkConfirmFact);
+  const individualReviewCount = pendingFacts.length - bulkConfirmableFacts.length;
   const reviewPending = pendingFactId !== null || bulkReview.kind === "running";
+  const factItems = facts.kind === "ready" ? facts.items : [];
+  const pairedFactIds = new Set<string>();
+  const resultRows = results.map((result) => {
+    const fact = factItems.find(
+      (candidate) =>
+        !pairedFactIds.has(candidate.id) && documentResultMatchesFact(result, candidate),
+    );
+    if (fact !== undefined) pairedFactIds.add(fact.id);
+    return {
+      key: fact?.factKey ?? `result:${result.resultKey}`,
+      result,
+      fact: fact ?? null,
+    };
+  });
+  const rows: readonly {
+    key: string;
+    result: DocumentIntelligenceStructuredResult | null;
+    fact: ReviewFact | null;
+  }[] =
+    facts.kind === "loading"
+      ? []
+      : [
+          ...resultRows,
+          ...factItems
+            .filter((fact) => !pairedFactIds.has(fact.id))
+            .map((fact) => ({ key: fact.factKey, result: null, fact })),
+        ];
+  const selectedRow = rows.find((row) => row.key === selectedResultKey) ?? rows[0] ?? null;
+  const selectedFact = selectedRow?.fact ?? null;
+  const selectedResult = selectedRow?.result ?? null;
+  const selectedCode =
+    selectedFact === null ? (selectedResult?.code ?? null) : selectedFact.proposedCanonicalCode;
+  const selectedDate =
+    selectedFact === null ? (selectedResult?.date ?? null) : selectedFact.proposedSampledAt;
+  const selectedLaboratory =
+    selectedFact === null ? (selectedResult?.lab ?? null) : selectedFact.proposedLaboratory;
+  const selectedMissingFields = documentResultMissingFields({
+    code: selectedCode,
+    date: selectedDate,
+    lab: selectedLaboratory,
+  });
+  const selectedDisplayName =
+    selectedFact?.canonicalDisplayName ??
+    selectedResult?.label ??
+    selectedFact?.sourceName ??
+    "Результат";
+  const selectedSource = selectedFact?.source ?? selectedResult?.source ?? null;
+  const selectedConfidence = selectedFact?.confidence ?? selectedResult?.confidence ?? null;
+  const selectedConfidenceCopy =
+    selectedConfidence === null
+      ? null
+      : new Intl.NumberFormat("ru-RU", {
+          style: "percent",
+          maximumFractionDigits: 0,
+        }).format(selectedConfidence);
+  const selectedCorrection =
+    selectedFact === null
+      ? undefined
+      : (selectedFact.review?.correction ?? confirmedCorrections.get(selectedFact.id));
+  const journalFact = selectedFact;
+  const historyFact = selectedFact;
+  const historyCode = historyFact?.proposedCanonicalCode ?? null;
 
   return (
     <section
-      className="document-review"
+      className="document-review-workspace"
       aria-labelledby="document-review-title"
       aria-busy={facts.kind === "loading" || reviewPending}
+      data-testid="document-review-workspace"
     >
-      <div className="document-review__heading">
-        <p className="context-line">Проверка источника</p>
-        <h3 id="document-review-title">Проверьте извлечённые значения</h3>
-        <p>
-          Автоматическое извлечение остаётся черновиком, пока вы не сверите его со страницей и не
-          выберете действие. Здесь нет медицинской интерпретации.
-        </p>
-        {pendingFacts.length > 0 ? (
-          <div className="document-review__bulk">
-            <div>
-              <strong>{factCountCopy(pendingFacts.length)} ждут решения</strong>
-              <span>
-                Массовое подтверждение относится только к этому документу. Исходные фрагменты
-                останутся доступными.
-              </span>
-            </div>
-            <button
-              className="button button--primary"
-              type="button"
-              disabled={reviewPending}
-              onClick={() => void confirmAll(pendingFacts)}
-            >
-              <CheckCheck size={18} aria-hidden="true" />
-              {bulkReview.kind === "running"
-                ? `Подтверждаем ${bulkReview.completed} из ${bulkReview.total}…`
-                : `Подтвердить все ${pendingFacts.length}`}
-            </button>
+      <div className="document-review-workspace__body">
+        <header className="document-review-workspace__heading">
+          <div>
+            <p className="context-line">Структурированные данные</p>
+            <h3 id="document-review-title">Результаты исследования</h3>
+            <p>Выберите значение, сверьте источник и примите отдельное решение.</p>
           </div>
-        ) : null}
+          {pendingFacts.length > 0 ? (
+            <div className="document-review-workspace__bulk">
+              <span>
+                {factCountCopy(pendingFacts.length)} требуют решения
+                {individualReviewCount > 0 ? (
+                  <small>{factCountCopy(individualReviewCount)} — только по одному</small>
+                ) : null}
+              </span>
+              {bulkConfirmableFacts.length > 0 ? (
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() => void confirmAll(bulkConfirmableFacts)}
+                >
+                  <CheckCheck size={18} aria-hidden="true" />
+                  {bulkReview.kind === "running"
+                    ? `Подтверждаем ${bulkReview.completed} из ${bulkReview.total}…`
+                    : `Подтвердить без замечаний ${bulkConfirmableFacts.length}`}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </header>
+
         {bulkReview.kind === "success" ? (
           <p className="document-review__bulk-notice" role="status">
             Подтверждено {factCountCopy(bulkReview.total)}
@@ -6677,340 +6909,496 @@ function DocumentReviewPanel({
               : `Подтверждено ${bulkReview.completed} из ${bulkReview.total}. Остальные значения не изменены; повторите действие.`}
           </p>
         ) : null}
-        <Link
-          className="document-review__history-link"
-          href={profileTabPath(familyId, profileId, "history")}
-        >
-          Открыть историю подтверждённых значений
-        </Link>
+
+        {reviewNotice !== null ? (
+          <p className="review-fact__notice document-review-workspace__notice" role="status">
+            {reviewNotice.copy}
+          </p>
+        ) : null}
+
+        {processing.state !== "awaiting_review" && processing.state !== "completed" ? (
+          <div className="review-empty" role="status">
+            <p>Новый разбор ещё не завершён. Предыдущие результаты скрыты до проверки источника.</p>
+          </div>
+        ) : null}
+
+        {facts.kind === "loading" &&
+        (processing.state === "awaiting_review" || processing.state === "completed") ? (
+          <div className="review-skeleton" aria-live="polite">
+            <div className="skeleton skeleton--review-row" aria-hidden="true" />
+            <p>Загружаем значения и их источники…</p>
+          </div>
+        ) : null}
+
+        {facts.kind === "error" ? (
+          <div className="review-empty" role="alert">
+            <p>
+              Черновые факты сейчас не загрузились. Общие результаты видны только как источник;
+              решения временно недоступны.
+            </p>
+            <button
+              className="button button--secondary"
+              type="button"
+              onClick={() => void loadFacts()}
+            >
+              Обновить список
+            </button>
+          </div>
+        ) : null}
+
+        {rows.length > 0 ? (
+          <ol
+            className="document-result-grid document-result-grid--selectable"
+            aria-label="Результаты документа"
+          >
+            {rows.map(({ key, result, fact }) => {
+              const active = selectedRow?.key === key;
+              const displayName =
+                fact?.canonicalDisplayName ?? result?.label ?? fact?.sourceName ?? "Результат";
+              const value = result?.value ?? fact?.sourceValue ?? "Не указано";
+              const unit = result?.unit ?? fact?.sourceUnit ?? null;
+              return (
+                <li key={key}>
+                  <button
+                    className="document-result-card document-result-card--selectable"
+                    type="button"
+                    aria-pressed={active}
+                    data-testid={`document-result-card-${key}`}
+                    onClick={() => setSelectedResultKey(key)}
+                  >
+                    <span className="document-result-card__heading">
+                      <span>
+                        <span>
+                          {[
+                            result?.code ?? fact?.proposedCanonicalCode,
+                            result === null
+                              ? "Извлечённый факт"
+                              : documentResultTypeCopy(result.type),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                        <strong>{displayName}</strong>
+                      </span>
+                      <span
+                        className={`document-result-status document-result-status--${fact?.reviewStatus ?? result?.status ?? "unknown"}`}
+                      >
+                        {fact === null
+                          ? result === null
+                            ? "Результат"
+                            : documentResultStatusCopy(result.status)
+                          : reviewStatusLabel(fact.reviewStatus)}
+                      </span>
+                    </span>
+                    <span className="document-result-card__value">
+                      {value}
+                      {unit === null ? null : <small>{unit}</small>}
+                    </span>
+                    <span className="document-result-card__meta">
+                      {[
+                        fact?.proposedLaboratory ?? result?.lab,
+                        fact?.proposedSampledAt ?? result?.date,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Есть незаполненные поля"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
       </div>
 
-      {facts.kind === "loading" ? (
-        <div className="review-skeleton" aria-live="polite">
-          <div className="skeleton skeleton--review-heading" aria-hidden="true" />
-          <div className="skeleton skeleton--review-row" aria-hidden="true" />
-          <p>Загружаем черновые значения и их источник…</p>
-        </div>
-      ) : null}
+      {selectedRow !== null ? (
+        <aside
+          className="document-review-context"
+          aria-label="Источник результата"
+          data-testid="document-review-source"
+        >
+          <div className="document-review-context__eyebrow">
+            <span>Источник результата</span>
+            {selectedFact === null ? null : (
+              <span>{reviewStatusLabel(selectedFact.reviewStatus)}</span>
+            )}
+          </div>
+          <h4>{selectedDisplayName}</h4>
+          <p className="document-review-context__value">
+            {selectedFact?.sourceValue ?? selectedResult?.value ?? "Не указано"}{" "}
+            <span>{selectedFact?.sourceUnit ?? selectedResult?.unit ?? ""}</span>
+          </p>
 
-      {facts.kind === "error" ? (
-        <div className="review-empty" role="status">
-          <p>Черновые значения сейчас не загрузились. Исходник и решения не изменены.</p>
-          <button
-            className="button button--secondary"
-            type="button"
-            onClick={() => void loadFacts()}
+          {selectedFact !== null ? (
+            <p className={`document-review-context__state is-${selectedFact.reviewStatus}`}>
+              <strong>{reviewStatusLabel(selectedFact.reviewStatus)}</strong>
+              <span>{reviewStatusDescription(selectedFact.reviewStatus)}</span>
+            </p>
+          ) : null}
+
+          {selectedSource !== null ? (
+            <section className="document-review-context__source">
+              <div>
+                <strong>Страница {selectedSource.pageNumber}</strong>
+                <a href={contentUrl} download>
+                  Открыть PDF
+                </a>
+              </div>
+              <pre>
+                <code>{selectedSource.fragment}</code>
+              </pre>
+              {selectedFact?.referenceRange !== null &&
+              selectedFact?.referenceRange !== undefined ? (
+                <dl className="document-review-context__range">
+                  <div>
+                    <dt>Диапазон в документе</dt>
+                    <dd>{labReferenceRangeCopy(selectedFact.referenceRange)}</dd>
+                  </div>
+                </dl>
+              ) : null}
+            </section>
+          ) : null}
+
+          {selectedFact !== null &&
+          isPendingReview(selectedFact.reviewStatus) &&
+          canWriteProfile ? (
+            <section className="document-review-context__decision">
+              <h5>Ваше решение</h5>
+              <p>Исходный факт останется неизменным при любом выборе.</p>
+              <div className="document-review-context__actions">
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() =>
+                    void submitDecision(selectedFact, {
+                      factVersion: selectedFact.factVersion,
+                      decision: "confirm",
+                    })
+                  }
+                >
+                  {pendingFactId === selectedFact.id ? "Сохраняем…" : "Подтвердить результат"}
+                </button>
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  disabled={reviewPending}
+                  aria-expanded={correctionFactId === selectedFact.id}
+                  onClick={() =>
+                    setCorrectionFactId((current) =>
+                      current === selectedFact.id ? null : selectedFact.id,
+                    )
+                  }
+                >
+                  Исправить результат
+                </button>
+                <button
+                  className="text-button document-review-context__reject"
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() =>
+                    void submitDecision(selectedFact, {
+                      factVersion: selectedFact.factVersion,
+                      decision: "reject",
+                    })
+                  }
+                >
+                  Отклонить результат
+                </button>
+              </div>
+              {correctionFactId === selectedFact.id ? (
+                <form
+                  className="review-correction review-correction--context"
+                  aria-label="Исправление результата"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    void submitDecision(selectedFact, {
+                      factVersion: selectedFact.factVersion,
+                      decision: "correct",
+                      correction: {
+                        sourceName: String(form.get("sourceName") ?? "").trim(),
+                        sourceValue: String(form.get("sourceValue") ?? "").trim(),
+                        sourceUnit: String(form.get("sourceUnit") ?? "").trim(),
+                      },
+                    });
+                  }}
+                >
+                  <label>
+                    <span>Корректное название</span>
+                    <input
+                      name="sourceName"
+                      required
+                      maxLength={200}
+                      defaultValue={selectedFact.sourceName}
+                    />
+                  </label>
+                  <label>
+                    <span>Корректное значение</span>
+                    <input
+                      name="sourceValue"
+                      required
+                      maxLength={100}
+                      defaultValue={selectedFact.sourceValue}
+                    />
+                  </label>
+                  <label>
+                    <span>Корректная единица</span>
+                    <input
+                      name="sourceUnit"
+                      required
+                      maxLength={100}
+                      defaultValue={selectedFact.sourceUnit}
+                    />
+                  </label>
+                  <button className="button button--primary" type="submit" disabled={reviewPending}>
+                    Сохранить исправление
+                  </button>
+                </form>
+              ) : null}
+            </section>
+          ) : null}
+
+          {selectedFact !== null ? (
+            <section
+              className="document-review-context__proposal"
+              aria-label={`Предложенные поля: ${selectedFact.sourceName}`}
+            >
+              <h5>Предложенные поля</h5>
+              <dl>
+                <div>
+                  <dt>Код показателя</dt>
+                  <dd>
+                    {selectedFact.canonicalDisplayName === null
+                      ? proposedValue(selectedFact.proposedCanonicalCode)
+                      : `${selectedFact.canonicalDisplayName} · ${proposedValue(selectedFact.proposedCanonicalCode)}`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Нормализованное значение</dt>
+                  <dd>
+                    {selectedFact.proposedNormalizedValue === null
+                      ? "Не предложено"
+                      : `${selectedFact.proposedNormalizedValue} ${proposedValue(selectedFact.proposedNormalizedUnit)}`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Дата биоматериала</dt>
+                  <dd>{proposedValue(selectedFact.proposedSampledAt)}</dd>
+                </div>
+                <div>
+                  <dt>Лаборатория</dt>
+                  <dd>{proposedValue(selectedFact.proposedLaboratory)}</dd>
+                </div>
+              </dl>
+              {selectedConfidenceCopy === null ? null : (
+                <p className="document-review-context__confidence">
+                  <span>Уверенность извлечения</span>
+                  <strong>{selectedConfidenceCopy}</strong>
+                </p>
+              )}
+              {selectedFact.validationIssues.length > 0 ? (
+                <ul className="document-review-context__issues" aria-label="Причины проверки">
+                  {selectedFact.validationIssues.map((issue) => (
+                    <li key={issue}>{reviewIssueLabel(issue)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="document-review-context__issues-empty">Замечаний извлечения нет</p>
+              )}
+            </section>
+          ) : null}
+
+          <section
+            className="document-review-completeness"
+            data-testid="document-review-completeness"
           >
-            Обновить список
-          </button>
-        </div>
-      ) : null}
+            <h5>Поля сопоставления</h5>
+            {selectedMissingFields.length === 0 ? (
+              <p className="is-complete">Код, дата и лаборатория найдены</p>
+            ) : (
+              <>
+                <ul>
+                  {selectedMissingFields.map((field) => (
+                    <li key={field}>
+                      <strong>{field}</strong>
+                      <span>Не найдено</span>
+                    </li>
+                  ))}
+                </ul>
+                {canWriteProfile ? (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() =>
+                      onAskCodex(
+                        `Уточни лабораторию, дату биоматериала и код показателя для результата «${selectedDisplayName}». Используй только этот исходник и укажи страницу и точный фрагмент.`,
+                      )
+                    }
+                  >
+                    Уточнить у Codex
+                  </button>
+                ) : null}
+              </>
+            )}
+          </section>
 
-      {facts.kind === "ready" && facts.items.length === 0 ? (
-        <div className="review-empty" role="status">
-          <p>В этом запуске нет значений для проверки.</p>
-        </div>
-      ) : null}
+          {selectedCorrection !== undefined ? (
+            <section
+              className="document-review-context__correction"
+              aria-label="Подтверждённое исправление"
+            >
+              <h5>Подтверждённое исправление</h5>
+              <dl>
+                <div>
+                  <dt>Название</dt>
+                  <dd>{selectedCorrection.sourceName}</dd>
+                </div>
+                <div>
+                  <dt>Значение</dt>
+                  <dd>
+                    {selectedCorrection.sourceValue} {selectedCorrection.sourceUnit}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Единица</dt>
+                  <dd>{selectedCorrection.sourceUnit}</dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
 
-      {facts.kind === "ready" && facts.items.length > 0 ? (
-        <div className="review-fact-list">
-          {facts.items.map((fact) => (
-            <ReviewFactCard
-              key={fact.id}
-              fact={fact}
-              pending={pendingFactId === fact.id}
-              anyPending={reviewPending}
-              correctionOpen={correctionFactId === fact.id}
-              error={reviewError?.factId === fact.id ? reviewError.copy : null}
-              notice={reviewNotice?.factId === fact.id ? reviewNotice.copy : null}
-              confirmedCorrection={fact.review?.correction ?? confirmedCorrections.get(fact.id)}
-              onCorrectionToggle={() => {
-                setReviewError(null);
-                setReviewNotice(null);
-                setCorrectionFactId((current) => (current === fact.id ? null : fact.id));
-              }}
-              onDecision={submitDecision}
+          {journalFact?.review !== null && journalFact?.review !== undefined ? (
+            <section className="document-review-journal" data-testid="document-review-journal">
+              <h5>Журнал решения</h5>
+              <dl>
+                <div>
+                  <dt>Решение</dt>
+                  <dd>{reviewStatusLabel(journalFact.reviewStatus)}</dd>
+                </div>
+                <div>
+                  <dt>Кто</dt>
+                  <dd>{journalFact.review.decidedBy.displayName}</dd>
+                </div>
+                <div>
+                  <dt>Когда</dt>
+                  <dd>
+                    <time dateTime={journalFact.review.decidedAt}>
+                      {formatDate(journalFact.review.decidedAt)}
+                    </time>
+                  </dd>
+                </div>
+                {facts.kind === "ready" ? (
+                  <>
+                    <div>
+                      <dt>Идентификатор разбора</dt>
+                      <dd>
+                        <code>{facts.extractionRunId}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Версия экстрактора</dt>
+                      <dd>{facts.extractorVersion}</dd>
+                    </div>
+                    <div>
+                      <dt>Версия источника</dt>
+                      <dd>{journalFact.source.documentVersionId.slice(0, 8)}</dd>
+                    </div>
+                  </>
+                ) : null}
+              </dl>
+            </section>
+          ) : null}
+
+          {historyCode === null || historyFact === null ? null : (
+            <DocumentIndicatorHistory
+              familyId={familyId}
+              profileId={profileId}
+              canonicalCode={historyCode}
+              displayName={historyFact.canonicalDisplayName ?? historyFact.sourceName}
             />
-          ))}
-        </div>
+          )}
+
+          {selectedFact !== null && reviewError?.factId === selectedFact.id ? (
+            <p className="form-error" role="alert">
+              {reviewError.copy}
+            </p>
+          ) : null}
+        </aside>
       ) : null}
     </section>
   );
 }
 
-interface ReviewFactCardProps {
-  fact: ReviewFact;
-  pending: boolean;
-  anyPending: boolean;
-  correctionOpen: boolean;
-  error: string | null;
-  notice: string | null;
-  confirmedCorrection: ConfirmedCorrection | undefined;
-  onCorrectionToggle: () => void;
-  onDecision: (fact: ReviewFact, command: ReviewCommand) => Promise<void>;
-}
+type DocumentIndicatorHistoryState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: ObservationHistoryResponse["items"] }
+  | { kind: "error" };
 
-function ReviewFactCard({
-  fact,
-  pending,
-  anyPending,
-  correctionOpen,
-  error,
-  notice,
-  confirmedCorrection,
-  onCorrectionToggle,
-  onDecision,
-}: ReviewFactCardProps) {
-  const pendingDecision = isPendingReview(fact.reviewStatus);
-  const confidence = new Intl.NumberFormat("ru-RU", {
-    style: "percent",
-    maximumFractionDigits: 0,
-  }).format(fact.confidence);
-  const isDisabled = anyPending;
-  const displayName = fact.canonicalDisplayName ?? fact.sourceName;
+function DocumentIndicatorHistory({
+  familyId,
+  profileId,
+  canonicalCode,
+  displayName,
+}: {
+  familyId: string;
+  profileId: string;
+  canonicalCode: string;
+  displayName: string;
+}) {
+  const [state, setState] = useState<DocumentIndicatorHistoryState>({ kind: "loading" });
 
-  async function submitCorrection(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    await onDecision(fact, {
-      factVersion: fact.factVersion,
-      decision: "correct",
-      correction: {
-        sourceName: String(form.get("sourceName") ?? "").trim(),
-        sourceValue: String(form.get("sourceValue") ?? "").trim(),
-        sourceUnit: String(form.get("sourceUnit") ?? "").trim(),
-      },
-    });
-  }
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    void apiRequest<ObservationHistoryResponse>(
+      buildIndicatorHistoryPath(familyId, profileId, canonicalCode),
+      { signal: controller.signal },
+    )
+      .then((response) => {
+        if (!controller.signal.aborted) setState({ kind: "ready", items: response.items });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ kind: "error" });
+      });
+    return () => controller.abort();
+  }, [canonicalCode, familyId, profileId]);
 
   return (
-    <article className="review-fact" aria-labelledby={`review-fact-${fact.id}`}>
-      <div className="review-fact__summary">
+    <section className="document-review-history" data-testid="document-review-history">
+      <div className="document-review-history__heading">
         <div>
-          <p className="review-fact__key">Извлечённый факт</p>
-          <h4 id={`review-fact-${fact.id}`}>{displayName}</h4>
+          <h5>История показателя</h5>
+          <span>{displayName}</span>
         </div>
-        <p className={`review-fact__state review-fact__state--${fact.reviewStatus}`}>
-          <strong>{reviewStatusLabel(fact.reviewStatus)}</strong>
-          <span>{reviewStatusDescription(fact.reviewStatus)}</span>
-        </p>
-      </div>
-
-      <div className="review-fact__evidence">
-        <section className="review-fact__source" aria-label={`Источник: ${fact.sourceName}`}>
-          <h5>Источник</h5>
-          <dl>
-            <div>
-              <dt>Название в документе</dt>
-              <dd>{fact.sourceName}</dd>
-            </div>
-            <div>
-              <dt>Как в документе</dt>
-              <dd>
-                {fact.sourceValue} {fact.sourceUnit}
-              </dd>
-            </div>
-            <div>
-              <dt>Страница</dt>
-              <dd>Страница {fact.source.pageNumber}</dd>
-            </div>
-            {fact.referenceRange !== null && fact.referenceRange.sourceText !== null ? (
-              <div>
-                <dt>Диапазон в документе</dt>
-                <dd>{fact.referenceRange.sourceText}</dd>
-              </div>
-            ) : null}
-          </dl>
-          <p className="review-fact__provenance">Фрагмент из исходника</p>
-          <pre className="review-fact__fragment">
-            <code>{fact.source.fragment}</code>
-          </pre>
-        </section>
-
-        <section
-          className="review-fact__proposal"
-          aria-label={`Предложенные поля: ${fact.sourceName}`}
+        <Link
+          href={`${profileTabPath(familyId, profileId, "history")}&canonicalCode=${encodeURIComponent(canonicalCode)}#observation-history`}
         >
-          <h5>Предложенные поля</h5>
-          <dl>
-            <div>
-              <dt>Код показателя</dt>
-              <dd>
-                {fact.canonicalDisplayName === null
-                  ? proposedValue(fact.proposedCanonicalCode)
-                  : `${fact.canonicalDisplayName} · ${proposedValue(fact.proposedCanonicalCode)}`}
-              </dd>
-            </div>
-            <div>
-              <dt>Нормализованное значение</dt>
-              <dd>
-                {fact.proposedNormalizedValue === null
-                  ? "Не предложено"
-                  : `${fact.proposedNormalizedValue} ${proposedValue(fact.proposedNormalizedUnit)}`}
-              </dd>
-            </div>
-            <div>
-              <dt>Дата биоматериала</dt>
-              <dd>{proposedValue(fact.proposedSampledAt)}</dd>
-            </div>
-            <div>
-              <dt>Лаборатория</dt>
-              <dd>{proposedValue(fact.proposedLaboratory)}</dd>
-            </div>
-          </dl>
-          <p className="review-fact__confidence">Уверенность извлечения: {confidence}</p>
-          {fact.validationIssues.length > 0 ? (
-            <ul className="review-fact__issues" aria-label="Причины проверки">
-              {fact.validationIssues.map((issue) => (
-                <li key={issue}>{reviewIssueLabel(issue)}</li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
+          Открыть всю историю
+        </Link>
       </div>
-
-      {confirmedCorrection !== undefined ? (
-        <section
-          className="review-fact__confirmed-correction"
-          aria-label={`Подтверждённое исправление: ${fact.sourceName}`}
-        >
-          <h5>Подтверждённое исправление</h5>
-          <dl>
-            <div>
-              <dt>Название</dt>
-              <dd>{confirmedCorrection.sourceName}</dd>
-            </div>
-            <div>
-              <dt>Значение</dt>
-              <dd>
-                {confirmedCorrection.sourceValue} {confirmedCorrection.sourceUnit}
-              </dd>
-            </div>
-            <div>
-              <dt>Единица</dt>
-              <dd>{confirmedCorrection.sourceUnit}</dd>
-            </div>
-          </dl>
-        </section>
+      {state.kind === "loading" ? <p role="status">Собираем подтверждённые значения…</p> : null}
+      {state.kind === "error" ? <p>История сейчас недоступна.</p> : null}
+      {state.kind === "ready" && state.items.length === 0 ? (
+        <p>После подтверждения здесь появится сопоставимая история.</p>
       ) : null}
-
-      {pendingDecision ? (
-        <div className="review-fact__decision">
-          <p>
-            Сверьте источник. Подтверждение создаст отдельное подтверждённое значение; исходный факт
-            останется неизменным.
-          </p>
-          <div className="review-fact__actions">
-            <button
-              className="button button--primary"
-              type="button"
-              disabled={isDisabled}
-              aria-label={`Подтвердить ${fact.sourceName}`}
-              onClick={() =>
-                void onDecision(fact, { factVersion: fact.factVersion, decision: "confirm" })
-              }
-            >
-              {pending ? "Сохраняем…" : "Подтвердить"}
-            </button>
-            <button
-              className="button button--secondary"
-              type="button"
-              disabled={isDisabled}
-              aria-expanded={correctionOpen}
-              aria-controls={`correction-${fact.id}`}
-              aria-label={`Исправить ${fact.sourceName}`}
-              onClick={onCorrectionToggle}
-            >
-              Исправить
-            </button>
-            <button
-              className="button button--secondary review-fact__reject"
-              type="button"
-              disabled={isDisabled}
-              aria-label={`Отклонить ${fact.sourceName}`}
-              onClick={() =>
-                void onDecision(fact, { factVersion: fact.factVersion, decision: "reject" })
-              }
-            >
-              Отклонить
-            </button>
-          </div>
-
-          {correctionOpen ? (
-            <form
-              id={`correction-${fact.id}`}
-              className="review-correction"
-              aria-label={`Исправление: ${fact.sourceName}`}
-              onSubmit={(event) => void submitCorrection(event)}
-            >
-              <p>Введите проверенные поля. Исходное извлечение останется доступным выше.</p>
-              <div className="review-correction__fields">
-                <label className="field">
-                  <span>Корректное название</span>
-                  <input
-                    name="sourceName"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={200}
-                    defaultValue={fact.sourceName}
-                    disabled={isDisabled}
-                  />
-                </label>
-                <label className="field">
-                  <span>Корректное значение</span>
-                  <input
-                    name="sourceValue"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={100}
-                    defaultValue={fact.sourceValue}
-                    disabled={isDisabled}
-                  />
-                </label>
-                <label className="field">
-                  <span>Корректная единица</span>
-                  <input
-                    name="sourceUnit"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={100}
-                    defaultValue={fact.sourceUnit}
-                    disabled={isDisabled}
-                  />
-                </label>
-              </div>
-              <div className="review-correction__actions">
-                <button className="button button--primary" type="submit" disabled={isDisabled}>
-                  {pending ? "Сохраняем…" : "Сохранить исправление"}
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={onCorrectionToggle}
-                >
-                  Отменить
-                </button>
-              </div>
-            </form>
-          ) : null}
-        </div>
+      {state.kind === "ready" && state.items.length > 0 ? (
+        <ol>
+          {state.items.slice(0, 3).map((item) => (
+            <li key={item.id}>
+              <span>
+                {new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(
+                  new Date(item.timelineAt),
+                )}
+              </span>
+              <strong>
+                {item.normalized.value ?? item.source.value}{" "}
+                {item.normalized.unit ?? item.source.unit}
+              </strong>
+            </li>
+          ))}
+        </ol>
       ) : null}
-
-      {notice !== null ? (
-        <p className="review-fact__notice" role="status">
-          {notice}
-        </p>
-      ) : null}
-      {error !== null ? (
-        <p className="form-error review-fact__error" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </article>
+    </section>
   );
 }
 

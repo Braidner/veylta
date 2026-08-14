@@ -29,24 +29,22 @@ async function uploadAndOpenReview(page: Page, filename: string): Promise<void> 
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
 }
 
 function factCard(page: Page, position: number): Locator {
-  return page.locator(".review-fact").nth(position);
+  return page.locator(".document-result-card--selectable").nth(position);
 }
 
 async function confirmAndReject(page: Page): Promise<void> {
-  await factCard(page, 0)
-    .getByRole("button", { name: /^Подтвердить / })
-    .click();
-  await expect(factCard(page, 0).locator(".review-fact__state strong")).toHaveText(
+  await factCard(page, 0).click();
+  await page.getByRole("button", { name: "Подтвердить результат" }).click();
+  await expect(factCard(page, 0).locator(".document-result-status")).toHaveText(
     "Подтверждено пользователем",
   );
-  await factCard(page, 1)
-    .getByRole("button", { name: /^Отклонить / })
-    .click();
-  await expect(factCard(page, 1).locator(".review-fact__state strong")).toHaveText(
+  await factCard(page, 1).click();
+  await page.getByRole("button", { name: "Отклонить результат" }).click();
+  await expect(factCard(page, 1).locator(".document-result-status")).toHaveText(
     "Отклонено пользователем",
   );
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
@@ -54,13 +52,15 @@ async function confirmAndReject(page: Page): Promise<void> {
 
 async function correctAndReject(page: Page, correctedValue: string): Promise<void> {
   const firstFact = factCard(page, 0);
-  await firstFact.getByRole("button", { name: /^Исправить / }).click();
-  await firstFact.getByLabel("Корректное значение").fill(correctedValue);
-  await firstFact.getByRole("button", { name: "Сохранить исправление" }).click();
-  await expect(firstFact.getByText("Исправлено и подтверждено", { exact: true })).toBeVisible();
-  await factCard(page, 1)
-    .getByRole("button", { name: /^Отклонить / })
-    .click();
+  await firstFact.click();
+  await page.getByRole("button", { name: "Исправить результат" }).click();
+  await page.getByLabel("Корректное значение").fill(correctedValue);
+  await page.getByRole("button", { name: "Сохранить исправление" }).click();
+  await expect(firstFact.locator(".document-result-status")).toHaveText(
+    "Подтверждено пользователем",
+  );
+  await factCard(page, 1).click();
+  await page.getByRole("button", { name: "Отклонить результат" }).click();
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
 }
 
@@ -71,7 +71,7 @@ test("profile history shows confirmed and corrected observations with their auth
 
   await uploadAndOpenReview(page, `history-confirm-${crypto.randomUUID().slice(0, 8)}.pdf`);
   await confirmAndReject(page);
-  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+  await page.getByRole("tab", { name: "История", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=history`);
 
   const history = page.getByRole("region", { name: "История подтверждённых значений" });
@@ -88,10 +88,10 @@ test("profile history shows confirmed and corrected observations with their auth
     mimeType: "application/pdf",
     buffer: distinctSyntheticDocument(syntheticLabBytes, `history-correct-${profileUrl}`),
   });
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
   await correctAndReject(page, "7.1");
 
-  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+  await page.getByRole("tab", { name: "История", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=history`);
   await expect(history.locator("tbody tr")).toHaveCount(2);
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
@@ -114,7 +114,7 @@ test("profile catalog compares only matching confirmed synthetic units", async (
 
   await uploadAndOpenReview(page, `indicator-first-${crypto.randomUUID().slice(0, 8)}.pdf`);
   await confirmAndReject(page);
-  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+  await page.getByRole("tab", { name: "История", exact: true }).click();
 
   const catalog = page.getByRole("region", { name: "Подтверждённая динамика" });
   await expect(
@@ -133,9 +133,9 @@ test("profile catalog compares only matching confirmed synthetic units", async (
     mimeType: "application/pdf",
     buffer: distinctSyntheticDocument(syntheticLabBytes, "indicator-second"),
   });
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
   await correctAndReject(page, "7.5");
-  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+  await page.getByRole("tab", { name: "История", exact: true }).click();
 
   await expect(
     catalog.getByText("Последнее значение выше предыдущего на 0.5 в той же единице."),

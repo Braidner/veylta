@@ -342,6 +342,8 @@ interface FactRow {
   review_id: string | null;
   decision_outcome: string | null;
   review_decided_at: string | null;
+  review_decided_by_user_id: string | null;
+  review_decided_by_display_name: string | null;
   review_observation_id: string | null;
   corrected_source_name: string | null;
   corrected_source_value: string | null;
@@ -376,6 +378,8 @@ interface ReviewRequestRow {
   source_fact_version: number;
   outcome: string;
   decided_at: string;
+  decided_by_user_id: string;
+  decided_by_display_name: string;
   observation_id: string | null;
 }
 
@@ -385,6 +389,8 @@ interface ReviewDecisionRow {
   source_fact_version: number;
   outcome: string;
   decided_at: string;
+  decided_by_user_id: string;
+  decided_by_display_name: string;
   observation_id: string | null;
 }
 
@@ -2033,6 +2039,14 @@ function factReviewResponse(row: ReviewDecisionRow): FactReviewResponse {
       factVersion,
       outcome,
       decidedAt: canonicalTimestamp(row.decided_at),
+      decidedBy: {
+        id: requiredBoundedString(row.decided_by_user_id, 200, "fact review actor"),
+        displayName: requiredBoundedString(
+          row.decided_by_display_name,
+          120,
+          "fact review actor display name",
+        ),
+      },
       observationId:
         observationId === null
           ? null
@@ -2061,6 +2075,8 @@ function factReviewSummary(row: FactRow): DocumentFactsResponse["items"][number]
   const decisionFields = [
     row.review_id,
     row.review_decided_at,
+    row.review_decided_by_user_id,
+    row.review_decided_by_display_name,
     row.review_observation_id,
     row.corrected_source_name,
     row.corrected_source_value,
@@ -2123,6 +2139,14 @@ function factReviewSummary(row: FactRow): DocumentFactsResponse["items"][number]
     decidedAt: canonicalTimestamp(
       requiredBoundedString(row.review_decided_at, 100, "fact review time"),
     ),
+    decidedBy: {
+      id: requiredBoundedString(row.review_decided_by_user_id, 200, "fact review actor"),
+      displayName: requiredBoundedString(
+        row.review_decided_by_display_name,
+        120,
+        "fact review actor display name",
+      ),
+    },
     observationId,
     correction,
   };
@@ -3327,6 +3351,8 @@ export function createDocumentService(
                   f.proposed_laboratory, f.confidence, f.validation_issues, f.review_status,
                   d.id AS review_id, d.outcome AS decision_outcome,
                   d.decided_at AS review_decided_at,
+                  d.decided_by_user_id AS review_decided_by_user_id,
+                  reviewer.display_name AS review_decided_by_display_name,
                   d.observation_id AS review_observation_id,
                   d.corrected_source_name, d.corrected_source_value,
                   d.corrected_source_unit, NULL AS canonical_display_name
@@ -3335,6 +3361,8 @@ export function createDocumentService(
                ON p.family_id = f.family_id AND p.id = f.document_page_id
              LEFT JOIN review_decisions d
                ON d.family_id = f.family_id AND d.extracted_fact_id = f.id
+             LEFT JOIN users reviewer
+               ON reviewer.id = d.decided_by_user_id
             WHERE f.family_id = $1 AND f.extraction_run_id = $2
             ORDER BY p.page_number, f.fact_key`,
           [scope.familyId, run.id],
@@ -4418,10 +4446,13 @@ export function createDocumentService(
         const replay = (
           await client.query<ReviewRequestRow>(
             `SELECT rr.extracted_fact_id, rr.request_hash, d.id AS decision_id,
-                    d.source_fact_version, d.outcome, d.decided_at, d.observation_id
+                    d.source_fact_version, d.outcome, d.decided_at,
+                    d.decided_by_user_id, reviewer.display_name AS decided_by_display_name,
+                    d.observation_id
                FROM review_requests rr
                JOIN review_decisions d
                  ON d.family_id = rr.family_id AND d.id = rr.review_decision_id
+               JOIN users reviewer ON reviewer.id = d.decided_by_user_id
               WHERE rr.family_id = $1
                 AND rr.actor_user_id = $2
                 AND rr.idempotency_key_hash = $3`,
@@ -4438,6 +4469,8 @@ export function createDocumentService(
             source_fact_version: replay.source_fact_version,
             outcome: replay.outcome,
             decided_at: replay.decided_at,
+            decided_by_user_id: replay.decided_by_user_id,
+            decided_by_display_name: replay.decided_by_display_name,
             observation_id: replay.observation_id,
           });
           await audit(client, {
@@ -4454,9 +4487,12 @@ export function createDocumentService(
 
         const existing = (
           await client.query<ReviewDecisionRow>(
-            `SELECT id, extracted_fact_id, source_fact_version, outcome, decided_at, observation_id
-               FROM review_decisions
-              WHERE family_id = $1 AND extracted_fact_id = $2`,
+            `SELECT d.id, d.extracted_fact_id, d.source_fact_version, d.outcome, d.decided_at,
+                    d.decided_by_user_id, reviewer.display_name AS decided_by_display_name,
+                    d.observation_id
+               FROM review_decisions d
+               JOIN users reviewer ON reviewer.id = d.decided_by_user_id
+              WHERE d.family_id = $1 AND d.extracted_fact_id = $2`,
             [scope.familyId, fact.id],
           )
         ).rows[0];
@@ -4679,6 +4715,8 @@ export function createDocumentService(
             source_fact_version: 1,
             outcome: command.decision,
             decided_at: timestamp,
+            decided_by_user_id: actor.userId,
+            decided_by_display_name: actor.displayName,
             observation_id: observationId,
           }),
           replayed: false,

@@ -4,7 +4,7 @@ export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v2" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
-export const DOCUMENT_CONTRACT_VERSION = "document/v4" as const;
+export const DOCUMENT_CONTRACT_VERSION = "document/v5" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
 export const DOCUMENT_LIFECYCLE_CONTRACT_VERSION = "document-lifecycle/v1" as const;
@@ -1167,6 +1167,11 @@ export interface ExtractedFactReviewSummary {
   readonly id: string;
   readonly outcome: FactReviewOutcome;
   readonly decidedAt: string;
+  /** The family member whose explicit decision created this immutable review. */
+  readonly decidedBy: {
+    readonly id: string;
+    readonly displayName: string;
+  };
   readonly observationId: string | null;
   /** Present only when the final decision is a correction. */
   readonly correction: FactReviewCorrection | null;
@@ -1184,6 +1189,11 @@ export interface FactReviewSummary {
   readonly factVersion: number;
   readonly outcome: FactReviewOutcome;
   readonly decidedAt: string;
+  /** The family member whose explicit decision created this immutable review. */
+  readonly decidedBy: {
+    readonly id: string;
+    readonly displayName: string;
+  };
   readonly observationId: string | null;
 }
 
