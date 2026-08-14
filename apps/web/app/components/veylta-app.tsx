@@ -1897,7 +1897,7 @@ function ProfileWorkspace({
 
   return (
     <section
-      className={`profile-shell profile-shell--${requestedDocumentId === undefined ? activeTab : "documents"}`}
+      className={`profile-shell profile-shell--${requestedDocumentId === undefined ? activeTab : "documents"}${requestedDocumentId === undefined ? "" : " profile-shell--document-detail"}`}
       aria-label={requestedDocumentId === undefined ? undefined : "Документ профиля"}
       aria-labelledby={requestedDocumentId === undefined ? "profile-title" : undefined}
     >

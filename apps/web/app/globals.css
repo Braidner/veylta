@@ -6465,6 +6465,10 @@ body:has(.upload-dialog[open]) {
   margin: 0;
 }
 
+.profile-shell--document-detail {
+  padding-top: 0;
+}
+
 .workspace-tab-panel--document-detail .document-detail-workspace {
   margin: 0;
   overflow: visible;
@@ -6474,7 +6478,7 @@ body:has(.upload-dialog[open]) {
 }
 
 .workspace-tab-panel--document-detail .document-view {
-  padding: 32px 0 48px;
+  padding: 0 0 48px;
 }
 
 .document-hero__identity {
@@ -6494,16 +6498,21 @@ body:has(.upload-dialog[open]) {
     "error error"
     "summary summary";
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 24px 32px;
+  grid-template-rows: auto auto 1fr;
+  width: 100vw;
+  min-height: clamp(360px, 42dvh, 480px);
+  gap: 20px 32px;
   align-items: start;
-  padding: 32px;
+  padding: clamp(32px, 4vw, 64px) 40px;
+  margin-inline: calc(50% - 50vw);
   overflow: hidden;
   color: white;
   background:
-    radial-gradient(circle at 92% 18%, oklch(0.84 0.12 265 / 45%), transparent 34%),
-    linear-gradient(135deg, oklch(0.5 0.21 255), oklch(0.53 0.22 292));
+    radial-gradient(circle at 86% 20%, oklch(0.86 0.12 275 / 46%), transparent 32%),
+    radial-gradient(circle at 14% 112%, oklch(0.74 0.15 239 / 35%), transparent 40%),
+    linear-gradient(118deg, oklch(0.47 0.22 254), oklch(0.52 0.23 289));
   border: 0;
-  border-radius: 16px;
+  border-radius: 0;
 }
 
 .document-hero::after {
@@ -6532,8 +6541,8 @@ body:has(.upload-dialog[open]) {
   max-width: 24ch;
   margin: 0;
   color: white;
-  font-size: 2.75rem;
-  line-height: 1.04;
+  font-size: clamp(2.75rem, 5vw, 5rem);
+  line-height: 0.98;
   letter-spacing: -0.04em;
   text-wrap: balance;
 }
@@ -6560,9 +6569,11 @@ body:has(.upload-dialog[open]) {
   padding-inline: 12px;
   color: white;
   white-space: nowrap;
-  background: transparent;
-  border: 1px solid oklch(1 0 0 / 34%);
+  background: oklch(0.25 0.08 275 / 22%);
+  border: 1px solid oklch(1 0 0 / 30%);
+  backdrop-filter: blur(16px) saturate(1.2);
   transition:
+    transform 180ms ease,
     color 180ms ease,
     background-color 180ms ease,
     border-color 180ms ease;
@@ -6570,8 +6581,9 @@ body:has(.upload-dialog[open]) {
 
 .document-hero__action:hover {
   color: white;
-  background: oklch(1 0 0 / 12%);
+  background: oklch(1 0 0 / 15%);
   border-color: oklch(1 0 0 / 68%);
+  transform: translateY(-1px);
 }
 
 .document-hero__action:disabled {
@@ -6594,6 +6606,7 @@ body:has(.upload-dialog[open]) {
 
 .document-hero__summary {
   grid-area: summary;
+  align-self: end;
   padding-top: 24px;
   border-top: 1px solid oklch(1 0 0 / 22%);
 }
@@ -6779,9 +6792,14 @@ body:has(.upload-dialog[open]) {
 }
 
 .document-review-context {
-  position: static;
+  position: sticky;
+  top: 16px;
   min-width: 0;
+  max-height: calc(100dvh - 32px);
   padding: 24px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
   background: var(--color-bg);
   border: 1px solid var(--color-line);
   border-radius: 14px;
@@ -7167,6 +7185,8 @@ body:has(.upload-dialog[open]) {
       "error"
       "summary";
     grid-template-columns: 1fr;
+    grid-template-rows: auto;
+    min-height: 0;
     padding: 24px;
   }
 
@@ -7178,11 +7198,18 @@ body:has(.upload-dialog[open]) {
   .document-dashboard-grid__rail {
     grid-template-columns: 1fr;
   }
+
+  .document-review-context {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    scrollbar-gutter: auto;
+  }
 }
 
 @media (max-width: 520px) {
   .workspace-tab-panel--document-detail .document-view {
-    padding: 24px 0 32px;
+    padding: 0 0 32px;
   }
 
   .document-review-workspace__bulk {

@@ -53,6 +53,7 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   const source = workspace.getByTestId("document-review-source");
   const resultsPanel = workspace.locator(".document-review-workspace__body");
   const hero = page.getByTestId("document-hero");
+  const workspaceBar = page.locator(".workspace-bar");
   const heroActions = hero.getByRole("group", { name: "Действия с документом" });
 
   await expect(page.locator(".document-context-bar")).toHaveCount(0);
@@ -60,11 +61,17 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   await expect(hero.getByText("Саммари Codex", { exact: true })).toHaveCount(0);
   await expect(heroActions.getByRole("link", { name: "Скачать" })).toBeVisible();
   await expect(heroActions.getByRole("button", { name: "Перезапустить разбор" })).toBeVisible();
-  expect(
-    await heroActions
-      .getByRole("link", { name: "Скачать" })
-      .evaluate((element) => getComputedStyle(element).backgroundColor),
-  ).toBe("rgba(0, 0, 0, 0)");
+  const downloadActionStyle = await heroActions
+    .getByRole("link", { name: "Скачать" })
+    .evaluate((element) => {
+      const style = getComputedStyle(element);
+      return {
+        backdropFilter: `${style.backdropFilter} ${style.getPropertyValue("-webkit-backdrop-filter")}`,
+        backgroundColor: style.backgroundColor,
+      };
+    });
+  expect(downloadActionStyle.backdropFilter).toContain("blur(");
+  expect(downloadActionStyle.backgroundColor).not.toBe("rgba(0, 0, 0, 0)");
   await expect(firstResult).toHaveAttribute("aria-pressed", "true");
   await expect(secondResult).toHaveAttribute("aria-pressed", "false");
   await expect(source.getByText("Источник результата", { exact: true })).toBeVisible();
@@ -76,23 +83,54 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   await expect(source.getByText("Неоднозначная единица", { exact: true })).toBeVisible();
   await expect(source.getByText("Диапазон в документе", { exact: true })).toBeVisible();
   await expect(source.getByText("5.0–8.0 synthetic-unit", { exact: true })).toBeVisible();
-  expect(await source.evaluate((element) => getComputedStyle(element).position)).toBe("static");
-  const [heroBox, heroActionsBox, sourceBox, resultsPanelBox, firstResultBox] = await Promise.all([
-    hero.boundingBox(),
-    heroActions.boundingBox(),
-    source.boundingBox(),
-    resultsPanel.boundingBox(),
-    firstResult.boundingBox(),
-  ]);
+  const sourceStyle = await source.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return {
+      position: style.position,
+      maxHeight: style.maxHeight,
+      overflowY: style.overflowY,
+    };
+  });
+  expect(sourceStyle.position).toBe("sticky");
+  expect(sourceStyle.overflowY).toBe("auto");
+  expect(Number.parseFloat(sourceStyle.maxHeight)).toBe(
+    (await page.evaluate(() => innerHeight)) - 32,
+  );
+  const [workspaceBarBox, heroBox, heroActionsBox, sourceBox, resultsPanelBox, firstResultBox] =
+    await Promise.all([
+      workspaceBar.boundingBox(),
+      hero.boundingBox(),
+      heroActions.boundingBox(),
+      source.boundingBox(),
+      resultsPanel.boundingBox(),
+      firstResult.boundingBox(),
+    ]);
+  expect(workspaceBarBox).not.toBeNull();
   expect(heroBox).not.toBeNull();
   expect(heroActionsBox).not.toBeNull();
   expect(sourceBox).not.toBeNull();
   expect(resultsPanelBox).not.toBeNull();
   expect(firstResultBox).not.toBeNull();
+  expect(heroBox?.x ?? Number.NaN).toBeLessThanOrEqual(1);
+  expect(Math.abs((heroBox?.width ?? 0) - (page.viewportSize()?.width ?? 0))).toBeLessThanOrEqual(
+    1,
+  );
+  expect(
+    Math.abs((heroBox?.y ?? 0) - ((workspaceBarBox?.y ?? 0) + (workspaceBarBox?.height ?? 0))),
+  ).toBeLessThanOrEqual(1);
   expect(Math.abs((resultsPanelBox?.y ?? 0) - (sourceBox?.y ?? 0))).toBeLessThanOrEqual(2);
-  expect((heroActionsBox?.y ?? 0) - (heroBox?.y ?? 0)).toBeLessThanOrEqual(40);
+  expect((heroActionsBox?.y ?? 0) - (heroBox?.y ?? 0)).toBeLessThanOrEqual(64);
   expect(firstResultBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
   expect(sourceBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
+
+  const sourceScrollMetrics = await source.evaluate((element) => ({
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  expect(sourceScrollMetrics.scrollHeight).toBeGreaterThan(sourceScrollMetrics.clientHeight);
+  const confirmAction = source.getByRole("button", { name: "Подтвердить результат" });
+  await confirmAction.scrollIntoViewIfNeeded();
+  await expect(confirmAction).toBeVisible();
 
   await secondResult.click();
   await expect(secondResult).toHaveAttribute("aria-pressed", "true");
