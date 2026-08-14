@@ -265,8 +265,8 @@
     "semantic_hash": ""
   },
   "e2e/family-profile.spec.ts": {
-    "mtime": 1786703846.5000515,
-    "ast_hash": "d3415dceacd2ad9b1bef91681c5dad4d",
+    "mtime": 1786719095.5141246,
+    "ast_hash": "2bd24a891abd8c576eca51e9d1f2c85c",
     "semantic_hash": ""
   },
   "apps/web/app/families/[familyId]/profiles/[profileId]/page.tsx": {
@@ -340,8 +340,8 @@
     "semantic_hash": ""
   },
   "apps/web/app/components/veylta-app.tsx": {
-    "mtime": 1786707338.771328,
-    "ast_hash": "114a2be7537e123cb6b5f88adeef30d4",
+    "mtime": 1786719078.6884675,
+    "ast_hash": "cbf61bada6a8077fc653874ec47cd1e8",
     "semantic_hash": ""
   },
   "apps/api/src/processing/document-extraction-processor.test.ts": {
@@ -430,8 +430,8 @@
     "semantic_hash": ""
   },
   "e2e/document-review.spec.ts": {
-    "mtime": 1786703282.9977655,
-    "ast_hash": "effe4775c10c5a8bd553ccbaacab6f09",
+    "mtime": 1786718071.7864952,
+    "ast_hash": "8902030c4f3f8a0501a562f487078257",
     "semantic_hash": ""
   },
   "apps/api/test/observation-history.integration.test.ts": {
@@ -890,8 +890,8 @@
     "semantic_hash": ""
   },
   "e2e/dashboard-redesign.spec.ts": {
-    "mtime": 1786707059.4276712,
-    "ast_hash": "ab198da6d6503c995a8edf2917df9eba",
+    "mtime": 1786719078.6889596,
+    "ast_hash": "fef727b2825e837a74ef8507c61e113e",
     "semantic_hash": ""
   },
   "e2e/support/document-upload.ts": {

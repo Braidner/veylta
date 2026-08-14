@@ -50,6 +50,7 @@ import { DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contr
 import {
   ArrowRight,
   CalendarDays,
+  CheckCheck,
   ClipboardList,
   Clock3,
   Files,
@@ -1669,34 +1670,37 @@ function ProfileWorkspace({
           aria-labelledby="workspace-tab-documents"
           aria-label="Документы"
         >
-          <div className="profile-workspace">
-            <div className="profile-workspace__main">
-              {canWriteProfile ? (
-                <DocumentInbox onUpload={openUploadDialog} />
-              ) : (
-                <ReadOnlyProfileNotice />
-              )}
-              <ProfileOverviewPanel
-                key={`documents:${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-                canWriteProfile={canWriteProfile}
-                view="documents"
-                onUpload={openUploadDialog}
-              />
-            </div>
-            <ProfileManagementRail
-              family={family}
-              profile={profile}
-              ownerCanAddProfile={ownerCanAddProfile}
-              addProfileOpen={addProfileOpen}
-              action={action}
-              error={error}
-              onAddProfileToggle={onAddProfileToggle}
-              onAddProfile={onAddProfile}
-              onProfileArchived={onProfileArchived}
-              onProfileRestored={onProfileRestored}
+          <div className="documents-workspace">
+            {canWriteProfile ? (
+              <DocumentInbox onUpload={openUploadDialog} />
+            ) : (
+              <ReadOnlyProfileNotice />
+            )}
+            <ProfileOverviewPanel
+              key={`documents:${family.id}:${profile.id}`}
+              familyId={family.id}
+              profileId={profile.id}
+              canWriteProfile={canWriteProfile}
+              view="documents"
+              onUpload={openUploadDialog}
             />
+            {ownerCanAddProfile || family.role === "owner" ? (
+              <details className="profile-management-drawer">
+                <summary>Управление профилем и доступом</summary>
+                <ProfileManagementRail
+                  family={family}
+                  profile={profile}
+                  ownerCanAddProfile={ownerCanAddProfile}
+                  addProfileOpen={addProfileOpen}
+                  action={action}
+                  error={error}
+                  onAddProfileToggle={onAddProfileToggle}
+                  onAddProfile={onAddProfile}
+                  onProfileArchived={onProfileArchived}
+                  onProfileRestored={onProfileRestored}
+                />
+              </details>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1751,36 +1755,13 @@ function ProfileWorkspace({
           aria-labelledby="workspace-tab-documents"
           aria-label="Документы"
         >
-          <div className="profile-workspace">
-            <div className="profile-workspace__main">
-              <DocumentView
-                family={family}
-                profile={profile}
-                documentId={requestedDocumentId}
-                canWriteProfile={canWriteProfile}
-              />
-            </div>
-            <aside className="workspace-rail" aria-label="Действия с документом">
-              <div className="rail-section">
-                <h2>Другой документ</h2>
-                <p>Вернитесь в архив или загрузите следующий синтетический исходник.</p>
-                <Link
-                  className="button button--secondary"
-                  href={profileTabPath(family.id, profile.id, "documents")}
-                >
-                  Открыть документы
-                </Link>
-                {canWriteProfile ? (
-                  <button
-                    className="button button--secondary"
-                    type="button"
-                    onClick={openUploadDialog}
-                  >
-                    Загрузить ещё документ
-                  </button>
-                ) : null}
-              </div>
-            </aside>
+          <div className="document-detail-workspace">
+            <DocumentView
+              family={family}
+              profile={profile}
+              documentId={requestedDocumentId}
+              canWriteProfile={canWriteProfile}
+            />
           </div>
         </div>
       ) : null}
@@ -2609,17 +2590,34 @@ function DocumentArchiveList({
           <ol className="profile-overview__list">
             {group.documents.map((document) => (
               <li key={document.id} className="profile-overview__row">
-                <div>
-                  <strong>{document.intelligence?.title ?? document.originalFilename}</strong>
-                  <span>
-                    {document.intelligence === null ? "Ожидает Codex" : "Распределено Codex"} ·{" "}
-                    {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)} ·{" "}
+                <div className="document-archive-row__identity">
+                  <span className="document-archive-row__icon" aria-hidden="true">
+                    <Files size={17} />
+                  </span>
+                  <div>
+                    <strong>{document.intelligence?.title ?? document.originalFilename}</strong>
+                    <span>
+                      {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)}
+                    </span>
+                  </div>
+                </div>
+                <div className="document-archive-row__actions">
+                  <span className={`document-status document-status--${document.processing.state}`}>
                     {profileOverviewProcessingCopy(document.processing)}
                   </span>
+                  <Link
+                    className="document-archive-row__open"
+                    href={documentPath(familyId, profileId, document.id)}
+                    aria-label={`Открыть источник ${document.intelligence?.title ?? document.originalFilename}`}
+                  >
+                    <span>Открыть источник</span>
+                    <ArrowRight
+                      className="document-archive-row__arrow"
+                      size={17}
+                      aria-hidden="true"
+                    />
+                  </Link>
                 </div>
-                <Link className="text-link" href={documentPath(familyId, profileId, document.id)}>
-                  Открыть источник
-                </Link>
               </li>
             ))}
           </ol>
@@ -2735,37 +2733,50 @@ function ProfileOverviewPanel({
           <ProfileDashboard overview={state.overview} onUpload={onUpload} />
         ) : (
           <>
-            {canWriteProfile ? (
-              <details className="profile-overview__exports">
-                <summary>Экспорт источников</summary>
-                <div>
-                  <p className="profile-overview__export">
-                    <a
-                      className="text-link"
-                      href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-                      download
-                    >
-                      Скачать локальный пакет источников
-                    </a>
-                    <span>До 5 синтетических исходников; это не резервная копия.</span>
-                  </p>
-                  <p className="profile-overview__export">
-                    <a
-                      className="text-link"
-                      href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
-                      download
-                    >
-                      Скачать полный synthetic-экспорт профиля
-                    </a>
-                    <span>Все источники и подтверждённые записи в пределах локального лимита.</span>
-                  </p>
-                </div>
-              </details>
-            ) : null}
+            <div className="document-library__toolbar">
+              <div className="document-library__stats">
+                <span>
+                  <strong>{state.overview.recentDocuments.length}</strong>в архиве
+                </span>
+                <span>
+                  <strong>{state.overview.reviewQueue.documentCount}</strong>
+                  ждут проверки
+                </span>
+              </div>
+              {canWriteProfile ? (
+                <details className="profile-overview__exports">
+                  <summary>Экспорт источников</summary>
+                  <div>
+                    <p className="profile-overview__export">
+                      <a
+                        className="text-link"
+                        href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+                        download
+                      >
+                        Скачать локальный пакет источников
+                      </a>
+                      <span>До 5 синтетических исходников; это не резервная копия.</span>
+                    </p>
+                    <p className="profile-overview__export">
+                      <a
+                        className="text-link"
+                        href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
+                        download
+                      >
+                        Скачать полный synthetic-экспорт профиля
+                      </a>
+                      <span>
+                        Все источники и подтверждённые записи в пределах локального лимита.
+                      </span>
+                    </p>
+                  </div>
+                </details>
+              ) : null}
+            </div>
 
             <div className="profile-overview__sections">
               <section
-                className="profile-overview__section"
+                className={`profile-overview__section profile-overview__section--review${state.overview.reviewQueue.documentCount === 0 ? " profile-overview__section--quiet" : ""}`}
                 aria-labelledby="overview-review-title"
               >
                 <div className="profile-overview__section-heading">
@@ -2788,20 +2799,26 @@ function ProfileOverviewPanel({
                   <ol className="profile-overview__list">
                     {state.overview.reviewQueue.documents.map((document) => (
                       <li key={document.id} className="profile-overview__row">
-                        <div>
-                          <strong>{document.originalFilename}</strong>
-                          <span>
-                            {factCountCopy(document.pendingFactCount)} ждут решения
-                            {document.needsAttentionFactCount > 0
-                              ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
-                              : ""}
+                        <div className="review-queue-row__identity">
+                          <span className="review-queue-row__mark" aria-hidden="true">
+                            !
                           </span>
+                          <div>
+                            <strong>{document.originalFilename}</strong>
+                            <span>
+                              {factCountCopy(document.pendingFactCount)} ждут решения
+                              {document.needsAttentionFactCount > 0
+                                ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                                : ""}
+                            </span>
+                          </div>
                         </div>
                         <Link
-                          className="text-link"
+                          className="button button--secondary review-queue-row__action"
                           href={documentPath(familyId, profileId, document.id)}
                         >
                           Открыть проверку
+                          <ArrowRight size={16} aria-hidden="true" />
                         </Link>
                       </li>
                     ))}
@@ -3804,24 +3821,23 @@ function formatUploadSize(bytes: number): string {
 function DocumentInbox({ onUpload }: { onUpload: () => void }) {
   return (
     <section className="document-inbox" aria-labelledby="document-inbox-title">
-      <span className="source-mark" aria-hidden="true">
-        PDF · PNG · JPEG
-      </span>
-      <p className="context-line">Исходные документы</p>
-      <h2 id="document-inbox-title">Документы профиля</h2>
-      <p className="document-intro">
-        Загружайте один документ или целую пачку. Оригиналы останутся неизменными, а Codex определит
-        тип каждого файла, разложит архив и подготовит черновые значения со ссылками на источник.
-      </p>
-
-      <div className="synthetic-reminder" role="note">
-        <strong>Не загружайте реальные медицинские данные.</strong>
-        <span> Контур принимает только вымышленные PDF, PNG и JPEG до 5 МБ.</span>
+      <div className="document-inbox__copy">
+        <p className="context-line">Исходники и подтверждения</p>
+        <h2 id="document-inbox-title">Документы профиля</h2>
+        <p className="document-intro">
+          Добавьте один файл или пачку. Codex распределит документы по разделам и подготовит
+          значения для вашей проверки, не меняя оригиналы.
+        </p>
       </div>
-      <button className="button button--primary" type="button" onClick={onUpload}>
-        <FileUp size={18} aria-hidden="true" />
-        Загрузить документы
-      </button>
+      <div className="document-inbox__actions">
+        <button className="button button--primary" type="button" onClick={onUpload}>
+          <FileUp size={18} aria-hidden="true" />
+          Загрузить документы
+        </button>
+        <p className="synthetic-reminder" role="note">
+          Только вымышленные PDF, PNG и JPEG до 5 МБ. Не загружайте реальные медицинские данные.
+        </p>
+      </div>
     </section>
   );
 }
@@ -4862,7 +4878,7 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
   return (
     <section className="document-view" aria-labelledby="document-title">
       <Link className="back-link" href={profileTabPath(family.id, profile.id, "documents")}>
-        ← {profile.displayName}
+        ← Открыть документы
       </Link>
       <p className="document-state">
         <span aria-hidden="true" />
@@ -5292,6 +5308,12 @@ interface ReviewCommandAttempt {
   readonly key: string;
 }
 
+type BulkReviewState =
+  | { kind: "idle" }
+  | { kind: "running"; completed: number; total: number }
+  | { kind: "success"; total: number }
+  | { kind: "error"; completed: number; total: number };
+
 function isPendingReview(status: ReviewFactStatus): boolean {
   return status === "extracted" || status === "needs_review";
 }
@@ -5373,6 +5395,7 @@ function DocumentReviewPanel({
   const [confirmedCorrections, setConfirmedCorrections] = useState<
     ReadonlyMap<string, ConfirmedCorrection>
   >(() => new Map());
+  const [bulkReview, setBulkReview] = useState<BulkReviewState>({ kind: "idle" });
   const commandAttempts = useRef<Map<string, ReviewCommandAttempt>>(new Map());
 
   const loadFacts = useCallback(
@@ -5404,7 +5427,7 @@ function DocumentReviewPanel({
     };
   }, [loadFacts]);
 
-  async function submitDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
+  async function persistDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
     const fingerprint = JSON.stringify(command);
     const previousAttempt = commandAttempts.current.get(fact.id);
     const attempt =
@@ -5412,10 +5435,6 @@ function DocumentReviewPanel({
         ? previousAttempt
         : { fingerprint, key: crypto.randomUUID() };
     commandAttempts.current.set(fact.id, attempt);
-    setPendingFactId(fact.id);
-    setReviewError(null);
-    setReviewNotice(null);
-
     try {
       await apiRequest<FactReviewResponse>(
         `${documentFactsPath(familyId, profileId, documentId)}/${encodeURIComponent(fact.id)}/review`,
@@ -5426,17 +5445,37 @@ function DocumentReviewPanel({
         },
       );
       commandAttempts.current.delete(fact.id);
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) {
+        commandAttempts.current.delete(fact.id);
+      }
+      throw error;
+    }
+  }
+
+  function updateFactStatus(factId: string, status: ReviewFactStatus): void {
+    setFacts((current) =>
+      current.kind !== "ready"
+        ? current
+        : {
+            kind: "ready",
+            items: current.items.map((item) =>
+              item.id === factId ? { ...item, reviewStatus: status } : item,
+            ),
+          },
+    );
+  }
+
+  async function submitDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
+    setPendingFactId(fact.id);
+    setReviewError(null);
+    setReviewNotice(null);
+    setBulkReview({ kind: "idle" });
+
+    try {
+      await persistDecision(fact, command);
       const nextStatus: ReviewFactStatus = command.decision === "reject" ? "rejected" : "confirmed";
-      setFacts((current) =>
-        current.kind !== "ready"
-          ? current
-          : {
-              kind: "ready",
-              items: current.items.map((item) =>
-                item.id === fact.id ? { ...item, reviewStatus: nextStatus } : item,
-              ),
-            },
-      );
+      updateFactStatus(fact.id, nextStatus);
       const confirmedCorrection =
         command.decision === "correct" && command.correction !== undefined
           ? command.correction
@@ -5457,20 +5496,53 @@ function DocumentReviewPanel({
       onReviewSaved();
       void loadFacts();
     } catch (error) {
-      if (error instanceof ApiError && error.status < 500) {
-        commandAttempts.current.delete(fact.id);
-      }
       setReviewError({ factId: fact.id, copy: reviewErrorCopy(error) });
     } finally {
       setPendingFactId(null);
     }
   }
 
+  async function confirmAll(pendingFacts: readonly ReviewFact[]): Promise<void> {
+    const total = pendingFacts.length;
+    if (total === 0) return;
+
+    setReviewError(null);
+    setReviewNotice(null);
+    setCorrectionFactId(null);
+    setBulkReview({ kind: "running", completed: 0, total });
+
+    let completed = 0;
+    for (const fact of pendingFacts) {
+      try {
+        await persistDecision(fact, {
+          factVersion: fact.factVersion,
+          decision: "confirm",
+        });
+        completed += 1;
+        updateFactStatus(fact.id, "confirmed");
+        setBulkReview({ kind: "running", completed, total });
+      } catch {
+        setBulkReview({ kind: "error", completed, total });
+        if (completed > 0) onReviewSaved();
+        void loadFacts();
+        return;
+      }
+    }
+
+    setBulkReview({ kind: "success", total });
+    onReviewSaved();
+    void loadFacts();
+  }
+
+  const pendingFacts =
+    facts.kind === "ready" ? facts.items.filter((fact) => isPendingReview(fact.reviewStatus)) : [];
+  const reviewPending = pendingFactId !== null || bulkReview.kind === "running";
+
   return (
     <section
       className="document-review"
       aria-labelledby="document-review-title"
-      aria-busy={facts.kind === "loading" || pendingFactId !== null}
+      aria-busy={facts.kind === "loading" || reviewPending}
     >
       <div className="document-review__heading">
         <p className="context-line">Проверка источника</p>
@@ -5479,6 +5551,40 @@ function DocumentReviewPanel({
           Автоматическое извлечение остаётся черновиком, пока вы не сверите его со страницей и не
           выберете действие. Здесь нет медицинской интерпретации.
         </p>
+        {pendingFacts.length > 0 ? (
+          <div className="document-review__bulk">
+            <div>
+              <strong>{factCountCopy(pendingFacts.length)} ждут решения</strong>
+              <span>
+                Массовое подтверждение относится только к этому документу. Исходные фрагменты
+                останутся доступными.
+              </span>
+            </div>
+            <button
+              className="button button--primary"
+              type="button"
+              disabled={reviewPending}
+              onClick={() => void confirmAll(pendingFacts)}
+            >
+              <CheckCheck size={18} aria-hidden="true" />
+              {bulkReview.kind === "running"
+                ? `Подтверждаем ${bulkReview.completed} из ${bulkReview.total}…`
+                : `Подтвердить все ${pendingFacts.length}`}
+            </button>
+          </div>
+        ) : null}
+        {bulkReview.kind === "success" ? (
+          <p className="document-review__bulk-notice" role="status">
+            Подтверждено {factCountCopy(bulkReview.total)}
+          </p>
+        ) : null}
+        {bulkReview.kind === "error" ? (
+          <p className="form-error document-review__bulk-error" role="alert">
+            {bulkReview.completed === 0
+              ? "Не удалось начать массовое подтверждение. Ни одно значение не изменено."
+              : `Подтверждено ${bulkReview.completed} из ${bulkReview.total}. Остальные значения не изменены; повторите действие.`}
+          </p>
+        ) : null}
         <Link
           className="document-review__history-link"
           href={profileTabPath(familyId, profileId, "history")}
@@ -5521,7 +5627,7 @@ function DocumentReviewPanel({
               key={fact.id}
               fact={fact}
               pending={pendingFactId === fact.id}
-              anyPending={pendingFactId !== null}
+              anyPending={reviewPending}
               correctionOpen={correctionFactId === fact.id}
               error={reviewError?.factId === fact.id ? reviewError.copy : null}
               notice={reviewNotice?.factId === fact.id ? reviewNotice.copy : null}

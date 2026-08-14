@@ -155,5 +155,5 @@ test("upload opens a keyboard-safe Codex batch dialog", async ({ page }) => {
   await submit.click();
   await expect(page).toHaveURL(/\?tab=documents$/);
   await expect(page.getByRole("heading", { name: "Анализы" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByText("Распределено Codex")).toHaveCount(2);
+  await expect(page.getByRole("link", { name: /^Открыть источник / })).toHaveCount(2);
 });

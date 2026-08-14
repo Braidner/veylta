@@ -42,6 +42,10 @@ async function registerDemoFamily(page: Page) {
 async function openProfileManagement(page: Page): Promise<void> {
   await page.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page.getByRole("tabpanel", { name: "Документы" })).toBeVisible();
+  const drawer = page.locator("summary").filter({ hasText: "Управление профилем и доступом" });
+  if ((await drawer.count()) > 0) {
+    await drawer.click();
+  }
 }
 
 test("a synthetic family session survives reload and keeps the active profile in the URL", async ({
@@ -187,6 +191,7 @@ test("an owner grants and revokes read-only access to a profile for an invited a
     await expect(adultPage.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
 
     await ownerPage.reload();
+    await openProfileManagement(ownerPage);
     const consent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
     await expect(consent).toBeVisible();
     await consent.getByRole("button", { name: "Разрешить чтение" }).click();
@@ -254,6 +259,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     await expect(caregiverPage.getByText(names.dependent, { exact: true })).toHaveCount(0);
 
     await ownerPage.reload();
+    await openProfileManagement(ownerPage);
     const consent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
     await expect(consent.getByText("Помощник по уходу", { exact: true })).toBeVisible();
     await consent.getByRole("button", { name: "Разрешить чтение" }).click();

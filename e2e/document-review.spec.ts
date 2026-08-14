@@ -72,6 +72,34 @@ test("review presents source evidence before an explicit confirmation and keeps 
   ).toHaveCount(0);
 });
 
+test("all pending facts can be confirmed together and remain confirmed after reload", async ({
+  page,
+}) => {
+  await openReview(page);
+
+  const confirmAll = page.getByRole("button", { name: "Подтвердить все 2" });
+  await expect(confirmAll).toBeVisible();
+  await confirmAll.click();
+
+  await expect(page.getByText("Подтверждено 2 значения", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
+  await expect(confirmAll).toHaveCount(0);
+  await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText(
+    "Подтверждено пользователем",
+  );
+  await expect(factStatus(factCard(page, "synthetic-analyte-b"))).toHaveText(
+    "Подтверждено пользователем",
+  );
+
+  await page.reload();
+  await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText(
+    "Подтверждено пользователем",
+  );
+  await expect(factStatus(factCard(page, "synthetic-analyte-b"))).toHaveText(
+    "Подтверждено пользователем",
+  );
+});
+
 test("a retried review command reuses its idempotency key after a transient browser failure", async ({
   page,
 }) => {
