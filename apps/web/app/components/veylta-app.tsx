@@ -11,7 +11,7 @@ import type {
   CodexRuntimeActionResponse,
   DocumentFactsResponse,
   DocumentProcessingResponse,
-  DocumentProcessingRetryResponse,
+  DocumentProcessingRestartResponse,
   DocumentProcessingStatus,
   DocumentResponse,
   DocumentSummary,
@@ -5141,9 +5141,9 @@ function DocumentProcessingPanel({
 }: DocumentProcessingPanelProps) {
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
   const [refreshFailed, setRefreshFailed] = useState(false);
-  const [retryPending, setRetryPending] = useState(false);
-  const [retryError, setRetryError] = useState<string | null>(null);
-  const retryKey = useRef<string | null>(null);
+  const [restartPending, setRestartPending] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const restartKey = useRef<string | null>(null);
 
   const refreshProcessing = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -5171,8 +5171,8 @@ function DocumentProcessingPanel({
   useEffect(() => {
     setProcessing(savedDocument.processing);
     setRefreshFailed(false);
-    setRetryError(null);
-    retryKey.current = null;
+    setRestartError(null);
+    restartKey.current = null;
   }, [savedDocument.processing]);
 
   useEffect(() => {
@@ -5194,14 +5194,14 @@ function DocumentProcessingPanel({
     };
   }, [processing, refreshProcessing]);
 
-  async function handleRetry(): Promise<void> {
-    setRetryPending(true);
-    setRetryError(null);
-    const commandKey = retryKey.current ?? crypto.randomUUID();
-    retryKey.current = commandKey;
+  async function handleRestart(): Promise<void> {
+    setRestartPending(true);
+    setRestartError(null);
+    const commandKey = restartKey.current ?? crypto.randomUUID();
+    restartKey.current = commandKey;
     try {
-      const response = await apiRequest<DocumentProcessingRetryResponse>(
-        `${documentProcessingPath(familyId, profileId, savedDocument.id)}/retry`,
+      const response = await apiRequest<DocumentProcessingRestartResponse>(
+        `${documentProcessingPath(familyId, profileId, savedDocument.id)}/restart`,
         {
           method: "POST",
           headers: { "Idempotency-Key": commandKey },
@@ -5209,24 +5209,28 @@ function DocumentProcessingPanel({
       );
       setRefreshFailed(false);
       setProcessing(response.processing);
-      retryKey.current = null;
+      restartKey.current = null;
     } catch (error) {
-      if (error instanceof ApiError && error.status < 500) retryKey.current = null;
-      setRetryError("Не удалось запустить повторную обработку. Статус и исходник не изменились.");
+      if (error instanceof ApiError && error.status < 500) restartKey.current = null;
+      setRestartError("Не удалось перезапустить разбор. Исходник и прежние результаты сохранены.");
     } finally {
-      setRetryPending(false);
+      setRestartPending(false);
     }
   }
 
   const presentation = processingPresentation(processing);
-  const showRetry = canWriteProfile && processing.state === "failed" && processing.retryAllowed;
+  const showRestart =
+    canWriteProfile &&
+    (processing.state === "failed" ||
+      processing.state === "awaiting_review" ||
+      processing.state === "completed");
 
   return (
     <>
       <section
         className={`processing-state processing-state--${presentation.tone}`}
         aria-labelledby="processing-title"
-        aria-busy={isProcessingActive(processing) || retryPending}
+        aria-busy={isProcessingActive(processing) || restartPending}
       >
         <div className="processing-state__mark" aria-hidden="true">
           {presentation.mark}
@@ -5245,19 +5249,22 @@ function DocumentProcessingPanel({
               Не удалось обновить статус. Исходник не изменён.
             </p>
           ) : null}
-          {showRetry ? (
-            <button
-              className="button button--secondary processing-state__retry"
-              type="button"
-              onClick={handleRetry}
-              disabled={retryPending}
-            >
-              {retryPending ? "Запускаем повтор…" : "Повторить обработку"}
-            </button>
+          {showRestart ? (
+            <div className="processing-state__restart">
+              <button
+                className="button button--secondary processing-state__retry"
+                type="button"
+                onClick={handleRestart}
+                disabled={restartPending}
+              >
+                {restartPending ? "Запускаем новый разбор…" : "Перезапустить разбор"}
+              </button>
+              <p>Создаст новый результат. Предыдущий разбор и подтверждённая история сохранятся.</p>
+            </div>
           ) : null}
-          {retryError !== null ? (
+          {restartError !== null ? (
             <p className="form-error processing-state__error" role="alert">
-              {retryError}
+              {restartError}
             </p>
           ) : null}
         </div>

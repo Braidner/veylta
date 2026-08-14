@@ -627,5 +627,27 @@ export function registerDocumentRoutes(
         }
       },
     );
+
+    scope.post<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/processing/restart",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        try {
+          if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+          const actor = await requireActor(familyService, request, reply);
+          if (actor === null) return;
+          const processing = await service.restartProcessing(
+            actor,
+            request.params,
+            idempotencyKey(request),
+            request.id,
+          );
+          reply.code(202).send(processing);
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
   });
 }

@@ -189,3 +189,35 @@ test("a correction preserves the displayed source while a second fact can be exp
     "Отклонено пользователем",
   );
 });
+
+test("an owner restarts Codex analysis without losing a prior confirmed observation", async ({
+  page,
+}) => {
+  await openReview(page);
+
+  const firstFact = factCard(page, "synthetic-analyte-a");
+  await firstFact.getByRole("button", { name: /^Подтвердить / }).click();
+  await expect(factStatus(firstFact)).toHaveText("Подтверждено пользователем");
+
+  const restartRequest = page.waitForRequest(
+    (request) => request.method() === "POST" && request.url().endsWith("/processing/restart"),
+  );
+  await page.getByRole("button", { name: "Перезапустить разбор" }).click();
+  await restartRequest;
+
+  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText("Не подтверждено");
+  await expect(
+    page.getByText(
+      "Создаст новый результат. Предыдущий разбор и подтверждённая история сохранятся.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: "Открыть историю подтверждённых значений" }).click();
+  const history = page.getByRole("region", { name: "История подтверждённых значений" });
+  await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
+  await expect(history.locator("tbody tr")).toHaveCount(1);
+});

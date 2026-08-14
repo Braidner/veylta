@@ -200,6 +200,8 @@ independently reviewed.
   immutable provenance, and remains only a proposal until a person accepts it.
 - A failed confirmation produces no partial medical record.
 - Job retry produces no duplicate facts or observations.
+- A manual analysis restart creates a new immutable run while preserving the
+  original source, earlier extraction, and confirmed history.
 - All access and state-changing actions are audited without logging medical
   values.
 - Worker completion, retry scheduling, and terminal failure are audit events

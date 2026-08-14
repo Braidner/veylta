@@ -607,6 +607,21 @@ Status: delivered.
   provider output fails closed. Classification is immutable and versioned by
   provider, model, runtime, and schema.
 
+### Task 35 — Immutable document reanalysis
+
+Commit intent: `feat: restart document analysis`
+
+Status: delivered.
+
+- An owner can explicitly restart a terminal Codex analysis from document
+  detail with an exact-Origin, idempotent command.
+- Restart creates a fresh job, extraction run, facts, and intelligence result;
+  it never overwrites the original object, older runs, review decisions, or
+  confirmed observations.
+- Status, overview, facts, and review actions select the latest run
+  deterministically, while prior provenance remains retained for later run
+  history UX.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and

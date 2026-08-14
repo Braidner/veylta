@@ -114,6 +114,10 @@ export interface EnqueueDocumentExtractionInput {
   maxAttempts?: number;
 }
 
+export interface EnqueueDocumentReanalysisInput extends EnqueueDocumentExtractionInput {
+  requestId: string;
+}
+
 interface ProcessingJobRow {
   id: string;
   family_id: string;
@@ -342,8 +346,16 @@ export async function enqueueDocumentExtractionInTransaction(
   assertDate(input.now, "now");
   const maxAttempts = input.maxAttempts ?? 3;
   positiveInteger(maxAttempts, 100, "maxAttempts");
+  return enqueueWithDedupeKey(client, input, dedupeKey(input.familyId, input.documentVersionId));
+}
+
+async function enqueueWithDedupeKey(
+  client: DatabaseClient,
+  input: EnqueueDocumentExtractionInput,
+  key: string,
+): Promise<ProcessingJob> {
+  const maxAttempts = input.maxAttempts ?? 3;
   const now = input.now.toISOString();
-  const key = dedupeKey(input.familyId, input.documentVersionId);
   await client.query(
     `INSERT INTO processing_jobs
        (id, family_id, document_version_id, kind, dedupe_key, payload_version,
@@ -375,6 +387,20 @@ export async function enqueueDocumentExtractionInTransaction(
     throw new ProcessingPersistenceConflictError();
   }
   return asJob(row);
+}
+
+export async function enqueueDocumentReanalysisInTransaction(
+  client: DatabaseClient,
+  input: EnqueueDocumentReanalysisInput,
+): Promise<ProcessingJob> {
+  assertIdentifier(input.familyId, "familyId");
+  assertIdentifier(input.documentVersionId, "documentVersionId");
+  assertIdentifier(input.requestId, "requestId");
+  assertDate(input.now, "now");
+  const maxAttempts = input.maxAttempts ?? 3;
+  positiveInteger(maxAttempts, 100, "maxAttempts");
+  const key = `${dedupeKey(input.familyId, input.documentVersionId)}:restart:${input.requestId}`;
+  return enqueueWithDedupeKey(client, input, key);
 }
 
 function stableId(kind: string, ...parts: readonly (number | string)[]): string {
@@ -780,14 +806,14 @@ async function insertOrVerifyIntelligence(
   createdAt: string,
 ): Promise<void> {
   const value = output.intelligence;
-  const id = stableId("intelligence", claim.familyId, claim.documentVersionId);
+  const id = stableId("intelligence", claim.familyId, claim.documentVersionId, claim.id);
   await client.query(
     `INSERT INTO document_intelligence_results
        (id, family_id, document_id, document_version_id, processing_job_id,
         provider, model_id, runtime_version, schema_version, category,
         title, document_date, confidence, created_at)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-     ON CONFLICT (family_id, document_version_id) DO NOTHING`,
+     ON CONFLICT (family_id, processing_job_id) DO NOTHING`,
     [
       id,
       claim.familyId,
@@ -810,8 +836,8 @@ async function insertOrVerifyIntelligence(
       `SELECT id, document_id, provider, model_id, runtime_version, schema_version,
               category, title, document_date, confidence
          FROM document_intelligence_results
-        WHERE family_id = $1 AND document_version_id = $2`,
-      [claim.familyId, claim.documentVersionId],
+        WHERE family_id = $1 AND processing_job_id = $2`,
+      [claim.familyId, claim.id],
     )
   ).rows[0];
   if (

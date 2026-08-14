@@ -12,7 +12,7 @@ including the `observation-history/v1` and `audit-log/v1` read boundaries.
   UUIDv4 form. Fact identifiers are opaque `fact_<40 lower-case hex>` values;
   alternate forms fail request validation before domain or storage access.
 - RFC 3339 timestamps and explicit medically distinct date fields.
-- `Idempotency-Key` is required for upload, retry, and fact-review commands.
+- `Idempotency-Key` is required for upload, retry, restart, and fact-review commands.
 - Browser identity is resolved server-side. A caller-supplied user ID is never
   accepted as authentication.
 - Cookie-authenticated mutations require an exact `Origin` match with the
@@ -525,6 +525,17 @@ and returns `202` with the same `document/v3` processing response shape.
 Replaying the same family/actor/key returns the original accepted retry; a key
 used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
 select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/processing/restart`
+
+Requires the exact configured `Origin` and an `Idempotency-Key`, accepts no
+body, and is available only when the latest job is terminal. It creates a fresh
+`queued` Codex analysis job and returns `202`. The original bytes, earlier
+extraction runs, review decisions, confirmed observations, and audit history
+remain immutable. Reads and review actions use only the latest completed run;
+an older fact selector cannot be reviewed after a restart. Replaying the same
+family/actor/key returns the original accepted response and never creates a
+second job.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content`
 

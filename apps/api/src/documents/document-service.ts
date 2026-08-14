@@ -7,6 +7,7 @@ import {
   type DocumentFactsResponse,
   type DocumentIntelligenceSummary,
   type DocumentProcessingResponse,
+  type DocumentProcessingRestartResponse,
   type DocumentProcessingRetryResponse,
   type DocumentProcessingStatus,
   type DocumentSummary,
@@ -55,7 +56,10 @@ import {
 } from "../family/family-service.js";
 import { resolveAnalyteMapping } from "../processing/analyte-mapping.js";
 import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../processing/codex-document-intelligence-provider.js";
-import { enqueueDocumentExtractionInTransaction } from "../processing/processing-job-service.js";
+import {
+  enqueueDocumentExtractionInTransaction,
+  enqueueDocumentReanalysisInTransaction,
+} from "../processing/processing-job-service.js";
 import {
   createObjectStorageKey,
   type ObjectMetadata,
@@ -207,6 +211,12 @@ export interface DocumentService {
     idempotencyKey: string,
     correlationId: string,
   ): Promise<DocumentProcessingRetryResponse>;
+  restartProcessing(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; documentId: string },
+    idempotencyKey: string,
+    correlationId: string,
+  ): Promise<DocumentProcessingRestartResponse>;
   requireProfileWriteAccess(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -1142,7 +1152,9 @@ async function intelligenceForDocument(
       `SELECT provider, model_id, runtime_version, schema_version, category,
               title, document_date, confidence
          FROM document_intelligence_results
-        WHERE family_id = $1 AND document_version_id = $2`,
+        WHERE family_id = $1 AND document_version_id = $2
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
       [row.family_id, row.document_version_id],
     )
   ).rows[0];
@@ -1398,6 +1410,14 @@ async function createHealthSummaryIfNeeded(
       WHERE r.family_id = $1
         AND document.patient_profile_id = $2
         AND r.status = 'awaiting_review'
+        AND r.id = (
+          SELECT latest_run.id
+            FROM extraction_runs latest_run
+           WHERE latest_run.family_id = r.family_id
+             AND latest_run.document_version_id = r.document_version_id
+           ORDER BY latest_run.created_at DESC, latest_run.id DESC
+           LIMIT 1
+        )
         AND decision.id IS NULL`,
     [input.familyId, input.profileId],
   );
@@ -3030,9 +3050,15 @@ export function createDocumentService(
              LEFT JOIN documents duplicate
                ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
              LEFT JOIN processing_jobs j
-               ON j.family_id = d.family_id
-              AND j.document_version_id = v.id
-              AND j.kind = 'document_extraction'
+               ON j.id = (
+                 SELECT latest_job.id
+                   FROM processing_jobs latest_job
+                  WHERE latest_job.family_id = d.family_id
+                    AND latest_job.document_version_id = v.id
+                    AND latest_job.kind = 'document_extraction'
+                  ORDER BY latest_job.created_at DESC, latest_job.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN extraction_runs r
                ON r.id = (
                  SELECT latest_run.id
@@ -3043,8 +3069,14 @@ export function createDocumentService(
                   LIMIT 1
                )
              LEFT JOIN document_intelligence_results intelligence
-               ON intelligence.family_id = d.family_id
-              AND intelligence.document_version_id = v.id
+               ON intelligence.id = (
+                 SELECT latest_intelligence.id
+                   FROM document_intelligence_results latest_intelligence
+                  WHERE latest_intelligence.family_id = d.family_id
+                    AND latest_intelligence.document_version_id = v.id
+                  ORDER BY latest_intelligence.created_at DESC, latest_intelligence.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN extracted_facts f
                ON f.family_id = r.family_id AND f.extraction_run_id = r.id
              LEFT JOIN review_decisions d_review
@@ -3076,8 +3108,14 @@ export function createDocumentService(
                JOIN document_versions v
                  ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
                JOIN extraction_runs r
-                 ON r.family_id = v.family_id
-                AND r.document_version_id = v.id
+                 ON r.id = (
+                   SELECT latest_run.id
+                     FROM extraction_runs latest_run
+                    WHERE latest_run.family_id = v.family_id
+                      AND latest_run.document_version_id = v.id
+                    ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                    LIMIT 1
+                 )
                 AND r.status = 'awaiting_review'
                LEFT JOIN extracted_facts f
                  ON f.family_id = r.family_id AND f.extraction_run_id = r.id
@@ -3137,16 +3175,34 @@ export function createDocumentService(
              LEFT JOIN documents duplicate
                ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
              JOIN extraction_runs r
-               ON r.family_id = v.family_id
-              AND r.document_version_id = v.id
+               ON r.id = (
+                 SELECT latest_run.id
+                   FROM extraction_runs latest_run
+                  WHERE latest_run.family_id = v.family_id
+                    AND latest_run.document_version_id = v.id
+                  ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                  LIMIT 1
+               )
               AND r.status = 'awaiting_review'
              LEFT JOIN document_intelligence_results intelligence
-               ON intelligence.family_id = d.family_id
-              AND intelligence.document_version_id = v.id
+               ON intelligence.id = (
+                 SELECT latest_intelligence.id
+                   FROM document_intelligence_results latest_intelligence
+                  WHERE latest_intelligence.family_id = d.family_id
+                    AND latest_intelligence.document_version_id = v.id
+                  ORDER BY latest_intelligence.created_at DESC, latest_intelligence.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN processing_jobs j
-               ON j.family_id = d.family_id
-              AND j.document_version_id = v.id
-              AND j.kind = 'document_extraction'
+               ON j.id = (
+                 SELECT latest_job.id
+                   FROM processing_jobs latest_job
+                  WHERE latest_job.family_id = d.family_id
+                    AND latest_job.document_version_id = v.id
+                    AND latest_job.kind = 'document_extraction'
+                  ORDER BY latest_job.created_at DESC, latest_job.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN extracted_facts f
                ON f.family_id = r.family_id AND f.extraction_run_id = r.id
              LEFT JOIN review_decisions d_review
@@ -3854,7 +3910,15 @@ export function createDocumentService(
                 AND f.id = $2
                 AND f.document_version_id = $3
                 AND r.document_version_id = f.document_version_id
-                AND r.status IN ('awaiting_review', 'completed')`,
+                AND r.status IN ('awaiting_review', 'completed')
+                AND r.id = (
+                  SELECT latest_run.id
+                    FROM extraction_runs latest_run
+                   WHERE latest_run.family_id = f.family_id
+                     AND latest_run.document_version_id = f.document_version_id
+                   ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                   LIMIT 1
+                )`,
             [scope.familyId, scope.factId, document.document_version_id],
           )
         ).rows[0];
@@ -4206,6 +4270,77 @@ export function createDocumentService(
           contractVersion: DOCUMENT_CONTRACT_VERSION,
           documentId: row.id,
           processing,
+        };
+      });
+    },
+
+    async restartProcessing(actor, requestedScope, idempotencyKey, correlationId) {
+      const scope = canonicalDocumentScope(requestedScope);
+      const keyHash = sha256(idempotencyKey);
+      return database.transaction(async (client) => {
+        const row = await documentRow(client, actor, scope, "write");
+        const replay = await client.query<RetryRequestRow>(
+          `SELECT document_version_id, created_at
+             FROM processing_restart_requests
+            WHERE family_id = $1 AND actor_user_id = $2 AND idempotency_key_hash = $3`,
+          [scope.familyId, actor.userId, keyHash],
+        );
+        const previous = replay.rows[0];
+        if (previous !== undefined) {
+          if (previous.document_version_id !== row.document_version_id) {
+            throw new IdempotencyConflictError();
+          }
+          return {
+            contractVersion: DOCUMENT_CONTRACT_VERSION,
+            documentId: row.id,
+            processing: { state: "queued", updatedAt: canonicalTimestamp(previous.created_at) },
+          };
+        }
+
+        const latestJob = (
+          await client.query<{ state: string }>(
+            `SELECT state
+               FROM processing_jobs
+              WHERE family_id = $1 AND document_version_id = $2
+              ORDER BY created_at DESC, id DESC
+              LIMIT 1`,
+            [scope.familyId, row.document_version_id],
+          )
+        ).rows[0];
+        if (
+          latestJob === undefined ||
+          (latestJob.state !== "succeeded" && latestJob.state !== "dead_letter")
+        ) {
+          throw new ProcessingNotAvailableError();
+        }
+
+        const now = new Date();
+        const requestId = randomUUID();
+        const job = await enqueueDocumentReanalysisInTransaction(client, {
+          familyId: scope.familyId,
+          documentVersionId: row.document_version_id,
+          requestId,
+          now,
+        });
+        await client.query(
+          `INSERT INTO processing_restart_requests
+             (id, family_id, actor_user_id, document_version_id, processing_job_id,
+              idempotency_key_hash, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [requestId, scope.familyId, actor.userId, row.document_version_id, job.id, keyHash, now],
+        );
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "document.processing.restarted",
+          resourceId: scope.documentId,
+          correlationId,
+          createdAt: now,
+        });
+        return {
+          contractVersion: DOCUMENT_CONTRACT_VERSION,
+          documentId: row.id,
+          processing: { state: "queued", updatedAt: now.toISOString() },
         };
       });
     },

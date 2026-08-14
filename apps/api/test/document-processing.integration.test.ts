@@ -732,3 +732,100 @@ test("terminal processing retry requires a trusted idempotent command and is rep
     assert.equal(Number(retryRequests.rows[0]?.count), 2);
   });
 });
+
+test("a trusted restart creates a fresh immutable analysis run without replacing prior results", async () => {
+  await withTestContext(async ({ app, database, storageRoot }) => {
+    const owner = await registerOwner(app, "Restart analysis");
+    const uploaded = await upload(
+      app,
+      owner,
+      await readFile(fixtureUrl),
+      "restart-analysis-upload",
+    );
+    assert.equal(uploaded.statusCode, 202);
+    const documentId = uploaded.json().document.id as string;
+    assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
+
+    const noOrigin = await app.inject({
+      method: "POST",
+      url: `${documentUrl(owner, documentId)}/processing/restart`,
+      headers: {
+        cookie: owner.cookie,
+        "idempotency-key": "restart-without-origin".padEnd(16, "_"),
+      },
+    });
+    assert.equal(noOrigin.statusCode, 403);
+
+    const headers = {
+      cookie: owner.cookie,
+      origin: webOrigin,
+      "idempotency-key": "restart-successful-analysis".padEnd(16, "_"),
+    };
+    const restarted = await app.inject({
+      method: "POST",
+      url: `${documentUrl(owner, documentId)}/processing/restart`,
+      headers,
+    });
+    assert.equal(restarted.statusCode, 202);
+    assert.equal(restarted.json().contractVersion, DOCUMENT_CONTRACT_VERSION);
+    assert.equal(restarted.json().documentId, documentId);
+    assert.equal(restarted.json().processing.state, "queued");
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `${documentUrl(owner, documentId)}/processing/restart`,
+      headers,
+    });
+    assert.equal(replay.statusCode, 202);
+    assert.deepEqual(replay.json(), restarted.json());
+
+    const beforeProcessing = await database.query<{ jobs: number; results: number; runs: number }>(
+      `SELECT
+         (SELECT count(*)
+            FROM processing_jobs j
+            JOIN document_versions v ON v.family_id = j.family_id AND v.id = j.document_version_id
+           WHERE v.document_id = $1) AS jobs,
+         (SELECT count(*)
+            FROM document_intelligence_results i
+            JOIN document_versions v ON v.family_id = i.family_id AND v.id = i.document_version_id
+           WHERE v.document_id = $1) AS results,
+         (SELECT count(*)
+            FROM extraction_runs r
+            JOIN document_versions v ON v.family_id = r.family_id AND v.id = r.document_version_id
+           WHERE v.document_id = $1) AS runs`,
+      [documentId],
+    );
+    assert.deepEqual(beforeProcessing.rows, [{ jobs: 2, results: 1, runs: 1 }]);
+
+    assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
+    const afterProcessing = await database.query<{
+      jobs: number;
+      results: number;
+      runs: number;
+    }>(
+      `SELECT
+         (SELECT count(*)
+            FROM processing_jobs j
+            JOIN document_versions v ON v.family_id = j.family_id AND v.id = j.document_version_id
+           WHERE v.document_id = $1) AS jobs,
+         (SELECT count(*)
+            FROM document_intelligence_results i
+            JOIN document_versions v ON v.family_id = i.family_id AND v.id = i.document_version_id
+           WHERE v.document_id = $1) AS results,
+         (SELECT count(*)
+            FROM extraction_runs r
+            JOIN document_versions v ON v.family_id = r.family_id AND v.id = r.document_version_id
+           WHERE v.document_id = $1) AS runs`,
+      [documentId],
+    );
+    assert.deepEqual(afterProcessing.rows, [{ jobs: 2, results: 2, runs: 2 }]);
+
+    const restartAudits = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM audit_events
+        WHERE resource_id = $1 AND action = 'document.processing.restarted'`,
+      [documentId],
+    );
+    assert.equal(Number(restartAudits.rows[0]?.count), 1);
+  });
+});

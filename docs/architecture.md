@@ -187,8 +187,9 @@ required. Shared code is extracted only when two real consumers need it.
 - Creates document/idempotency rows and audit events transactionally, then
   creates a durable extraction job in the same upload transaction.
 - Exposes tenant-scoped processing status and extracted facts; accepts a retry
-  only for a terminal failed job and an explicit fact review only with exact
-  `Origin` and `Idempotency-Key`.
+  only for a terminal failed job, a fresh immutable restart only for a terminal
+  latest job, and an explicit fact review only with exact `Origin` and
+  `Idempotency-Key`.
 - Reads `observation-history/v1` only after profile authorization, uses opaque
   keyset pagination, and audits the payload-free history access. The returned
   source-document path remains a relative selector: the download endpoint
@@ -220,6 +221,8 @@ required. Shared code is extracted only when two real consumers need it.
 - It does not create a confirmed `Observation`; only a user review can do that
   in the first slice.
 - Exhausted Task 5 work moves to a visible dead-letter state.
+- A user-requested restart creates another job/run/result chain. Latest-result
+  projections move forward without deleting or rewriting prior provenance.
 
 ### SQLite
 

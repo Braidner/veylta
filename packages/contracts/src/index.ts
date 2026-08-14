@@ -607,6 +607,13 @@ export interface DocumentProcessingRetryResponse {
   readonly processing: DocumentProcessingQueued;
 }
 
+/** A fresh immutable analysis run; prior runs and confirmed observations remain intact. */
+export interface DocumentProcessingRestartResponse {
+  readonly contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
+  readonly documentId: string;
+  readonly processing: DocumentProcessingQueued;
+}
+
 /**
  * A bounded, source-first profile landing view. It deliberately contains no
  * diagnosis, health score, recommendation, or inferred clinical status.

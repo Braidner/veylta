@@ -531,6 +531,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "document_intelligence_results"), true);
     assert.equal(await tableExists(database, "analyte_catalog"), true);
     assert.equal(await tableExists(database, "analyte_aliases"), true);
+    assert.equal(await tableExists(database, "processing_restart_requests"), true);
     await database.query(
       `INSERT INTO home_storage_settings
          (singleton, driver, current_root, state, generation)
@@ -543,6 +544,8 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0018_document_reanalysis");
+    assert.equal(await tableExists(database, "processing_restart_requests"), false);
     assert.equal(await migrateDown(database), "0017_analyte_catalog");
     assert.equal(await tableExists(database, "analyte_catalog"), false);
     assert.equal(await migrateDown(database), "0016_document_intelligence");
@@ -637,6 +640,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0015_codex_care_plan_proposals",
       "0016_document_intelligence",
       "0017_analyte_catalog",
+      "0018_document_reanalysis",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
@@ -649,7 +653,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
   }
 });
 
-test("document intelligence classification is immutable and bound to one tenant document version", async () => {
+test("document intelligence keeps one immutable result per processing run and rejects lossy rollback", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "veylta-document-intelligence-"));
   const database = createDatabase(join(testRoot, "test.sqlite"));
   try {
@@ -738,6 +742,55 @@ test("document intelligence classification is immutable and bound to one tenant 
         ),
       "foreign-key",
     );
+
+    const secondJobId = randomUUID();
+    await database.query(
+      `INSERT INTO processing_jobs
+         (id, family_id, document_version_id, kind, dedupe_key, payload_version,
+          state, attempt_count, max_attempts, available_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'document_extraction', $4, 'document-extraction-job/v1',
+               'pending', 0, 3, $5, $5, $5)`,
+      [
+        secondJobId,
+        fixture.familyId,
+        fixture.documentVersionId,
+        `extract:restart:${secondJobId}`,
+        now,
+      ],
+    );
+    await database.query(
+      `INSERT INTO document_intelligence_results
+         (id, family_id, document_id, document_version_id, processing_job_id,
+          provider, model_id, runtime_version, schema_version, category, title,
+          document_date, confidence, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+               'document-intelligence/v1', 'laboratory', 'Second immutable result',
+               '2026-08-13', 0.97, $6)`,
+      [
+        randomUUID(),
+        fixture.familyId,
+        fixture.documentId,
+        fixture.documentVersionId,
+        secondJobId,
+        now,
+      ],
+    );
+    const results = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.equal(Number(results.rows[0]?.count), 2);
+    await assert.rejects(() => migrateDown(database));
+    assert.equal(await tableExists(database, "processing_restart_requests"), true);
+    const preserved = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.equal(Number(preserved.rows[0]?.count), 2);
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });
@@ -998,6 +1051,7 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
+    assert.equal(await migrateDown(database), "0018_document_reanalysis");
     assert.equal(await migrateDown(database), "0017_analyte_catalog");
     assert.equal(await migrateDown(database), "0016_document_intelligence");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
@@ -1091,6 +1145,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0018_document_reanalysis");
     assert.equal(await migrateDown(database), "0017_analyte_catalog");
     assert.equal(await migrateDown(database), "0016_document_intelligence");
     assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");

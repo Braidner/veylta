@@ -4073,6 +4073,12 @@ body:has(.upload-dialog[open]) {
   margin-top: 16px;
 }
 
+.processing-state__restart p {
+  max-width: 50ch;
+  margin-top: 8px;
+  font-size: 0.8125rem;
+}
+
 .processing-state p.processing-state__error {
   max-width: 58ch;
   margin-top: 16px;

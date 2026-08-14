@@ -137,7 +137,7 @@ test("a direct synthetic PNG is accepted, OCRed, and downloaded with its origina
   expect(download.suggestedFilename()).toBe("document.png");
 });
 
-test("a retry command reuses its idempotency key after a transient browser failure", async ({
+test("a restart command reuses its idempotency key after a transient browser failure", async ({
   page,
 }) => {
   await registerDemoFamily(page);
@@ -149,14 +149,14 @@ test("a retry command reuses its idempotency key after a transient browser failu
   if (documentId === undefined) throw new Error("Expected a document URL");
 
   const idempotencyKeys: string[] = [];
-  let retryAttempts = 0;
+  let restartAttempts = 0;
   await page.route("**/health-api/**", async (route) => {
     const request = route.request();
     const pathname = new URL(request.url()).pathname;
 
     if (request.method() === "GET" && pathname.endsWith("/processing")) {
       const processing =
-        retryAttempts >= 2
+        restartAttempts >= 2
           ? { state: "queued", updatedAt: "2026-08-12T12:00:01.000Z" }
           : {
               state: "failed",
@@ -175,11 +175,11 @@ test("a retry command reuses its idempotency key after a transient browser failu
       return;
     }
 
-    if (request.method() === "POST" && pathname.endsWith("/processing/retry")) {
+    if (request.method() === "POST" && pathname.endsWith("/processing/restart")) {
       const key = request.headers()["idempotency-key"];
       if (key !== undefined) idempotencyKeys.push(key);
-      retryAttempts += 1;
-      if (retryAttempts === 1) {
+      restartAttempts += 1;
+      if (restartAttempts === 1) {
         await route.abort("failed");
         return;
       }
@@ -201,12 +201,12 @@ test("a retry command reuses its idempotency key after a transient browser failu
   await page.reload();
   await expect(page.getByRole("heading", { name: "Извлечение не завершилось" })).toBeVisible();
 
-  const retry = page.getByRole("button", { name: "Повторить обработку" });
-  await retry.click();
+  const restart = page.getByRole("button", { name: "Перезапустить разбор" });
+  await restart.click();
   await expect(
-    page.getByText("Не удалось запустить повторную обработку. Статус и исходник не изменились."),
+    page.getByText("Не удалось перезапустить разбор. Исходник и прежние результаты сохранены."),
   ).toBeVisible();
-  await retry.click();
+  await restart.click();
 
   await expect.poll(() => idempotencyKeys.length).toBe(2);
   expect(idempotencyKeys[0]).toEqual(idempotencyKeys[1]);

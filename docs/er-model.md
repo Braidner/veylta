@@ -311,6 +311,16 @@ It is append-only and accepts an insert only while its tenant-scoped job is in
 the actor/key uniqueness makes an equivalent browser replay return the original
 accepted retry rather than creating new work.
 
+### ProcessingRestartRequest
+
+- `id`, `family_id`, `actor_user_id`, `document_version_id`, `processing_job_id`
+- SHA-256 digest of the restart `Idempotency-Key`, `created_at`
+
+This append-only record binds one explicit user action to one fresh pending
+job. The document version and original object are reused by reference; prior
+jobs, extraction runs, intelligence results, decisions, and observations are
+not updated or deleted.
+
 ## Confirmed medical record
 
 ### DiagnosticReport
