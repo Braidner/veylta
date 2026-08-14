@@ -56,6 +56,29 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   const workspaceBar = page.locator(".workspace-bar");
   const heroActions = hero.getByRole("group", { name: "Действия с документом" });
 
+  const workspaceBarStyle = await workspaceBar.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const glassStyle = getComputedStyle(element, "::before");
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const context = canvas.getContext("2d");
+    if (context === null) throw new Error("Canvas context unavailable");
+    context.fillStyle = glassStyle.backgroundColor;
+    context.fillRect(0, 0, 1, 1);
+    return {
+      alpha: context.getImageData(0, 0, 1, 1).data[3],
+      backdropFilter: `${glassStyle.backdropFilter} ${glassStyle.getPropertyValue("-webkit-backdrop-filter")}`,
+      position: style.position,
+      top: style.top,
+    };
+  });
+  expect(workspaceBarStyle.position).toBe("sticky");
+  expect(workspaceBarStyle.top).toBe("0px");
+  expect(workspaceBarStyle.backdropFilter).toContain("blur(");
+  expect(workspaceBarStyle.alpha).toBeGreaterThan(0);
+  expect(workspaceBarStyle.alpha).toBeLessThan(255);
+
   await expect(page.locator(".document-context-bar")).toHaveCount(0);
   await expect(hero.getByText("Коротко о документе", { exact: true })).toHaveCount(0);
   await expect(hero.getByText("Саммари Codex", { exact: true })).toHaveCount(0);
@@ -94,7 +117,7 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   expect(sourceStyle.position).toBe("sticky");
   expect(sourceStyle.overflowY).toBe("auto");
   expect(Number.parseFloat(sourceStyle.maxHeight)).toBe(
-    (await page.evaluate(() => innerHeight)) - 32,
+    (await page.evaluate(() => innerHeight)) - 120,
   );
   const [workspaceBarBox, heroBox, heroActionsBox, sourceBox, resultsPanelBox, firstResultBox] =
     await Promise.all([
@@ -123,6 +146,9 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   expect(firstResultBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
   expect(sourceBox?.y ?? 0).toBeGreaterThan((heroBox?.y ?? 0) + (heroBox?.height ?? 0));
 
+  await page.evaluate(() => window.scrollTo(0, 320));
+  expect((await workspaceBar.boundingBox())?.y ?? Number.NaN).toBeLessThanOrEqual(1);
+
   const sourceScrollMetrics = await source.evaluate((element) => ({
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
@@ -136,6 +162,17 @@ test("selecting a result keeps its evidence in one contextual review rail", asyn
   await expect(secondResult).toHaveAttribute("aria-pressed", "true");
   await expect(firstResult).toHaveAttribute("aria-pressed", "false");
   await expect(source.getByText("FACT|synthetic-analyte-b")).toBeVisible();
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileNavigation = page.locator(".workspace-primary-nav");
+  expect(await mobileNavigation.evaluate((element) => getComputedStyle(element).position)).toBe(
+    "fixed",
+  );
+  const mobileNavigationBox = await mobileNavigation.boundingBox();
+  expect(mobileNavigationBox).not.toBeNull();
+  expect(
+    844 - ((mobileNavigationBox?.y ?? 0) + (mobileNavigationBox?.height ?? 0)),
+  ).toBeLessThanOrEqual(20);
 });
 
 test("confirming one selected result selects the next pending result and writes a durable decision journal", async ({

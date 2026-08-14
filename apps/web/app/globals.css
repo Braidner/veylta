@@ -126,15 +126,28 @@ textarea:focus-visible {
 
 .workspace-bar--profile {
   display: grid;
+  position: sticky;
   grid-template-columns: 190px minmax(500px, 1fr) minmax(190px, 280px) auto;
+  z-index: 20;
+  top: 0;
+  isolation: isolate;
   gap: var(--space-lg);
   width: 100%;
   min-height: 88px;
   padding-inline: var(--space-xl);
   margin: 0;
-  background: var(--color-canvas);
+  background: transparent;
   border-radius: 0;
   backdrop-filter: none;
+}
+
+.workspace-bar--profile::before {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: oklch(0.985 0.006 260 / 82%);
+  backdrop-filter: blur(22px) saturate(1.18);
 }
 
 .workspace-search {
@@ -6793,9 +6806,9 @@ body:has(.upload-dialog[open]) {
 
 .document-review-context {
   position: sticky;
-  top: 16px;
+  top: 104px;
   min-width: 0;
-  max-height: calc(100dvh - 32px);
+  max-height: calc(100dvh - 120px);
   padding: 24px;
   overflow-y: auto;
   overscroll-behavior: contain;
