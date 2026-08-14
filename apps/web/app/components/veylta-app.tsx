@@ -6168,6 +6168,11 @@ function DocumentProcessingPanel({
           documentId={savedDocument.id}
           documentName={savedDocument.originalFilename}
           documentUploadedAt={savedDocument.uploadedAt}
+          workspaceRefreshKey={
+            processing.state === "not_started"
+              ? processing.state
+              : `${processing.state}:${processing.updatedAt}`
+          }
           suggestedMessage={suggestedAgentMessage}
         />
       ) : null}
@@ -6196,6 +6201,7 @@ function DocumentAgentPanel({
   documentId,
   documentName,
   documentUploadedAt,
+  workspaceRefreshKey,
   suggestedMessage,
 }: {
   familyId: string;
@@ -6203,6 +6209,7 @@ function DocumentAgentPanel({
   documentId: string;
   documentName: string;
   documentUploadedAt: string;
+  workspaceRefreshKey: string;
   suggestedMessage: { id: string; prompt: string } | null;
 }) {
   const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
@@ -6213,6 +6220,7 @@ function DocumentAgentPanel({
   const [createError, setCreateError] = useState<string | null>(null);
   const attemptRef = useRef<DocumentAgentAttempt | null>(null);
   const conversationAttemptRef = useRef<DocumentAgentConversationAttempt | null>(null);
+  const loadedWorkspaceRefreshKey = useRef(workspaceRefreshKey);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endpoint = documentAgentPath(familyId, profileId, documentId);
 
@@ -6248,6 +6256,14 @@ function DocumentAgentPanel({
     void loadWorkspace(undefined, controller.signal);
     return () => controller.abort();
   }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (loadedWorkspaceRefreshKey.current === workspaceRefreshKey) return;
+    loadedWorkspaceRefreshKey.current = workspaceRefreshKey;
+    const conversationId =
+      state.kind === "ready" ? (state.workspace.selectedConversationId ?? undefined) : undefined;
+    void loadWorkspace(conversationId);
+  }, [loadWorkspace, state, workspaceRefreshKey]);
 
   useEffect(() => {
     if (suggestedMessage === null) return;

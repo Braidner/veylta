@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import type { DocumentAgentRunSummary } from "@veylta/contracts";
 import { uploadSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
@@ -29,6 +30,73 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
   const suffix = crypto.randomUUID().slice(0, 8);
   const conversations: Conversation[] = [];
   const idempotencyKeys: string[] = [];
+  const runs: DocumentAgentRunSummary[] = [
+    {
+      id: "run-1",
+      title: "Первичный анализ",
+      state: "completed",
+      attemptCount: 1,
+      createdAt: "2026-08-14T15:59:42.000Z",
+      completedAt: "2026-08-14T16:00:00.000Z",
+      ephemeral: true,
+      provenance: {
+        provider: "codex",
+        modelId: "gpt-5.6-sol",
+        runtimeVersion: "codex-cli/test",
+      },
+    },
+  ];
+
+  await page.route(
+    /\/health-api\/.*\/documents\/[^/]+\/processing(?:\/restart)?$/,
+    async (route) => {
+      const request = route.request();
+      const documentId = new URL(request.url()).pathname.match(/\/documents\/([^/]+)/)?.[1];
+      if (documentId === undefined) {
+        await route.continue();
+        return;
+      }
+      if (request.method() === "GET") {
+        await route.fulfill({
+          contentType: "application/json",
+          body: JSON.stringify({
+            contractVersion: "document/v5",
+            documentId,
+            processing: {
+              state: "completed",
+              updatedAt: "2026-08-14T16:00:00.000Z",
+              factCount: 0,
+            },
+            activity: [],
+          }),
+        });
+        return;
+      }
+      if (request.method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      runs.unshift({
+        id: "run-2",
+        title: "Повторный анализ 1",
+        state: "running",
+        attemptCount: 1,
+        createdAt: "2026-08-14T16:11:00.000Z",
+        completedAt: null,
+        ephemeral: true,
+        provenance: null,
+      });
+      await route.fulfill({
+        status: 202,
+        contentType: "application/json",
+        body: JSON.stringify({
+          contractVersion: "document/v5",
+          documentId,
+          processing: { state: "queued", updatedAt: "2026-08-14T16:11:00.000Z" },
+        }),
+      });
+    },
+  );
 
   await page.route(
     /\/health-api\/.*\/documents\/[^/]+\/agent(?:\/[^?]*)?(?:\?.*)?$/,
@@ -54,22 +122,7 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
             updatedAt: conversation.updatedAt,
           })),
           messages: selected?.messages ?? [],
-          runs: [
-            {
-              id: "run-1",
-              title: "Первичный анализ",
-              state: "completed",
-              attemptCount: 1,
-              createdAt: "2026-08-14T15:59:42.000Z",
-              completedAt: "2026-08-14T16:00:00.000Z",
-              ephemeral: true,
-              provenance: {
-                provider: "codex",
-                modelId: "gpt-5.6-sol",
-                runtimeVersion: "codex-cli/test",
-              },
-            },
-          ],
+          runs,
         };
       };
 
@@ -160,6 +213,10 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
   await expect(agent.getByText("Первичный анализ")).toBeVisible();
   await expect(agent.getByText("Завершён за 18 с · временный")).toBeVisible();
   await expect(agent.getByText(`agent-${suffix}.pdf`)).toBeVisible();
+
+  await page.getByRole("button", { name: "Перезапустить разбор" }).click();
+  await expect(agent.getByText("Повторный анализ 1")).toBeVisible();
+  await expect(agent.getByText("Выполняется · временный")).toBeVisible();
 
   await agent.getByRole("button", { name: "Создать диалог" }).click();
   await agent.getByLabel("Название диалога").fill("Проверка дат");

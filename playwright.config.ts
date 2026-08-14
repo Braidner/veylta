@@ -4,6 +4,7 @@ const reuseExistingServer = false;
 const webPort = process.env.PLAYWRIGHT_WEB_PORT ?? "4400";
 const apiPort = process.env.PLAYWRIGHT_API_PORT ?? "4401";
 const workerPort = process.env.PLAYWRIGHT_WORKER_PORT ?? "4402";
+const nextDistDir = process.env.PLAYWRIGHT_NEXT_DIST_DIR ?? ".next-e2e";
 const webOrigin = `http://127.0.0.1:${webPort}`;
 const apiOrigin = `http://127.0.0.1:${apiPort}`;
 const workerOrigin = `http://127.0.0.1:${workerPort}`;
@@ -38,6 +39,7 @@ export default defineConfig({
         API_PORT: apiPort,
         DEMO_REGISTRATION_ENABLED: "true",
         WEB_ORIGIN: webOrigin,
+        WEB_ORIGINS: webOrigin,
       },
       reuseExistingServer,
       timeout: 30_000,
@@ -56,7 +58,12 @@ export default defineConfig({
       cwd: "apps/web",
       url: webOrigin,
       gracefulShutdown: { signal: "SIGTERM", timeout: 5_000 },
-      env: { ...process.env, API_INTERNAL_URL: apiOrigin },
+      env: {
+        ...process.env,
+        API_INTERNAL_URL: apiOrigin,
+        NEXT_DIST_DIR: nextDistDir,
+        WEB_ORIGINS: webOrigin,
+      },
       reuseExistingServer,
       timeout: 60_000,
     },

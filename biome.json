@@ -4,6 +4,7 @@
     "includes": [
       "**",
       "!!**/.next",
+      "!!**/.next-e2e",
       "!!**/dist",
       "!!**/node_modules",
       "!!**/graphify-out",
