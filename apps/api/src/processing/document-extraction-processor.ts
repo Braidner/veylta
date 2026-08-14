@@ -148,7 +148,8 @@ async function sourceForClaim(
        LEFT JOIN document_blob_content_types AS bt
          ON bt.family_id = b.family_id
         AND bt.blob_id = b.id
-      WHERE v.family_id = $1 AND v.id = $2`,
+      WHERE v.family_id = $1 AND v.id = $2
+        AND d.deleted_at IS NULL`,
     [claim.familyId, claim.documentVersionId],
   );
   const row = result.rows[0];

@@ -1,4 +1,4 @@
-import type { DocumentIntelligenceSummary, SyntheticDocumentContentType } from "@veylta/contracts";
+import type { DocumentIntelligenceResult, SyntheticDocumentContentType } from "@veylta/contracts";
 import type {
   ExtractedPageText,
   ParsedDocumentPage,
@@ -17,8 +17,11 @@ export interface DocumentIntelligenceOutput {
     readonly extractorVersion: string;
     readonly items: readonly StrictLabExtractionFact[];
   };
-  readonly intelligence: DocumentIntelligenceSummary;
+  readonly intelligence: DocumentIntelligenceResult;
 }
+
+/** Explicit alias for consumers that want to state the v2 provider guarantee. */
+export type DocumentIntelligenceV2Output = DocumentIntelligenceOutput;
 
 /** Provider-neutral semantic boundary; storage and byte transport stay outside it. */
 export interface DocumentIntelligenceProvider {

@@ -514,7 +514,9 @@ export function createCarePlanService(
           }>(
             `SELECT
                (SELECT count(*) FROM documents d
-                 WHERE d.family_id = $1 AND d.patient_profile_id = $2) AS source_count,
+                 WHERE d.family_id = $1
+                   AND d.patient_profile_id = $2
+                   AND d.deleted_at IS NULL) AS source_count,
                (SELECT count(*)
                   FROM extracted_facts fact
                   JOIN extraction_runs run
@@ -528,6 +530,7 @@ export function createCarePlanService(
                    AND decision.extracted_fact_id = fact.id
                  WHERE document.family_id = $1
                    AND document.patient_profile_id = $2
+                   AND document.deleted_at IS NULL
                    AND decision.id IS NULL) AS pending_review_count,
                (SELECT count(*) FROM observations observation
                  WHERE observation.family_id = $1

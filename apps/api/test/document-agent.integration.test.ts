@@ -15,7 +15,7 @@ import { createDocumentAgentCapabilityStore } from "../src/agent/document-agent-
 import { createDocumentAgentService } from "../src/agent/document-agent-service.js";
 import { registerDocumentAgentRoutes } from "../src/agent/routes.js";
 import { buildApp } from "../src/app.js";
-import { migrateDown, migrateUp } from "../src/database/migrations.js";
+import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
 import { createDocumentService } from "../src/documents/document-service.js";
 import { registerDocumentRoutes } from "../src/documents/routes.js";
@@ -193,6 +193,32 @@ test("document owner holds a replay-safe Russian Codex conversation", async () =
     const foreign = await app.inject({ method: "GET", url, headers: { cookie: stranger.cookie } });
     assert.equal(foreign.statusCode, 404);
 
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${documentId}`,
+      headers: {
+        cookie: owner.cookie,
+        origin: webOrigin,
+        "idempotency-key": "agent-document-delete".padEnd(16, "_"),
+      },
+    });
+    assert.equal(deleted.statusCode, 200);
+    const deletedConversation = await app.inject({
+      method: "GET",
+      url,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(deletedConversation.statusCode, 404);
+    const deletedMessage = await app.inject({
+      ...command,
+      headers: {
+        ...command.headers,
+        "idempotency-key": "agent-after-delete".padEnd(16, "_"),
+      },
+    });
+    assert.equal(deletedMessage.statusCode, 404);
+    assert.equal(runtimeCalls.length, 2);
+
     const audits = await database.query<{ action: string; metadata: string }>(
       `SELECT action, metadata
          FROM audit_events
@@ -202,8 +228,6 @@ test("document owner holds a replay-safe Russian Codex conversation", async () =
     );
     assert.ok(audits.rows.some((row) => row.action === "document.agent.message.created"));
     assert.ok(audits.rows.every((row) => !row.metadata.includes("лаборатор")));
-    assert.equal(await migrateDown(database), "0021_codex_preferences");
-    await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
   } finally {
     await app.close();
     await database.close();

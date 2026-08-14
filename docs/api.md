@@ -473,6 +473,7 @@ Response `202`:
 ```json
 {
   "contractVersion": "document/v4",
+  "disposition": "created",
   "document": {
     "id": "document_placeholder",
     "familyId": "family_placeholder",
@@ -496,12 +497,13 @@ Response `202`:
 }
 ```
 
-On a same-family matching checksum, `possible` is true and the document/profile
-IDs may refer to the authorized match. The server does not create another blob
-or delete either logical record automatically. A match in another family is
-never exposed. The upload transaction also creates one idempotent deterministic
-extraction job, so a newly accepted document reports `queued` rather than a
-fictional completed result.
+The first accepted source returns `202` with `disposition: "created"`. An
+identical active SHA-256 in the same family and profile returns `200` with
+`disposition: "already_exists"` and the existing logical document; it creates
+neither a document nor another processing job. An identical source for another
+profile can create a separate logical record while reusing the family-scoped
+blob. A match in another family is never exposed. A newly accepted document
+reports `queued` rather than a fictional completed result.
 
 Replaying the same key and equivalent request returns the original outcome and
 records a separate payload-free replay audit event rather than another upload
@@ -521,8 +523,13 @@ object on retry. Automated orphan retention/cleanup remains deferred.
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
 
 Returns immutable version metadata, possible same-family duplicate information,
-Codex classification (`intelligence`, nullable while queued), and real
-processing state. Its `document.status` remains `uploaded`; the nested
+full latest Codex intelligence (`intelligence`, nullable while queued), and real
+processing state. Intelligence v2 contains a Russian `shortSummary`, Russian
+`detailedSummary`, and bounded `structuredResults`. Every result has a closed
+type/status, optional value/unit/code/laboratory/specimen/date, confidence, page,
+and exact source fragment. These are source-derived proposals, not confirmed
+Observations or medical recommendations. Its `document.status` remains
+`uploaded`; the nested
 processing state is one of `queued`, `security_check`, `text_extraction`,
 `document_classification`, `structured_extraction`, `validation`,
 `awaiting_review`, `completed`, or sanitized `failed`. `awaiting_review`
@@ -532,6 +539,24 @@ category and retry eligibility, never a raw parser/database exception.
 
 Every successful metadata read records a payload-free audit event with actor,
 tenant, document, correlation ID, and time.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/documents?q={query}&limit={limit}`
+
+Returns `document-search/v1` with at most 20 documents by default (maximum 50).
+`q` is required and contains 2–120 visible characters. The server applies NFKC,
+Russian-aware lowercasing, whitespace collapse, and an authorized local
+substring match against the latest title, short/detailed summaries, and
+structured result fields. The response is `private, no-store`; audit metadata
+records only the contract version and never the raw query or medical matches.
+
+### `DELETE /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
+
+Requires the configured trusted `Origin` and an `Idempotency-Key`. It returns a
+`document-lifecycle/v1` receipt with `documentId` and `deletedAt`; an exact replay
+returns the same receipt. The tombstone removes the source from active metadata,
+content, processing, fact, agent, overview, search, export, and duplicate reads.
+Immutable audit and already-confirmed provenance remain; this endpoint does not
+claim physical storage or backup erasure.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/processing`
 
@@ -645,7 +670,8 @@ server logs.
 After fresh authorization, proxies the original PDF, PNG, or JPEG stream from the configured
 `ObjectStorage/v1` adapter. The default is local storage; the optional
 S3-compatible adapter does not change this HTTP surface or turn the path into a
-provider bearer URL. Uses `Content-Disposition: attachment`, `nosniff`, a
+provider bearer URL. Uses a safe UTF-8 `Content-Disposition: attachment` derived
+from the stored original display filename, `nosniff`, a
 sandbox policy, and `private, no-store`. Range behavior is not implemented in
 Task 4. The response never exposes a local or provider path. Authorized access
 produces a payload-free audit event.
@@ -1367,10 +1393,12 @@ one of the implemented stages. It reads the authorized version through
 `ObjectStorage/v1`, bounds and verifies its bytes, and extracts page evidence
 with PDF.js or bounded local OCR. It then calls `DocumentIntelligenceProvider`.
 The delivered Codex adapter runs ephemeral/read-only with tools and user
-customizations disabled, returns a closed `document-intelligence/v1` result,
-and is post-validated against exact page fragments. A document with no
-quantitative laboratory facts still completes and is filed by category. There
-is no arbitrary URL or worker HTTP command surface.
+customizations disabled, returns a closed `document-intelligence/v2` result,
+and is post-validated against exact page fragments. The result contains Russian
+short and detailed summaries plus bounded generic structured results; compatible
+quantitative laboratory facts continue through explicit review. A document with
+no quantitative laboratory facts still completes and is filed by category.
+There is no arbitrary URL or worker HTTP command surface.
 
 User-visible retry is the authorized endpoint above. It can requeue only the
 stable failed job and cannot inject a job kind, storage key, URL, or

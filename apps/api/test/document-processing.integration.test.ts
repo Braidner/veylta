@@ -183,6 +183,15 @@ async function processOneDocument(
           runtimeVersion: "codex-cli/test",
           category: items.length > 0 ? "laboratory" : "other",
           title: items.length > 0 ? "Синтетические анализы" : "Синтетический документ",
+          shortSummary:
+            items.length > 0
+              ? "Синтетические лабораторные результаты."
+              : "Синтетический документ без лабораторных результатов.",
+          detailedSummary:
+            items.length > 0
+              ? "Источник содержит только синтетические лабораторные данные для тестирования."
+              : "Источник содержит только безопасные синтетические данные для тестирования.",
+          structuredResults: [],
           documentDate: null,
           confidence: 0.95,
         },
@@ -436,7 +445,7 @@ for (const [format, contentType, filename] of [
       assert.equal(content.headers["content-type"], contentType);
       assert.equal(
         content.headers["content-disposition"],
-        `attachment; filename="${format === "png" ? "document.png" : "document.jpg"}"`,
+        `attachment; filename="${filename}"; filename*=UTF-8''${filename}`,
       );
 
       const provenance = await database.query<{

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { uploadSyntheticDocument } from "./support/document-upload";
+import { distinctSyntheticDocument, uploadSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -24,7 +24,7 @@ async function uploadAndOpenReview(page: Page, filename: string): Promise<void> 
   await uploadSyntheticDocument(page, {
     name: filename,
     mimeType: "application/pdf",
-    buffer: syntheticLabBytes,
+    buffer: distinctSyntheticDocument(syntheticLabBytes, filename),
   });
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
@@ -86,7 +86,7 @@ test("profile history shows confirmed and corrected observations with their auth
   await uploadSyntheticDocument(page, {
     name: `history-correct-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
-    buffer: syntheticLabBytes,
+    buffer: distinctSyntheticDocument(syntheticLabBytes, `history-correct-${profileUrl}`),
   });
   await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
   await correctAndReject(page, "7.1");
@@ -131,7 +131,7 @@ test("profile catalog compares only matching confirmed synthetic units", async (
   await uploadSyntheticDocument(page, {
     name: `indicator-second-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
-    buffer: syntheticLabBytes,
+    buffer: distinctSyntheticDocument(syntheticLabBytes, "indicator-second"),
   });
   await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
   await correctAndReject(page, "7.5");

@@ -56,9 +56,11 @@ The full first slice remains deliberately narrow:
 1. create a family and a patient profile;
 2. batch-upload up to twenty fully synthetic PDF, PNG, or JPEG documents;
 3. persist the immutable original and calculate its SHA-256 while streaming;
-4. detect a possible duplicate within that family;
-5. let Codex classify every document into a bounded archive category and extract
-   only source-bound quantitative laboratory facts through a provider-neutral port;
+4. reuse the existing active logical document for an identical SHA-256 in the
+   same profile while keeping family-scoped physical deduplication private;
+5. let Codex produce, in one bounded call, a Russian short summary, Russian
+   detailed summary, source-provenanced generic results (including genetic and
+   categorical findings), and compatible quantitative laboratory facts;
 6. explicitly confirm, correct, or reject those facts; a confirmation or
    correction creates a source-linked observation without changing the raw
    extraction (Task 6, delivered);
@@ -101,6 +103,10 @@ The full first slice remains deliberately narrow:
     Russian Codex dialogue scoped to that exact authorized document. The UI
     waits for a complete validated response instead of simulating a token stream
     (Tasks 37/38, delivered).
+19. search locally across the latest summaries and structured results, download
+    verified original bytes under the original display filename, and
+    idempotently remove a document from every active read without claiming
+    physical backup erasure (Tasks 39/40, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

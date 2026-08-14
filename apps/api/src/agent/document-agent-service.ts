@@ -127,7 +127,8 @@ async function requireDocumentWriteAccess(
           AND version.version_number = 1
         WHERE document.family_id = $1
           AND document.patient_profile_id = $2
-          AND document.id = $3`,
+          AND document.id = $3
+          AND document.deleted_at IS NULL`,
       [scope.familyId, scope.profileId, scope.documentId, actor.userId],
     )
   ).rows[0];

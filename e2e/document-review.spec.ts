@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { uploadSyntheticDocument } from "./support/document-upload";
+import { distinctSyntheticDocument, uploadSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -22,10 +22,11 @@ async function registerDemoFamily(page: Page) {
 
 async function openReview(page: Page): Promise<void> {
   await registerDemoFamily(page);
+  const filename = `review-${crypto.randomUUID().slice(0, 8)}.pdf`;
   await uploadSyntheticDocument(page, {
-    name: `review-${crypto.randomUUID().slice(0, 8)}.pdf`,
+    name: filename,
     mimeType: "application/pdf",
-    buffer: syntheticLabBytes,
+    buffer: distinctSyntheticDocument(syntheticLabBytes, filename),
   });
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
@@ -195,6 +196,17 @@ test("an owner restarts Codex analysis without losing a prior confirmed observat
 }) => {
   await openReview(page);
 
+  let detailReadsAfterRestart = 0;
+  page.on("request", (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (
+      request.method() === "GET" &&
+      /^\/health-api\/v1\/families\/[^/]+\/profiles\/[^/]+\/documents\/[^/]+$/.test(pathname)
+    ) {
+      detailReadsAfterRestart += 1;
+    }
+  });
+
   const firstFact = factCard(page, "synthetic-analyte-a");
   await firstFact.getByRole("button", { name: /^Подтвердить / }).click();
   await expect(factStatus(firstFact)).toHaveText("Подтверждено пользователем");
@@ -208,6 +220,7 @@ test("an owner restarts Codex analysis without losing a prior confirmed observat
   await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible({
     timeout: 15_000,
   });
+  await expect.poll(() => detailReadsAfterRestart).toBeGreaterThan(0);
   await expect(factStatus(factCard(page, "synthetic-analyte-a"))).toHaveText("Не подтверждено");
   await expect(
     page.getByText(

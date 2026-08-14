@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { uploadSyntheticDocument } from "./support/document-upload";
+import { distinctSyntheticDocument, uploadSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -32,7 +32,7 @@ async function uploadAndFinishReview(
   await uploadSyntheticDocument(page, {
     name: filename,
     mimeType: "application/pdf",
-    buffer: syntheticLabBytes,
+    buffer: distinctSyntheticDocument(syntheticLabBytes, filename),
   });
   await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
   if (decision === "confirm") {
@@ -68,7 +68,7 @@ test("profile summary is a source-first immutable version after final human revi
   await uploadSyntheticDocument(page, {
     name: `summary-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
-    buffer: syntheticLabBytes,
+    buffer: distinctSyntheticDocument(syntheticLabBytes, `summary-${profileUrl}`),
   });
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
@@ -101,7 +101,7 @@ test("profile summary is a source-first immutable version after final human revi
   await expect(page).toHaveURL(
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
-  await expect(page.getByRole("link", { name: "Скачать исходный PDF" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Скачать оригинал" })).toBeVisible();
 });
 
 test("summary selector opens an older immutable source snapshot without deriving a change", async ({

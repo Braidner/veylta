@@ -140,7 +140,9 @@ async function uploadAndExtract(
   owner: Identity,
   suffix: string,
 ): Promise<PreparedDocument> {
-  const multipart = multipartFile(await readFile(fixtureUrl), `${suffix}.pdf`);
+  const fixture = await readFile(fixtureUrl);
+  const source = Buffer.concat([fixture, Buffer.from(`\n% ${suffix}\n`)]);
+  const multipart = multipartFile(source, `${suffix}.pdf`);
   const upload = await context.app.inject({
     method: "POST",
     url: `${profilePath(owner)}/documents`,

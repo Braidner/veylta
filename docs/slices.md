@@ -169,7 +169,7 @@ not claim a remote CI run or production readiness.
 | --- | --- |
 | One documented startup sequence | Clean local/CI startup smoke test |
 | Original survives restart | Integration test with persistent local volume |
-| Repeat upload is a possible duplicate | Same-family upload integration test |
+| Repeat upload creates no second active document | Same-profile lifecycle integration and browser deduplication tests |
 | No cross-family duplicate oracle | Two-family negative integration test |
 | Page-level provenance | Extraction schema/DB/API assertions |
 | Uncertain fact requires review | Domain + UI tests |
@@ -673,6 +673,46 @@ Status: delivered.
 - The first interface uses React state and ordinary HTTP polling only; no chat
   component dependency, LangGraph runtime, fake token stream, or chain-of-thought
   display is introduced.
+
+### Task 39 — Universal document intelligence
+
+Commit intent: `feat: add universal document intelligence`
+
+Status: delivered.
+
+- One bounded Codex invocation returns a Russian short summary, Russian detailed
+  summary, closed classification, and source-provenanced structured results.
+- Results can represent a measurement, genetic variant, finding, procedure,
+  medication, diagnosis stated by the source, or a bounded `other` fallback.
+- Each result carries an explicit source-derived status, optional code/unit/
+  laboratory/specimen/date, confidence, page, and exact source fragment.
+- Existing quantitative laboratory facts still use the human review and
+  Observation path; generic results are document analytics, not silently
+  confirmed longitudinal records.
+- The immutable v2 intelligence row stores a bounded normalized local search
+  projection. No separate model call or external search service is introduced.
+
+### Task 40 — Searchable document lifecycle and workspace
+
+Commit intent: `feat: manage searchable documents`
+
+Status: delivered.
+
+- The profile archive searches the latest authorized summaries and structured
+  results with Unicode normalization performed in Node.js.
+- A repeated active SHA-256 in the same profile reuses the existing logical
+  document and job; another profile can retain a separate logical record while
+  the family blob remains physically deduplicated.
+- Authorized download returns the checksum-verified original bytes with a safe
+  UTF-8 `Content-Disposition` using the stored display filename.
+- Trusted-Origin, idempotent deletion tombstones the logical document and hides
+  it from active metadata, content, processing, agent, overview, and search
+  reads. It retains immutable provenance and does not claim physical backup
+  erasure.
+- The document route uses a dense responsive dashboard: short summary and
+  structured results are primary; detailed summary, source integrity,
+  processing activity, conversation, review, restart, download, and deletion
+  remain clearly separated.
 
 ## Later MVP slices
 

@@ -15,13 +15,17 @@ import type {
   CodexServiceTier,
   DocumentAgentConversationResponse,
   DocumentAgentMessage,
+  DocumentDeleteResponse,
+  DocumentDetail,
+  DocumentDetailResponse,
   DocumentFactsResponse,
+  DocumentIntelligenceResultStatus,
   DocumentProcessingActivityEvent,
   DocumentProcessingResponse,
   DocumentProcessingRestartResponse,
   DocumentProcessingStatus,
-  DocumentResponse,
   DocumentSummary,
+  DocumentUploadResponse,
   ExtractedFactReviewStatus,
   FactReviewCommand,
   FactReviewResponse,
@@ -61,15 +65,20 @@ import {
   CheckCheck,
   ClipboardList,
   Clock3,
+  Download,
   Files,
+  FileText,
   FileUp,
   History,
   House,
   LogOut,
   MessageCircle,
+  RefreshCw,
   Search,
   Send,
   Settings,
+  ShieldCheck,
+  Trash2,
   X,
 } from "lucide-react";
 import Link from "next/link";
@@ -204,6 +213,37 @@ function documentFactsPath(familyId: string, profileId: string, documentId: stri
 
 function documentAgentPath(familyId: string, profileId: string, documentId: string): string {
   return `/v1${documentPath(familyId, profileId, documentId)}/agent`;
+}
+
+export function buildDocumentSearchPath(
+  familyId: string,
+  profileId: string,
+  query: string,
+): string {
+  const params = new URLSearchParams({ q: query.trim() });
+  return `/v1${profilePath(familyId, profileId)}/documents?${params.toString()}`;
+}
+
+function isDocumentSummary(value: unknown): value is DocumentSummary {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<DocumentSummary>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.originalFilename === "string" &&
+    typeof candidate.uploadedAt === "string" &&
+    typeof candidate.processing === "object" &&
+    candidate.processing !== null
+  );
+}
+
+export function normalizeDocumentSearchResponse(response: unknown): readonly DocumentSummary[] {
+  const candidates = Array.isArray(response)
+    ? response
+    : typeof response === "object" && response !== null
+      ? ((response as { documents?: unknown; items?: unknown }).documents ??
+        (response as { items?: unknown }).items)
+      : null;
+  return Array.isArray(candidates) ? candidates.filter(isDocumentSummary) : [];
 }
 
 function profileOverviewPath(familyId: string, profileId: string): string {
@@ -1634,6 +1674,7 @@ function ProfileWorkspace({
   const [codexConsent, setCodexConsent] = useState(false);
   const [dragActive, setDragActive] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
   const uploadDialog = useRef<HTMLDialogElement>(null);
   const uploadAttempts = useRef(new Map<string, string>());
   const now = new Date();
@@ -1644,6 +1685,7 @@ function ProfileWorkspace({
     month: "short",
     year: "numeric",
   }).format(now);
+  const uploadNoticeLocationKey = `${activeTab}:${requestedDocumentId ?? ""}`;
 
   useEffect(() => {
     const dialog = uploadDialog.current;
@@ -1652,10 +1694,20 @@ function ProfileWorkspace({
     if (!uploadOpen && dialog.open) dialog.close();
   }, [uploadOpen]);
 
+  useEffect(() => {
+    if (
+      uploadNoticeLocationKey.length > 0 &&
+      new URLSearchParams(window.location.search).get("upload") === "already_exists"
+    ) {
+      setUploadNotice("Этот файл уже есть в архиве — открываем существующий документ.");
+    }
+  }, [uploadNoticeLocationKey]);
+
   function openUploadDialog() {
     setSelectedUploads([]);
     setCodexConsent(false);
     setDocumentError(null);
+    setUploadNotice(null);
     setDragActive(false);
     setUploadOpen(true);
   }
@@ -1746,6 +1798,7 @@ function ProfileWorkspace({
     setUploadPending(true);
     const failed: Array<{ file: File; error: unknown }> = [];
     let singleDocumentId: string | null = null;
+    let reusedDocumentCount = 0;
     try {
       for (const file of selectedUploads) {
         const fingerprint = uploadFingerprint(file);
@@ -1754,7 +1807,7 @@ function ProfileWorkspace({
         const body = new FormData();
         body.append("file", file, file.name);
         try {
-          const response = await apiRequest<DocumentResponse>(
+          const response = await apiRequest<DocumentUploadResponse>(
             `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents`,
             {
               method: "POST",
@@ -1765,6 +1818,7 @@ function ProfileWorkspace({
               body,
             },
           );
+          if (response.disposition === "already_exists") reusedDocumentCount += 1;
           if (selectedUploads.length === 1) singleDocumentId = response.document.id;
           uploadAttempts.current.delete(fingerprint);
         } catch (requestError) {
@@ -1792,11 +1846,22 @@ function ProfileWorkspace({
         }
       } else {
         setUploadOpen(false);
-        router.push(
+        const destination =
           singleDocumentId === null
             ? profileTabPath(family.id, profile.id, "documents")
-            : documentPath(family.id, profile.id, singleDocumentId),
-        );
+            : documentPath(family.id, profile.id, singleDocumentId);
+        const reusedDestination =
+          reusedDocumentCount === 0
+            ? destination
+            : `${destination}${destination.includes("?") ? "&" : "?"}upload=already_exists`;
+        if (reusedDocumentCount > 0) {
+          setUploadNotice(
+            selectedUploads.length === 1
+              ? "Этот файл уже есть в архиве — открываем существующий документ."
+              : `${reusedDocumentCount} ${russianPlural(reusedDocumentCount, "файл уже есть", "файла уже есть", "файлов уже есть")} в архиве. Новые документы добавлены отдельно.`,
+          );
+        }
+        router.push(reusedDestination);
         router.refresh();
       }
     } finally {
@@ -1877,6 +1942,20 @@ function ProfileWorkspace({
           {error}
         </p>
       ) : null}
+
+      {uploadNotice === null ? null : (
+        <div className="upload-reuse-notice" role="status">
+          <CheckCheck size={18} aria-hidden="true" />
+          <span>{uploadNotice}</span>
+          <button
+            type="button"
+            onClick={() => setUploadNotice(null)}
+            aria-label="Закрыть сообщение"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )}
 
       {requestedDocumentId === undefined && activeTab === "overview" ? (
         <div
@@ -2743,6 +2822,12 @@ type ProfileOverviewState =
   | { kind: "ready"; overview: ProfileOverviewResponse }
   | { kind: "error"; copy: string };
 
+type DocumentSearchState =
+  | { kind: "idle" }
+  | { kind: "loading"; query: string }
+  | { kind: "ready"; query: string; documents: readonly DocumentSummary[] }
+  | { kind: "error"; query: string };
+
 function profileOverviewErrorCopy(error: unknown): string {
   if (error instanceof ApiError && [401, 404].includes(error.status)) {
     return "Обзор этого профиля недоступен. Вернитесь к доступному профилю и попробуйте снова.";
@@ -2834,6 +2919,11 @@ function DocumentArchiveList({
                     <span>
                       {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)}
                     </span>
+                    {document.intelligence?.shortSummary ? (
+                      <p className="document-archive-row__summary">
+                        {document.intelligence.shortSummary}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
                 <div className="document-archive-row__actions">
@@ -2876,6 +2966,9 @@ function ProfileOverviewPanel({
   onUpload: () => void;
 }) {
   const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchState, setSearchState] = useState<DocumentSearchState>({ kind: "idle" });
+  const [searchRevision, setSearchRevision] = useState(0);
 
   const loadOverview = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -2930,6 +3023,42 @@ function ProfileOverviewPanel({
     return () => window.clearTimeout(timer);
   }, [refreshOverview, state]);
 
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (view !== "documents" || query.length < 2) {
+      setSearchState({ kind: "idle" });
+      return;
+    }
+
+    const controller = new AbortController();
+    setSearchState({ kind: "loading", query });
+    const timeout = window.setTimeout(
+      () => {
+        void apiRequest<unknown>(buildDocumentSearchPath(familyId, profileId, query), {
+          signal: controller.signal,
+        })
+          .then((response) => {
+            if (!controller.signal.aborted) {
+              setSearchState({
+                kind: "ready",
+                query,
+                documents: normalizeDocumentSearchResponse(response),
+              });
+            }
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) setSearchState({ kind: "error", query });
+          });
+      },
+      searchRevision === 0 ? 260 : 0,
+    );
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [familyId, profileId, searchQuery, searchRevision, view]);
+
   return (
     <section
       id={view === "dashboard" ? "profile-dashboard" : "document-archive"}
@@ -2969,44 +3098,83 @@ function ProfileOverviewPanel({
         ) : (
           <>
             <div className="document-library__toolbar">
-              <div className="document-library__stats">
-                <span>
-                  <strong>{state.overview.recentDocuments.length}</strong>в архиве
-                </span>
-                <span>
-                  <strong>{state.overview.reviewQueue.documentCount}</strong>
-                  ждут проверки
+              <div className="document-library__search-wrap">
+                <label className="document-library__search">
+                  <Search size={18} aria-hidden="true" />
+                  <span className="visually-hidden">Поиск по документам</span>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => {
+                      setSearchRevision(0);
+                      setSearchQuery(event.target.value);
+                    }}
+                    placeholder="Поиск по саммари и результатам"
+                    autoComplete="off"
+                    maxLength={120}
+                    aria-describedby="document-search-hint"
+                  />
+                  {searchQuery.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      aria-label="Очистить поиск"
+                    >
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </label>
+                <span
+                  id="document-search-hint"
+                  className={
+                    searchQuery.trim().length === 1
+                      ? "document-library__search-hint is-visible"
+                      : "document-library__search-hint"
+                  }
+                >
+                  Введите минимум 2 символа
                 </span>
               </div>
-              {canWriteProfile ? (
-                <details className="profile-overview__exports">
-                  <summary>Экспорт источников</summary>
-                  <div>
-                    <p className="profile-overview__export">
-                      <a
-                        className="text-link"
-                        href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-                        download
-                      >
-                        Скачать локальный пакет источников
-                      </a>
-                      <span>До 5 синтетических исходников; это не резервная копия.</span>
-                    </p>
-                    <p className="profile-overview__export">
-                      <a
-                        className="text-link"
-                        href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
-                        download
-                      >
-                        Скачать полный synthetic-экспорт профиля
-                      </a>
-                      <span>
-                        Все источники и подтверждённые записи в пределах локального лимита.
-                      </span>
-                    </p>
-                  </div>
-                </details>
-              ) : null}
+              <div className="document-library__tools">
+                <div className="document-library__stats">
+                  <span>
+                    <strong>{state.overview.recentDocuments.length}</strong>в архиве
+                  </span>
+                  <span>
+                    <strong>{state.overview.reviewQueue.documentCount}</strong>
+                    ждут проверки
+                  </span>
+                </div>
+                {canWriteProfile ? (
+                  <details className="profile-overview__exports">
+                    <summary>Экспорт источников</summary>
+                    <div>
+                      <p className="profile-overview__export">
+                        <a
+                          className="text-link"
+                          href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+                          download
+                        >
+                          Скачать локальный пакет источников
+                        </a>
+                        <span>До 5 синтетических исходников; это не резервная копия.</span>
+                      </p>
+                      <p className="profile-overview__export">
+                        <a
+                          className="text-link"
+                          href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
+                          download
+                        >
+                          Скачать полный synthetic-экспорт профиля
+                        </a>
+                        <span>
+                          Все источники и подтверждённые записи в пределах локального лимита.
+                        </span>
+                      </p>
+                    </div>
+                  </details>
+                ) : null}
+              </div>
             </div>
 
             <div className="profile-overview__sections">
@@ -3071,14 +3239,58 @@ function ProfileOverviewPanel({
               <section
                 className="profile-overview__section"
                 aria-labelledby="overview-documents-title"
+                aria-busy={searchState.kind === "loading"}
               >
                 <div className="profile-overview__section-heading">
                   <div>
-                    <p className="context-line">Неизменяемые байты</p>
-                    <h3 id="overview-documents-title">Архив исходников</h3>
+                    <p className="context-line">
+                      {searchState.kind === "idle" ? "Неизменяемые байты" : "Результаты поиска"}
+                    </p>
+                    <h3 id="overview-documents-title">
+                      {searchState.kind === "ready"
+                        ? `${searchState.documents.length} ${russianPlural(searchState.documents.length, "документ", "документа", "документов")}`
+                        : "Архив исходников"}
+                    </h3>
                   </div>
                 </div>
-                {state.overview.recentDocuments.length === 0 ? (
+                {searchState.kind === "loading" ? (
+                  <div className="document-search-state" role="status">
+                    <span className="document-search-state__spinner" aria-hidden="true" />
+                    <div>
+                      <strong>Ищем по саммари и результатам</strong>
+                      <p>Запрос «{searchState.query}» проверяется в локальном архиве.</p>
+                    </div>
+                  </div>
+                ) : null}
+                {searchState.kind === "error" ? (
+                  <div className="document-search-state document-search-state--error" role="alert">
+                    <div>
+                      <strong>Поиск временно недоступен</strong>
+                      <p>Архив не изменён. Можно повторить тот же запрос.</p>
+                    </div>
+                    <button
+                      className="button button--secondary"
+                      type="button"
+                      onClick={() => setSearchRevision((current) => current + 1)}
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                ) : null}
+                {searchState.kind === "ready" && searchState.documents.length === 0 ? (
+                  <div className="profile-overview__empty document-search-empty" role="status">
+                    <Search size={20} aria-hidden="true" />
+                    <p>По запросу «{searchState.query}» ничего не найдено.</p>
+                    <button
+                      className="text-link text-link--button"
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                    >
+                      Показать весь архив
+                    </button>
+                  </div>
+                ) : null}
+                {searchState.kind === "idle" && state.overview.recentDocuments.length === 0 ? (
                   <div className="profile-overview__empty">
                     <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
                     {canWriteProfile ? (
@@ -3091,13 +3303,21 @@ function ProfileOverviewPanel({
                       </button>
                     ) : null}
                   </div>
-                ) : (
+                ) : null}
+                {searchState.kind === "idle" && state.overview.recentDocuments.length > 0 ? (
                   <DocumentArchiveList
                     documents={state.overview.recentDocuments}
                     familyId={familyId}
                     profileId={profileId}
                   />
-                )}
+                ) : null}
+                {searchState.kind === "ready" && searchState.documents.length > 0 ? (
+                  <DocumentArchiveList
+                    documents={searchState.documents}
+                    familyId={familyId}
+                    profileId={profileId}
+                  />
+                ) : null}
               </section>
             </div>
           </>
@@ -5017,9 +5237,47 @@ function IndicatorSeriesPanel({
 
 type DocumentViewState =
   | { kind: "loading" }
-  | { kind: "ready"; document: DocumentSummary }
+  | { kind: "ready"; document: DocumentDetail }
   | { kind: "missing" }
   | { kind: "error" };
+
+export function documentResultStatusCopy(status: DocumentIntelligenceResultStatus): string {
+  switch (status) {
+    case "normal":
+      return "В пределах источника";
+    case "abnormal":
+      return "Отмечено источником";
+    case "detected":
+      return "Обнаружено";
+    case "not_detected":
+      return "Не обнаружено";
+    case "completed":
+      return "Выполнено";
+    case "informational":
+      return "Информация";
+    case "unknown":
+      return "Без оценки";
+  }
+}
+
+export function documentResultTypeCopy(type: string): string {
+  switch (type) {
+    case "measurement":
+      return "Измерение";
+    case "genetic_variant":
+      return "Генетический вариант";
+    case "finding":
+      return "Наблюдение";
+    case "procedure":
+      return "Процедура";
+    case "medication":
+      return "Препарат";
+    case "diagnosis":
+      return "Формулировка источника";
+    default:
+      return "Результат";
+  }
+}
 
 interface DocumentViewProps {
   family: SessionFamily;
@@ -5030,13 +5288,33 @@ interface DocumentViewProps {
 
 function DocumentView({ family, profile, documentId, canWriteProfile }: DocumentViewProps) {
   const [state, setState] = useState<DocumentViewState>({ kind: "loading" });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restartPending, setRestartPending] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const deleteKey = useRef<string | null>(null);
+  const restartKey = useRef<string | null>(null);
+  const refreshedTerminalProcessing = useRef<string | null>(null);
+  const previousDocumentId = useRef(documentId);
+  const router = useRouter();
+  const endpoint = `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(documentId)}`;
+
+  const handleProcessingChange = useCallback((processing: DocumentProcessingStatus) => {
+    setState((current) => {
+      if (current.kind !== "ready") return current;
+      if (processingStatusesEqual(current.document.processing, processing)) return current;
+      return {
+        kind: "ready",
+        document: { ...current.document, processing },
+      };
+    });
+  }, []);
 
   useEffect(() => {
     let active = true;
     setState({ kind: "loading" });
-    apiRequest<DocumentResponse>(
-      `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(documentId)}`,
-    )
+    apiRequest<DocumentDetailResponse>(endpoint)
       .then((response) => {
         if (active) setState({ kind: "ready", document: response.document });
       })
@@ -5051,7 +5329,46 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
     return () => {
       active = false;
     };
-  }, [documentId, family.id, profile.id]);
+  }, [endpoint]);
+
+  const terminalProcessingVersion =
+    state.kind === "ready" &&
+    (state.document.processing.state === "awaiting_review" ||
+      state.document.processing.state === "completed")
+      ? `${state.document.processing.state}:${state.document.processing.updatedAt}`
+      : null;
+
+  useEffect(() => {
+    if (
+      terminalProcessingVersion === null ||
+      refreshedTerminalProcessing.current === terminalProcessingVersion
+    ) {
+      return;
+    }
+    let active = true;
+    refreshedTerminalProcessing.current = terminalProcessingVersion;
+    void apiRequest<DocumentDetailResponse>(endpoint)
+      .then((response) => {
+        if (active) setState({ kind: "ready", document: response.document });
+      })
+      .catch(() => {
+        if (active) refreshedTerminalProcessing.current = null;
+      });
+    return () => {
+      active = false;
+    };
+  }, [endpoint, terminalProcessingVersion]);
+
+  useEffect(() => {
+    if (previousDocumentId.current === documentId) return;
+    previousDocumentId.current = documentId;
+    setDeleteDialogOpen(false);
+    setDeleteError(null);
+    setRestartError(null);
+    deleteKey.current = null;
+    restartKey.current = null;
+    refreshedTerminalProcessing.current = null;
+  }, [documentId]);
 
   const title =
     state.kind === "ready"
@@ -5108,48 +5425,277 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
   }
 
   const { document: savedDocument } = state;
-  const contentUrl = `${apiPrefix}/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(savedDocument.id)}/content`;
+  const contentUrl = `${apiPrefix}${endpoint}/content`;
+  const intelligence = savedDocument.intelligence;
+  const results = intelligence?.structuredResults ?? [];
+  const processing = savedDocument.processing;
+  const canRestart =
+    canWriteProfile &&
+    (processing.state === "failed" ||
+      processing.state === "awaiting_review" ||
+      processing.state === "completed");
+
+  async function handleRestart(): Promise<void> {
+    if (state.kind !== "ready") return;
+    setRestartPending(true);
+    setRestartError(null);
+    const commandKey = restartKey.current ?? crypto.randomUUID();
+    restartKey.current = commandKey;
+    try {
+      const response = await apiRequest<DocumentProcessingRestartResponse>(
+        `${documentProcessingPath(family.id, profile.id, savedDocument.id)}/restart`,
+        { method: "POST", headers: { "Idempotency-Key": commandKey } },
+      );
+      setState({
+        kind: "ready",
+        document: { ...savedDocument, processing: response.processing },
+      });
+      restartKey.current = null;
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) restartKey.current = null;
+      setRestartError("Не удалось запустить новый разбор. Предыдущий результат сохранён.");
+    } finally {
+      setRestartPending(false);
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    setDeletePending(true);
+    setDeleteError(null);
+    const commandKey = deleteKey.current ?? crypto.randomUUID();
+    deleteKey.current = commandKey;
+    try {
+      await apiRequest<DocumentDeleteResponse>(endpoint, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": commandKey },
+      });
+      deleteKey.current = null;
+      router.push(profileTabPath(family.id, profile.id, "documents"));
+      router.refresh();
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) deleteKey.current = null;
+      setDeleteError("Не удалось удалить документ из активного архива. Ничего не изменилось.");
+    } finally {
+      setDeletePending(false);
+    }
+  }
 
   return (
     <section className="document-view" aria-labelledby="document-title">
-      <Link className="back-link" href={profileTabPath(family.id, profile.id, "documents")}>
-        ← Открыть документы
-      </Link>
-      <p className="document-state">
-        <span aria-hidden="true" />
-        Исходник сохранён без изменений
-      </p>
-      <h2 id="document-title">
-        {savedDocument.intelligence?.title ?? savedDocument.originalFilename}
-      </h2>
-      <p className="document-meta">
-        {savedDocument.intelligence === null ? "" : `${savedDocument.originalFilename} · `}
-        {documentKindLabel(savedDocument.contentType)} · {formatBytes(savedDocument.byteSize)} ·{" "}
-        {formatDate(savedDocument.uploadedAt)}
-      </p>
-
-      {savedDocument.intelligence !== null ? (
-        <div className="document-intelligence-summary" role="status">
-          <span>Распределено Codex</span>
-          <strong>{documentCategoryLabels[savedDocument.intelligence.category]}</strong>
-          <small>
-            Уверенность {Math.round(savedDocument.intelligence.confidence * 100)}% · результат
-            требует проверки человеком
-          </small>
+      <header className="document-page-header">
+        <div className="document-page-header__identity">
+          <Link className="back-link" href={profileTabPath(family.id, profile.id, "documents")}>
+            ← Все документы
+          </Link>
+          <p className="document-state">
+            <span aria-hidden="true" />
+            Оригинал сохранён
+          </p>
+          <h2 id="document-title">{intelligence?.title ?? savedDocument.originalFilename}</h2>
+          <p className="document-meta">
+            {profile.displayName} · {documentKindLabel(savedDocument.contentType)} ·{" "}
+            {formatBytes(savedDocument.byteSize)} · {formatDate(savedDocument.uploadedAt)}
+          </p>
         </div>
-      ) : null}
+        <fieldset className="document-page-header__actions">
+          <legend className="visually-hidden">Действия с документом</legend>
+          <a className="button button--primary" href={contentUrl} download>
+            <Download size={17} aria-hidden="true" />
+            Скачать оригинал
+          </a>
+          {canRestart ? (
+            <button
+              className="button button--secondary"
+              type="button"
+              onClick={() => void handleRestart()}
+              disabled={restartPending}
+            >
+              <RefreshCw size={17} aria-hidden="true" />
+              {restartPending ? "Запускаем…" : "Перезапустить разбор"}
+            </button>
+          ) : null}
+          {canWriteProfile ? (
+            <button
+              className="button button--secondary document-delete-trigger"
+              type="button"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              <Trash2 size={17} aria-hidden="true" />
+              Удалить
+            </button>
+          ) : null}
+        </fieldset>
+        {canRestart ? (
+          <p className="document-page-header__restart-note">
+            Создаст новый результат. Предыдущий разбор и подтверждённая история сохранятся.
+          </p>
+        ) : null}
+        {restartError === null ? null : (
+          <p className="form-error document-page-header__error" role="alert">
+            {restartError}
+          </p>
+        )}
+      </header>
 
       {savedDocument.duplicate.possible ? (
         <div className="duplicate-note" role="status">
-          <strong>Возможный дубликат</strong>
-          <p>SHA-256 совпадает с ранее загруженным документом этой семьи.</p>
+          <strong>Такой исходник уже встречался</strong>
+          <p>Контрольная сумма совпадает с документом этой семьи.</p>
         </div>
       ) : null}
 
-      <div className="document-actions">
-        <a className="button button--primary" href={contentUrl} download>
-          {downloadLabel(savedDocument.contentType)}
-        </a>
+      <div className="document-dashboard-grid">
+        <div className="document-dashboard-grid__main">
+          <section className="document-summary-card" aria-labelledby="document-summary-title">
+            <div className="document-section-heading">
+              <div>
+                <p className="context-line">Коротко о документе</p>
+                <h3 id="document-summary-title">Саммари Codex</h3>
+              </div>
+              <Bot size={22} aria-hidden="true" />
+            </div>
+            <p>
+              {intelligence?.shortSummary ??
+                "Короткое саммари появится здесь после завершения нового разбора документа."}
+            </p>
+            <small>Фактическое описание источника, не диагноз и не медицинская рекомендация.</small>
+          </section>
+
+          <section className="document-results" aria-labelledby="document-results-title">
+            <div className="document-section-heading">
+              <div>
+                <p className="context-line">Структурированные данные</p>
+                <h3 id="document-results-title">Результаты исследования</h3>
+              </div>
+              <span className="document-results__count">{results.length}</span>
+            </div>
+            {results.length === 0 ? (
+              <div className="document-results__empty" role="status">
+                <FileText size={20} aria-hidden="true" />
+                <p>
+                  Структурированные результаты появятся после разбора. Исследования без числовых
+                  значений тоже поддерживаются.
+                </p>
+              </div>
+            ) : (
+              <ol className="document-result-grid">
+                {results.map((result) => (
+                  <li className="document-result-card" key={result.resultKey}>
+                    <div className="document-result-card__heading">
+                      <div>
+                        <span>
+                          {[result.code, documentResultTypeCopy(result.type)]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                        <h4>{result.label}</h4>
+                      </div>
+                      <span
+                        className={`document-result-status document-result-status--${result.status}`}
+                      >
+                        {documentResultStatusCopy(result.status)}
+                      </span>
+                    </div>
+                    <p className="document-result-card__value">
+                      {result.value ?? "Не указано"}
+                      {result.unit === null ? null : <small>{result.unit}</small>}
+                    </p>
+                    {result.lab !== null || result.date !== null || result.specimen !== null ? (
+                      <p className="document-result-card__meta">
+                        {[result.lab, result.specimen, result.date].filter(Boolean).join(" · ")}
+                      </p>
+                    ) : null}
+                    <details className="document-result-card__source">
+                      <summary>Источник · стр. {result.source.pageNumber}</summary>
+                      <p>{result.source.fragment}</p>
+                    </details>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </section>
+
+          <section className="document-detailed-summary" aria-labelledby="document-detail-title">
+            <div className="document-section-heading">
+              <div>
+                <p className="context-line">Подробно</p>
+                <h3 id="document-detail-title">Развёрнутое саммари</h3>
+              </div>
+            </div>
+            <p>
+              {intelligence?.detailedSummary ??
+                "Развёрнутое саммари появится после завершения нового разбора документа."}
+            </p>
+          </section>
+        </div>
+
+        <aside className="document-dashboard-grid__rail" aria-label="Сведения об источнике">
+          <section className="document-rail-card">
+            <div className="document-rail-card__title">
+              <FileText size={18} aria-hidden="true" />
+              <h3>Исходник</h3>
+            </div>
+            <dl>
+              <div>
+                <dt>Файл</dt>
+                <dd>{savedDocument.originalFilename}</dd>
+              </div>
+              <div>
+                <dt>Формат</dt>
+                <dd>{documentKindLabel(savedDocument.contentType)}</dd>
+              </div>
+              <div>
+                <dt>Размер</dt>
+                <dd>{formatBytes(savedDocument.byteSize)}</dd>
+              </div>
+              <div>
+                <dt>Загружен</dt>
+                <dd>{formatDate(savedDocument.uploadedAt)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="document-rail-card">
+            <div className="document-rail-card__title">
+              <Bot size={18} aria-hidden="true" />
+              <h3>Классификация</h3>
+            </div>
+            {intelligence === null ? (
+              <p className="document-rail-card__empty">Codex ещё распределяет документ.</p>
+            ) : (
+              <dl>
+                <div>
+                  <dt>Раздел</dt>
+                  <dd>{documentCategoryLabels[intelligence.category]}</dd>
+                </div>
+                <div>
+                  <dt>Дата документа</dt>
+                  <dd>{intelligence.documentDate ?? "Не указана"}</dd>
+                </div>
+                <div>
+                  <dt>Модель</dt>
+                  <dd>{intelligence.modelId}</dd>
+                </div>
+                <div>
+                  <dt>Уверенность</dt>
+                  <dd>{Math.round(intelligence.confidence * 100)}%</dd>
+                </div>
+              </dl>
+            )}
+          </section>
+
+          <section className="document-rail-card document-rail-card--integrity">
+            <div className="document-rail-card__title">
+              <ShieldCheck size={18} aria-hidden="true" />
+              <h3>Целостность</h3>
+            </div>
+            <p>Оригинальные байты сверяются перед каждой обработкой.</p>
+            <details>
+              <summary>Показать SHA-256</summary>
+              <code>{savedDocument.sha256}</code>
+            </details>
+          </section>
+        </aside>
       </div>
 
       <DocumentProcessingPanel
@@ -5157,7 +5703,63 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
         profileId={profile.id}
         document={savedDocument}
         canWriteProfile={canWriteProfile}
+        onProcessingChange={handleProcessingChange}
       />
+
+      {deleteDialogOpen ? (
+        <div
+          className="document-delete-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="document-delete-title"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !deletePending) setDeleteDialogOpen(false);
+          }}
+        >
+          <button
+            className="document-delete-dialog__backdrop"
+            type="button"
+            aria-label="Закрыть подтверждение удаления"
+            onClick={() => {
+              if (!deletePending) setDeleteDialogOpen(false);
+            }}
+          />
+          <div className="document-delete-dialog__panel">
+            <span className="document-delete-dialog__icon" aria-hidden="true">
+              <Trash2 size={22} />
+            </span>
+            <p className="context-line">Необратимо для активного архива</p>
+            <h3 id="document-delete-title">Удалить документ из Veylta?</h3>
+            <p>
+              Он исчезнет из активного архива и поиска. Уже подтверждённые записи и их происхождение
+              останутся в истории для целостности журнала.
+            </p>
+            {deleteError === null ? null : (
+              <p className="form-error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="document-delete-dialog__actions">
+              <button
+                className="button button--secondary"
+                type="button"
+                disabled={deletePending}
+                onClick={() => setDeleteDialogOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                className="button button--danger"
+                type="button"
+                disabled={deletePending}
+                onClick={() => void handleDelete()}
+              >
+                {deletePending ? "Удаляем…" : "Удалить документ"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -5167,6 +5769,7 @@ interface DocumentProcessingPanelProps {
   profileId: string;
   document: DocumentSummary;
   canWriteProfile: boolean;
+  onProcessingChange?: (processing: DocumentProcessingStatus) => void;
 }
 
 interface ProcessingPresentation {
@@ -5248,17 +5851,6 @@ function documentKindLabel(contentType: DocumentSummary["contentType"]): string 
       return "PNG";
     case "image/jpeg":
       return "JPEG";
-  }
-}
-
-function downloadLabel(contentType: DocumentSummary["contentType"]): string {
-  switch (contentType) {
-    case "application/pdf":
-      return "Скачать исходный PDF";
-    case "image/png":
-      return "Скачать исходный PNG";
-    case "image/jpeg":
-      return "Скачать исходный JPEG";
   }
 }
 
@@ -5484,13 +6076,11 @@ function DocumentProcessingPanel({
   profileId,
   document: savedDocument,
   canWriteProfile,
+  onProcessingChange,
 }: DocumentProcessingPanelProps) {
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
   const [activity, setActivity] = useState<readonly DocumentProcessingActivityEvent[]>([]);
   const [refreshFailed, setRefreshFailed] = useState(false);
-  const [restartPending, setRestartPending] = useState(false);
-  const [restartError, setRestartError] = useState<string | null>(null);
-  const restartKey = useRef<string | null>(null);
 
   const refreshProcessing = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -5504,12 +6094,13 @@ function DocumentProcessingPanel({
         setProcessing((current) =>
           processingStatusesEqual(current, response.processing) ? current : response.processing,
         );
+        onProcessingChange?.(response.processing);
         setActivity(response.activity);
       } catch {
         if (!signal?.aborted) setRefreshFailed(true);
       }
     },
-    [familyId, profileId, savedDocument.id],
+    [familyId, onProcessingChange, profileId, savedDocument.id],
   );
 
   const refreshAfterReview = useCallback(() => {
@@ -5520,8 +6111,6 @@ function DocumentProcessingPanel({
     setProcessing(savedDocument.processing);
     setRefreshFailed(false);
     setActivity([]);
-    setRestartError(null);
-    restartKey.current = null;
   }, [savedDocument.processing]);
 
   useEffect(() => {
@@ -5543,43 +6132,14 @@ function DocumentProcessingPanel({
     };
   }, [processing, refreshProcessing]);
 
-  async function handleRestart(): Promise<void> {
-    setRestartPending(true);
-    setRestartError(null);
-    const commandKey = restartKey.current ?? crypto.randomUUID();
-    restartKey.current = commandKey;
-    try {
-      const response = await apiRequest<DocumentProcessingRestartResponse>(
-        `${documentProcessingPath(familyId, profileId, savedDocument.id)}/restart`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": commandKey },
-        },
-      );
-      setRefreshFailed(false);
-      setProcessing(response.processing);
-      restartKey.current = null;
-    } catch (error) {
-      if (error instanceof ApiError && error.status < 500) restartKey.current = null;
-      setRestartError("Не удалось перезапустить разбор. Исходник и прежние результаты сохранены.");
-    } finally {
-      setRestartPending(false);
-    }
-  }
-
   const presentation = processingPresentation(processing);
-  const showRestart =
-    canWriteProfile &&
-    (processing.state === "failed" ||
-      processing.state === "awaiting_review" ||
-      processing.state === "completed");
 
   return (
-    <>
+    <div className="document-processing-dashboard">
       <section
         className={`processing-state processing-state--${presentation.tone}`}
         aria-labelledby="processing-title"
-        aria-busy={isProcessingActive(processing) || restartPending}
+        aria-busy={isProcessingActive(processing)}
       >
         <div className="processing-state__mark" aria-hidden="true">
           {presentation.mark}
@@ -5596,24 +6156,6 @@ function DocumentProcessingPanel({
           {refreshFailed ? (
             <p className="processing-state__refresh-note" role="status">
               Не удалось обновить статус. Исходник не изменён.
-            </p>
-          ) : null}
-          {showRestart ? (
-            <div className="processing-state__restart">
-              <button
-                className="button button--secondary processing-state__retry"
-                type="button"
-                onClick={handleRestart}
-                disabled={restartPending}
-              >
-                {restartPending ? "Запускаем новый разбор…" : "Перезапустить разбор"}
-              </button>
-              <p>Создаст новый результат. Предыдущий разбор и подтверждённая история сохранятся.</p>
-            </div>
-          ) : null}
-          {restartError !== null ? (
-            <p className="form-error processing-state__error" role="alert">
-              {restartError}
             </p>
           ) : null}
         </div>
@@ -5638,23 +6180,7 @@ function DocumentProcessingPanel({
           onReviewSaved={refreshAfterReview}
         />
       ) : null}
-
-      <details className="integrity-details">
-        <summary>Проверить целостность</summary>
-        <dl>
-          <div>
-            <dt>SHA-256</dt>
-            <dd>
-              <code>{savedDocument.sha256}</code>
-            </dd>
-          </div>
-          <div>
-            <dt>Статус обработки</dt>
-            <dd>{presentation.integrityLabel}</dd>
-          </div>
-        </dl>
-      </details>
-    </>
+    </div>
   );
 }
 

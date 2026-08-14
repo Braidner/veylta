@@ -5,7 +5,9 @@ export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
 export const DOCUMENT_CONTRACT_VERSION = "document/v4" as const;
-export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v1" as const;
+export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
+export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
+export const DOCUMENT_LIFECYCLE_CONTRACT_VERSION = "document-lifecycle/v1" as const;
 export const DOCUMENT_AGENT_CONTRACT_VERSION = "document-agent/v1" as const;
 export const OBSERVATION_HISTORY_CONTRACT_VERSION = "observation-history/v1" as const;
 export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
@@ -56,6 +58,26 @@ export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
+export const MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS = 100;
+
+export const DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES = [
+  "measurement",
+  "genetic_variant",
+  "finding",
+  "procedure",
+  "medication",
+  "diagnosis",
+  "other",
+] as const;
+export const DOCUMENT_INTELLIGENCE_RESULT_STATUSES = [
+  "normal",
+  "abnormal",
+  "detected",
+  "not_detected",
+  "completed",
+  "informational",
+  "unknown",
+] as const;
 
 export const CODEX_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
 export const CODEX_SERVICE_TIERS = ["standard", "fast"] as const;
@@ -565,6 +587,10 @@ export type DocumentProcessingFailureCategory =
   (typeof DOCUMENT_PROCESSING_FAILURE_CATEGORIES)[number];
 export type DocumentProcessingEventCode = (typeof DOCUMENT_PROCESSING_EVENT_CODES)[number];
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
+export type DocumentIntelligenceStructuredResultType =
+  (typeof DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES)[number];
+export type DocumentIntelligenceResultStatus =
+  (typeof DOCUMENT_INTELLIGENCE_RESULT_STATUSES)[number];
 
 /**
  * Immutable semantic metadata proposed by the configured document-intelligence
@@ -578,8 +604,41 @@ export interface DocumentIntelligenceSummary {
   readonly runtimeVersion: string;
   readonly category: DocumentCategory;
   readonly title: string;
+  readonly shortSummary: string;
   readonly documentDate: string | null;
   readonly confidence: number;
+}
+
+/** Exact source evidence for one generic result proposed by document intelligence. */
+export interface DocumentIntelligenceSource {
+  readonly pageNumber: number;
+  readonly fragment: string;
+}
+
+/**
+ * A provider-neutral source result. Optional value fields stay null when the
+ * document states only a named finding, procedure, medication, or diagnosis.
+ */
+export interface DocumentIntelligenceStructuredResult {
+  readonly resultKey: string;
+  readonly type: DocumentIntelligenceStructuredResultType;
+  readonly label: string;
+  readonly value: string | null;
+  readonly unit: string | null;
+  readonly code: string | null;
+  readonly lab: string | null;
+  readonly specimen: string | null;
+  readonly date: string | null;
+  /** Source-derived only; use unknown when the source does not state the status. */
+  readonly status: DocumentIntelligenceResultStatus;
+  readonly confidence: number;
+  readonly source: DocumentIntelligenceSource;
+}
+
+/** Full immutable v2 result; summaries remain proposals until a human reviews source evidence. */
+export interface DocumentIntelligenceResult extends DocumentIntelligenceSummary {
+  readonly detailedSummary: string;
+  readonly structuredResults: readonly DocumentIntelligenceStructuredResult[];
 }
 
 export interface DocumentProcessingNotStarted {
@@ -651,6 +710,33 @@ export interface DocumentSummary {
 export interface DocumentResponse {
   contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
   document: DocumentSummary;
+}
+
+export type DocumentUploadDisposition = "created" | "already_exists";
+
+export interface DocumentUploadResponse extends DocumentResponse {
+  readonly disposition: DocumentUploadDisposition;
+}
+
+export type DocumentDetail = Omit<DocumentSummary, "intelligence"> & {
+  readonly intelligence: DocumentIntelligenceResult | null;
+};
+
+export interface DocumentDetailResponse {
+  readonly contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
+  readonly document: DocumentDetail;
+}
+
+export interface DocumentSearchResponse {
+  readonly contractVersion: typeof DOCUMENT_SEARCH_CONTRACT_VERSION;
+  readonly documents: readonly DocumentSummary[];
+}
+
+/** Receipt for removal from active Veylta reads; not a physical-erasure claim. */
+export interface DocumentDeleteResponse {
+  readonly contractVersion: typeof DOCUMENT_LIFECYCLE_CONTRACT_VERSION;
+  readonly documentId: string;
+  readonly deletedAt: string;
 }
 
 export interface DocumentProcessingResponse {

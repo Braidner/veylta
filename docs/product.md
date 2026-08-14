@@ -77,14 +77,22 @@ The first slice proves one complete and safe path with synthetic data:
    calculating SHA-256 without loading the entire file into memory. An optional
    S3-compatible adapter exists for synthetic operator testing only; it is not
    enabled in the demo default.
-4. A repeat SHA-256 within the same family is reported as a possible duplicate;
-   no document is automatically deleted.
+4. A repeat SHA-256 for an active document in the same family and profile
+   returns the existing logical document and does not enqueue another analysis.
+   Another profile may retain its own logical record while reusing the
+   family-scoped immutable blob; another family never receives a checksum
+   oracle.
 5. A durable SQLite-backed job reads a PDF text layer or uses bounded local OCR
-   after image preflight. The Codex provider classifies the document into a
-   closed category, creates a short archive title, and extracts only explicit
-   quantitative laboratory facts. Non-laboratory documents may correctly
-   complete with zero facts instead of becoming unsupported failures.
-6. Extracted facts retain raw text, value, unit, confidence, page, and fragment.
+   after image preflight. In one bounded invocation, the Codex provider creates
+   a closed classification, Russian archive title, short factual summary,
+   detailed factual summary, and source-provenanced structured results. The
+   result vocabulary covers measurements, genetic variants, findings,
+   procedures, medications, and diagnoses explicitly stated by the source.
+6. Quantitative laboratory facts continue through the existing review model.
+   Every generic structured result retains its raw value, optional unit/code,
+   confidence, page, and exact source fragment. Generic results remain
+   untrusted source-derived analytics until a compatible explicit review path
+   confirms them.
 7. The parser marks uncertain or ambiguous facts as `needs_review`; all other
    extracted facts remain `extracted`. Both are untrusted and await an explicit
    human decision.
@@ -184,6 +192,15 @@ independently reviewed.
   persistent local document storage without a database container.
 - Original bytes and SHA-256 remain stable across process restarts.
 - Same-family duplicate detection is visible and does not create another blob.
+- Repeating the same active source in one profile reuses its existing logical
+  document instead of creating a duplicate document or processing job.
+- Authorized document search matches Russian summaries and structured result
+  fields locally without exposing the query through audit metadata.
+- Download returns the verified original bytes under a safely encoded original
+  display filename.
+- An authenticated idempotent delete removes a document from the active archive
+  and search while retaining immutable provenance; it is not presented as
+  physical backup erasure.
 - A different family cannot discover or retrieve the document, facts, or
   observations; inaccessible IDs return a non-disclosing response.
 - Provenance reaches the document version, page number, and source fragment.

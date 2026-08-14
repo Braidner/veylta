@@ -142,7 +142,8 @@ async function uploadAndExtract(
   idempotencyKey: string,
 ): Promise<PreparedFact> {
   const fixture = await readFile(fixtureUrl);
-  const multipart = multipartFile(fixture);
+  const source = Buffer.concat([fixture, Buffer.from(`\n% ${idempotencyKey}\n`)]);
+  const multipart = multipartFile(source);
   const uploaded = await context.app.inject({
     method: "POST",
     url: `${profilePath(owner)}/documents`,

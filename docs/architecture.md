@@ -141,7 +141,13 @@ required. Shared code is extracted only when two real consumers need it.
 
 - Makes the active family member/profile unmistakable.
 - Supports family/profile creation, document upload, immutable metadata,
-  duplicate disclosure, authorized source download, and real processing status.
+  logical duplicate prevention, authorized source download under the original
+  display filename, idempotent archive deletion, and real processing status.
+- Searches the authorized profile archive through a bounded local projection of
+  the latest Russian document summaries and structured source results.
+- Presents generic document results (including genetic and categorical
+  findings) as untrusted source-derived analytics with exact page/fragment
+  provenance; it does not silently promote them into confirmed Observations.
 - Polls the processing endpoint while work is active and presents only a
   sanitized failure category plus an authorized retry action.
 - Presents source-first fact decisions and correction/confirmation, then a
@@ -290,18 +296,18 @@ sequenceDiagram
   A->>S: putStream(staging key) while calculating SHA-256
   A->>D: BEGIN IMMEDIATE; recheck idempotency/blob
   A->>S: Finalize deterministic immutable tenant-scoped blob
-  A->>D: Insert document/version + audit + idempotency + extraction job; COMMIT
-  A-->>B: 202 uploaded / processing queued / possible duplicate
+  A->>D: Reuse an active profile document, or insert document/version + audit + idempotency + extraction job; COMMIT
+  A-->>B: 200 existing document, or 202 uploaded / processing queued
   W->>D: Claim durable job lease
   W->>S: getStream(document version)
   W->>W: Extract bounded page evidence
-  W->>C: Classify + source-bound extraction (closed schema)
-  C-->>W: Category/title/facts with exact fragments
+  W->>C: Classify + summarize + source-bound extraction (closed schema)
+  C-->>W: Russian summaries + generic results + quantitative facts with exact fragments
   W->>W: Fail-closed schema and provenance validation
   W->>D: Transaction: pages + intelligence + run + immutable facts
   W-->>D: job succeeded; run awaiting_review
   B->>A: GET processing / facts
-  Note over B,D: Task 6 review decisions create optional observations; Task 7 reads confirmed observations with re-authorized source links
+  Note over B,D: Explicit review decisions create optional observations; history re-authorizes every source link
 ```
 
 When an owner archives a profile, the API transaction sets only

@@ -38,7 +38,7 @@ async function uploadPdf(
   await uploadSyntheticDocument(page, { name: filename, mimeType, buffer });
 }
 
-test("a synthetic report is extracted, survives reload, downloads, and reports a family duplicate", async ({
+test("a synthetic report is extracted, survives reload, preserves its filename, and reuses a duplicate", async ({
   page,
 }) => {
   const { profileUrl } = await registerDemoFamily(page);
@@ -51,8 +51,8 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
     /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
   );
   const firstDocumentUrl = page.url();
-  await expect(page.getByText(filename, { exact: false })).toBeVisible();
-  await expect(page.getByText("Исходник сохранён без изменений")).toBeVisible();
+  await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
+  await expect(page.getByText("Оригинал сохранён")).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
@@ -74,11 +74,11 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
   ).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Скачать исходный PDF" }).click();
+  await page.getByRole("link", { name: "Скачать оригинал" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("document.pdf");
+  expect(download.suggestedFilename()).toBe(filename);
 
-  await page.getByRole("link", { name: "Открыть документы" }).click();
+  await page.getByRole("link", { name: "Все документы" }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
   const overview = page.getByRole("region", { name: "Архив документов" });
   await expect(
@@ -99,11 +99,10 @@ test("a synthetic report is extracted, survives reload, downloads, and reports a
   );
   await uploadPdf(page, filename, bytes);
 
-  await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
-  expect(page.url()).not.toBe(firstDocumentUrl);
-  await expect(page.getByText("Возможный дубликат", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}\?upload=already_exists$/);
+  expect(new URL(page.url()).pathname).toBe(new URL(firstDocumentUrl).pathname);
   await expect(
-    page.getByText("SHA-256 совпадает с ранее загруженным документом этой семьи."),
+    page.getByText("Этот файл уже есть в архиве — открываем существующий документ."),
   ).toBeVisible();
 });
 
@@ -135,15 +134,15 @@ test("a direct synthetic PNG is accepted, OCRed, and downloaded with its origina
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 2, name: filename })).toBeVisible();
-  await expect(page.getByText(/^PNG ·/)).toBeVisible();
+  await expect(page.locator(".document-meta")).toContainText("PNG");
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
-  await page.getByRole("link", { name: "Скачать исходный PNG" }).click();
+  await page.getByRole("link", { name: "Скачать оригинал" }).click();
   const download = await downloadPromise;
-  expect(download.suggestedFilename()).toBe("document.png");
+  expect(download.suggestedFilename()).toBe(filename);
 });
 
 test("a restart command reuses its idempotency key after a transient browser failure", async ({
@@ -214,16 +213,53 @@ test("a restart command reuses its idempotency key after a transient browser fai
   await page.reload();
   await expect(page.getByRole("heading", { name: "Извлечение не завершилось" })).toBeVisible();
 
-  const restart = page.getByRole("button", { name: "Перезапустить разбор" });
+  const restart = page.getByRole("button", { name: "Перезапустить" });
   await restart.click();
   await expect(
-    page.getByText("Не удалось перезапустить разбор. Исходник и прежние результаты сохранены."),
+    page.getByText("Не удалось запустить новый разбор. Предыдущий результат сохранён."),
   ).toBeVisible();
   await restart.click();
 
   await expect.poll(() => idempotencyKeys.length).toBe(2);
   expect(idempotencyKeys[0]).toEqual(idempotencyKeys[1]);
   await expect(page.getByRole("heading", { name: "Документ ожидает обработки" })).toBeVisible();
+});
+
+test("document archive searches summaries and deletion requires an explicit confirmation", async ({
+  page,
+}) => {
+  const { profileUrl } = await registerDemoFamily(page);
+  const filename = `search-delete-${crypto.randomUUID().slice(0, 8)}.pdf`;
+  await uploadPdf(page, filename, syntheticLabBytes);
+  await expect(
+    page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
+  ).toBeVisible();
+
+  await page.getByRole("link", { name: "Все документы" }).click();
+  await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
+  const archive = page.getByRole("region", { name: "Архив документов" });
+  const search = archive.getByPlaceholder("Поиск по саммари и результатам");
+  await search.fill("лабораторные результаты");
+  await expect(archive.getByText(filename, { exact: true })).toBeVisible();
+  await expect(archive.locator(".document-archive-row__summary")).toBeVisible();
+
+  await archive
+    .getByRole("link", { name: /Открыть источник/ })
+    .last()
+    .click();
+  await page.getByRole("button", { name: "Удалить" }).click();
+  const confirmation = page.getByRole("dialog", { name: "Удалить документ из Veylta?" });
+  await expect(confirmation).toContainText("исчезнет из активного архива и поиска");
+  await confirmation.getByRole("button", { name: "Отмена" }).click();
+  await expect(page.getByRole("heading", { level: 2 })).toBeVisible();
+
+  await page.getByRole("button", { name: "Удалить" }).click();
+  await page
+    .getByRole("dialog", { name: "Удалить документ из Veylta?" })
+    .getByRole("button", { name: "Удалить документ" })
+    .click();
+  await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
+  await expect(page.getByText(filename, { exact: true })).toHaveCount(0);
 });
 
 test("an invalid synthetic upload stays on the profile and explains the safe correction", async ({

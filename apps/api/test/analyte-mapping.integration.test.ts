@@ -47,6 +47,8 @@ test("the local analyte catalog maps equivalent laboratory labels without mutati
       },
     );
 
+    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
     assert.equal(await migrateDown(database), "0021_codex_preferences");
     assert.equal(await migrateDown(database), "0020_processing_activity");
     assert.equal(await migrateDown(database), "0019_document_agent");
@@ -59,6 +61,8 @@ test("the local analyte catalog maps equivalent laboratory labels without mutati
       "0019_document_agent",
       "0020_processing_activity",
       "0021_codex_preferences",
+      "0022_document_intelligence_v2",
+      "0023_document_lifecycle",
     ]);
   } finally {
     await database.close();

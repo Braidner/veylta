@@ -110,10 +110,30 @@ if (args[0] === "--version") {
         });
       }
     }
+    const structuredResults = facts.map((fact, index) => ({
+      resultKey: fact.factKey,
+      type: "measurement",
+      label: "Синтетический результат " + (index + 1),
+      value: fact.sourceValue,
+      unit: fact.sourceUnit,
+      code: fact.proposedCanonicalCode,
+      lab: "Синтетическая лаборатория",
+      specimen: "Синтетическая кровь",
+      date: "2026-08-10",
+      status: "unknown",
+      confidence: fact.confidence,
+      source: fact.source
+    }));
     await writeFile(args[marker + 1], JSON.stringify({
       classification: {
         category: facts.length > 0 ? "laboratory" : "other",
         title: facts.length > 0 ? "Синтетические лабораторные результаты" : "Синтетический документ",
+        shortSummary: facts.length > 0
+          ? "Документ содержит " + facts.length + " синтетических лабораторных значений."
+          : "Документ не содержит поддерживаемых синтетических результатов.",
+        detailedSummary: facts.length > 0
+          ? "Codex структурировал явные синтетические значения и сохранил точные фрагменты источника."
+          : "Codex классифицировал синтетический документ без количественных лабораторных значений.",
         documentDate: null,
         sampledAt: facts.length > 0 ? "2026-08-10T08:00:00.000Z" : null,
         resultedAt: facts.length > 0 ? "2026-08-10T12:00:00.000Z" : null,
@@ -121,6 +141,7 @@ if (args[0] === "--version") {
         laboratory: facts.length > 0 ? "Синтетическая лаборатория" : null,
         confidence: 0.94
       },
+      structuredResults,
       facts
     }));
   } else {

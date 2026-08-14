@@ -54,6 +54,9 @@ test("Codex classifies a document and returns only source-bound review drafts", 
         classification: {
           category: "laboratory",
           title: "Синтетический лабораторный отчёт",
+          shortSummary: "В документе указан один синтетический лабораторный результат.",
+          detailedSummary:
+            "Документ содержит синтетическое измерение глюкозы и исходный лабораторный диапазон.",
           documentDate: "2026-08-12",
           sampledAt: "2026-08-11T07:30:00.000Z",
           resultedAt: "2026-08-12T00:00:00.000Z",
@@ -61,6 +64,25 @@ test("Codex classifies a document and returns only source-bound review drafts", 
           laboratory: "Синтетическая лаборатория",
           confidence: 0.96,
         },
+        structuredResults: [
+          {
+            resultKey: "synthetic-glucose-result",
+            type: "measurement",
+            label: "Синтетическая глюкоза",
+            value: "7.0",
+            unit: "synthetic-unit",
+            code: "synthetic.glucose",
+            lab: "Синтетическая лаборатория",
+            specimen: "Венозная кровь",
+            date: "2026-08-12",
+            status: "abnormal",
+            confidence: 0.91,
+            source: {
+              pageNumber: 1,
+              fragment: "Synthetic glucose: 7.0 synthetic-unit",
+            },
+          },
+        ],
         facts: [
           {
             factKey: "synthetic-glucose",
@@ -102,6 +124,15 @@ test("Codex classifies a document and returns only source-bound review drafts", 
   assert.equal(result.intelligence.contractVersion, DOCUMENT_INTELLIGENCE_CONTRACT_VERSION);
   assert.equal(result.intelligence.provider, "codex");
   assert.equal(result.intelligence.category, "laboratory");
+  assert.equal(
+    result.intelligence.shortSummary,
+    "В документе указан один синтетический лабораторный результат.",
+  );
+  assert.equal(result.intelligence.structuredResults[0]?.type, "measurement");
+  assert.equal(
+    result.intelligence.structuredResults[0]?.source.fragment,
+    "Synthetic glucose: 7.0 synthetic-unit",
+  );
   assert.equal(result.extraction.items.length, 1);
   assert.deepEqual(
     {
@@ -128,6 +159,9 @@ test("Codex classifies a document and returns only source-bound review drafts", 
   assert.ok(calls[0]?.arguments.includes("read-only"));
   assert.match(calls[0]?.input ?? "", /untrusted document content/i);
   assert.match(calls[0]?.input ?? "", /complete source line/i);
+  assert.match(calls[0]?.input ?? "", /Russian/i);
+  assert.match(calls[0]?.input ?? "", /omit patient names, addresses, phone numbers/i);
+  assert.match(calls[0]?.input ?? "", /medical result code/i);
   assert.doesNotMatch(calls[0]?.input ?? "", /familyId|profileId|originalFilename/i);
   assert.doesNotMatch(calls[0]?.outputSchema ?? "", /"uniqueItems"/);
   const schema = JSON.parse(calls[0]?.outputSchema ?? "{}") as {
@@ -142,6 +176,17 @@ test("Codex classifies a document and returns only source-bound review drafts", 
                 properties?: { sourceText?: { anyOf?: Array<{ pattern?: string }> } };
               }>;
             };
+            source?: { properties?: { fragment?: { description?: string; minLength?: number } } };
+          };
+        };
+      };
+      structuredResults?: {
+        maxItems?: number;
+        items?: {
+          properties?: {
+            type?: { enum?: string[] };
+            label?: { pattern?: string };
+            status?: { enum?: string[] };
             source?: { properties?: { fragment?: { description?: string; minLength?: number } } };
           };
         };
@@ -168,6 +213,35 @@ test("Codex classifies a document and returns only source-bound review drafts", 
   assert.match(calls[0]?.input ?? "", /sample time must not be later than the result time/i);
   assert.match(calls[0]?.input ?? "", /validationIssues must not contain duplicates/i);
   assert.match(calls[0]?.input ?? "", /document-level metadata/i);
+  assert.equal(schema.properties?.structuredResults?.maxItems, 100);
+  assert.deepEqual(schema.properties?.structuredResults?.items?.properties?.type?.enum, [
+    "measurement",
+    "genetic_variant",
+    "finding",
+    "procedure",
+    "medication",
+    "diagnosis",
+    "other",
+  ]);
+  assert.deepEqual(schema.properties?.structuredResults?.items?.properties?.status?.enum, [
+    "normal",
+    "abnormal",
+    "detected",
+    "not_detected",
+    "completed",
+    "informational",
+    "unknown",
+  ]);
+  assert.match(
+    schema.properties?.structuredResults?.items?.properties?.label?.pattern ?? "",
+    /А-Я/,
+  );
+  assert.match(
+    schema.properties?.structuredResults?.items?.properties?.source?.properties?.fragment
+      ?.description ?? "",
+    /complete source line/i,
+  );
+  assert.equal(calls.length, 1);
 });
 
 test("Codex can sort a non-laboratory document without inventing facts", async () => {
@@ -185,6 +259,8 @@ test("Codex can sort a non-laboratory document without inventing facts", async (
         classification: {
           category: "consultation",
           title: "Синтетическая консультация",
+          shortSummary: "Краткое синтетическое описание консультации.",
+          detailedSummary: "Документ не содержит количественных лабораторных измерений.",
           documentDate: null,
           sampledAt: null,
           resultedAt: null,
@@ -192,6 +268,7 @@ test("Codex can sort a non-laboratory document without inventing facts", async (
           laboratory: null,
           confidence: 0.84,
         },
+        structuredResults: [],
         facts: [],
       },
       [],
@@ -202,6 +279,62 @@ test("Codex can sort a non-laboratory document without inventing facts", async (
 
   assert.equal(result.intelligence.category, "consultation");
   assert.deepEqual(result.extraction.items, []);
+});
+
+test("Codex drops an impossible optional calendar date without losing sourced results", async () => {
+  const provider = createCodexDocumentIntelligenceProvider(
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
+    executorFor(
+      {
+        classification: {
+          category: "other",
+          title: "Синтетическое исследование",
+          shortSummary: "Краткое синтетическое описание исследования.",
+          detailedSummary: "Документ содержит один результат с точной привязкой к источнику.",
+          documentDate: "2026-02-31",
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
+          confidence: 0.9,
+        },
+        structuredResults: [
+          {
+            resultKey: "synthetic-result",
+            type: "finding",
+            label: "Синтетический результат",
+            value: "7.0",
+            unit: "synthetic-unit",
+            code: null,
+            lab: null,
+            specimen: null,
+            date: "2026-02-31",
+            status: "informational",
+            confidence: 0.9,
+            source: {
+              pageNumber: 1,
+              fragment: "Synthetic glucose: 7.0 synthetic-unit",
+            },
+          },
+        ],
+        facts: [],
+      },
+      [],
+    ),
+  );
+
+  const result = await provider.analyze({ contentType: "application/pdf", pages });
+
+  assert.equal(result.intelligence.documentDate, null);
+  assert.equal(result.intelligence.structuredResults[0]?.date, null);
+  assert.equal(result.intelligence.structuredResults.length, 1);
 });
 
 test("Codex provenance expands an exact context fragment to its complete source line", async () => {
@@ -219,6 +352,8 @@ test("Codex provenance expands an exact context fragment to its complete source 
         classification: {
           category: "laboratory",
           title: "Синтетический лабораторный отчёт",
+          shortSummary: "В документе указан синтетический результат.",
+          detailedSummary: "Документ содержит синтетическое измерение без интерпретации.",
           documentDate: "2026-08-12",
           sampledAt: null,
           resultedAt: null,
@@ -226,6 +361,7 @@ test("Codex provenance expands an exact context fragment to its complete source 
           laboratory: null,
           confidence: 0.96,
         },
+        structuredResults: [],
         facts: [
           {
             factKey: "synthetic-glucose",
@@ -296,6 +432,8 @@ test("Codex keeps source-bound facts when another proposed fact fails validation
         classification: {
           category: "laboratory",
           title: "Синтетический лабораторный отчёт",
+          shortSummary: "В документе указан синтетический результат.",
+          detailedSummary: "Документ содержит синтетическое измерение без интерпретации.",
           documentDate: "2026-08-12",
           sampledAt: null,
           resultedAt: null,
@@ -303,6 +441,7 @@ test("Codex keeps source-bound facts when another proposed fact fails validation
           laboratory: null,
           confidence: 0.96,
         },
+        structuredResults: [],
         facts: [
           validFact,
           {
@@ -337,6 +476,8 @@ test("Codex output fails closed when provenance is not an exact page fragment", 
         classification: {
           category: "laboratory",
           title: "Синтетический отчёт",
+          shortSummary: "В документе указан синтетический результат.",
+          detailedSummary: "Документ содержит неподтверждённое синтетическое измерение.",
           documentDate: null,
           sampledAt: null,
           resultedAt: null,
@@ -344,6 +485,7 @@ test("Codex output fails closed when provenance is not an exact page fragment", 
           laboratory: null,
           confidence: 0.9,
         },
+        structuredResults: [],
         facts: [
           {
             factKey: "invented",
@@ -363,6 +505,112 @@ test("Codex output fails closed when provenance is not an exact page fragment", 
             source: { pageNumber: 1, fragment: "This text is not in the source" },
           },
         ],
+      },
+      [],
+    ),
+  );
+
+  await assert.rejects(
+    () => provider.analyze({ contentType: "application/pdf", pages }),
+    (error: unknown) =>
+      error instanceof CodexDocumentIntelligenceError && error.code === "OUTPUT_INVALID",
+  );
+});
+
+test("Codex output fails closed when a generic result is not bound to an exact source line", async () => {
+  const provider = createCodexDocumentIntelligenceProvider(
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
+    executorFor(
+      {
+        classification: {
+          category: "other",
+          title: "Синтетический документ",
+          shortSummary: "Краткое синтетическое описание документа.",
+          detailedSummary: "Документ содержит один структурированный синтетический результат.",
+          documentDate: null,
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
+          confidence: 0.8,
+        },
+        structuredResults: [
+          {
+            resultKey: "invented-result",
+            type: "finding",
+            label: "Синтетическая находка",
+            value: null,
+            unit: null,
+            code: null,
+            lab: null,
+            specimen: null,
+            date: null,
+            status: "unknown",
+            confidence: 0.8,
+            source: { pageNumber: 1, fragment: "This source line does not exist" },
+          },
+        ],
+        facts: [],
+      },
+      [],
+    ),
+  );
+
+  await assert.rejects(
+    () => provider.analyze({ contentType: "application/pdf", pages }),
+    (error: unknown) =>
+      error instanceof CodexDocumentIntelligenceError && error.code === "OUTPUT_INVALID",
+  );
+});
+
+test("Codex output fails closed when a generic result label is not in Russian", async () => {
+  const provider = createCodexDocumentIntelligenceProvider(
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
+    executorFor(
+      {
+        classification: {
+          category: "other",
+          title: "Синтетический документ",
+          shortSummary: "Краткое синтетическое описание документа.",
+          detailedSummary: "Документ содержит один структурированный синтетический результат.",
+          documentDate: null,
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
+          confidence: 0.8,
+        },
+        structuredResults: [
+          {
+            resultKey: "synthetic-result",
+            type: "finding",
+            label: "Synthetic finding",
+            value: null,
+            unit: null,
+            code: null,
+            lab: null,
+            specimen: null,
+            date: null,
+            status: "unknown",
+            confidence: 0.8,
+            source: { pageNumber: 1, fragment: pages[0]?.text.split("\n")[0] },
+          },
+        ],
+        facts: [],
       },
       [],
     ),

@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { distinctSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
 const fixtureUrl = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -128,22 +129,26 @@ test("upload opens a keyboard-safe Codex batch dialog", async ({ page }) => {
   await expect(dialog).toBeHidden();
 
   await page.getByRole("button", { name: "Загрузить документ" }).click();
-  const fixture = Array.from(await readFile(fixtureUrl));
+  const fixture = await readFile(fixtureUrl);
+  const files = {
+    first: Array.from(distinctSyntheticDocument(fixture, "dashboard-a")),
+    second: Array.from(distinctSyntheticDocument(fixture, "dashboard-b")),
+  };
   await dialog.locator(".upload-dropzone").evaluate((dropzone, bytes) => {
     const transfer = new DataTransfer();
     transfer.items.add(
-      new File([Uint8Array.from(bytes)], "synthetic-a.pdf", {
+      new File([Uint8Array.from(bytes.first)], "synthetic-a.pdf", {
         type: "application/pdf",
       }),
     );
     transfer.items.add(
-      new File([Uint8Array.from(bytes)], "synthetic-b.pdf", {
+      new File([Uint8Array.from(bytes.second)], "synthetic-b.pdf", {
         type: "application/pdf",
       }),
     );
     dropzone.dispatchEvent(new DragEvent("dragenter", { bubbles: true, dataTransfer: transfer }));
     dropzone.dispatchEvent(new DragEvent("drop", { bubbles: true, dataTransfer: transfer }));
-  }, fixture);
+  }, files);
   await expect(dialog.getByText("synthetic-a.pdf", { exact: true })).toBeVisible();
   await expect(dialog.getByText("synthetic-b.pdf", { exact: true })).toBeVisible();
   const submit = dialog.getByRole("button", { name: "Загрузить 2 документа" });

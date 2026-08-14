@@ -1,9 +1,15 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_RESULT_STATUSES,
+  DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
+  type DocumentIntelligenceResult,
+  type DocumentIntelligenceStructuredResult,
   type DocumentProcessingEventCode,
   LAB_EXTRACTION_SCHEMA_VERSION,
+  MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
 } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import { enrichFactFromAnalyteMappings } from "./analyte-mapping.js";
@@ -192,6 +198,10 @@ interface DocumentIntelligenceRow {
   schema_version: string;
   category: string;
   title: string;
+  short_summary: string;
+  detailed_summary: string;
+  structured_results_json: string;
+  search_text: string;
   document_date: string | null;
   confidence: number;
 }
@@ -229,6 +239,7 @@ const errorMessages: Record<ProcessingErrorCode, string> = {
 const versionPattern = /^[a-z0-9][a-z0-9._/+:-]{0,99}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const maxRetryDelayMs = 24 * 60 * 60 * 1_000;
+export const MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH = 32_000;
 
 export class StaleProcessingLeaseError extends Error {
   constructor() {
@@ -460,17 +471,221 @@ function stableId(kind: string, ...parts: readonly (number | string)[]): string 
   return `${kind}_${digest}`;
 }
 
-function boundedText(value: string | null, maximum: number, nullable: boolean): void {
+function boundedText(
+  value: unknown,
+  maximum: number,
+  nullable: boolean,
+): asserts value is string | null {
   if (value === null) {
     if (!nullable) invalidOutput();
     return;
   }
-  if (value.length === 0 || value.length > maximum || value !== value.trim()) invalidOutput();
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximum ||
+    value !== value.trim() ||
+    [...value].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code < 32 || code === 127;
+    })
+  ) {
+    invalidOutput();
+  }
 }
 
 function isCanonicalTimestamp(value: string): boolean {
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function isCanonicalDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function exactObjectKeys(value: object, expected: readonly string[]): void {
+  if (Object.keys(value).sort().join(",") !== [...expected].sort().join(",")) invalidOutput();
+}
+
+function isRussianText(value: string): boolean {
+  return /[А-Яа-яЁё]/u.test(value);
+}
+
+function exactSourceFragment(
+  source: DocumentIntelligenceStructuredResult["source"],
+  pages: ReadonlyMap<number, ParsedDocumentPage>,
+): void {
+  if (
+    typeof source !== "object" ||
+    source === null ||
+    Array.isArray(source) ||
+    !Number.isSafeInteger(source.pageNumber)
+  ) {
+    invalidOutput();
+  }
+  exactObjectKeys(source, ["pageNumber", "fragment"]);
+  const pageText = pages.get(source.pageNumber)?.text.replaceAll("\r\n", "\n");
+  const fragment =
+    typeof source.fragment === "string" ? source.fragment.replaceAll("\r\n", "\n") : "";
+  if (
+    pageText === undefined ||
+    fragment.length < 12 ||
+    fragment.length > 2_000 ||
+    fragment !== fragment.trim() ||
+    !`\n${pageText}\n`.includes(`\n${fragment}\n`)
+  ) {
+    invalidOutput();
+  }
+}
+
+function structuredResult(
+  value: unknown,
+  pages: ReadonlyMap<number, ParsedDocumentPage>,
+): DocumentIntelligenceStructuredResult {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) invalidOutput();
+  exactObjectKeys(value, [
+    "resultKey",
+    "type",
+    "label",
+    "value",
+    "unit",
+    "code",
+    "lab",
+    "specimen",
+    "date",
+    "status",
+    "confidence",
+    "source",
+  ]);
+  const result = value as Record<string, unknown>;
+  const resultKey = result.resultKey;
+  boundedText(resultKey, 100, false);
+  if (resultKey === null || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(resultKey)) invalidOutput();
+  if (
+    typeof result.type !== "string" ||
+    !DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES.includes(
+      result.type as DocumentIntelligenceStructuredResult["type"],
+    )
+  ) {
+    invalidOutput();
+  }
+  const label = result.label;
+  boundedText(label, 200, false);
+  if (label === null || !isRussianText(label)) invalidOutput();
+  boundedText(result.value, 500, true);
+  boundedText(result.unit, 100, true);
+  boundedText(result.code, 100, true);
+  boundedText(result.lab, 200, true);
+  boundedText(result.specimen, 200, true);
+  boundedText(result.date, 10, true);
+  if (result.unit !== null && result.value === null) invalidOutput();
+  if (result.date !== null && !isCanonicalDate(result.date)) invalidOutput();
+  if (
+    typeof result.status !== "string" ||
+    !DOCUMENT_INTELLIGENCE_RESULT_STATUSES.includes(
+      result.status as DocumentIntelligenceStructuredResult["status"],
+    )
+  ) {
+    invalidOutput();
+  }
+  if (
+    typeof result.confidence !== "number" ||
+    !Number.isFinite(result.confidence) ||
+    result.confidence < 0 ||
+    result.confidence > 1
+  ) {
+    invalidOutput();
+  }
+  const source = result.source as DocumentIntelligenceStructuredResult["source"];
+  exactSourceFragment(source, pages);
+  return {
+    resultKey,
+    type: result.type as DocumentIntelligenceStructuredResult["type"],
+    label,
+    value: result.value as string | null,
+    unit: result.unit as string | null,
+    code: result.code as string | null,
+    lab: result.lab as string | null,
+    specimen: result.specimen as string | null,
+    date: result.date as string | null,
+    status: result.status as DocumentIntelligenceStructuredResult["status"],
+    confidence: result.confidence,
+    source: { pageNumber: source.pageNumber, fragment: source.fragment },
+  };
+}
+
+function completeDocumentIntelligence(
+  value: DocumentIntelligenceResult,
+  pages: ReadonlyMap<number, ParsedDocumentPage>,
+): DocumentIntelligenceResult {
+  boundedText(value.modelId, 100, false);
+  boundedText(value.runtimeVersion, 100, false);
+  boundedText(value.title, 200, false);
+  boundedText(value.shortSummary, 500, false);
+  if (
+    value.contractVersion !== DOCUMENT_INTELLIGENCE_CONTRACT_VERSION ||
+    value.provider !== "codex" ||
+    !DOCUMENT_CATEGORIES.includes(value.category) ||
+    !isRussianText(value.title) ||
+    !isRussianText(value.shortSummary) ||
+    !Number.isFinite(value.confidence) ||
+    value.confidence < 0 ||
+    value.confidence > 1 ||
+    (value.documentDate !== null && !isCanonicalDate(value.documentDate))
+  ) {
+    invalidOutput();
+  }
+
+  boundedText(value.detailedSummary, 4_000, false);
+  if (!isRussianText(value.detailedSummary)) {
+    invalidOutput();
+  }
+  if (
+    !Array.isArray(value.structuredResults) ||
+    value.structuredResults.length > MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS
+  ) {
+    invalidOutput();
+  }
+  const seen = new Set<string>();
+  const structuredResults = value.structuredResults.map((item) => {
+    const result = structuredResult(item, pages);
+    if (seen.has(result.resultKey)) invalidOutput();
+    seen.add(result.resultKey);
+    return result;
+  });
+  return {
+    ...value,
+    structuredResults,
+  };
+}
+
+export function normalizeDocumentIntelligenceSearchText(value: DocumentIntelligenceResult): string {
+  const resultFields = value.structuredResults.flatMap((result) => [
+    result.label,
+    result.value,
+    result.unit,
+    result.code,
+    result.lab,
+    result.specimen,
+    result.date,
+    result.status,
+  ]);
+  const normalized = [value.title, value.shortSummary, value.detailedSummary, ...resultFields]
+    .filter((part): part is string => part !== null)
+    .join(" ")
+    .normalize("NFKC")
+    .toLocaleLowerCase("ru-RU")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (normalized.length <= MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH) return normalized;
+  const candidate = normalized.slice(0, MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH + 1);
+  const wordBoundary = candidate.lastIndexOf(" ");
+  return candidate.slice(
+    0,
+    wordBoundary > 0 ? wordBoundary : MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH,
+  );
 }
 
 function assertPage(page: ParsedDocumentPage, seen: Set<number>): void {
@@ -554,7 +769,7 @@ function assertFact(
   seen.add(fact.factKey);
 }
 
-function validateOutput(output: ProcessingExtractionOutput): void {
+function validateOutput(output: ProcessingExtractionOutput): DocumentIntelligenceResult | null {
   const isCodexOutput = "intelligence" in output;
   if (
     output.extraction.schemaVersion !== LAB_EXTRACTION_SCHEMA_VERSION ||
@@ -574,6 +789,7 @@ function validateOutput(output: ProcessingExtractionOutput): void {
   }
   const facts = new Set<string>();
   for (const fact of output.extraction.items) assertFact(fact, pages, facts);
+  return isCodexOutput ? completeDocumentIntelligence(output.intelligence, pages) : null;
 }
 
 async function jobRow(
@@ -851,17 +1067,20 @@ async function insertOrVerifyIntelligence(
   client: DatabaseClient,
   claim: LeasedProcessingJob,
   documentId: string,
-  output: DocumentIntelligenceOutput,
+  value: DocumentIntelligenceResult,
   createdAt: string,
 ): Promise<void> {
-  const value = output.intelligence;
   const id = stableId("intelligence", claim.familyId, claim.documentVersionId, claim.id);
+  const structuredResultsJson = JSON.stringify(value.structuredResults);
+  const searchText = normalizeDocumentIntelligenceSearchText(value);
   await client.query(
     `INSERT INTO document_intelligence_results
        (id, family_id, document_id, document_version_id, processing_job_id,
         provider, model_id, runtime_version, schema_version, category,
-        title, document_date, confidence, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+        title, short_summary, detailed_summary, structured_results_json, search_text,
+        document_date, confidence, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+             $15, $16, $17, $18)
      ON CONFLICT (family_id, processing_job_id) DO NOTHING`,
     [
       id,
@@ -875,6 +1094,10 @@ async function insertOrVerifyIntelligence(
       value.contractVersion,
       value.category,
       value.title,
+      value.shortSummary,
+      value.detailedSummary,
+      structuredResultsJson,
+      searchText,
       value.documentDate,
       value.confidence,
       createdAt,
@@ -883,7 +1106,8 @@ async function insertOrVerifyIntelligence(
   const stored = (
     await client.query<DocumentIntelligenceRow>(
       `SELECT id, document_id, provider, model_id, runtime_version, schema_version,
-              category, title, document_date, confidence
+              category, title, short_summary, detailed_summary, structured_results_json,
+              search_text, document_date, confidence
          FROM document_intelligence_results
         WHERE family_id = $1 AND processing_job_id = $2`,
       [claim.familyId, claim.id],
@@ -899,6 +1123,10 @@ async function insertOrVerifyIntelligence(
     stored.schema_version !== DOCUMENT_INTELLIGENCE_CONTRACT_VERSION ||
     stored.category !== value.category ||
     stored.title !== value.title ||
+    stored.short_summary !== value.shortSummary ||
+    stored.detailed_summary !== value.detailedSummary ||
+    stored.structured_results_json !== structuredResultsJson ||
+    stored.search_text !== searchText ||
     stored.document_date !== value.documentDate ||
     Number(stored.confidence) !== value.confidence
   ) {
@@ -987,6 +1215,7 @@ export function createProcessingJobService(
                      AND p.archived_at IS NULL
                    WHERE v.family_id = processing_jobs.family_id
                      AND v.id = processing_jobs.document_version_id
+                     AND d.deleted_at IS NULL
                 )
                 AND (
                   (state IN ('pending', 'retry_wait') AND available_at <= $3)
@@ -1088,9 +1317,9 @@ export function createProcessingJobService(
 
     async completeExtraction(claim, output, completedAt) {
       assertDate(completedAt, "completedAt");
-      validateOutput(output);
+      const intelligence = validateOutput(output);
       const extractorVersion = output.extraction.extractorVersion;
-      const isCodexOutput = "intelligence" in output;
+      const isCodexOutput = intelligence !== null;
       const now = completedAt.toISOString();
       const pages = new Map(output.pages.map((page) => [page.pageNumber, page]));
       return database.transaction(async (client) => {
@@ -1126,7 +1355,8 @@ export function createProcessingJobService(
                ON p.family_id = d.family_id
               AND p.id = d.patient_profile_id
               AND p.archived_at IS NULL
-            WHERE v.family_id = $1 AND v.id = $2`,
+            WHERE v.family_id = $1 AND v.id = $2
+              AND d.deleted_at IS NULL`,
           [claim.familyId, claim.documentVersionId],
         );
         const source = activeProfile.rows[0];
@@ -1166,7 +1396,7 @@ export function createProcessingJobService(
           );
         }
         if (isCodexOutput) {
-          await insertOrVerifyIntelligence(client, claim, source.document_id, output, now);
+          await insertOrVerifyIntelligence(client, claim, source.document_id, intelligence, now);
         }
         const updated = await client.query(
           `UPDATE processing_jobs

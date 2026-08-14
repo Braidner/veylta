@@ -10,11 +10,16 @@ import {
   DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_RESULT_STATUSES,
+  DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
+  DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
   DOCUMENT_PROCESSING_EVENT_CODES,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
+  DOCUMENT_SEARCH_CONTRACT_VERSION,
   type DocumentAgentConversationResponse,
   type DocumentFactsResponse,
+  type DocumentIntelligenceResult,
   type DocumentProcessingResponse,
   type DocumentProcessingRetryResponse,
   type DocumentResponse,
@@ -73,7 +78,9 @@ test("public contracts carry explicit versions", () => {
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
   assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v2");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v4");
-  assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v1");
+  assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v2");
+  assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
+  assert.equal(DOCUMENT_LIFECYCLE_CONTRACT_VERSION, "document-lifecycle/v1");
   assert.equal(DOCUMENT_AGENT_CONTRACT_VERSION, "document-agent/v1");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
@@ -95,6 +102,62 @@ test("public contracts carry explicit versions", () => {
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
+});
+
+test("document intelligence v2 carries bounded generic source results beside its summary", () => {
+  assert.deepEqual(DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES, [
+    "measurement",
+    "genetic_variant",
+    "finding",
+    "procedure",
+    "medication",
+    "diagnosis",
+    "other",
+  ]);
+  assert.deepEqual(DOCUMENT_INTELLIGENCE_RESULT_STATUSES, [
+    "normal",
+    "abnormal",
+    "detected",
+    "not_detected",
+    "completed",
+    "informational",
+    "unknown",
+  ]);
+
+  const result = {
+    contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+    provider: "codex",
+    modelId: "gpt-5.4-mini",
+    runtimeVersion: "codex-cli 0.147.0",
+    category: "laboratory",
+    title: "Синтетический лабораторный отчёт",
+    documentDate: "2026-08-12",
+    confidence: 0.96,
+    shortSummary: "В документе указан один синтетический результат.",
+    detailedSummary: "Документ содержит синтетическое измерение без медицинской интерпретации.",
+    structuredResults: [
+      {
+        resultKey: "synthetic-glucose",
+        type: "measurement",
+        label: "Синтетическая глюкоза",
+        value: "7.0",
+        unit: "synthetic-unit",
+        code: null,
+        lab: "Синтетическая лаборатория",
+        specimen: "Венозная кровь",
+        date: "2026-08-12",
+        status: "abnormal",
+        confidence: 0.91,
+        source: {
+          pageNumber: 1,
+          fragment: "Synthetic glucose: 7.0 synthetic-unit",
+        },
+      },
+    ],
+  } satisfies DocumentIntelligenceResult;
+
+  assert.equal(result.structuredResults[0]?.type, "measurement");
+  assert.equal(result.structuredResults[0]?.source.pageNumber, 1);
 });
 
 test("home settings expose only Codex-advertised choices and bounded usage", () => {
@@ -613,6 +676,7 @@ test("document v4 embeds discriminated processing status without changing origin
         runtimeVersion: "codex-cli 0.147.0",
         category: "laboratory",
         title: "Синтетический лабораторный отчёт",
+        shortSummary: "В документе указан один синтетический результат.",
         documentDate: "2026-08-12",
         confidence: 0.96,
       },
