@@ -411,8 +411,21 @@ function parseOutput(
   }
   if (!Array.isArray(root.facts) || root.facts.length > maximumFacts) invalidOutput();
   const pageMap = new Map(pages.map((page) => [page.pageNumber, page]));
-  const facts = root.facts.map((fact) => parseFact(fact, pageMap));
-  if (new Set(facts.map((fact) => fact.factKey)).size !== facts.length) invalidOutput();
+  const facts: StrictLabExtractionFact[] = [];
+  const factKeys = new Set<string>();
+  for (const proposedFact of root.facts) {
+    try {
+      const fact = parseFact(proposedFact, pageMap);
+      if (factKeys.has(fact.factKey)) continue;
+      factKeys.add(fact.factKey);
+      facts.push(fact);
+    } catch (error) {
+      if (!(error instanceof CodexDocumentIntelligenceError) || error.code !== "OUTPUT_INVALID") {
+        throw error;
+      }
+    }
+  }
+  if (root.facts.length > 0 && facts.length === 0) invalidOutput();
   return {
     pages,
     extraction: {

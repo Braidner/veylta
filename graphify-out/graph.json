@@ -4357,7 +4357,7 @@
       "label": "createCodexDocumentIntelligenceProvider()",
       "file_type": "code",
       "source_file": "apps/api/src/processing/codex-document-intelligence-provider.ts",
-      "source_location": "L436",
+      "source_location": "L449",
       "_origin": "ast",
       "id": "apps_api_src_processing_codex_document_intelligence_provider_createcodexdocumentintelligenceprovider",
       "community": 71,
@@ -30460,7 +30460,7 @@
       "relation": "contains",
       "confidence": "EXTRACTED",
       "source_file": "apps/api/src/processing/codex-document-intelligence-provider.ts",
-      "source_location": "L436",
+      "source_location": "L449",
       "weight": 1.0,
       "source": "apps_api_src_processing_codex_document_intelligence_provider",
       "target": "apps_api_src_processing_codex_document_intelligence_provider_createcodexdocumentintelligenceprovider",
@@ -31040,7 +31040,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "apps/api/src/processing/codex-document-intelligence-provider.ts",
-      "source_location": "L429",
+      "source_location": "L442",
       "weight": 1.0,
       "source": "apps_api_src_processing_codex_document_intelligence_provider_parseoutput",
       "target": "apps_api_src_processing_codex_document_intelligence_provider_boundedstring",
@@ -31117,7 +31117,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "apps/api/src/processing/codex-document-intelligence-provider.ts",
-      "source_location": "L431",
+      "source_location": "L444",
       "weight": 1.0,
       "source": "apps_api_src_processing_codex_document_intelligence_provider_parseoutput",
       "target": "apps_api_src_processing_codex_document_intelligence_provider_confidence",
@@ -31139,7 +31139,7 @@
       "context": "call",
       "confidence": "EXTRACTED",
       "source_file": "apps/api/src/processing/codex-document-intelligence-provider.ts",
-      "source_location": "L430",
+      "source_location": "L443",
       "weight": 1.0,
       "source": "apps_api_src_processing_codex_document_intelligence_provider_parseoutput",
       "target": "apps_api_src_processing_codex_document_intelligence_provider_canonicaldate",
@@ -31154,6 +31154,17 @@
       "weight": 1.0,
       "source": "apps_api_src_processing_codex_document_intelligence_provider_parsefact",
       "target": "apps_api_src_processing_codex_document_intelligence_provider_parsereferencerange",
+      "confidence_score": 1.0
+    },
+    {
+      "relation": "calls",
+      "context": "call",
+      "confidence": "EXTRACTED",
+      "source_file": "apps/api/src/processing/codex-document-intelligence-provider.ts",
+      "source_location": "L418",
+      "weight": 1.0,
+      "source": "apps_api_src_processing_codex_document_intelligence_provider_parseoutput",
+      "target": "apps_api_src_processing_codex_document_intelligence_provider_parsefact",
       "confidence_score": 1.0
     },
     {
@@ -55147,5 +55158,5 @@
     }
   ],
   "hyperedges": [],
-  "built_at_commit": "c3506873724a3e663be68a751f4c4d5ab963e86d"
+  "built_at_commit": "c2e6463bc29d9889b35dd4dd00e6dab4c8aff216"
 }

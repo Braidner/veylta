@@ -1,16 +1,16 @@
 # Graph Report - health  (2026-08-14)
 
 ## Corpus Check
-- 176 files · ~162,409 words
+- 176 files · ~162,572 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 1935 nodes · 3418 edges · 108 communities (96 shown, 12 thin omitted)
+- 1935 nodes · 3419 edges · 108 communities (96 shown, 12 thin omitted)
 - Extraction: 100% EXTRACTED · 0% INFERRED · 0% AMBIGUOUS · INFERRED: 4 edges (avg confidence: 0.8)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `c3506873`
+- Built from commit: `c2e6463b`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -388,7 +388,7 @@ Cohesion: 0.11
 Nodes (21): AssistantAction(), AssistantCard(), assistantIcons, currentWeek(), DashboardPlan(), HealthSignal(), ProfileDashboard(), signalClassName (+13 more)
 
 ### Community 71 - "Community 71"
-Cohesion: 0.17
+Cohesion: 0.18
 Nodes (20): boundedSourceFragment(), boundedString(), canonicalDate(), canonicalTimestamp(), CodexDocumentIntelligenceError, CodexDocumentIntelligenceErrorCode, completeSourceLines(), confidence() (+12 more)
 
 ### Community 72 - "Community 72"
