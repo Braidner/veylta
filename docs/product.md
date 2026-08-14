@@ -103,8 +103,11 @@ The first slice proves one complete and safe path with synthetic data:
     values (Task 12, delivered).
 12. The profile landing view lists a bounded source-first operational overview:
     recent immutable documents, sources awaiting explicit review, and explicitly
-    confirmed values. It does not calculate a health score, clinical state,
-    diagnosis, trend, or recommendation (Task 17, delivered).
+    confirmed values. Its assistant inbox is a deterministic projection of those
+    same states; nutrition and movement only open the explicit care-plan flow.
+    Its health signals count pending review, explicit source flags, recent
+    sources, and confirmed values. It does not calculate a health score,
+    clinical state, diagnosis, trend, or recommendation (Task 17, delivered).
 13. An owner or self-linked adult can download a bounded local TAR snapshot of
     up to five latest synthetic source files and an immutable manifest. This is
     deliberately not a backup, restore format, or production portability claim
@@ -252,7 +255,10 @@ membership without a processing or clinical state.
   provider deployment runbook. The optional S3 adapter is not a real-data
   readiness claim.
 - Any cloud OCR provider.
-- Any LLM extraction, analysis, explanation, nutrition, or training agent.
+- Persistent autonomous chat agents, unsolicited medical recommendations, and
+  any LLM extraction, diagnosis, explanation, nutrition, or training decision.
+  The delivered assistant cards are deterministic navigation; the existing
+  bounded Codex care-plan draft still requires a separate acknowledged request.
 - Automated clinical trend summaries, clinical recommendations, and red-flag UI.
 - Full role-management UX, FHIR R4 mapping/import/export, controlled account deletion,
   and production backup/restore workflows.

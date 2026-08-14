@@ -52,6 +52,16 @@ font binary is not distributed separately, and the fixture's SHA-256 is
 Review owner: Veylta maintainers. Re-review on fixture/font replacement or by
 2027-08-12, whichever comes first.
 
+## Browser interface font
+
+`@fontsource-variable/geist` 5.2.9 packages the Geist variable font used by the
+Veylta browser interface under SIL Open Font License 1.1. The font is
+self-hosted by the application; no Google Fonts or other font CDN request is
+made. The package's complete OFL license and copyright material remain in its
+installed distribution. This is an exact-version asset review and does not add
+OFL-1.1 to the global software allowlist. Re-review on font or package version
+change or by 2027-08-14.
+
 ## Exact permissive ISC reviews
 
 The following unavoidable transitive packages use the permissive ISC license.
@@ -61,6 +71,7 @@ They are exact-version exceptions rather than additions to the global allowlist:
 - `picocolors` 1.1.1 (Next.js/PostCSS terminal-color helper)
 - `semver` 7.8.5 (Fastify version parser)
 - `split2` 4.2.0 (pino stream utility)
+- `lucide-react` 1.21.0 (browser UI icon components)
 
 Each installed package retains its ISC `LICENSE` file. Any version change fails
 the repository license gate until it is reviewed again.

@@ -47,11 +47,15 @@ import type {
   StorageRelocationResponse,
 } from "@veylta/contracts";
 import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { ClipboardList, Files, History, House, LogOut, Settings } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
+import { buildProfileDashboardModel } from "../profile-dashboard";
+import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
+import { VeyltaMark } from "./veylta-mark";
 
 const apiPrefix = "/health-api";
 const processingPollIntervalMs = 2_000;
@@ -436,24 +440,68 @@ export function VeyltaApp({
       </a>
       <header className="workspace-bar">
         <Link className="wordmark" href="/" aria-label="Veylta — главная">
-          <span aria-hidden="true">V</span>
+          <VeyltaMark className="wordmark__mark" />
           Veylta
         </Link>
+        {context !== undefined ? (
+          <nav className="workspace-primary-nav" aria-label="Основные разделы профиля">
+            <a
+              className="workspace-primary-nav__item workspace-primary-nav__item--active"
+              href="#profile-dashboard"
+            >
+              <House size={17} aria-hidden="true" />
+              Обзор
+            </a>
+            <a className="workspace-primary-nav__item" href="#document-inbox-title">
+              <Files size={17} aria-hidden="true" />
+              Документы
+            </a>
+            <a className="workspace-primary-nav__item" href="#observation-history">
+              <History size={17} aria-hidden="true" />
+              История
+            </a>
+            <a className="workspace-primary-nav__item" href="#care-plan">
+              <ClipboardList size={17} aria-hidden="true" />
+              План
+            </a>
+          </nav>
+        ) : null}
         <div className="workspace-actions">
-          <span className="environment">Домашний сервер</span>
+          <span className="environment">
+            <span aria-hidden="true" />
+            Домашний сервер
+          </span>
           {session?.user.role === "admin" ? (
-            <Link className="text-button" href={requestedSettings ? "/" : "/settings"}>
-              {requestedSettings ? "Профили" : "Настройки"}
+            <Link
+              className="workspace-icon-action"
+              href={requestedSettings ? "/" : "/settings"}
+              aria-label={requestedSettings ? "Профили" : "Настройки"}
+              title={requestedSettings ? "Профили" : "Настройки"}
+            >
+              {requestedSettings ? <House size={19} /> : <Settings size={19} />}
             </Link>
           ) : null}
           {session !== undefined ? (
+            <span className="workspace-identity">
+              <span aria-hidden="true">{session.user.displayName.slice(0, 2).toUpperCase()}</span>
+              <span>
+                <strong>{session.user.displayName}</strong>
+                <small>
+                  {session.user.role === "admin" ? "Администратор системы" : "Пользователь системы"}
+                </small>
+              </span>
+            </span>
+          ) : null}
+          {session !== undefined ? (
             <button
-              className="text-button"
+              className="workspace-icon-action"
               type="button"
               onClick={handleLogout}
               disabled={action === "logout"}
+              aria-label={action === "logout" ? "Выходим…" : "Выйти"}
+              title={action === "logout" ? "Выходим…" : "Выйти"}
             >
-              {action === "logout" ? "Выходим…" : "Выйти"}
+              <LogOut size={19} aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -1270,23 +1318,6 @@ function ProfileWorkspace({
 
   return (
     <section className="profile-shell" aria-labelledby="profile-title">
-      <nav className="profile-navigation" aria-label="Разделы профиля">
-        <a
-          className="profile-navigation__item profile-navigation__item--active"
-          href="#profile-dashboard"
-        >
-          Обзор
-        </a>
-        <a className="profile-navigation__item" href="#document-inbox-title">
-          Источники
-        </a>
-        <a className="profile-navigation__item" href="#observation-history">
-          История
-        </a>
-        <a className="profile-navigation__item" href="#indicator-catalog">
-          Динамика
-        </a>
-      </nav>
       <div className="profile-heading">
         <div>
           <p className="context-line">
@@ -1294,19 +1325,18 @@ function ProfileWorkspace({
             <span aria-hidden="true">/</span>
             <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
           </p>
-          <h1 id="profile-title">{profile.displayName}</h1>
+          <h1 id="profile-title" aria-label={profile.displayName}>
+            Здравствуйте, {profile.displayName.split(" ")[0]}
+          </h1>
           <p className="profile-owner">
-            {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}:{" "}
-            {session.user.displayName}
+            Архив, проверки и домашний план этого профиля — в одном месте.
           </p>
-          {session.user.role !== null ? (
-            <p className="profile-access">
-              {session.user.role === "admin" ? "Администратор системы" : "Пользователь системы"}
-            </p>
-          ) : null}
-          {profile.access === "granted_read" ? (
-            <p className="profile-access">Доступ по согласию: только чтение</p>
-          ) : null}
+          <div className="profile-heading__access">
+            <span>
+              {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}
+            </span>
+            {profile.access === "granted_read" ? <span>Только чтение</span> : null}
+          </div>
         </div>
 
         <label className="profile-switcher">
@@ -1333,16 +1363,19 @@ function ProfileWorkspace({
         </p>
       ) : null}
 
+      {requestedDocumentId === undefined ? (
+        <ProfileOverviewPanel
+          key={`overview:${family.id}:${profile.id}`}
+          familyId={family.id}
+          profileId={profile.id}
+          canWriteProfile={canWriteProfile}
+        />
+      ) : null}
+
       <div className="profile-workspace">
         <div className="profile-workspace__main">
           {requestedDocumentId === undefined ? (
             <>
-              <ProfileOverviewPanel
-                key={`overview:${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-                canWriteProfile={canWriteProfile}
-              />
               <HealthSummaryPanel
                 key={`summary:${family.id}:${profile.id}`}
                 familyId={family.id}
@@ -2124,61 +2157,6 @@ function profileOverviewProcessingCopy(
   }
 }
 
-function sourceCountCopy(count: number): string {
-  const remainder10 = count % 10;
-  const remainder100 = count % 100;
-  if (remainder10 === 1 && remainder100 !== 11) return `${count} источник`;
-  if ([2, 3, 4].includes(remainder10) && ![12, 13, 14].includes(remainder100)) {
-    return `${count} источника`;
-  }
-  return `${count} источников`;
-}
-
-function profileDataState(overview: ProfileOverviewResponse): {
-  label: string;
-  detail: string;
-  actionHref: string;
-  actionLabel: string;
-} {
-  if (overview.reviewQueue.pendingFactCount > 0) {
-    const firstReview = overview.reviewQueue.documents[0];
-    return {
-      label: "Нужна ваша проверка",
-      detail: `${factCountCopy(overview.reviewQueue.pendingFactCount)} ещё не стали подтверждёнными данными.`,
-      actionHref:
-        firstReview === undefined
-          ? "#document-inbox-title"
-          : documentPath(overview.profile.familyId, overview.profile.id, firstReview.id),
-      actionLabel: firstReview === undefined ? "Открыть источники" : "Проверить значения",
-    };
-  }
-  const activeProcessing = overview.recentDocuments.find(
-    (document) => !["completed", "failed", "awaiting_review"].includes(document.processing.state),
-  );
-  if (activeProcessing !== undefined) {
-    return {
-      label: "Обрабатываем источник",
-      detail: profileOverviewProcessingCopy(activeProcessing.processing),
-      actionHref: documentPath(overview.profile.familyId, overview.profile.id, activeProcessing.id),
-      actionLabel: "Открыть статус",
-    };
-  }
-  if (overview.recentObservations.length > 0) {
-    return {
-      label: "Данные подтверждены",
-      detail: "Последние значения связаны с исходными документами и готовы для просмотра.",
-      actionHref: "#observation-history",
-      actionLabel: "Открыть историю",
-    };
-  }
-  return {
-    label: "Нужен первый источник",
-    detail: "Добавьте документ, чтобы начать собирать проверяемую историю.",
-    actionHref: "#document-inbox-title",
-    actionLabel: "Добавить документ",
-  };
-}
-
 function ProfileOverviewPanel({
   familyId,
   profileId,
@@ -2219,41 +2197,9 @@ function ProfileOverviewPanel({
       aria-labelledby="profile-overview-title"
       aria-busy={state.kind === "loading"}
     >
-      <div className="profile-overview__heading">
-        <p className="context-line">Живая карта профиля</p>
-        <h2 id="profile-overview-title">Обзор профиля</h2>
-        <p className="profile-overview__description">
-          Документы, проверка и подтверждённые значения собраны в одном месте. Каждый результат
-          остаётся связан с исходником.
-        </p>
-        {canWriteProfile ? (
-          <div className="profile-overview__exports">
-            <p className="profile-overview__export">
-              <a
-                className="text-link"
-                href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-                download
-              >
-                Скачать локальный пакет источников
-              </a>
-              <span>До 5 последних synthetic-источников; это не резервная копия.</span>
-            </p>
-            <p className="profile-overview__export">
-              <a
-                className="text-link"
-                href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
-                download
-              >
-                Скачать полный synthetic-экспорт профиля
-              </a>
-              <span>
-                Все источники и подтверждённые записи, если их не больше 10; это не восстановление и
-                не production backup.
-              </span>
-            </p>
-          </div>
-        ) : null}
-      </div>
+      <h2 id="profile-overview-title" className="visually-hidden">
+        Обзор профиля
+      </h2>
 
       {state.kind === "loading" ? (
         <div className="profile-overview__loading" aria-live="polite">
@@ -2278,103 +2224,35 @@ function ProfileOverviewPanel({
 
       {state.kind === "ready" ? (
         <>
-          {(() => {
-            const dataState = profileDataState(state.overview);
-            const latestDocument = state.overview.recentDocuments[0];
-            return (
-              <div className="profile-cockpit">
-                <section
-                  className="profile-cockpit__map"
-                  aria-labelledby="profile-data-state-title"
-                >
-                  <div className="profile-cockpit__title-row">
-                    <div>
-                      <p>Контур профиля</p>
-                      <h3 id="profile-data-state-title">Состояние данных</h3>
-                    </div>
-                    <span className="profile-cockpit__boundary">Не оценка здоровья</span>
-                  </div>
+          <ProfileDashboard model={buildProfileDashboardModel(state.overview)} />
 
-                  <div className="evidence-map">
-                    <div className="evidence-map__core">
-                      <span>{state.overview.recentDocuments.length}</span>
-                      <small>
-                        {sourceCountCopy(state.overview.recentDocuments.length)} в обзоре
-                      </small>
-                    </div>
-                    <ol className="evidence-map__steps">
-                      <li
-                        data-state={state.overview.recentDocuments.length > 0 ? "ready" : "empty"}
-                      >
-                        <span className="evidence-map__step-index">1</span>
-                        <strong>Источники</strong>
-                        <small>
-                          {latestDocument === undefined
-                            ? "Ещё не добавлены"
-                            : `Последний · ${formatDate(latestDocument.uploadedAt)}`}
-                        </small>
-                      </li>
-                      <li
-                        data-state={
-                          state.overview.reviewQueue.pendingFactCount > 0 ? "attention" : "ready"
-                        }
-                      >
-                        <span className="evidence-map__step-index">2</span>
-                        <strong>Проверка</strong>
-                        <small>
-                          {state.overview.reviewQueue.pendingFactCount === 0
-                            ? "Нет ожидающих решений"
-                            : `${factCountCopy(state.overview.reviewQueue.pendingFactCount)} ожидают проверки`}
-                        </small>
-                      </li>
-                      <li
-                        data-state={
-                          state.overview.recentObservations.length > 0 ? "ready" : "empty"
-                        }
-                      >
-                        <span className="evidence-map__step-index">3</span>
-                        <strong>Подтверждено</strong>
-                        <small>
-                          {state.overview.recentObservations.length === 0
-                            ? "Пока нет значений"
-                            : `${state.overview.recentObservations.length} последних значения`}
-                        </small>
-                      </li>
-                    </ol>
-                  </div>
-                </section>
-
-                <aside
-                  className="profile-cockpit__action"
-                  aria-labelledby="profile-next-action-title"
-                >
-                  <span className="profile-cockpit__pulse" aria-hidden="true" />
-                  <p>Следующее действие</p>
-                  <h3 id="profile-next-action-title">{dataState.label}</h3>
-                  <p className="profile-cockpit__action-copy">{dataState.detail}</p>
-                  {dataState.actionHref.startsWith("/") ? (
-                    <Link className="button button--primary" href={dataState.actionHref}>
-                      {dataState.actionLabel}
-                    </Link>
-                  ) : (
-                    <a className="button button--primary" href={dataState.actionHref}>
-                      {dataState.actionLabel}
-                    </a>
-                  )}
-                  <dl className="profile-cockpit__facts">
-                    <div>
-                      <dt>Документы в проверке</dt>
-                      <dd>{state.overview.reviewQueue.documentCount}</dd>
-                    </div>
-                    <div>
-                      <dt>Недавние подтверждения</dt>
-                      <dd>{state.overview.recentObservations.length}</dd>
-                    </div>
-                  </dl>
-                </aside>
+          {canWriteProfile ? (
+            <details className="profile-overview__exports">
+              <summary>Экспорт источников</summary>
+              <div>
+                <p className="profile-overview__export">
+                  <a
+                    className="text-link"
+                    href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+                    download
+                  >
+                    Скачать локальный пакет источников
+                  </a>
+                  <span>До 5 синтетических исходников; это не резервная копия.</span>
+                </p>
+                <p className="profile-overview__export">
+                  <a
+                    className="text-link"
+                    href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
+                    download
+                  >
+                    Скачать полный synthetic-экспорт профиля
+                  </a>
+                  <span>Все источники и подтверждённые записи в пределах локального лимита.</span>
+                </p>
               </div>
-            );
-          })()}
+            </details>
+          ) : null}
 
           <CarePlanPanel
             familyId={familyId}
@@ -2739,6 +2617,7 @@ function CarePlanPanel({
 
   return (
     <section
+      id="care-plan"
       className="care-plan"
       aria-labelledby={`${formId}-title`}
       aria-busy={state.kind === "loading"}

@@ -9,13 +9,12 @@ The MIT license for this repository does not automatically make dependencies,
 container images, model weights, OCR trained data, fixtures, fonts, or external
 services MIT-licensed. Each is reviewed under its own terms before use.
 
-The checked-in synthetic PDF fixture is the one approved asset exception in the
-current slice: `fixtures/veylta-synthetic-lab-report.pdf` embeds a subset of
-Liberation Sans Regular under SIL OFL 1.1. Its full license, source/version,
-SHA-256, distribution scope, owner, and review date are recorded in
-[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). It is a synthetic
-document created using the font, not a bundled general-purpose font file, and
-does not broaden the software-dependency allowlist.
+The checked-in synthetic PDF fixture embeds a reviewed subset of Liberation
+Sans Regular under SIL OFL 1.1. The browser UI also installs the exact
+`@fontsource-variable/geist` 5.2.9 package under OFL-1.1. Both reviews, their
+distribution scopes, and retained notices are recorded in
+[`THIRD_PARTY_NOTICES.md`](../THIRD_PARTY_NOTICES.md). OFL is not added to the
+global software allowlist; a font package or version change fails closed.
 
 ## Dependency allowlist
 
@@ -38,11 +37,11 @@ documented review before merge. A transitive package is not exempt.
 
 The runnable scaffold records narrow exact-version reviews in
 `config/license-policy.json` and `THIRD_PARTY_NOTICES.md`. These currently cover
-permissive ISC utilities required transitively by Fastify and Next.js, plus the
-CC-BY-4.0 `caniuse-lite` browser-compatibility dataset required by Next.js. They
-are not global allowlist additions; removal or a version change invalidates the
-exception. Optional `sharp`/libvips and `lightningcss` are explicitly excluded
-because their LGPL/MPL licenses cross the core boundary.
+permissive ISC utilities required by the runtime and UI, the exact OFL browser
+font, plus the CC-BY-4.0 `caniuse-lite` browser-compatibility dataset required by
+Next.js. They are not global allowlist additions; removal or a version change
+invalidates the exception. Optional `sharp`/libvips and `lightningcss` are
+explicitly excluded because their LGPL/MPL licenses cross the core boundary.
 
 Local persistence uses the SQLite runtime bundled with Node.js through
 `node:sqlite`; it adds no npm dependency, container image, or vendored database

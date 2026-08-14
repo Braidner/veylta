@@ -10,6 +10,14 @@
       "license": "ISC",
       "reason": "Permissive Fastify queue utility; exact transitive version reviewed."
     },
+    "@fontsource-variable/geist@5.2.9": {
+      "license": "OFL-1.1",
+      "reason": "Exact self-hosted Geist variable font package used by the browser UI; OFL license and notices remain in the installed distribution and THIRD_PARTY_NOTICES.md."
+    },
+    "lucide-react@1.21.0": {
+      "license": "ISC",
+      "reason": "Exact permissive icon component package used by the browser UI; license text remains in the installed distribution."
+    },
     "picocolors@1.1.1": {
       "license": "ISC",
       "reason": "Permissive PostCSS terminal-color helper used by Next.js; exact transitive version reviewed."

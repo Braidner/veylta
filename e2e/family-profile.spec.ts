@@ -19,18 +19,18 @@ async function registerDemoFamily(page: Page) {
   await expect(page).toHaveTitle(`${names.profile} — Veylta`);
   const overview = page.getByRole("region", { name: "Обзор профиля" });
   await expect(overview).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы профиля" })).toBeVisible();
-  await expect(overview.getByRole("heading", { name: "Состояние данных" })).toBeVisible();
-  await expect(overview.getByText("Не оценка здоровья", { exact: true })).toBeVisible();
-  const evidence = overview.getByLabel("Состояние данных");
-  await expect(evidence.getByText("Источники", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("Проверка", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("Подтверждено", { exact: true })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Основные разделы профиля" })).toBeVisible();
+  await expect(overview.getByRole("heading", { name: "Помощники" })).toBeVisible();
+  await expect(overview.getByText("Не заменяют специалиста", { exact: true })).toBeVisible();
+  const signals = overview.getByRole("region", { name: "Сигналы здоровья" });
+  await expect(signals).toBeVisible();
+  await expect(signals.getByText("Без общего балла", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Ждёт проверки", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Отмечено источником", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Подтверждено", { exact: true })).toBeVisible();
   await expect(overview.getByText("Ничего не ожидает проверки.")).toBeVisible();
   await expect(overview.getByText("Исходников пока нет.")).toBeVisible();
-  await expect(
-    overview.getByRole("link", { name: "Скачать локальный пакет источников" }),
-  ).toBeVisible();
+  await expect(overview.getByText("Экспорт источников", { exact: true })).toBeVisible();
 
   return names;
 }
@@ -136,7 +136,7 @@ test("an owner can issue a one-time local adult invitation with no access to ano
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
-  await expect(page.getByText("Участник пространства:", { exact: false })).toBeVisible();
+  await expect(page.getByText("Участник пространства", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Пригласить участника" })).toHaveCount(0);
 
   await page.goto(ownerProfile);
@@ -179,7 +179,9 @@ test("an owner grants and revokes read-only access to a profile for an invited a
 
     await adultPage.goto(ownerProfileUrl);
     await expect(adultPage.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
-    await expect(adultPage.getByText("Доступ по согласию: только чтение")).toBeVisible();
+    await expect(
+      adultPage.locator(".profile-heading__access").getByText("Только чтение", { exact: true }),
+    ).toBeVisible();
     await expect(
       adultPage.getByRole("heading", { level: 2, name: "Доступ выдан владельцем профиля" }),
     ).toBeVisible();
@@ -243,7 +245,9 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     await expect(
       caregiverPage.getByRole("heading", { level: 1, name: names.dependent }),
     ).toBeVisible();
-    await expect(caregiverPage.getByText("Доступ по согласию: только чтение")).toBeVisible();
+    await expect(
+      caregiverPage.locator(".profile-heading__access").getByText("Только чтение", { exact: true }),
+    ).toBeVisible();
     await expect(caregiverPage.getByLabel("Синтетический документ", { exact: true })).toHaveCount(
       0,
     );

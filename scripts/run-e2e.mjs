@@ -65,7 +65,7 @@ function run(arguments_, extraEnvironment = {}) {
 
 try {
   await run(["--filter", "@veylta/api", "db:migrate"]);
-  await run(["exec", "playwright", "test"]);
+  await run(["exec", "playwright", "test", ...process.argv.slice(2)]);
 } finally {
   await Promise.all([
     rm(testRoot, { force: true, recursive: true }),
