@@ -5,7 +5,7 @@ import { buildProfileDashboardModel } from "./profile-dashboard";
 
 function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOverviewResponse {
   return {
-    contractVersion: "profile-overview/v1",
+    contractVersion: "profile-overview/v2",
     profile: {
       id: "00000000-0000-4000-8000-000000000002",
       familyId: "00000000-0000-4000-8000-000000000001",

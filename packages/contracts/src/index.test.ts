@@ -89,7 +89,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
   assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
   assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
-  assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v1");
+  assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v2");
   assert.equal(HEALTH_SUMMARY_CONTRACT_VERSION, "health-summary/v1");
   assert.equal(HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION, "health-summary-history/v1");
   assert.equal(HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION, "health-summary-comparison/v1");

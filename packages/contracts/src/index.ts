@@ -14,7 +14,7 @@ export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
-export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v1" as const;
+export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v2" as const;
 export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
 export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
 export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
@@ -42,6 +42,7 @@ export const MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS = 5;
  * source documents.
  */
 export const MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS = 10;
+export const MAX_PROFILE_OVERVIEW_REVIEW_DOCUMENTS = 50;
 export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
 export const MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE = 50;
 export const CARE_PLAN_CATEGORIES = [
@@ -942,7 +943,11 @@ export interface ProfileOverviewResponse {
     readonly documentCount: number;
     readonly pendingFactCount: number;
     readonly needsAttentionFactCount: number;
-    /** Newest first; bounded to three source documents that need review. */
+    /**
+     * Every source still awaiting a decision, newest first, bounded by
+     * MAX_PROFILE_OVERVIEW_REVIEW_DOCUMENTS. The archive acts on this list directly, so a
+     * shorter projection would make a bulk action silently skip documents.
+     */
     readonly documents: readonly ProfileOverviewReviewDocument[];
   };
   /** Newest first; bounded to three explicitly confirmed source values. */

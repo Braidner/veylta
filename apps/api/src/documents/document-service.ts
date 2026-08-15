@@ -47,6 +47,7 @@ import {
   MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
   MAX_OBSERVATION_HISTORY_PAGE_SIZE,
+  MAX_PROFILE_OVERVIEW_REVIEW_DOCUMENTS,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
   OBJECT_STORAGE_CONTRACT_VERSION,
@@ -3834,7 +3835,7 @@ export function createDocumentService(
                      intelligence.category, intelligence.title, intelligence.short_summary,
                      intelligence.document_date, intelligence.confidence
             ORDER BY d.uploaded_at DESC, d.id DESC
-            LIMIT 3`,
+            LIMIT ${MAX_PROFILE_OVERVIEW_REVIEW_DOCUMENTS}`,
           [scope.familyId, scope.profileId],
         );
 
