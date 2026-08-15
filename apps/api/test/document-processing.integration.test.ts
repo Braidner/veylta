@@ -339,6 +339,7 @@ test("a synthetic image-only PDF is rendered to page images that Codex transcrib
     });
     assert.equal(facts.statusCode, 200);
     assert.equal(facts.json().items.length, 1);
+    assert.equal(facts.json().items[0]?.source.pageTextOrigin, "codex_vision");
     const provenance = await database.query<{
       extraction_method: string;
       extraction_version: string;
@@ -392,6 +393,15 @@ for (const [format, contentType, filename] of [
       const processed = await processOneDocument(database, storageRoot);
       assert.equal(processed.status, "completed");
       assert.equal("factCount" in processed ? processed.factCount : undefined, 1);
+
+      // The reviewer must be told the quoted page text is the model's transcription.
+      const facts = await app.inject({
+        method: "GET",
+        url: `${documentUrl(owner, documentId)}/facts`,
+        headers: { cookie: owner.cookie },
+      });
+      assert.equal(facts.statusCode, 200);
+      assert.equal(facts.json().items[0]?.source.pageTextOrigin, "codex_vision");
 
       const content = await app.inject({
         method: "GET",

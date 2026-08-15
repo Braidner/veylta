@@ -333,6 +333,7 @@ interface FactRow {
   id: string;
   document_version_id: string;
   page_number: number;
+  extraction_method: string;
   fact_key: string;
   source_fragment: string;
   source_name: string;
@@ -2316,6 +2317,7 @@ function factResponse(
           return pageNumber;
         })(),
         fragment: requiredBoundedString(row.source_fragment, 2_000, "fact source fragment"),
+        pageTextOrigin: row.extraction_method === "codex_vision" ? "codex_vision" : "text_layer",
       },
     })),
   };
@@ -3446,7 +3448,7 @@ export function createDocumentService(
         ).rows[0];
         if (run === undefined) throw new ResourceNotFoundError();
         const facts = await client.query<FactRow>(
-          `SELECT f.id, f.document_version_id, p.page_number, f.fact_key,
+          `SELECT f.id, f.document_version_id, p.page_number, p.extraction_method, f.fact_key,
                   f.source_fragment, f.source_name, f.source_value, f.source_unit,
                   f.proposed_canonical_code, f.proposed_normalized_value,
                   f.proposed_normalized_unit, f.proposed_reference_range,

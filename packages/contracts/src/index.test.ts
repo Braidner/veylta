@@ -821,6 +821,7 @@ test("lab extraction contract preserves immutable source data and page provenanc
         source: {
           ...extraction.items[0].source,
           documentVersionId: "10000000-0000-4000-8000-000000000006",
+          pageTextOrigin: "text_layer",
         },
       },
     ],

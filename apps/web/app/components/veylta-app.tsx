@@ -7191,12 +7191,18 @@ function DocumentReviewPanel({
               <div>
                 <strong>Страница {selectedSource.pageNumber}</strong>
                 <a href={contentUrl} download>
-                  Открыть PDF
+                  Открыть источник
                 </a>
               </div>
               <pre>
                 <code>{selectedSource.fragment}</code>
               </pre>
+              {selectedFact?.source.pageTextOrigin === "codex_vision" ? (
+                <p className="document-review-context__origin" role="note">
+                  Текст страницы — транскрипция Codex со скана или фото. Сверьте цитату с самим
+                  изображением, а не с этим текстом.
+                </p>
+              ) : null}
               {selectedFact?.referenceRange !== null &&
               selectedFact?.referenceRange !== undefined ? (
                 <dl className="document-review-context__range">

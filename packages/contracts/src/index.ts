@@ -1245,6 +1245,13 @@ export interface LabExtractionResult {
   readonly items: readonly LabExtractionFact[];
 }
 
+/**
+ * How the page text a fragment is quoted from came to exist. A text layer is the document's
+ * own bytes; `codex_vision` means the model transcribed a page image, so the reviewer should
+ * compare the quote against the picture, not trust the text.
+ */
+export type PageTextOrigin = "text_layer" | "codex_vision";
+
 export interface ExtractedLabFact extends LabExtractionFact {
   readonly id: string;
   readonly factVersion: number;
@@ -1255,6 +1262,7 @@ export interface ExtractedLabFact extends LabExtractionFact {
   readonly review: ExtractedFactReviewSummary | null;
   readonly source: LabFactPageSource & {
     readonly documentVersionId: string;
+    readonly pageTextOrigin: PageTextOrigin;
   };
 }
 

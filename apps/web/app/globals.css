@@ -8218,3 +8218,17 @@ body:has(.upload-dialog[open]) {
     justify-content: flex-start;
   }
 }
+
+/* A model transcription is not the document's own text; the reviewer is told before deciding. */
+.document-review-context__origin {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  margin: 10px 0 0;
+  color: oklch(0.42 0.12 72);
+  background: oklch(0.97 0.04 78);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
