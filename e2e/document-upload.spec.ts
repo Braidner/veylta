@@ -87,7 +87,9 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
       .getByRole("region", { name: "Проверка исходников" })
       .getByText(filename, { exact: true }),
   ).toBeVisible();
-  await expect(overview.getByText("2 значения ждут решения")).toBeVisible();
+  // The queue names the two kinds of pending value, each beside the verb that handles it.
+  await expect(overview.getByText("1 значение без замечаний")).toBeVisible();
+  await expect(overview.getByText("1 значение требует отдельной проверки")).toBeVisible();
   await expect(overview.getByRole("link", { name: "Открыть проверку" })).toBeVisible();
   await overview.getByText("Экспорт источников", { exact: true }).click();
   const evidenceBundleDownload = page.waitForEvent("download");

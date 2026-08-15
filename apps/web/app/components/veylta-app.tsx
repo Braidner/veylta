@@ -3452,76 +3452,103 @@ function ProfileOverviewPanel({
 
             <div className="profile-overview__sections">
               <section
-                className={`profile-overview__section profile-overview__section--review${state.overview.reviewQueue.documentCount === 0 ? " profile-overview__section--quiet" : ""}`}
+                className={`review-queue${state.overview.reviewQueue.documentCount === 0 ? " review-queue--empty" : ""}`}
                 aria-labelledby="overview-review-title"
               >
-                <div className="profile-overview__section-heading">
+                <header className="review-queue__heading">
                   <div>
-                    <p className="context-line">Следующее действие</p>
                     <h3 id="overview-review-title">Проверка исходников</h3>
-                  </div>
-                  <span className="profile-overview__count">
-                    <span className="visually-hidden">Документов в очереди: </span>
-                    {state.overview.reviewQueue.documentCount}
-                  </span>
-                </div>
-                {state.overview.reviewQueue.documentCount === 0 ? (
-                  <div className="profile-overview__empty">
                     <p>
-                      Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                      Значения уже извлечены — каждое ждёт вашего решения. Без замечаний можно
+                      подтвердить сразу; с замечаниями открываются по одному.
                     </p>
                   </div>
+                  {state.overview.reviewQueue.documentCount > 0 ? (
+                    <dl className="review-queue__totals">
+                      <div>
+                        <dt>Ждут решения</dt>
+                        <dd>{factCountCopy(state.overview.reviewQueue.pendingFactCount)}</dd>
+                      </div>
+                      <div>
+                        <dt>Документов</dt>
+                        <dd>{state.overview.reviewQueue.documentCount}</dd>
+                      </div>
+                    </dl>
+                  ) : null}
+                </header>
+                {state.overview.reviewQueue.documentCount === 0 ? (
+                  <p className="review-queue__done">
+                    <CheckCheck size={18} aria-hidden="true" />
+                    Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                  </p>
                 ) : (
-                  <ol className="profile-overview__list">
-                    {state.overview.reviewQueue.documents.map((document) => (
-                      <li key={document.id} className="profile-overview__row">
-                        <div className="review-queue-row__identity">
-                          <span className="review-queue-row__mark" aria-hidden="true">
-                            !
-                          </span>
-                          <div>
-                            <strong>{document.originalFilename}</strong>
-                            <span>
-                              {factCountCopy(document.pendingFactCount)}{" "}
-                              {document.pendingFactCount === 1 ? "ждёт" : "ждут"} решения
-                              {document.needsAttentionFactCount > 0
-                                ? ` · ${factCountCopy(document.needsAttentionFactCount)} ${document.needsAttentionFactCount === 1 ? "требует" : "требуют"} отдельной проверки`
-                                : ""}
+                  <ol className="review-queue__list">
+                    {state.overview.reviewQueue.documents.map((document) => {
+                      const clean = bulkConfirmableCount(document);
+                      const attention = document.needsAttentionFactCount;
+                      return (
+                        <li key={document.id} className="review-queue__item">
+                          <div className="review-queue__doc">
+                            <span className="review-queue__icon" aria-hidden="true">
+                              <FileText size={18} strokeWidth={1.8} />
                             </span>
+                            <div>
+                              <strong>{document.originalFilename}</strong>
+                              <span>
+                                {documentKindLabel(document.contentType)} ·{" "}
+                                {formatDate(document.uploadedAt)}
+                              </span>
+                            </div>
                           </div>
-                        </div>
-                        <div className="review-queue-row__actions">
-                          {canWriteProfile && bulkConfirmableCount(document) > 0 ? (
-                            <button
-                              className="button review-queue-row__action"
-                              type="button"
-                              disabled={archiveAction.kind === "confirming"}
-                              onClick={() => void confirmDocuments([document])}
+                          {/* Two explicit counts that map one-to-one onto the two verbs. */}
+                          <ul className="review-queue__chips" aria-label="Состав очереди">
+                            {clean > 0 ? (
+                              <li className="review-queue__chip review-queue__chip--clean">
+                                <CheckCheck size={14} aria-hidden="true" />
+                                {factCountCopy(clean)} без замечаний
+                              </li>
+                            ) : null}
+                            {attention > 0 ? (
+                              <li className="review-queue__chip review-queue__chip--attention">
+                                <span aria-hidden="true">!</span>
+                                {factCountCopy(attention)} {attention === 1 ? "требует" : "требуют"}{" "}
+                                отдельной проверки
+                              </li>
+                            ) : null}
+                          </ul>
+                          <div className="review-queue__actions">
+                            {canWriteProfile && clean > 0 ? (
+                              <button
+                                className="button review-queue__action"
+                                type="button"
+                                disabled={archiveAction.kind === "confirming"}
+                                onClick={() => void confirmDocuments([document])}
+                              >
+                                <CheckCheck size={16} aria-hidden="true" />
+                                {archiveAction.kind === "confirming" &&
+                                archiveAction.documentId === document.id
+                                  ? `Подтверждаем ${archiveAction.completed} из ${archiveAction.total}…`
+                                  : `Подтвердить ${clean}`}
+                              </button>
+                            ) : null}
+                            <Link
+                              className="button button--secondary review-queue__action"
+                              href={documentPath(familyId, profileId, document.id)}
                             >
-                              <CheckCheck size={16} aria-hidden="true" />
-                              {archiveAction.kind === "confirming" &&
-                              archiveAction.documentId === document.id
-                                ? `Подтверждаем ${archiveAction.completed} из ${archiveAction.total}…`
-                                : `Подтвердить без замечаний ${bulkConfirmableCount(document)}`}
-                            </button>
-                          ) : null}
-                          <Link
-                            className="button button--secondary review-queue-row__action"
-                            href={documentPath(familyId, profileId, document.id)}
-                          >
-                            Открыть проверку
-                            <ArrowRight size={16} aria-hidden="true" />
-                          </Link>
-                        </div>
-                      </li>
-                    ))}
+                              Открыть проверку
+                              <ArrowRight size={16} aria-hidden="true" />
+                            </Link>
+                          </div>
+                        </li>
+                      );
+                    })}
                   </ol>
                 )}
                 {state.overview.reviewQueue.documentCount >
                 state.overview.reviewQueue.documents.length ? (
                   <p className="profile-overview__more">
-                    Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
-                    очереди.
+                    Показаны {state.overview.reviewQueue.documents.length} последних из{" "}
+                    {state.overview.reviewQueue.documentCount} документов в очереди.
                   </p>
                 ) : null}
               </section>
