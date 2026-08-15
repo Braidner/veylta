@@ -193,6 +193,7 @@ test("profile overview is source-first, bounded, and payload-free audited", asyn
       contentType: "application/pdf",
       uploadedAt: overview.recentDocuments[0]?.uploadedAt,
       processing: overview.recentDocuments[0]?.processing,
+      intelligence: null,
     });
     assert.equal(overview.recentDocuments[0]?.processing.state, "awaiting_review");
     assert.deepEqual(overview.recentObservations, []);

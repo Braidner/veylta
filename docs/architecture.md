@@ -14,7 +14,8 @@ flowchart LR
   A --> O["Configured object storage root"]
   W["Worker"] --> D
   W --> O
-  A -. "explicit agent request" .-> C["Codex adapter"]
+  W -. "acknowledged document analysis" .-> C["Document intelligence port"]
+  A -. "explicit care-plan request" .-> C
   C --> X["Local Codex CLI"]
   X -. "user-owned ChatGPT session" .-> M["Codex model service"]
 ```
@@ -22,12 +23,17 @@ flowchart LR
 The PWA owns presentation and human decisions. The API resolves the signed-in
 account and authorizes every profile selector. Only an administrator, the
 profile's linked user, or an explicitly granted actor may open a profile. The
-Codex adapter is optional and never reads or stores Codex OAuth credentials.
+Codex adapter never reads or stores Codex OAuth credentials. The settings API
+reads the local app-server model catalog and rate-limit windows, then persists
+one validated execution profile shared by document analysis, document dialogue,
+and care-plan proposals.
 Settings use `codex app-server daemon` only for local runtime status/control.
-One acknowledged care-plan request runs a separate bounded
+Acknowledged document jobs and care-plan requests run separate bounded
 `codex exec --ephemeral` job in an empty read-only working directory, with
-tools and user customizations disabled. It receives only the latest confirmed
-summary projection, never an original document.
+tools and user customizations disabled. Document analysis receives bounded page
+content but no family/profile identifier, original filename, storage key, or
+filesystem path. Care-plan generation still receives only the latest confirmed
+summary projection.
 
 `StorageController` is the single runtime port used by API and worker. Each
 process loads the authoritative local root and generation from SQLite at start.
@@ -46,8 +52,15 @@ audit events, and durable idempotent jobs. Original documents live behind versio
 directory, and an optional S3-compatible adapter preserves the same contract
 for synthetic deployments.
 
-The public document surface is `document/v3`: immutable extracted facts remain
-separate from explicit, idempotent fact-review decisions. The separate read-only
+The public document surface is `document/v5`: immutable extracted facts remain
+separate from explicit, idempotent fact-review decisions. Each persisted decision
+summary carries the deciding account and decision time; the immutable facts read
+retains the extraction run and source version that supplied it. Together they let
+a document workspace show a decision journal without changing raw evidence. The
+workspace keeps warning-bearing facts out of bulk confirmation, pairs duplicate
+generic/lab projections by exact source provenance, and binds a full-history
+navigation to the selected canonical code. The
+separate read-only
 `observation-history/v1` boundary exposes only those immutable observations
 that were explicitly confirmed or corrected. `indicator-series/v1` is a second
 read boundary that groups only the deterministic synthetic canonical codes and
@@ -135,7 +148,13 @@ required. Shared code is extracted only when two real consumers need it.
 
 - Makes the active family member/profile unmistakable.
 - Supports family/profile creation, document upload, immutable metadata,
-  duplicate disclosure, authorized source download, and real processing status.
+  logical duplicate prevention, authorized source download under the original
+  display filename, idempotent archive deletion, and real processing status.
+- Searches the authorized profile archive through a bounded local projection of
+  the latest Russian document summaries and structured source results.
+- Presents generic document results (including genetic and categorical
+  findings) as untrusted source-derived analytics with exact page/fragment
+  provenance; it does not silently promote them into confirmed Observations.
 - Polls the processing endpoint while work is active and presents only a
   sanitized failure category plus an authorized retry action.
 - Presents source-first fact decisions and correction/confirmation, then a
@@ -184,8 +203,13 @@ required. Shared code is extracted only when two real consumers need it.
 - Creates document/idempotency rows and audit events transactionally, then
   creates a durable extraction job in the same upload transaction.
 - Exposes tenant-scoped processing status and extracted facts; accepts a retry
-  only for a terminal failed job and an explicit fact review only with exact
-  `Origin` and `Idempotency-Key`.
+  only for a terminal failed job, a fresh immutable restart only for a terminal
+  latest job, and an explicit fact review only with exact `Origin` and
+  `Idempotency-Key`.
+- Persists one append-only Russian Codex dialogue per document. Each model turn
+  receives a fresh capability-bound, read-only MCP context tool; the model
+  cannot choose another tenant/profile/document or access SQLite, storage, or
+  document bytes directly.
 - Reads `observation-history/v1` only after profile authorization, uses opaque
   keyset pagination, and audits the payload-free history access. The returned
   source-document path remains a relative selector: the download endpoint
@@ -207,6 +231,26 @@ required. Shared code is extracted only when two real consumers need it.
   successful page, and does not expose audit metadata or correlation IDs.
 - Proxies local document reads after authorization.
 
+### Document agent runtime
+
+- Uses the locally authenticated Codex CLI subscription and a persistent Codex
+  thread ID; Veylta never reads, copies, or stores OAuth credentials or API
+  keys.
+- Runs from an empty temporary directory in the read-only sandbox with shell,
+  browser, apps, plugins, memories, collaboration, computer use, and image
+  generation disabled.
+- Registers the official Model Context Protocol Streamable HTTP transport on a
+  loopback endpoint. A 256-bit bearer capability is stored only as a hash in
+  memory, expires within the bounded turn window, and is revoked when the CLI
+  process exits.
+- Exposes only `get_document_context` in Task 36. It re-authorizes the actor and
+  exact server-derived scope on every call and returns bounded source-first
+  projections, never credentials, storage keys, filesystem paths, or raw file
+  bytes.
+- Persists user/assistant messages and Codex model/runtime provenance in
+  SQLite. The first frontend uses ordinary React state and HTTP; no LangGraph
+  orchestration or chat-component framework is introduced.
+
 ### Worker
 
 - Polls and claims SQLite-backed jobs with bounded leases and retry counters.
@@ -217,6 +261,12 @@ required. Shared code is extracted only when two real consumers need it.
 - It does not create a confirmed `Observation`; only a user review can do that
   in the first slice.
 - Exhausted Task 5 work moves to a visible dead-letter state.
+- A user-requested restart creates another job/run/result chain. Latest-result
+  projections move forward without deleting or rewriting prior provenance.
+- Every real queue, claim, stage, completion, retry, and terminal-failure
+  transition also appends one closed-code `ProcessingJobEvent`. The public
+  journal exposes only code, attempt number, and timestamp; it is not stdout,
+  model token streaming, prompt content, or chain-of-thought.
 
 ### SQLite
 
@@ -246,21 +296,25 @@ sequenceDiagram
   participant S as ObjectStorage/v1 local
   participant D as SQLite
   participant W as Worker
+  participant C as Codex provider
 
   B->>A: POST synthetic PDF, PNG, or JPEG for patient profile
   A->>A: Authenticate, authorize, validate limits/signature
   A->>S: putStream(staging key) while calculating SHA-256
   A->>D: BEGIN IMMEDIATE; recheck idempotency/blob
   A->>S: Finalize deterministic immutable tenant-scoped blob
-  A->>D: Insert document/version + audit + idempotency + extraction job; COMMIT
-  A-->>B: 202 uploaded / processing queued / possible duplicate
+  A->>D: Reuse an active profile document, or insert document/version + audit + idempotency + extraction job; COMMIT
+  A-->>B: 200 existing document, or 202 uploaded / processing queued
   W->>D: Claim durable job lease
   W->>S: getStream(document version)
-  W->>W: Extract text + deterministic lab-extraction/v1 parse
-  W->>D: Transaction: pages + extraction run + immutable extracted facts
+  W->>W: Extract bounded page evidence
+  W->>C: Classify + summarize + source-bound extraction (closed schema)
+  C-->>W: Russian summaries + generic results + quantitative facts with exact fragments
+  W->>W: Fail-closed schema and provenance validation
+  W->>D: Transaction: pages + intelligence + run + immutable facts
   W-->>D: job succeeded; run awaiting_review
   B->>A: GET processing / facts
-  Note over B,D: Task 6 review decisions create optional observations; Task 7 reads confirmed observations with re-authorized source links
+  Note over B,D: Explicit review decisions create optional observations; history re-authorizes every source link
 ```
 
 When an owner archives a profile, the API transaction sets only

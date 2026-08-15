@@ -1,12 +1,28 @@
 import { createHash, randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import {
+  DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_RESULT_STATUSES,
+  DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
+  DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
+  DOCUMENT_PROCESSING_EVENT_CODES,
+  DOCUMENT_SEARCH_CONTRACT_VERSION,
+  type DocumentDeleteResponse,
+  type DocumentDetail,
   type DocumentFactsResponse,
+  type DocumentIntelligenceResult,
+  type DocumentIntelligenceStructuredResult,
+  type DocumentIntelligenceSummary,
+  type DocumentProcessingActivityEvent,
   type DocumentProcessingResponse,
+  type DocumentProcessingRestartResponse,
   type DocumentProcessingRetryResponse,
   type DocumentProcessingStatus,
+  type DocumentSearchResponse,
   type DocumentSummary,
+  type DocumentUploadDisposition,
   type FactReviewCommand,
   type FactReviewOutcome,
   type FactReviewResponse,
@@ -24,6 +40,7 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
   type LabFactReferenceRange,
   type LabFactValidationIssue,
+  MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
   MAX_HEALTH_SUMMARY_EVIDENCE,
   MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE,
   MAX_INDICATOR_SERIES_PAGE_SIZE,
@@ -50,7 +67,13 @@ import {
   ResourceNotFoundError,
   type SessionActor,
 } from "../family/family-service.js";
-import { enqueueDocumentExtractionInTransaction } from "../processing/processing-job-service.js";
+import { resolveAnalyteMapping } from "../processing/analyte-mapping.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../processing/codex-document-intelligence-provider.js";
+import {
+  appendProcessingEventInTransaction,
+  enqueueDocumentExtractionInTransaction,
+  enqueueDocumentReanalysisInTransaction,
+} from "../processing/processing-job-service.js";
 import {
   createObjectStorageKey,
   type ObjectMetadata,
@@ -77,6 +100,7 @@ export interface DocumentContent {
   body: Readable;
   byteSize: number;
   contentType: SyntheticDocumentContentType;
+  originalFilename: string;
 }
 
 export interface EvidenceBundleContent {
@@ -110,6 +134,16 @@ export interface IndicatorSeriesQuery {
   cursor?: string;
 }
 
+export interface DocumentSearchQuery {
+  q: string;
+  limit?: string;
+}
+
+export interface DocumentUploadAcceptance {
+  readonly disposition: DocumentUploadDisposition;
+  readonly document: DocumentSummary;
+}
+
 export interface DocumentService {
   acceptUpload(
     actor: SessionActor,
@@ -117,7 +151,7 @@ export interface DocumentService {
     staged: StagedDocument,
     idempotencyKey: string,
     correlationId: string,
-  ): Promise<DocumentSummary>;
+  ): Promise<DocumentUploadAcceptance>;
   discardStaged(staged: StagedDocument): Promise<void>;
   getContent(
     actor: SessionActor,
@@ -138,7 +172,19 @@ export interface DocumentService {
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string },
     correlationId: string,
-  ): Promise<DocumentSummary>;
+  ): Promise<DocumentDetail>;
+  searchDocuments(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string },
+    query: DocumentSearchQuery,
+    correlationId: string,
+  ): Promise<DocumentSearchResponse>;
+  deleteDocument(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; documentId: string },
+    idempotencyKey: string,
+    correlationId: string,
+  ): Promise<{ response: DocumentDeleteResponse; replayed: boolean }>;
   getProcessing(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string },
@@ -202,6 +248,12 @@ export interface DocumentService {
     idempotencyKey: string,
     correlationId: string,
   ): Promise<DocumentProcessingRetryResponse>;
+  restartProcessing(
+    actor: SessionActor,
+    scope: { familyId: string; profileId: string; documentId: string },
+    idempotencyKey: string,
+    correlationId: string,
+  ): Promise<DocumentProcessingRestartResponse>;
   requireProfileWriteAccess(
     actor: SessionActor,
     scope: { familyId: string; profileId: string },
@@ -261,6 +313,12 @@ interface ProcessingCountsRow {
   needs_review_count: number;
 }
 
+interface ProcessingEventRow {
+  code: string;
+  attempt: number;
+  occurred_at: string;
+}
+
 interface FactRow {
   id: string;
   document_version_id: string;
@@ -284,10 +342,13 @@ interface FactRow {
   review_id: string | null;
   decision_outcome: string | null;
   review_decided_at: string | null;
+  review_decided_by_user_id: string | null;
+  review_decided_by_display_name: string | null;
   review_observation_id: string | null;
   corrected_source_name: string | null;
   corrected_source_value: string | null;
   corrected_source_unit: string | null;
+  canonical_display_name: string | null;
 }
 
 interface FactForReviewRow {
@@ -300,6 +361,8 @@ interface FactForReviewRow {
   source_value: string;
   source_unit: string;
   proposed_canonical_code: string | null;
+  proposed_normalized_value: string | null;
+  proposed_normalized_unit: string | null;
   proposed_reference_range: string | null;
   proposed_specimen: string | null;
   proposed_sampled_at: string | null;
@@ -315,6 +378,8 @@ interface ReviewRequestRow {
   source_fact_version: number;
   outcome: string;
   decided_at: string;
+  decided_by_user_id: string;
+  decided_by_display_name: string;
   observation_id: string | null;
 }
 
@@ -324,6 +389,8 @@ interface ReviewDecisionRow {
   source_fact_version: number;
   outcome: string;
   decided_at: string;
+  decided_by_user_id: string;
+  decided_by_display_name: string;
   observation_id: string | null;
 }
 
@@ -375,8 +442,9 @@ interface ObservationHistoryCursor {
 
 interface IndicatorCatalogRow {
   canonical_code: string;
-  source_unit: string;
-  source_value: string;
+  comparison_unit: string;
+  comparison_value: string;
+  display_name: string;
   timeline_at: string;
   id: string;
 }
@@ -386,6 +454,7 @@ interface IndicatorSeriesCursor {
   unit: string;
   id: string;
   timelineAt: string;
+  confirmedAt: string;
 }
 
 interface ProfileOverviewDocumentRow extends DocumentRow {
@@ -399,6 +468,32 @@ interface ProfileOverviewDocumentRow extends DocumentRow {
   fact_count: number | null;
   pending_fact_count: number | null;
   needs_attention_fact_count: number | null;
+  intelligence_provider: string | null;
+  intelligence_model_id: string | null;
+  intelligence_runtime_version: string | null;
+  intelligence_schema_version: string | null;
+  intelligence_category: string | null;
+  intelligence_title: string | null;
+  intelligence_short_summary: string | null;
+  intelligence_document_date: string | null;
+  intelligence_confidence: number | null;
+}
+
+interface DocumentIntelligenceSummaryRow {
+  provider: string;
+  model_id: string;
+  runtime_version: string;
+  schema_version: string;
+  category: string;
+  title: string;
+  short_summary: string;
+  document_date: string | null;
+  confidence: number;
+}
+
+interface DocumentIntelligenceRow extends DocumentIntelligenceSummaryRow {
+  detailed_summary: string;
+  structured_results_json: string;
 }
 
 interface ProfileOverviewProfileRow {
@@ -503,6 +598,12 @@ interface UploadRequestRow {
   request_sha256: string;
 }
 
+interface DeleteRequestRow {
+  document_id: string;
+  patient_profile_id: string;
+  deleted_at: string;
+}
+
 interface BlobRow {
   id: string;
   storage_key: string;
@@ -569,13 +670,45 @@ const canonicalUuidPattern =
 const historyCursorPattern = /^[A-Za-z0-9_-]{1,500}$/;
 const defaultObservationHistoryPageSize = 50;
 const defaultIndicatorSeriesPageSize = 100;
-const syntheticIndicatorCatalog: ReadonlyMap<string, (typeof SYNTHETIC_INDICATOR_CATALOG)[number]> =
-  new Map(SYNTHETIC_INDICATOR_CATALOG.map((indicator) => [indicator.canonicalCode, indicator]));
+const defaultDocumentSearchPageSize = 20;
+const maximumDocumentSearchPageSize = 50;
+const syntheticIndicatorCatalog: ReadonlySet<string> = new Set(
+  SYNTHETIC_INDICATOR_CATALOG.map((indicator) => indicator.canonicalCode),
+);
 
 function historyCanonicalCode(value: string | undefined): string | null {
   if (value === undefined) return null;
   if (!canonicalCodePattern.test(value)) throw new DomainValidationError();
   return value;
+}
+
+function documentSearchQuery(value: string): string {
+  const normalized = value
+    .normalize("NFKC")
+    .toLocaleLowerCase("ru-RU")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (
+    [...normalized].length < 2 ||
+    [...normalized].length > 120 ||
+    [...normalized].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && (codePoint <= 31 || codePoint === 127);
+    })
+  ) {
+    throw new DomainValidationError();
+  }
+  return normalized;
+}
+
+function documentSearchLimit(value: string | undefined): number {
+  if (value === undefined) return defaultDocumentSearchPageSize;
+  if (!/^(?:[1-9]|[1-4][0-9]|50)$/.test(value)) throw new DomainValidationError();
+  const limit = Number(value);
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > maximumDocumentSearchPageSize) {
+    throw new DomainValidationError();
+  }
+  return limit;
 }
 
 function observationHistoryLimit(value: string | undefined): number {
@@ -704,14 +837,20 @@ function decodeIndicatorSeriesCursor(
       throw new Error("Invalid cursor object");
     }
     const record = parsed as Record<string, unknown>;
-    if (Object.keys(record).sort().join(",") !== "c,id,t,u,v" || record.v !== 1) {
+    if (Object.keys(record).sort().join(",") !== "c,ca,id,t,u,v" || record.v !== 2) {
       throw new Error("Invalid cursor shape");
     }
     if (record.c !== canonicalCode || record.u !== unit || typeof record.id !== "string") {
       throw new Error("Cursor query mismatch");
     }
     if (!canonicalUuidPattern.test(record.id)) throw new Error("Invalid cursor id");
-    return { canonicalCode, unit, id: record.id, timelineAt: cursorTimestamp(record.t) };
+    return {
+      canonicalCode,
+      unit,
+      id: record.id,
+      timelineAt: cursorTimestamp(record.t),
+      confirmedAt: cursorTimestamp(record.ca),
+    };
   } catch (error) {
     if (error instanceof DomainValidationError) throw error;
     throw new DomainValidationError();
@@ -721,8 +860,9 @@ function decodeIndicatorSeriesCursor(
 function encodeIndicatorSeriesCursor(cursor: IndicatorSeriesCursor): string {
   return Buffer.from(
     JSON.stringify({
-      v: 1,
+      v: 2,
       t: cursor.timelineAt,
+      ca: cursor.confirmedAt,
       id: cursor.id,
       c: cursor.canonicalCode,
       u: cursor.unit,
@@ -822,8 +962,10 @@ function processingFailureCategory(
       return "document_unavailable";
     case "INVALID_DOCUMENT":
       return "invalid_document";
-    case "UNSUPPORTED_DOCUMENT":
-      return "unsupported_document";
+    case "AGENT_UNAVAILABLE":
+      return "agent_unavailable";
+    case "AGENT_OUTPUT_INVALID":
+      return "agent_output_invalid";
     case "EXTRACTION_FAILED":
       return "extraction_failed";
     case "VALIDATION_FAILED":
@@ -914,6 +1056,177 @@ function profileOverviewProcessing(row: ProfileOverviewDocumentRow): DocumentPro
   return processingStatus(job, counts);
 }
 
+function documentIntelligenceSummary(
+  row: DocumentIntelligenceSummaryRow | undefined,
+): DocumentIntelligenceSummary | null {
+  if (row === undefined) return null;
+  const confidence = Number(row.confidence);
+  if (
+    row.provider !== "codex" ||
+    (row.schema_version !== "document-intelligence/v1" &&
+      row.schema_version !== DOCUMENT_INTELLIGENCE_CONTRACT_VERSION) ||
+    !DOCUMENT_CATEGORIES.includes(row.category as (typeof DOCUMENT_CATEGORIES)[number]) ||
+    !Number.isFinite(confidence) ||
+    confidence < 0 ||
+    confidence > 1 ||
+    (row.document_date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(row.document_date))
+  ) {
+    throw new ObjectStorageIntegrityError("Stored document intelligence is invalid");
+  }
+  return {
+    contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+    provider: "codex",
+    modelId: requiredBoundedString(row.model_id, 100, "document intelligence model"),
+    runtimeVersion: requiredBoundedString(
+      row.runtime_version,
+      100,
+      "document intelligence runtime",
+    ),
+    category: row.category as (typeof DOCUMENT_CATEGORIES)[number],
+    title: requiredBoundedString(row.title, 200, "document intelligence title"),
+    shortSummary: requiredBoundedString(
+      row.short_summary,
+      500,
+      "document intelligence short summary",
+    ),
+    documentDate: row.document_date,
+    confidence,
+  };
+}
+
+function documentIntelligenceStructuredResults(
+  encoded: string,
+): readonly DocumentIntelligenceStructuredResult[] {
+  const parsed = parseStoredObject<unknown>(encoded, "document intelligence structured results");
+  if (!Array.isArray(parsed) || parsed.length > MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS) {
+    throw new ObjectStorageIntegrityError(
+      "Stored document intelligence structured results is invalid",
+    );
+  }
+  const allowedTypes = new Set<string>(DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES);
+  const allowedStatuses = new Set<string>(DOCUMENT_INTELLIGENCE_RESULT_STATUSES);
+  const resultKeys = new Set<string>();
+  return parsed.map((value) => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new ObjectStorageIntegrityError(
+        "Stored document intelligence structured result is invalid",
+      );
+    }
+    const result = value as Record<string, unknown>;
+    const resultKey = requiredBoundedString(
+      result.resultKey,
+      100,
+      "document intelligence result key",
+    );
+    const type = result.type;
+    const confidence = Number(result.confidence);
+    const status = result.status;
+    const source = result.source;
+    if (
+      !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(resultKey) ||
+      resultKeys.has(resultKey) ||
+      typeof type !== "string" ||
+      !allowedTypes.has(type) ||
+      typeof status !== "string" ||
+      !allowedStatuses.has(status) ||
+      !Number.isFinite(confidence) ||
+      confidence < 0 ||
+      confidence > 1 ||
+      typeof source !== "object" ||
+      source === null ||
+      Array.isArray(source)
+    ) {
+      throw new ObjectStorageIntegrityError(
+        "Stored document intelligence structured result is invalid",
+      );
+    }
+    resultKeys.add(resultKey);
+    const sourceRecord = source as Record<string, unknown>;
+    const pageNumber = Number(sourceRecord.pageNumber);
+    const fragment = requiredBoundedString(
+      sourceRecord.fragment,
+      2_000,
+      "document intelligence result source fragment",
+    );
+    const date = nullableBoundedString(result.date, 10, "document intelligence result date");
+    if (
+      !Number.isSafeInteger(pageNumber) ||
+      pageNumber < 1 ||
+      pageNumber > 10_000 ||
+      fragment.length < 12 ||
+      (date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(date))
+    ) {
+      throw new ObjectStorageIntegrityError(
+        "Stored document intelligence structured result is invalid",
+      );
+    }
+    return {
+      resultKey,
+      type: type as DocumentIntelligenceStructuredResult["type"],
+      label: requiredBoundedString(result.label, 200, "document intelligence result label"),
+      value: nullableBoundedString(result.value, 500, "document intelligence result value"),
+      unit: nullableBoundedString(result.unit, 100, "document intelligence result unit"),
+      code: nullableBoundedString(result.code, 100, "document intelligence result code"),
+      lab: nullableBoundedString(result.lab, 200, "document intelligence result lab"),
+      specimen: nullableBoundedString(
+        result.specimen,
+        200,
+        "document intelligence result specimen",
+      ),
+      date,
+      status: status as DocumentIntelligenceStructuredResult["status"],
+      confidence,
+      source: { pageNumber, fragment },
+    };
+  });
+}
+
+function documentIntelligenceDetail(
+  row: DocumentIntelligenceRow | undefined,
+): DocumentIntelligenceResult | null {
+  const intelligence = documentIntelligenceSummary(row);
+  if (intelligence === null || row === undefined) return null;
+  return {
+    ...intelligence,
+    detailedSummary: requiredBoundedString(
+      row.detailed_summary,
+      4_000,
+      "document intelligence detailed summary",
+    ),
+    structuredResults: documentIntelligenceStructuredResults(row.structured_results_json),
+  };
+}
+
+function profileOverviewIntelligence(
+  row: ProfileOverviewDocumentRow,
+): DocumentIntelligenceSummary | null {
+  const values = [
+    row.intelligence_provider,
+    row.intelligence_model_id,
+    row.intelligence_runtime_version,
+    row.intelligence_schema_version,
+    row.intelligence_category,
+    row.intelligence_title,
+    row.intelligence_short_summary,
+    row.intelligence_confidence,
+  ];
+  if (values.every((value) => value === null)) return null;
+  if (values.some((value) => value === null)) {
+    throw new ObjectStorageIntegrityError("Stored document intelligence is incomplete");
+  }
+  return documentIntelligenceSummary({
+    provider: row.intelligence_provider as string,
+    model_id: row.intelligence_model_id as string,
+    runtime_version: row.intelligence_runtime_version as string,
+    schema_version: row.intelligence_schema_version as string,
+    category: row.intelligence_category as string,
+    title: row.intelligence_title as string,
+    short_summary: row.intelligence_short_summary as string,
+    document_date: row.intelligence_document_date,
+    confidence: row.intelligence_confidence as number,
+  });
+}
+
 function profileOverviewProfile(row: ProfileOverviewProfileRow): PatientProfileSummary {
   if (row.kind !== "adult" && row.kind !== "dependent") {
     throw new ObjectStorageIntegrityError("Stored profile kind is invalid");
@@ -934,13 +1247,14 @@ function profileOverviewProfile(row: ProfileOverviewProfileRow): PatientProfileS
 function profileOverviewDocument(
   row: ProfileOverviewDocumentRow,
 ): ProfileOverviewResponse["recentDocuments"][number] {
-  const document = summary(row, profileOverviewProcessing(row));
+  const document = summary(row, profileOverviewProcessing(row), profileOverviewIntelligence(row));
   return {
     id: document.id,
     originalFilename: document.originalFilename,
     contentType: document.contentType,
     uploadedAt: document.uploadedAt,
     processing: document.processing,
+    intelligence: document.intelligence,
   };
 }
 
@@ -1011,6 +1325,7 @@ function evidenceBundleDocument(
 function summary(
   row: DocumentRow,
   processing: DocumentProcessingStatus = { state: "not_started" },
+  intelligence: DocumentIntelligenceSummary | null = null,
 ): DocumentSummary {
   return {
     id: row.id,
@@ -1028,7 +1343,45 @@ function summary(
       profileId: row.duplicate_profile_id,
     },
     processing,
+    intelligence,
   };
+}
+
+async function intelligenceSummaryForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<DocumentIntelligenceSummary | null> {
+  const stored = (
+    await client.query<DocumentIntelligenceSummaryRow>(
+      `SELECT provider, model_id, runtime_version, schema_version, category,
+              title, short_summary, document_date, confidence
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      [row.family_id, row.document_version_id],
+    )
+  ).rows[0];
+  return documentIntelligenceSummary(stored);
+}
+
+async function intelligenceDetailForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<DocumentIntelligenceResult | null> {
+  const stored = (
+    await client.query<DocumentIntelligenceRow>(
+      `SELECT provider, model_id, runtime_version, schema_version, category,
+              title, short_summary, detailed_summary, structured_results_json,
+              document_date, confidence
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2
+        ORDER BY created_at DESC, id DESC
+        LIMIT 1`,
+      [row.family_id, row.document_version_id],
+    )
+  ).rows[0];
+  return documentIntelligenceDetail(stored);
 }
 
 function metadataMatches(
@@ -1279,7 +1632,16 @@ async function createHealthSummaryIfNeeded(
          ON decision.family_id = fact.family_id AND decision.extracted_fact_id = fact.id
       WHERE r.family_id = $1
         AND document.patient_profile_id = $2
+        AND document.deleted_at IS NULL
         AND r.status = 'awaiting_review'
+        AND r.id = (
+          SELECT latest_run.id
+            FROM extraction_runs latest_run
+           WHERE latest_run.family_id = r.family_id
+             AND latest_run.document_version_id = r.document_version_id
+           ORDER BY latest_run.created_at DESC, latest_run.id DESC
+           LIMIT 1
+        )
         AND decision.id IS NULL`,
     [input.familyId, input.profileId],
   );
@@ -1354,7 +1716,7 @@ async function documentRow(
             d.status,
             d.original_filename,
             d.uploaded_at,
-            d.duplicate_of_document_id,
+            duplicate.id AS duplicate_of_document_id,
             duplicate.patient_profile_id AS duplicate_profile_id,
             COALESCE(bt.content_type, b.content_type) AS content_type,
             b.byte_size,
@@ -1400,9 +1762,11 @@ async function documentRow(
      LEFT JOIN documents duplicate
        ON duplicate.family_id = d.family_id
       AND duplicate.id = d.duplicate_of_document_id
+      AND duplicate.deleted_at IS NULL
      WHERE d.family_id = $1
        AND d.patient_profile_id = $2
-       AND d.id = $3`,
+       AND d.id = $3
+       AND d.deleted_at IS NULL`,
     [scope.familyId, scope.profileId, scope.documentId, actor.userId, access],
   );
   const row = result.rows[0];
@@ -1447,6 +1811,39 @@ async function processingForDocument(
     [row.family_id, row.document_version_id],
   );
   return processingStatus(jobs.rows[0], results.rows[0]);
+}
+
+const processingEventCodes = new Set<string>(DOCUMENT_PROCESSING_EVENT_CODES);
+
+async function processingActivityForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<readonly DocumentProcessingActivityEvent[]> {
+  const events = await client.query<ProcessingEventRow>(
+    `SELECT e.code, e.attempt, e.occurred_at
+       FROM processing_job_events e
+      WHERE e.family_id = $1
+        AND e.processing_job_id = (
+          SELECT id
+            FROM processing_jobs
+           WHERE family_id = $1 AND document_version_id = $2
+           ORDER BY created_at DESC, id DESC
+           LIMIT 1
+        )
+      ORDER BY e.sequence`,
+    [row.family_id, row.document_version_id],
+  );
+  return events.rows.map((event) => {
+    const attempt = asCount(event.attempt, "processing activity attempt");
+    if (attempt > 100 || !processingEventCodes.has(event.code)) {
+      throw new ObjectStorageIntegrityError("Stored processing activity is invalid");
+    }
+    return {
+      code: event.code as DocumentProcessingActivityEvent["code"],
+      attempt,
+      occurredAt: canonicalTimestamp(event.occurred_at),
+    };
+  });
 }
 
 function parseStoredObject<T>(value: string, label: string): T {
@@ -1642,6 +2039,14 @@ function factReviewResponse(row: ReviewDecisionRow): FactReviewResponse {
       factVersion,
       outcome,
       decidedAt: canonicalTimestamp(row.decided_at),
+      decidedBy: {
+        id: requiredBoundedString(row.decided_by_user_id, 200, "fact review actor"),
+        displayName: requiredBoundedString(
+          row.decided_by_display_name,
+          120,
+          "fact review actor display name",
+        ),
+      },
       observationId:
         observationId === null
           ? null
@@ -1670,6 +2075,8 @@ function factReviewSummary(row: FactRow): DocumentFactsResponse["items"][number]
   const decisionFields = [
     row.review_id,
     row.review_decided_at,
+    row.review_decided_by_user_id,
+    row.review_decided_by_display_name,
     row.review_observation_id,
     row.corrected_source_name,
     row.corrected_source_value,
@@ -1732,6 +2139,14 @@ function factReviewSummary(row: FactRow): DocumentFactsResponse["items"][number]
     decidedAt: canonicalTimestamp(
       requiredBoundedString(row.review_decided_at, 100, "fact review time"),
     ),
+    decidedBy: {
+      id: requiredBoundedString(row.review_decided_by_user_id, 200, "fact review actor"),
+      displayName: requiredBoundedString(
+        row.review_decided_by_display_name,
+        120,
+        "fact review actor display name",
+      ),
+    },
     observationId,
     correction,
   };
@@ -1748,6 +2163,11 @@ function factResponse(
     items: rows.map((row) => ({
       id: row.id,
       factVersion: 1,
+      canonicalDisplayName: nullableBoundedString(
+        row.canonical_display_name,
+        200,
+        "fact canonical display name",
+      ),
       factKey: requiredBoundedString(row.fact_key, 100, "fact key"),
       sourceName: requiredBoundedString(row.source_name, 200, "fact source name"),
       sourceValue: requiredBoundedString(row.source_value, 100, "fact source value"),
@@ -1799,6 +2219,34 @@ function factResponse(
         fragment: requiredBoundedString(row.source_fragment, 2_000, "fact source fragment"),
       },
     })),
+  };
+}
+
+async function enrichStoredFactRow(client: DatabaseClient, row: FactRow): Promise<FactRow> {
+  const mapped = await resolveAnalyteMapping(client, {
+    sourceName: row.source_name,
+    sourceUnit: row.source_unit,
+    sourceValue: row.source_value,
+    proposedLaboratory: row.proposed_laboratory,
+    proposedNormalizedValue: row.proposed_normalized_value,
+  });
+  const canonicalCode = mapped?.canonicalCode ?? row.proposed_canonical_code;
+  if (canonicalCode === null) return { ...row, canonical_display_name: null };
+  const displayName =
+    mapped?.displayName ??
+    (
+      await client.query<{ display_name: string }>(
+        "SELECT display_name FROM analyte_catalog WHERE canonical_code = $1",
+        [canonicalCode],
+      )
+    ).rows[0]?.display_name ??
+    null;
+  return {
+    ...row,
+    canonical_display_name: displayName,
+    proposed_canonical_code: canonicalCode,
+    proposed_normalized_value: mapped?.normalizedValue ?? row.proposed_normalized_value,
+    proposed_normalized_unit: mapped?.normalizedUnit ?? row.proposed_normalized_unit,
   };
 }
 
@@ -2186,6 +2634,14 @@ async function resetDeadLetterJob(
     [timestamp, scope.familyId, scope.documentVersionId, scope.jobId],
   );
   if (updated.rowCount !== 1) throw new ProcessingNotAvailableError();
+  await appendProcessingEventInTransaction(client, {
+    familyId: scope.familyId,
+    documentVersionId: scope.documentVersionId,
+    jobId: scope.jobId,
+    code: "queued",
+    attempt: 0,
+    occurredAt: now,
+  });
 }
 
 export function createDocumentService(
@@ -2225,7 +2681,7 @@ export function createDocumentService(
                 d.status,
                 d.original_filename,
                 d.uploaded_at,
-                d.duplicate_of_document_id,
+                duplicate.id AS duplicate_of_document_id,
                 duplicate.patient_profile_id AS duplicate_profile_id,
                 COALESCE(blob_type.content_type, b.content_type) AS content_type,
                 b.byte_size,
@@ -2240,7 +2696,8 @@ export function createDocumentService(
              ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
            LEFT JOIN documents duplicate
              ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
-          WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            AND duplicate.deleted_at IS NULL
+          WHERE d.family_id = $1 AND d.patient_profile_id = $2 AND d.deleted_at IS NULL
           ORDER BY d.uploaded_at DESC, d.id DESC
           LIMIT $3`,
         [scope.familyId, scope.profileId, archiveOptions.maximumDocuments + 1],
@@ -2284,6 +2741,10 @@ export function createDocumentService(
                ON page.family_id = o.family_id
               AND page.id = o.document_page_id
               AND page.document_version_id = o.document_version_id
+             JOIN documents source_document
+               ON source_document.family_id = o.family_id
+              AND source_document.id = o.document_id
+              AND source_document.deleted_at IS NULL
              JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
              LEFT JOIN observation_reference_ranges reference_range
                ON reference_range.family_id = o.family_id
@@ -2404,7 +2865,19 @@ export function createDocumentService(
                AND document_upload_requests.idempotency_key_hash = $3`,
               [scope.familyId, actor.userId, keyHash],
             );
-            const previous = replay.rows[0];
+            const reuseReplay =
+              replay.rows[0] === undefined
+                ? await client.query<UploadRequestRow>(
+                    `SELECT document_id, patient_profile_id, request_byte_size,
+                            request_content_type, request_sha256
+                       FROM document_upload_reuse_requests
+                      WHERE family_id = $1
+                        AND actor_user_id = $2
+                        AND idempotency_key_hash = $3`,
+                    [scope.familyId, actor.userId, keyHash],
+                  )
+                : null;
+            const previous = replay.rows[0] ?? reuseReplay?.rows[0];
             if (previous !== undefined) {
               if (
                 previous.patient_profile_id !== scope.profileId ||
@@ -2431,7 +2904,7 @@ export function createDocumentService(
                 correlationId,
                 createdAt: new Date(),
               });
-              return replayed;
+              return { row: replayed, disposition: "already_exists" as const };
             }
 
             const existingBlobs = await client.query<BlobRow>(
@@ -2496,6 +2969,60 @@ export function createDocumentService(
               }
             }
 
+            const existingLogical = (
+              await client.query<{ id: string }>(
+                `SELECT document.id
+                   FROM document_versions version
+                   JOIN documents document
+                     ON document.family_id = version.family_id
+                    AND document.id = version.document_id
+                  WHERE version.family_id = $1
+                    AND version.blob_id = $2
+                    AND version.version_number = 1
+                    AND document.patient_profile_id = $3
+                    AND document.deleted_at IS NULL
+                  ORDER BY document.uploaded_at, document.id
+                  LIMIT 1`,
+                [scope.familyId, blob.id, scope.profileId],
+              )
+            ).rows[0];
+            if (existingLogical !== undefined) {
+              const now = new Date();
+              await client.query(
+                `INSERT INTO document_upload_reuse_requests
+                   (id, family_id, actor_user_id, patient_profile_id, idempotency_key_hash,
+                    request_sha256, request_content_type, request_byte_size, document_id, created_at)
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+                [
+                  randomUUID(),
+                  scope.familyId,
+                  actor.userId,
+                  scope.profileId,
+                  keyHash,
+                  staged.metadata.sha256,
+                  staged.metadata.contentType,
+                  staged.metadata.byteSize,
+                  existingLogical.id,
+                  now,
+                ],
+              );
+              const existing = await documentRow(
+                client,
+                actor,
+                { ...scope, documentId: existingLogical.id },
+                "write",
+              );
+              await audit(client, {
+                familyId: scope.familyId,
+                actorUserId: actor.userId,
+                action: "document.upload.deduplicated",
+                resourceId: existing.id,
+                correlationId,
+                createdAt: now,
+              });
+              return { row: existing, disposition: "already_exists" as const };
+            }
+
             const duplicate = await client.query<{
               id: string;
               patient_profile_id: string;
@@ -2505,7 +3032,7 @@ export function createDocumentService(
              JOIN documents d
                ON d.family_id = v.family_id
               AND d.id = v.document_id
-             WHERE v.family_id = $1 AND v.blob_id = $2
+             WHERE v.family_id = $1 AND v.blob_id = $2 AND d.deleted_at IS NULL
              ORDER BY d.uploaded_at, d.id
              LIMIT 1`,
               [scope.familyId, blob.id],
@@ -2586,22 +3113,28 @@ export function createDocumentService(
               createdAt: now,
             });
             return {
-              id: documentId,
-              family_id: scope.familyId,
-              patient_profile_id: scope.profileId,
-              status: "uploaded",
-              original_filename: staged.originalFilename,
-              uploaded_at: uploadedAt,
-              duplicate_of_document_id: duplicateRow?.id ?? null,
-              duplicate_profile_id: duplicateRow?.patient_profile_id ?? null,
-              content_type: blob.content_type,
-              byte_size: blob.byte_size,
-              sha256: blob.sha256,
-              storage_key: blob.storage_key,
-              document_version_id: documentVersionId,
-            } satisfies DocumentRow;
+              row: {
+                id: documentId,
+                family_id: scope.familyId,
+                patient_profile_id: scope.profileId,
+                status: "uploaded",
+                original_filename: staged.originalFilename,
+                uploaded_at: uploadedAt,
+                duplicate_of_document_id: duplicateRow?.id ?? null,
+                duplicate_profile_id: duplicateRow?.patient_profile_id ?? null,
+                content_type: blob.content_type,
+                byte_size: blob.byte_size,
+                sha256: blob.sha256,
+                storage_key: blob.storage_key,
+                document_version_id: documentVersionId,
+              } satisfies DocumentRow,
+              disposition: "created" as const,
+            };
           })
-          .then((row) => summary(row, { state: "queued", updatedAt: row.uploaded_at }));
+          .then(({ row, disposition }) => ({
+            disposition,
+            document: summary(row, { state: "queued", updatedAt: row.uploaded_at }),
+          }));
       } finally {
         await storage.deleteStaging(staged.metadata.key).catch(() => undefined);
       }
@@ -2619,7 +3152,154 @@ export function createDocumentService(
           correlationId,
           createdAt: new Date(),
         });
-        return summary(row, await processingForDocument(client, row));
+        const intelligence = await intelligenceDetailForDocument(client, row);
+        return {
+          ...summary(row, await processingForDocument(client, row), intelligence),
+          intelligence,
+        };
+      });
+    },
+
+    async searchDocuments(actor, requestedScope, requestedQuery, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const query = documentSearchQuery(requestedQuery.q);
+      const limit = documentSearchLimit(requestedQuery.limit);
+      return database.transaction(async (client) => {
+        await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
+        const matching = await client.query<{ id: string }>(
+          `SELECT document.id
+             FROM documents document
+             JOIN document_versions version
+               ON version.family_id = document.family_id
+              AND version.document_id = document.id
+              AND version.version_number = 1
+             JOIN document_intelligence_results intelligence
+               ON intelligence.id = (
+                 SELECT latest.id
+                   FROM document_intelligence_results latest
+                  WHERE latest.family_id = version.family_id
+                    AND latest.document_version_id = version.id
+                  ORDER BY latest.created_at DESC, latest.id DESC
+                  LIMIT 1
+               )
+            WHERE document.family_id = $1
+              AND document.patient_profile_id = $2
+              AND document.deleted_at IS NULL
+              AND instr(intelligence.search_text, $3) > 0
+            ORDER BY COALESCE(intelligence.document_date, document.uploaded_at) DESC,
+                     document.uploaded_at DESC, document.id DESC
+            LIMIT $4`,
+          [scope.familyId, scope.profileId, query, limit],
+        );
+        const documents: DocumentSummary[] = [];
+        for (const match of matching.rows) {
+          const row = await documentRow(client, actor, { ...scope, documentId: match.id });
+          documents.push(
+            summary(
+              row,
+              await processingForDocument(client, row),
+              await intelligenceSummaryForDocument(client, row),
+            ),
+          );
+        }
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "profile.documents.searched",
+          resourceType: "PatientProfile",
+          resourceId: scope.profileId,
+          correlationId,
+          createdAt: new Date(),
+          contractVersion: DOCUMENT_SEARCH_CONTRACT_VERSION,
+        });
+        return { contractVersion: DOCUMENT_SEARCH_CONTRACT_VERSION, documents };
+      });
+    },
+
+    async deleteDocument(actor, requestedScope, idempotencyKey, correlationId) {
+      const scope = canonicalDocumentScope(requestedScope);
+      const keyHash = sha256(idempotencyKey);
+      return database.transaction(async (client) => {
+        await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
+        const replay = (
+          await client.query<DeleteRequestRow>(
+            `SELECT document_id, patient_profile_id, deleted_at
+               FROM document_delete_requests
+              WHERE family_id = $1 AND actor_user_id = $2 AND idempotency_key_hash = $3`,
+            [scope.familyId, actor.userId, keyHash],
+          )
+        ).rows[0];
+        if (replay !== undefined) {
+          if (
+            replay.patient_profile_id !== scope.profileId ||
+            replay.document_id !== scope.documentId
+          ) {
+            throw new IdempotencyConflictError();
+          }
+          await audit(client, {
+            familyId: scope.familyId,
+            actorUserId: actor.userId,
+            action: "document.delete.replayed",
+            resourceId: scope.documentId,
+            correlationId,
+            createdAt: new Date(),
+            contractVersion: DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
+          });
+          return {
+            response: {
+              contractVersion: DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
+              documentId: scope.documentId,
+              deletedAt: canonicalTimestamp(replay.deleted_at),
+            },
+            replayed: true,
+          };
+        }
+
+        await documentRow(client, actor, scope, "write");
+        const now = new Date();
+        const deletedAt = now.toISOString();
+        const deleted = await client.query(
+          `UPDATE documents
+              SET deleted_at = $1, deleted_by_user_id = $2
+            WHERE family_id = $3
+              AND patient_profile_id = $4
+              AND id = $5
+              AND deleted_at IS NULL`,
+          [deletedAt, actor.userId, scope.familyId, scope.profileId, scope.documentId],
+        );
+        if (deleted.rowCount !== 1) throw new ResourceNotFoundError();
+        await client.query(
+          `INSERT INTO document_delete_requests
+             (id, family_id, actor_user_id, patient_profile_id, document_id,
+              idempotency_key_hash, deleted_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            randomUUID(),
+            scope.familyId,
+            actor.userId,
+            scope.profileId,
+            scope.documentId,
+            keyHash,
+            deletedAt,
+          ],
+        );
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "document.deleted",
+          resourceId: scope.documentId,
+          correlationId,
+          createdAt: now,
+          contractVersion: DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
+        });
+        return {
+          response: {
+            contractVersion: DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
+            documentId: scope.documentId,
+            deletedAt,
+          },
+          replayed: false,
+        };
       });
     },
 
@@ -2628,6 +3308,7 @@ export function createDocumentService(
       return database.transaction(async (client) => {
         const row = await documentRow(client, actor, scope);
         const processing = await processingForDocument(client, row);
+        const activity = await processingActivityForDocument(client, row);
         await audit(client, {
           familyId: scope.familyId,
           actorUserId: actor.userId,
@@ -2640,6 +3321,7 @@ export function createDocumentService(
           contractVersion: DOCUMENT_CONTRACT_VERSION,
           documentId: row.id,
           processing,
+          activity,
         };
       });
     },
@@ -2669,19 +3351,26 @@ export function createDocumentService(
                   f.proposed_laboratory, f.confidence, f.validation_issues, f.review_status,
                   d.id AS review_id, d.outcome AS decision_outcome,
                   d.decided_at AS review_decided_at,
+                  d.decided_by_user_id AS review_decided_by_user_id,
+                  reviewer.display_name AS review_decided_by_display_name,
                   d.observation_id AS review_observation_id,
                   d.corrected_source_name, d.corrected_source_value,
-                  d.corrected_source_unit
+                  d.corrected_source_unit, NULL AS canonical_display_name
              FROM extracted_facts f
              JOIN document_pages p
                ON p.family_id = f.family_id AND p.id = f.document_page_id
              LEFT JOIN review_decisions d
                ON d.family_id = f.family_id AND d.extracted_fact_id = f.id
+             LEFT JOIN users reviewer
+               ON reviewer.id = d.decided_by_user_id
             WHERE f.family_id = $1 AND f.extraction_run_id = $2
             ORDER BY p.page_number, f.fact_key`,
           [scope.familyId, run.id],
         );
-        const response = factResponse(run, facts.rows);
+        const response = factResponse(
+          run,
+          await Promise.all(facts.rows.map((fact) => enrichStoredFactRow(client, fact))),
+        );
         await audit(client, {
           familyId: scope.familyId,
           actorUserId: actor.userId,
@@ -2833,7 +3522,7 @@ export function createDocumentService(
                   d.status,
                   d.original_filename,
                   d.uploaded_at,
-                  d.duplicate_of_document_id,
+                  duplicate.id AS duplicate_of_document_id,
                   duplicate.patient_profile_id AS duplicate_profile_id,
                   COALESCE(blob_type.content_type, b.content_type) AS content_type,
                   b.byte_size,
@@ -2847,6 +3536,15 @@ export function createDocumentService(
                   j.updated_at AS job_updated_at,
                   r.id AS extraction_run_id,
                   r.status AS extraction_status,
+                  intelligence.provider AS intelligence_provider,
+                  intelligence.model_id AS intelligence_model_id,
+                  intelligence.runtime_version AS intelligence_runtime_version,
+                  intelligence.schema_version AS intelligence_schema_version,
+                  intelligence.category AS intelligence_category,
+                  intelligence.title AS intelligence_title,
+                  intelligence.short_summary AS intelligence_short_summary,
+                  intelligence.document_date AS intelligence_document_date,
+                  intelligence.confidence AS intelligence_confidence,
                   COUNT(f.id) AS fact_count,
                   COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
                     AS pending_fact_count,
@@ -2863,10 +3561,17 @@ export function createDocumentService(
                ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
              LEFT JOIN documents duplicate
                ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+              AND duplicate.deleted_at IS NULL
              LEFT JOIN processing_jobs j
-               ON j.family_id = d.family_id
-              AND j.document_version_id = v.id
-              AND j.kind = 'document_extraction'
+               ON j.id = (
+                 SELECT latest_job.id
+                   FROM processing_jobs latest_job
+                  WHERE latest_job.family_id = d.family_id
+                    AND latest_job.document_version_id = v.id
+                    AND latest_job.kind = 'document_extraction'
+                  ORDER BY latest_job.created_at DESC, latest_job.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN extraction_runs r
                ON r.id = (
                  SELECT latest_run.id
@@ -2876,18 +3581,30 @@ export function createDocumentService(
                   ORDER BY latest_run.created_at DESC, latest_run.id DESC
                   LIMIT 1
                )
+             LEFT JOIN document_intelligence_results intelligence
+               ON intelligence.id = (
+                 SELECT latest_intelligence.id
+                   FROM document_intelligence_results latest_intelligence
+                  WHERE latest_intelligence.family_id = d.family_id
+                    AND latest_intelligence.document_version_id = v.id
+                  ORDER BY latest_intelligence.created_at DESC, latest_intelligence.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN extracted_facts f
                ON f.family_id = r.family_id AND f.extraction_run_id = r.id
              LEFT JOIN review_decisions d_review
                ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
-            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2 AND d.deleted_at IS NULL
             GROUP BY d.id, d.family_id, d.patient_profile_id, d.status, d.original_filename,
-                     d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
+                     d.uploaded_at, duplicate.id, duplicate.patient_profile_id,
                      blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
                      v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
-                     r.id, r.status
+                     r.id, r.status, intelligence.provider, intelligence.model_id,
+                     intelligence.runtime_version, intelligence.schema_version,
+                     intelligence.category, intelligence.title, intelligence.short_summary,
+                     intelligence.document_date, intelligence.confidence
             ORDER BY d.uploaded_at DESC, d.id DESC
-            LIMIT 3`,
+            LIMIT 50`,
           [scope.familyId, scope.profileId],
         );
 
@@ -2904,14 +3621,20 @@ export function createDocumentService(
                JOIN document_versions v
                  ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
                JOIN extraction_runs r
-                 ON r.family_id = v.family_id
-                AND r.document_version_id = v.id
+                 ON r.id = (
+                   SELECT latest_run.id
+                     FROM extraction_runs latest_run
+                    WHERE latest_run.family_id = v.family_id
+                      AND latest_run.document_version_id = v.id
+                    ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                    LIMIT 1
+                 )
                 AND r.status = 'awaiting_review'
                LEFT JOIN extracted_facts f
                  ON f.family_id = r.family_id AND f.extraction_run_id = r.id
                LEFT JOIN review_decisions d_review
                  ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
-              WHERE d.family_id = $1 AND d.patient_profile_id = $2`,
+              WHERE d.family_id = $1 AND d.patient_profile_id = $2 AND d.deleted_at IS NULL`,
             [scope.familyId, scope.profileId],
           )
         ).rows[0];
@@ -2926,7 +3649,7 @@ export function createDocumentService(
                   d.status,
                   d.original_filename,
                   d.uploaded_at,
-                  d.duplicate_of_document_id,
+                  duplicate.id AS duplicate_of_document_id,
                   duplicate.patient_profile_id AS duplicate_profile_id,
                   COALESCE(blob_type.content_type, b.content_type) AS content_type,
                   b.byte_size,
@@ -2940,6 +3663,15 @@ export function createDocumentService(
                   j.updated_at AS job_updated_at,
                   r.id AS extraction_run_id,
                   r.status AS extraction_status,
+                  intelligence.provider AS intelligence_provider,
+                  intelligence.model_id AS intelligence_model_id,
+                  intelligence.runtime_version AS intelligence_runtime_version,
+                  intelligence.schema_version AS intelligence_schema_version,
+                  intelligence.category AS intelligence_category,
+                  intelligence.title AS intelligence_title,
+                  intelligence.short_summary AS intelligence_short_summary,
+                  intelligence.document_date AS intelligence_document_date,
+                  intelligence.confidence AS intelligence_confidence,
                   COUNT(f.id) AS fact_count,
                   COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
                     AS pending_fact_count,
@@ -2956,24 +3688,49 @@ export function createDocumentService(
                ON blob_type.family_id = b.family_id AND blob_type.blob_id = b.id
              LEFT JOIN documents duplicate
                ON duplicate.family_id = d.family_id AND duplicate.id = d.duplicate_of_document_id
+              AND duplicate.deleted_at IS NULL
              JOIN extraction_runs r
-               ON r.family_id = v.family_id
-              AND r.document_version_id = v.id
+               ON r.id = (
+                 SELECT latest_run.id
+                   FROM extraction_runs latest_run
+                  WHERE latest_run.family_id = v.family_id
+                    AND latest_run.document_version_id = v.id
+                  ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                  LIMIT 1
+               )
               AND r.status = 'awaiting_review'
+             LEFT JOIN document_intelligence_results intelligence
+               ON intelligence.id = (
+                 SELECT latest_intelligence.id
+                   FROM document_intelligence_results latest_intelligence
+                  WHERE latest_intelligence.family_id = d.family_id
+                    AND latest_intelligence.document_version_id = v.id
+                  ORDER BY latest_intelligence.created_at DESC, latest_intelligence.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN processing_jobs j
-               ON j.family_id = d.family_id
-              AND j.document_version_id = v.id
-              AND j.kind = 'document_extraction'
+               ON j.id = (
+                 SELECT latest_job.id
+                   FROM processing_jobs latest_job
+                  WHERE latest_job.family_id = d.family_id
+                    AND latest_job.document_version_id = v.id
+                    AND latest_job.kind = 'document_extraction'
+                  ORDER BY latest_job.created_at DESC, latest_job.id DESC
+                  LIMIT 1
+               )
              LEFT JOIN extracted_facts f
                ON f.family_id = r.family_id AND f.extraction_run_id = r.id
              LEFT JOIN review_decisions d_review
                ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
-            WHERE d.family_id = $1 AND d.patient_profile_id = $2
+            WHERE d.family_id = $1 AND d.patient_profile_id = $2 AND d.deleted_at IS NULL
             GROUP BY d.id, d.family_id, d.patient_profile_id, d.status, d.original_filename,
-                     d.uploaded_at, d.duplicate_of_document_id, duplicate.patient_profile_id,
+                     d.uploaded_at, duplicate.id, duplicate.patient_profile_id,
                      blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
                      v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
-                     r.id, r.status
+                     r.id, r.status, intelligence.provider, intelligence.model_id,
+                     intelligence.runtime_version, intelligence.schema_version,
+                     intelligence.category, intelligence.title, intelligence.short_summary,
+                     intelligence.document_date, intelligence.confidence
             ORDER BY d.uploaded_at DESC, d.id DESC
             LIMIT 3`,
           [scope.familyId, scope.profileId],
@@ -3001,6 +3758,10 @@ export function createDocumentService(
                ON page.family_id = o.family_id
               AND page.id = o.document_page_id
               AND page.document_version_id = o.document_version_id
+             JOIN documents source_document
+               ON source_document.family_id = o.family_id
+              AND source_document.id = o.document_id
+              AND source_document.deleted_at IS NULL
              JOIN users reviewer ON reviewer.id = o.confirmed_by_user_id
              LEFT JOIN observation_reference_ranges reference_range
                ON reference_range.family_id = o.family_id
@@ -3392,15 +4153,20 @@ export function createDocumentService(
       return database.transaction(async (client) => {
         await requireProfileReadAccess(client, actor, scope.familyId, scope.profileId);
         const rows = await client.query<IndicatorCatalogRow>(
-          `SELECT o.canonical_code, o.source_unit, o.source_value,
+          `SELECT o.canonical_code,
+                  COALESCE(o.normalized_unit, o.source_unit) AS comparison_unit,
+                  COALESCE(o.normalized_value, o.source_value) AS comparison_value,
+                  catalog.display_name,
                   COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) AS timeline_at, o.id
              FROM observations o
+             JOIN analyte_catalog catalog ON catalog.canonical_code = o.canonical_code
             WHERE o.family_id = $1
               AND o.patient_profile_id = $2
               AND o.status = 'confirmed'
               AND o.canonical_code IS NOT NULL
-            ORDER BY o.canonical_code, o.source_unit,
-                     COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC`,
+            ORDER BY o.canonical_code, comparison_unit,
+                     COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC,
+                     o.confirmed_at DESC, o.id DESC`,
           [scope.familyId, scope.profileId],
         );
         const grouped = new Map<
@@ -3411,10 +4177,12 @@ export function createDocumentService(
           if (!canonicalCodePattern.test(row.canonical_code)) {
             throw new ObjectStorageIntegrityError("Stored observation canonical code is invalid");
           }
-          const indicator = syntheticIndicatorCatalog.get(row.canonical_code);
-          if (indicator === undefined) continue;
-          const unit = indicatorUnit(row.source_unit);
-          const value = requiredBoundedString(row.source_value, 100, "observation source value");
+          const unit = indicatorUnit(row.comparison_unit);
+          const value = requiredBoundedString(
+            row.comparison_value,
+            100,
+            "observation comparison value",
+          );
           const timelineAt = canonicalTimestamp(row.timeline_at);
           const units = grouped.get(row.canonical_code) ?? new Map();
           const current = units.get(unit);
@@ -3427,11 +4195,21 @@ export function createDocumentService(
         const response: IndicatorCatalogResponse = {
           contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
           items: [...grouped.entries()].map(([canonicalCode, units]) => {
-            const indicator = syntheticIndicatorCatalog.get(canonicalCode);
-            if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
+            const displayNames = new Set(
+              rows.rows
+                .filter((row) => row.canonical_code === canonicalCode)
+                .map((row) => requiredBoundedString(row.display_name, 200, "indicator name")),
+            );
+            if (displayNames.size !== 1) {
+              throw new ObjectStorageIntegrityError("Stored indicator names are inconsistent");
+            }
+            const displayName = displayNames.values().next().value;
+            if (displayName === undefined) {
+              throw new ObjectStorageIntegrityError("Stored indicator name is missing");
+            }
             return {
               canonicalCode,
-              displayName: indicator.displayName,
+              displayName,
               units: [...units.entries()].map(([unit, summary]) => ({ unit, ...summary })),
             };
           }),
@@ -3453,9 +4231,7 @@ export function createDocumentService(
     async getIndicatorSeries(actor, requestedScope, requestedQuery, correlationId) {
       const profileScope = canonicalProfileScope(requestedScope);
       const canonicalCode = historyCanonicalCode(requestedScope.canonicalCode);
-      if (canonicalCode === null || syntheticIndicatorCatalog.get(canonicalCode) === undefined) {
-        throw new ResourceNotFoundError();
-      }
+      if (canonicalCode === null) throw new ResourceNotFoundError();
       const unit = indicatorUnit(requestedQuery.unit);
       const limit = indicatorSeriesLimit(requestedQuery.limit);
       return database.transaction(async (client) => {
@@ -3465,6 +4241,13 @@ export function createDocumentService(
           profileScope.familyId,
           profileScope.profileId,
         );
+        const indicator = (
+          await client.query<{ display_name: string }>(
+            "SELECT display_name FROM analyte_catalog WHERE canonical_code = $1",
+            [canonicalCode],
+          )
+        ).rows[0];
+        if (indicator === undefined) throw new ResourceNotFoundError();
         const cursor = decodeIndicatorSeriesCursor(requestedQuery.cursor, canonicalCode, unit);
         const comparisonRows = await client.query<ObservationHistoryRow>(
           `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
@@ -3496,8 +4279,9 @@ export function createDocumentService(
               AND o.patient_profile_id = $2
               AND o.status = 'confirmed'
               AND o.canonical_code = $3
-              AND o.source_unit = $4
-            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
+              AND COALESCE(o.normalized_unit, o.source_unit) = $4
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC,
+                     o.confirmed_at DESC, o.id DESC
             LIMIT 2`,
           [profileScope.familyId, profileScope.profileId, canonicalCode, unit],
         );
@@ -3531,23 +4315,30 @@ export function createDocumentService(
               AND o.patient_profile_id = $2
               AND o.status = 'confirmed'
               AND o.canonical_code = $3
-              AND o.source_unit = $4
+              AND COALESCE(o.normalized_unit, o.source_unit) = $4
               AND (
                 $5 IS NULL
                 OR COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) < $5
                 OR (
                   COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) = $5
-                  AND o.id < $6
+                  AND o.confirmed_at < $6
+                )
+                OR (
+                  COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) = $5
+                  AND o.confirmed_at = $6
+                  AND o.id < $7
                 )
               )
-            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id DESC
-            LIMIT $7`,
+            ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC,
+                     o.confirmed_at DESC, o.id DESC
+            LIMIT $8`,
           [
             profileScope.familyId,
             profileScope.profileId,
             canonicalCode,
             unit,
             cursor?.timelineAt ?? null,
+            cursor?.confirmedAt ?? null,
             cursor?.id ?? null,
             limit + 1,
           ],
@@ -3562,6 +4353,7 @@ export function createDocumentService(
                 unit,
                 id: lastItem.id,
                 timelineAt: lastItem.timelineAt,
+                confirmedAt: lastItem.confirmed.at,
               })
             : null;
         const first = comparisonRows.rows[0]
@@ -3574,24 +4366,29 @@ export function createDocumentService(
           first === undefined || second === undefined
             ? { state: "insufficient_data" }
             : (() => {
-                const delta = decimalDelta(first.source.value, second.source.value);
+                const delta = decimalDelta(
+                  first.normalized.value ?? first.source.value,
+                  second.normalized.value ?? second.source.value,
+                );
                 if (delta === null)
                   return { state: "unavailable", reason: "non_numeric_source_value" };
                 return {
                   state: "available",
                   previous: {
                     id: second.id,
-                    value: second.source.value,
+                    value: second.normalized.value ?? second.source.value,
                     timelineAt: second.timelineAt,
                   },
                   delta,
                 };
               })();
-        const indicator = syntheticIndicatorCatalog.get(canonicalCode);
-        if (indicator === undefined) throw new ObjectStorageIntegrityError("Unknown indicator");
         const response: IndicatorSeriesResponse = {
           contractVersion: INDICATOR_SERIES_CONTRACT_VERSION,
-          indicator: { canonicalCode, displayName: indicator.displayName, unit },
+          indicator: {
+            canonicalCode,
+            displayName: requiredBoundedString(indicator.display_name, 200, "indicator name"),
+            unit,
+          },
           items,
           comparison,
           nextCursor,
@@ -3621,7 +4418,8 @@ export function createDocumentService(
           await client.query<FactForReviewRow>(
             `SELECT f.id, f.document_version_id, f.document_page_id, f.extraction_run_id,
                     f.source_fragment, f.source_name, f.source_value, f.source_unit,
-                    f.proposed_canonical_code, f.proposed_reference_range,
+                    f.proposed_canonical_code, f.proposed_normalized_value,
+                    f.proposed_normalized_unit, f.proposed_reference_range,
                     f.proposed_specimen, f.proposed_sampled_at, f.proposed_resulted_at,
                     f.proposed_laboratory, f.confidence
                FROM extracted_facts f
@@ -3631,7 +4429,15 @@ export function createDocumentService(
                 AND f.id = $2
                 AND f.document_version_id = $3
                 AND r.document_version_id = f.document_version_id
-                AND r.status IN ('awaiting_review', 'completed')`,
+                AND r.status IN ('awaiting_review', 'completed')
+                AND r.id = (
+                  SELECT latest_run.id
+                    FROM extraction_runs latest_run
+                   WHERE latest_run.family_id = f.family_id
+                     AND latest_run.document_version_id = f.document_version_id
+                   ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                   LIMIT 1
+                )`,
             [scope.familyId, scope.factId, document.document_version_id],
           )
         ).rows[0];
@@ -3640,10 +4446,13 @@ export function createDocumentService(
         const replay = (
           await client.query<ReviewRequestRow>(
             `SELECT rr.extracted_fact_id, rr.request_hash, d.id AS decision_id,
-                    d.source_fact_version, d.outcome, d.decided_at, d.observation_id
+                    d.source_fact_version, d.outcome, d.decided_at,
+                    d.decided_by_user_id, reviewer.display_name AS decided_by_display_name,
+                    d.observation_id
                FROM review_requests rr
                JOIN review_decisions d
                  ON d.family_id = rr.family_id AND d.id = rr.review_decision_id
+               JOIN users reviewer ON reviewer.id = d.decided_by_user_id
               WHERE rr.family_id = $1
                 AND rr.actor_user_id = $2
                 AND rr.idempotency_key_hash = $3`,
@@ -3660,6 +4469,8 @@ export function createDocumentService(
             source_fact_version: replay.source_fact_version,
             outcome: replay.outcome,
             decided_at: replay.decided_at,
+            decided_by_user_id: replay.decided_by_user_id,
+            decided_by_display_name: replay.decided_by_display_name,
             observation_id: replay.observation_id,
           });
           await audit(client, {
@@ -3676,9 +4487,12 @@ export function createDocumentService(
 
         const existing = (
           await client.query<ReviewDecisionRow>(
-            `SELECT id, extracted_fact_id, source_fact_version, outcome, decided_at, observation_id
-               FROM review_decisions
-              WHERE family_id = $1 AND extracted_fact_id = $2`,
+            `SELECT d.id, d.extracted_fact_id, d.source_fact_version, d.outcome, d.decided_at,
+                    d.decided_by_user_id, reviewer.display_name AS decided_by_display_name,
+                    d.observation_id
+               FROM review_decisions d
+               JOIN users reviewer ON reviewer.id = d.decided_by_user_id
+              WHERE d.family_id = $1 AND d.extracted_fact_id = $2`,
             [scope.familyId, fact.id],
           )
         ).rows[0];
@@ -3707,11 +4521,43 @@ export function createDocumentService(
           throw new DomainValidationError();
         }
 
+        const mappedAnalyte = await resolveAnalyteMapping(client, {
+          sourceName: fact.source_name,
+          sourceUnit: fact.source_unit,
+          sourceValue: fact.source_value,
+          proposedLaboratory: fact.proposed_laboratory,
+          proposedNormalizedValue: fact.proposed_normalized_value,
+        });
         const canonicalCode = nullableBoundedString(
-          fact.proposed_canonical_code,
+          mappedAnalyte?.canonicalCode ?? fact.proposed_canonical_code,
           100,
           "fact canonical code",
         );
+        const normalizedValue =
+          command.decision === "correct"
+            ? null
+            : nullableBoundedString(
+                mappedAnalyte?.normalizedValue ?? fact.proposed_normalized_value,
+                100,
+                "fact normalized value",
+              );
+        const normalizedUnit =
+          command.decision === "correct"
+            ? null
+            : nullableBoundedString(
+                mappedAnalyte?.normalizedUnit ?? fact.proposed_normalized_unit,
+                100,
+                "fact normalized unit",
+              );
+        if ((normalizedValue === null) !== (normalizedUnit === null)) {
+          throw new ObjectStorageIntegrityError("Stored fact normalization is invalid");
+        }
+        const conversionVersion =
+          normalizedValue === null
+            ? null
+            : mappedAnalyte === null
+              ? CODEX_DOCUMENT_INTELLIGENCE_VERSION
+              : "analyte-alias/v1";
         const reference =
           fact.proposed_reference_range === null
             ? null
@@ -3739,8 +4585,8 @@ export function createDocumentService(
                 source_fragment, extraction_confidence, confirmed_by_user_id,
                 confirmed_at, created_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, 1, $8, 'confirmed',
-                     $9, $10, $11, $12, NULL, NULL, NULL, $13, $14, $15, $16,
-                     $17, $18, $19, $20, $21, $21)`,
+                     $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19,
+                     $20, $21, $22, $23, $24, $24)`,
             [
               observationId,
               scope.familyId,
@@ -3754,6 +4600,9 @@ export function createDocumentService(
               sourceName,
               sourceValue,
               sourceUnit,
+              normalizedValue,
+              normalizedUnit,
+              conversionVersion,
               sampledAt,
               resultedAt,
               canonicalTimestamp(document.uploaded_at),
@@ -3866,6 +4715,8 @@ export function createDocumentService(
             source_fact_version: 1,
             outcome: command.decision,
             decided_at: timestamp,
+            decided_by_user_id: actor.userId,
+            decided_by_display_name: actor.displayName,
             observation_id: observationId,
           }),
           replayed: false,
@@ -3952,6 +4803,77 @@ export function createDocumentService(
       });
     },
 
+    async restartProcessing(actor, requestedScope, idempotencyKey, correlationId) {
+      const scope = canonicalDocumentScope(requestedScope);
+      const keyHash = sha256(idempotencyKey);
+      return database.transaction(async (client) => {
+        const row = await documentRow(client, actor, scope, "write");
+        const replay = await client.query<RetryRequestRow>(
+          `SELECT document_version_id, created_at
+             FROM processing_restart_requests
+            WHERE family_id = $1 AND actor_user_id = $2 AND idempotency_key_hash = $3`,
+          [scope.familyId, actor.userId, keyHash],
+        );
+        const previous = replay.rows[0];
+        if (previous !== undefined) {
+          if (previous.document_version_id !== row.document_version_id) {
+            throw new IdempotencyConflictError();
+          }
+          return {
+            contractVersion: DOCUMENT_CONTRACT_VERSION,
+            documentId: row.id,
+            processing: { state: "queued", updatedAt: canonicalTimestamp(previous.created_at) },
+          };
+        }
+
+        const latestJob = (
+          await client.query<{ state: string }>(
+            `SELECT state
+               FROM processing_jobs
+              WHERE family_id = $1 AND document_version_id = $2
+              ORDER BY created_at DESC, id DESC
+              LIMIT 1`,
+            [scope.familyId, row.document_version_id],
+          )
+        ).rows[0];
+        if (
+          latestJob === undefined ||
+          (latestJob.state !== "succeeded" && latestJob.state !== "dead_letter")
+        ) {
+          throw new ProcessingNotAvailableError();
+        }
+
+        const now = new Date();
+        const requestId = randomUUID();
+        const job = await enqueueDocumentReanalysisInTransaction(client, {
+          familyId: scope.familyId,
+          documentVersionId: row.document_version_id,
+          requestId,
+          now,
+        });
+        await client.query(
+          `INSERT INTO processing_restart_requests
+             (id, family_id, actor_user_id, document_version_id, processing_job_id,
+              idempotency_key_hash, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [requestId, scope.familyId, actor.userId, row.document_version_id, job.id, keyHash, now],
+        );
+        await audit(client, {
+          familyId: scope.familyId,
+          actorUserId: actor.userId,
+          action: "document.processing.restarted",
+          resourceId: scope.documentId,
+          correlationId,
+          createdAt: now,
+        });
+        return {
+          contractVersion: DOCUMENT_CONTRACT_VERSION,
+          documentId: row.id,
+          processing: { state: "queued", updatedAt: now.toISOString() },
+        };
+      });
+    },
+
     async getContent(actor, requestedScope, correlationId) {
       const scope = canonicalDocumentScope(requestedScope);
       return database.transaction(async (client) => {
@@ -3980,6 +4902,7 @@ export function createDocumentService(
           body: stored.body,
           byteSize: stored.metadata.byteSize,
           contentType: row.content_type,
+          originalFilename: row.original_filename,
         };
       });
     },

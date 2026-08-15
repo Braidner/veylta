@@ -528,6 +528,10 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "care_plan_items"), true);
     assert.equal(await tableExists(database, "care_plan_proposal_runs"), true);
     assert.equal(await tableExists(database, "care_plan_codex_provenance"), true);
+    assert.equal(await tableExists(database, "document_intelligence_results"), true);
+    assert.equal(await tableExists(database, "analyte_catalog"), true);
+    assert.equal(await tableExists(database, "analyte_aliases"), true);
+    assert.equal(await tableExists(database, "processing_restart_requests"), true);
     await database.query(
       `INSERT INTO home_storage_settings
          (singleton, driver, current_root, state, generation)
@@ -540,6 +544,17 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
+    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
+    assert.equal(await migrateDown(database), "0020_processing_activity");
+    assert.equal(await migrateDown(database), "0019_document_agent");
+    assert.equal(await migrateDown(database), "0018_document_reanalysis");
+    assert.equal(await tableExists(database, "processing_restart_requests"), false);
+    assert.equal(await migrateDown(database), "0017_analyte_catalog");
+    assert.equal(await tableExists(database, "analyte_catalog"), false);
+    assert.equal(await migrateDown(database), "0016_document_intelligence");
+    assert.equal(await tableExists(database, "document_intelligence_results"), false);
     assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
     assert.equal(await tableExists(database, "care_plan_proposal_runs"), false);
     assert.equal(await migrateDown(database), "0014_home_care_plan");
@@ -628,12 +643,208 @@ test("all migrations apply, populated processing data rolls back, and migrations
       "0013_home_settings",
       "0014_home_care_plan",
       "0015_codex_care_plan_proposals",
+      "0016_document_intelligence",
+      "0017_analyte_catalog",
+      "0018_document_reanalysis",
+      "0019_document_agent",
+      "0020_processing_activity",
+      "0021_codex_preferences",
+      "0022_document_intelligence_v2",
+      "0023_document_lifecycle",
     ]);
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
       "PRAGMA foreign_key_check",
     );
     assert.deepEqual(foreignKeyViolations.rows, []);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("document intelligence v2 stores bounded summaries, generic results, and search text immutably", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-document-intelligence-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const fixture = await createDocumentFixture(database, "Synthetic AI classification");
+    const processing = await insertProcessingGraph(database, fixture, "ai-classification");
+    const resultId = randomUUID();
+    const now = new Date().toISOString();
+
+    await database.query(
+      `INSERT INTO document_intelligence_results
+         (id, family_id, document_id, document_version_id, processing_job_id,
+          provider, model_id, runtime_version, schema_version, category, title,
+          short_summary, detailed_summary, structured_results_json, search_text,
+          document_date, confidence, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+               'document-intelligence/v2', 'laboratory', 'Синтетический лабораторный отчёт',
+               'Краткое синтетическое описание.', 'Подробное синтетическое описание.',
+               '[]', 'синтетический лабораторный отчёт краткое описание',
+               '2026-08-12', 0.96, $6)`,
+      [
+        resultId,
+        fixture.familyId,
+        fixture.documentId,
+        fixture.documentVersionId,
+        processing.jobId,
+        now,
+      ],
+    );
+
+    const columns = await database.query<{ name: string }>(
+      "SELECT name FROM pragma_table_info('document_intelligence_results')",
+    );
+    assert.deepEqual(
+      ["short_summary", "detailed_summary", "structured_results_json", "search_text"].filter(
+        (name) => columns.rows.some((column) => column.name === name),
+      ),
+      ["short_summary", "detailed_summary", "structured_results_json", "search_text"],
+    );
+
+    await rejectsConstraint(
+      () =>
+        database.query(
+          "UPDATE document_intelligence_results SET category = 'other' WHERE id = $1",
+          [resultId],
+        ),
+      "trigger",
+    );
+    const invalidFixture = await createDocumentFixture(database, "Invalid AI category");
+    const invalidProcessing = await insertProcessingGraph(
+      database,
+      invalidFixture,
+      "invalid-ai-category",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO document_intelligence_results
+             (id, family_id, document_id, document_version_id, processing_job_id,
+              provider, model_id, runtime_version, schema_version, category, title,
+              short_summary, detailed_summary, structured_results_json, search_text,
+              confidence, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+                   'document-intelligence/v2', 'diagnosis', 'Недопустимая категория',
+                   'Краткое описание.', 'Подробное описание.', '[]', 'недопустимая категория',
+                   0.5, $6)`,
+          [
+            randomUUID(),
+            invalidFixture.familyId,
+            invalidFixture.documentId,
+            invalidFixture.documentVersionId,
+            invalidProcessing.jobId,
+            now,
+          ],
+        ),
+      "check",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO document_intelligence_results
+             (id, family_id, document_id, document_version_id, processing_job_id,
+              provider, model_id, runtime_version, schema_version, category, title,
+              short_summary, detailed_summary, structured_results_json, search_text,
+              confidence, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+                   'document-intelligence/v2', 'other', 'Синтетический документ',
+                   'Краткое описание.', 'Подробное описание.', '{}', 'синтетический документ',
+                   0.5, $6)`,
+          [
+            randomUUID(),
+            invalidFixture.familyId,
+            invalidFixture.documentId,
+            invalidFixture.documentVersionId,
+            invalidProcessing.jobId,
+            now,
+          ],
+        ),
+      "check",
+    );
+
+    const foreignFixture = await createDocumentFixture(database, "Foreign AI classification");
+    const foreignProcessing = await insertProcessingGraph(
+      database,
+      foreignFixture,
+      "foreign-ai-classification",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO document_intelligence_results
+             (id, family_id, document_id, document_version_id, processing_job_id,
+              provider, model_id, runtime_version, schema_version, category, title,
+              short_summary, detailed_summary, structured_results_json, search_text,
+              confidence, created_at)
+           VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+                   'document-intelligence/v2', 'other', 'Чужой документ',
+                   'Краткое описание.', 'Подробное описание.', '[]', 'чужой документ', 0.5, $6)`,
+          [
+            randomUUID(),
+            fixture.familyId,
+            foreignFixture.documentId,
+            foreignFixture.documentVersionId,
+            foreignProcessing.jobId,
+            now,
+          ],
+        ),
+      "foreign-key",
+    );
+
+    const secondJobId = randomUUID();
+    await database.query(
+      `INSERT INTO processing_jobs
+         (id, family_id, document_version_id, kind, dedupe_key, payload_version,
+          state, attempt_count, max_attempts, available_at, created_at, updated_at)
+       VALUES ($1, $2, $3, 'document_extraction', $4, 'document-extraction-job/v1',
+               'pending', 0, 3, $5, $5, $5)`,
+      [
+        secondJobId,
+        fixture.familyId,
+        fixture.documentVersionId,
+        `extract:restart:${secondJobId}`,
+        now,
+      ],
+    );
+    await database.query(
+      `INSERT INTO document_intelligence_results
+         (id, family_id, document_id, document_version_id, processing_job_id,
+          provider, model_id, runtime_version, schema_version, category, title,
+          short_summary, detailed_summary, structured_results_json, search_text,
+          document_date, confidence, created_at)
+       VALUES ($1, $2, $3, $4, $5, 'codex', 'gpt-5.4-mini', 'codex-cli 0.147.0',
+               'document-intelligence/v2', 'laboratory', 'Второй неизменяемый результат',
+               'Краткое описание.', 'Подробное описание.', '[]',
+               'второй неизменяемый результат', '2026-08-13', 0.97, $6)`,
+      [
+        randomUUID(),
+        fixture.familyId,
+        fixture.documentId,
+        fixture.documentVersionId,
+        secondJobId,
+        now,
+      ],
+    );
+    const results = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.equal(Number(results.rows[0]?.count), 2);
+    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    await assert.rejects(() => migrateDown(database));
+    assert.equal(await tableExists(database, "document_intelligence_results"), true);
+    const preserved = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.equal(Number(preserved.rows[0]?.count), 2);
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });
@@ -894,6 +1105,14 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
+    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
+    assert.equal(await migrateDown(database), "0020_processing_activity");
+    assert.equal(await migrateDown(database), "0019_document_agent");
+    assert.equal(await migrateDown(database), "0018_document_reanalysis");
+    assert.equal(await migrateDown(database), "0017_analyte_catalog");
+    assert.equal(await migrateDown(database), "0016_document_intelligence");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     assert.equal(await tableExists(database, "care_plan_items"), true);
   } finally {
@@ -985,6 +1204,14 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
+    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
+    assert.equal(await migrateDown(database), "0020_processing_activity");
+    assert.equal(await migrateDown(database), "0019_document_agent");
+    assert.equal(await migrateDown(database), "0018_document_reanalysis");
+    assert.equal(await migrateDown(database), "0017_analyte_catalog");
+    assert.equal(await migrateDown(database), "0016_document_intelligence");
     assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
     assert.equal(await migrateDown(database), "0014_home_care_plan");
     assert.equal(await migrateDown(database), "0013_home_settings");
@@ -1450,6 +1677,56 @@ test("processing schema enforces tenant, state, dedupe, and immutable provenance
       "PRAGMA foreign_key_check",
     );
     assert.deepEqual(foreignKeyViolations.rows, []);
+  } finally {
+    await database.close();
+    await rm(testRoot, { force: true, recursive: true });
+  }
+});
+
+test("Codex preferences keep one validated server-wide execution profile", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "veylta-codex-preferences-schema-"));
+  const database = createDatabase(join(testRoot, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const fixture = await createDocumentFixture(database, "Codex preferences owner");
+    const now = new Date().toISOString();
+    await database.query(
+      `INSERT INTO codex_preferences
+         (id, model_id, reasoning_effort, service_tier, updated_by_user_id, created_at, updated_at)
+       VALUES ('primary', 'gpt-5.6-sol', 'medium', 'standard', $1, $2, $2)`,
+      [fixture.userId, now],
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `INSERT INTO codex_preferences
+             (id, model_id, reasoning_effort, service_tier, updated_by_user_id, created_at, updated_at)
+           VALUES ('secondary', 'gpt-5.6-luna', 'low', 'fast', $1, $2, $2)`,
+          [fixture.userId, now],
+        ),
+      "check",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(
+          `UPDATE codex_preferences SET reasoning_effort = 'unbounded' WHERE id = 'primary'`,
+        ),
+      "check",
+    );
+    await rejectsConstraint(
+      () =>
+        database.query(`UPDATE codex_preferences SET service_tier = 'turbo' WHERE id = 'primary'`),
+      "check",
+    );
+    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
+    assert.equal(await migrateDown(database), "0021_codex_preferences");
+    assert.equal(await tableExists(database, "codex_preferences"), false);
+    assert.deepEqual(await migrateUp(database), [
+      "0021_codex_preferences",
+      "0022_document_intelligence_v2",
+      "0023_document_lifecycle",
+    ]);
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });

@@ -5,10 +5,21 @@ import {
   AUDIT_LOG_CONTRACT_VERSION,
   type CarePlanProposalResponse,
   type CarePlanResponse,
+  DOCUMENT_AGENT_CONTRACT_VERSION,
+  DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA,
+  DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_RESULT_STATUSES,
+  DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
+  DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
+  DOCUMENT_PROCESSING_EVENT_CODES,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
   DOCUMENT_PROCESSING_STATES,
+  DOCUMENT_SEARCH_CONTRACT_VERSION,
+  type DocumentAgentConversationResponse,
   type DocumentFactsResponse,
+  type DocumentIntelligenceResult,
   type DocumentProcessingResponse,
   type DocumentProcessingRetryResponse,
   type DocumentResponse,
@@ -29,6 +40,7 @@ import {
   type HealthSummaryResponse,
   HOME_CARE_PLAN_CONTRACT_VERSION,
   HOME_SETTINGS_CONTRACT_VERSION,
+  type HomeSettingsResponse,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorSeriesResponse,
@@ -64,8 +76,12 @@ import {
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
-  assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v1");
-  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v3");
+  assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v2");
+  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v5");
+  assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v2");
+  assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
+  assert.equal(DOCUMENT_LIFECYCLE_CONTRACT_VERSION, "document-lifecycle/v1");
+  assert.equal(DOCUMENT_AGENT_CONTRACT_VERSION, "document-agent/v1");
   assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
@@ -86,6 +102,149 @@ test("public contracts carry explicit versions", () => {
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
   assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
+});
+
+test("document intelligence v2 carries bounded generic source results beside its summary", () => {
+  assert.deepEqual(DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES, [
+    "measurement",
+    "genetic_variant",
+    "finding",
+    "procedure",
+    "medication",
+    "diagnosis",
+    "other",
+  ]);
+  assert.deepEqual(DOCUMENT_INTELLIGENCE_RESULT_STATUSES, [
+    "above_range",
+    "normal",
+    "abnormal",
+    "detected",
+    "not_detected",
+    "completed",
+    "informational",
+    "unknown",
+  ]);
+
+  const result = {
+    contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+    provider: "codex",
+    modelId: "gpt-5.4-mini",
+    runtimeVersion: "codex-cli 0.147.0",
+    category: "laboratory",
+    title: "Синтетический лабораторный отчёт",
+    documentDate: "2026-08-12",
+    confidence: 0.96,
+    shortSummary: "В документе указан один синтетический результат.",
+    detailedSummary: "Документ содержит синтетическое измерение без медицинской интерпретации.",
+    structuredResults: [
+      {
+        resultKey: "synthetic-glucose",
+        type: "measurement",
+        label: "Синтетическая глюкоза",
+        value: "7.0",
+        unit: "synthetic-unit",
+        code: null,
+        lab: "Синтетическая лаборатория",
+        specimen: "Венозная кровь",
+        date: "2026-08-12",
+        status: "abnormal",
+        confidence: 0.91,
+        source: {
+          pageNumber: 1,
+          fragment: "Synthetic glucose: 7.0 synthetic-unit",
+        },
+      },
+    ],
+  } satisfies DocumentIntelligenceResult;
+
+  assert.equal(result.structuredResults[0]?.type, "measurement");
+  assert.equal(result.structuredResults[0]?.source.pageNumber, 1);
+});
+
+test("home settings expose only Codex-advertised choices and bounded usage", () => {
+  const response = {
+    contractVersion: HOME_SETTINGS_CONTRACT_VERSION,
+    codex: {
+      installed: true,
+      authenticated: true,
+      authenticationMode: "chatgpt",
+      authenticationOwner: "codex_cli",
+      daemonRunning: true,
+      cliVersion: "codex-cli 0.147.0",
+      runtimeVersion: "0.147.0",
+      preference: {
+        modelId: "gpt-5.6-sol",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      },
+      models: [
+        {
+          id: "gpt-5.6-sol",
+          displayName: "GPT-5.6-Sol",
+          isDefault: true,
+          defaultReasoningEffort: "low",
+          supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+          supportsFastMode: true,
+          upgradeModelId: null,
+        },
+      ],
+      usageLimits: [
+        {
+          name: "Codex",
+          usedPercent: 65,
+          remainingPercent: 35,
+          windowDurationMinutes: 10_080,
+          resetsAt: "2026-08-20T14:41:53.000Z",
+        },
+      ],
+      experimental: true,
+    },
+    storage: {
+      driver: "local",
+      rootPath: "/srv/veylta",
+      state: "stable",
+      targetRootPath: null,
+      generation: 1,
+      relocationSupported: true,
+      lastFailureCode: null,
+    },
+    accounts: [],
+  } as const satisfies HomeSettingsResponse;
+
+  assert.equal(response.codex.preference.modelId, "gpt-5.6-sol");
+  assert.equal(response.codex.usageLimits[0].remainingPercent, 35);
+});
+
+test("document agent conversation is Russian, bounded, and keeps Codex provenance", () => {
+  const response = {
+    contractVersion: DOCUMENT_AGENT_CONTRACT_VERSION,
+    documentId: "00000000-0000-4000-8000-000000000001",
+    conversationId: "00000000-0000-4000-8000-000000000002",
+    messages: [
+      {
+        id: "00000000-0000-4000-8000-000000000003",
+        role: "user",
+        text: "Проверь лабораторию и дату биоматериала.",
+        createdAt: "2026-08-14T12:00:00.000Z",
+        provenance: null,
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000004",
+        role: "assistant",
+        text: "В исходнике лаборатория не указана. Уточните её название.",
+        createdAt: "2026-08-14T12:00:05.000Z",
+        provenance: {
+          provider: "codex",
+          modelId: "gpt-5.4-mini",
+          runtimeVersion: "codex-cli 0.147.0",
+        },
+      },
+    ],
+  } as const satisfies DocumentAgentConversationResponse;
+
+  assert.equal(response.messages[1].provenance?.provider, "codex");
+  assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.additionalProperties, false);
+  assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.properties.message.maxLength, 2_000);
 });
 
 test("home care plan separates evidence, proposals, and accepted user actions", () => {
@@ -418,6 +577,10 @@ test("fact review contract makes an explicit, versioned human decision", () => {
       outcome: "corrected",
       decidedAt: "2026-08-12T12:00:00.000Z",
       observationId: "10000000-0000-4000-8000-000000000012",
+      decidedBy: {
+        id: "10000000-0000-4000-8000-000000000013",
+        displayName: "Синтетический проверяющий",
+      },
     },
   } as const satisfies FactReviewResponse;
 
@@ -441,7 +604,8 @@ test("document processing exposes only supported observable states and sanitized
   assert.deepEqual(DOCUMENT_PROCESSING_FAILURE_CATEGORIES, [
     "document_unavailable",
     "invalid_document",
-    "unsupported_document",
+    "agent_unavailable",
+    "agent_output_invalid",
     "extraction_failed",
     "validation_failed",
     "attempts_exhausted",
@@ -457,6 +621,18 @@ test("document processing exposes only supported observable states and sanitized
     contractVersion: DOCUMENT_CONTRACT_VERSION,
     documentId: "10000000-0000-4000-8000-000000000001",
     processing: failed,
+    activity: [
+      {
+        code: "queued",
+        attempt: 0,
+        occurredAt: "2026-08-12T11:59:58.000Z",
+      },
+      {
+        code: "failed",
+        attempt: 3,
+        occurredAt: "2026-08-12T12:00:00.000Z",
+      },
+    ],
   } satisfies DocumentProcessingResponse;
   const retry = {
     contractVersion: DOCUMENT_CONTRACT_VERSION,
@@ -468,11 +644,23 @@ test("document processing exposes only supported observable states and sanitized
   } satisfies DocumentProcessingRetryResponse;
 
   assert.equal(response.processing.category, "attempts_exhausted");
+  assert.deepEqual(DOCUMENT_PROCESSING_EVENT_CODES, [
+    "queued",
+    "security_check_started",
+    "text_extraction_started",
+    "document_classification_started",
+    "codex_analysis_started",
+    "result_validation_started",
+    "result_saved",
+    "retry_scheduled",
+    "failed",
+  ]);
+  assert.equal(response.activity[1]?.attempt, 3);
   assert.equal(retry.processing.state, "queued");
   assert.equal("message" in response.processing, false);
 });
 
-test("document v3 embeds discriminated processing status without changing original status", () => {
+test("document v4 embeds discriminated processing status without changing original status", () => {
   const response = {
     contractVersion: DOCUMENT_CONTRACT_VERSION,
     document: {
@@ -486,6 +674,17 @@ test("document v3 embeds discriminated processing status without changing origin
       sha256: "a".repeat(64),
       uploadedAt: "2026-08-12T12:00:00.000Z",
       duplicate: { possible: false, documentId: null, profileId: null },
+      intelligence: {
+        contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+        provider: "codex",
+        modelId: "gpt-5.4-mini",
+        runtimeVersion: "codex-cli 0.147.0",
+        category: "laboratory",
+        title: "Синтетический лабораторный отчёт",
+        shortSummary: "В документе указан один синтетический результат.",
+        documentDate: "2026-08-12",
+        confidence: 0.96,
+      },
       processing: {
         state: "awaiting_review",
         updatedAt: "2026-08-12T12:00:02.000Z",
@@ -496,6 +695,17 @@ test("document v3 embeds discriminated processing status without changing origin
   } satisfies DocumentResponse;
 
   assert.equal(response.document.status, "uploaded");
+  assert.deepEqual(DOCUMENT_CATEGORIES, [
+    "laboratory",
+    "imaging",
+    "prescription",
+    "discharge_summary",
+    "consultation",
+    "vaccination",
+    "insurance",
+    "other",
+  ]);
+  assert.equal(response.document.intelligence.provider, "codex");
   assert.equal(response.document.processing.state, "awaiting_review");
 });
 
@@ -549,6 +759,7 @@ test("lab extraction contract preserves immutable source data and page provenanc
         ...extraction.items[0],
         id: "10000000-0000-4000-8000-000000000005",
         factVersion: 1,
+        canonicalDisplayName: "Синтетический аналит A",
         reviewStatus: "needs_review",
         review: null,
         source: {

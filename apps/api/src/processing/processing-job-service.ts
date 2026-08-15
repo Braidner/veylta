@@ -1,6 +1,20 @@
 import { createHash, randomUUID } from "node:crypto";
-import { DOCUMENT_CONTRACT_VERSION, LAB_EXTRACTION_SCHEMA_VERSION } from "@veylta/contracts";
+import {
+  DOCUMENT_CATEGORIES,
+  DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_RESULT_STATUSES,
+  DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
+  type DocumentIntelligenceResult,
+  type DocumentIntelligenceStructuredResult,
+  type DocumentProcessingEventCode,
+  LAB_EXTRACTION_SCHEMA_VERSION,
+  MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
+} from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
+import { enrichFactFromAnalyteMappings } from "./analyte-mapping.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "./codex-document-intelligence-provider.js";
+import type { DocumentIntelligenceOutput } from "./document-intelligence-provider.js";
 import {
   type ParsedDocumentPage,
   type ParsedLabExtraction,
@@ -12,6 +26,9 @@ import {
 export const DOCUMENT_EXTRACTION_JOB_KIND = "document_extraction" as const;
 export const DOCUMENT_EXTRACTION_PAYLOAD_VERSION = "document-extraction-job/v1" as const;
 export const DOCUMENT_EXTRACTION_KIND = "deterministic_pdf_text" as const;
+export const CODEX_DOCUMENT_EXTRACTION_KIND = "codex_document_intelligence" as const;
+
+export type ProcessingExtractionOutput = ParsedLabExtraction | DocumentIntelligenceOutput;
 
 export type ProcessingJobState = "pending" | "leased" | "retry_wait" | "succeeded" | "dead_letter";
 export type ProcessingStage =
@@ -23,10 +40,11 @@ export type ProcessingStage =
 
 export type ProcessingErrorCode =
   | "ATTEMPT_LIMIT"
+  | "AGENT_OUTPUT_INVALID"
+  | "AGENT_UNAVAILABLE"
   | "DOCUMENT_UNAVAILABLE"
   | "EXTRACTION_FAILED"
   | "INVALID_DOCUMENT"
-  | "UNSUPPORTED_DOCUMENT"
   | "VALIDATION_FAILED";
 
 export interface ProcessingJob {
@@ -82,7 +100,7 @@ export interface ProcessingJobService {
   ): Promise<LeasedProcessingJob>;
   completeExtraction(
     claim: LeasedProcessingJob,
-    output: ParsedLabExtraction,
+    output: ProcessingExtractionOutput,
     now: Date,
   ): Promise<ProcessingCompletion>;
   recordFailure(
@@ -101,6 +119,10 @@ export interface EnqueueDocumentExtractionInput {
   documentVersionId: string;
   now: Date;
   maxAttempts?: number;
+}
+
+export interface EnqueueDocumentReanalysisInput extends EnqueueDocumentExtractionInput {
+  requestId: string;
 }
 
 interface ProcessingJobRow {
@@ -167,6 +189,23 @@ interface AuditSourceRow {
   uploaded_by_user_id: string;
 }
 
+interface DocumentIntelligenceRow {
+  id: string;
+  document_id: string;
+  provider: string;
+  model_id: string;
+  runtime_version: string;
+  schema_version: string;
+  category: string;
+  title: string;
+  short_summary: string;
+  detailed_summary: string;
+  structured_results_json: string;
+  search_text: string;
+  document_date: string | null;
+  confidence: number;
+}
+
 const jobStates = new Set<ProcessingJobState>([
   "pending",
   "leased",
@@ -190,15 +229,17 @@ const processingStageOrder: readonly ProcessingStage[] = [
 ];
 const errorMessages: Record<ProcessingErrorCode, string> = {
   ATTEMPT_LIMIT: "Processing attempt limit reached",
+  AGENT_OUTPUT_INVALID: "Document intelligence output validation failed",
+  AGENT_UNAVAILABLE: "Document intelligence provider is unavailable",
   DOCUMENT_UNAVAILABLE: "Document content is unavailable",
   EXTRACTION_FAILED: "Document text extraction failed",
   INVALID_DOCUMENT: "Document content is invalid",
-  UNSUPPORTED_DOCUMENT: "Document format is unsupported",
   VALIDATION_FAILED: "Extraction output validation failed",
 };
 const versionPattern = /^[a-z0-9][a-z0-9._/+:-]{0,99}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const maxRetryDelayMs = 24 * 60 * 60 * 1_000;
+export const MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH = 32_000;
 
 export class StaleProcessingLeaseError extends Error {
   constructor() {
@@ -304,8 +345,45 @@ function asClaim(row: ProcessingJobRow): LeasedProcessingJob {
   };
 }
 
+export async function appendProcessingEventInTransaction(
+  client: DatabaseClient,
+  input: {
+    familyId: string;
+    documentVersionId: string;
+    jobId: string;
+    code: DocumentProcessingEventCode;
+    attempt: number;
+    occurredAt: Date;
+  },
+): Promise<void> {
+  assertIdentifier(input.familyId, "familyId");
+  assertIdentifier(input.documentVersionId, "documentVersionId");
+  assertIdentifier(input.jobId, "jobId");
+  assertDate(input.occurredAt, "occurredAt");
+  if (!Number.isSafeInteger(input.attempt) || input.attempt < 0 || input.attempt > 100) {
+    throw new Error("attempt is invalid");
+  }
+  const inserted = await client.query(
+    `INSERT INTO processing_job_events
+       (id, family_id, document_version_id, processing_job_id, sequence, code, attempt, occurred_at)
+     SELECT $1, $2, $3, $4, COALESCE(MAX(sequence), 0) + 1, $5, $6, $7
+       FROM processing_job_events
+      WHERE family_id = $2 AND processing_job_id = $4`,
+    [
+      randomUUID(),
+      input.familyId,
+      input.documentVersionId,
+      input.jobId,
+      input.code,
+      input.attempt,
+      input.occurredAt.toISOString(),
+    ],
+  );
+  if (inserted.rowCount !== 1) throw new ProcessingPersistenceConflictError();
+}
+
 function dedupeKey(familyId: string, documentVersionId: string): string {
-  return `extract:${familyId}:${documentVersionId}:${SYNTHETIC_LAB_PARSER_VERSION}`;
+  return `extract:${familyId}:${documentVersionId}:${CODEX_DOCUMENT_INTELLIGENCE_VERSION}`;
 }
 
 export async function enqueueDocumentExtractionInTransaction(
@@ -317,16 +395,25 @@ export async function enqueueDocumentExtractionInTransaction(
   assertDate(input.now, "now");
   const maxAttempts = input.maxAttempts ?? 3;
   positiveInteger(maxAttempts, 100, "maxAttempts");
+  return enqueueWithDedupeKey(client, input, dedupeKey(input.familyId, input.documentVersionId));
+}
+
+async function enqueueWithDedupeKey(
+  client: DatabaseClient,
+  input: EnqueueDocumentExtractionInput,
+  key: string,
+): Promise<ProcessingJob> {
+  const maxAttempts = input.maxAttempts ?? 3;
   const now = input.now.toISOString();
-  const key = dedupeKey(input.familyId, input.documentVersionId);
-  await client.query(
+  const jobId = randomUUID();
+  const inserted = await client.query(
     `INSERT INTO processing_jobs
        (id, family_id, document_version_id, kind, dedupe_key, payload_version,
         state, attempt_count, max_attempts, available_at, created_at, updated_at)
      VALUES ($1, $2, $3, $4, $5, $6, 'pending', 0, $7, $8, $8, $8)
      ON CONFLICT (kind, dedupe_key) DO NOTHING`,
     [
-      randomUUID(),
+      jobId,
       input.familyId,
       input.documentVersionId,
       DOCUMENT_EXTRACTION_JOB_KIND,
@@ -349,7 +436,31 @@ export async function enqueueDocumentExtractionInTransaction(
   ) {
     throw new ProcessingPersistenceConflictError();
   }
+  if (inserted.rowCount === 1) {
+    await appendProcessingEventInTransaction(client, {
+      familyId: input.familyId,
+      documentVersionId: input.documentVersionId,
+      jobId,
+      code: "queued",
+      attempt: 0,
+      occurredAt: input.now,
+    });
+  }
   return asJob(row);
+}
+
+export async function enqueueDocumentReanalysisInTransaction(
+  client: DatabaseClient,
+  input: EnqueueDocumentReanalysisInput,
+): Promise<ProcessingJob> {
+  assertIdentifier(input.familyId, "familyId");
+  assertIdentifier(input.documentVersionId, "documentVersionId");
+  assertIdentifier(input.requestId, "requestId");
+  assertDate(input.now, "now");
+  const maxAttempts = input.maxAttempts ?? 3;
+  positiveInteger(maxAttempts, 100, "maxAttempts");
+  const key = `${dedupeKey(input.familyId, input.documentVersionId)}:restart:${input.requestId}`;
+  return enqueueWithDedupeKey(client, input, key);
 }
 
 function stableId(kind: string, ...parts: readonly (number | string)[]): string {
@@ -360,17 +471,221 @@ function stableId(kind: string, ...parts: readonly (number | string)[]): string 
   return `${kind}_${digest}`;
 }
 
-function boundedText(value: string | null, maximum: number, nullable: boolean): void {
+function boundedText(
+  value: unknown,
+  maximum: number,
+  nullable: boolean,
+): asserts value is string | null {
   if (value === null) {
     if (!nullable) invalidOutput();
     return;
   }
-  if (value.length === 0 || value.length > maximum || value !== value.trim()) invalidOutput();
+  if (
+    typeof value !== "string" ||
+    value.length === 0 ||
+    value.length > maximum ||
+    value !== value.trim() ||
+    [...value].some((character) => {
+      const code = character.codePointAt(0) ?? 0;
+      return code < 32 || code === 127;
+    })
+  ) {
+    invalidOutput();
+  }
 }
 
 function isCanonicalTimestamp(value: string): boolean {
   const parsed = new Date(value);
   return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+}
+
+function isCanonicalDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function exactObjectKeys(value: object, expected: readonly string[]): void {
+  if (Object.keys(value).sort().join(",") !== [...expected].sort().join(",")) invalidOutput();
+}
+
+function isRussianText(value: string): boolean {
+  return /[А-Яа-яЁё]/u.test(value);
+}
+
+function exactSourceFragment(
+  source: DocumentIntelligenceStructuredResult["source"],
+  pages: ReadonlyMap<number, ParsedDocumentPage>,
+): void {
+  if (
+    typeof source !== "object" ||
+    source === null ||
+    Array.isArray(source) ||
+    !Number.isSafeInteger(source.pageNumber)
+  ) {
+    invalidOutput();
+  }
+  exactObjectKeys(source, ["pageNumber", "fragment"]);
+  const pageText = pages.get(source.pageNumber)?.text.replaceAll("\r\n", "\n");
+  const fragment =
+    typeof source.fragment === "string" ? source.fragment.replaceAll("\r\n", "\n") : "";
+  if (
+    pageText === undefined ||
+    fragment.length < 12 ||
+    fragment.length > 2_000 ||
+    fragment !== fragment.trim() ||
+    !`\n${pageText}\n`.includes(`\n${fragment}\n`)
+  ) {
+    invalidOutput();
+  }
+}
+
+function structuredResult(
+  value: unknown,
+  pages: ReadonlyMap<number, ParsedDocumentPage>,
+): DocumentIntelligenceStructuredResult {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) invalidOutput();
+  exactObjectKeys(value, [
+    "resultKey",
+    "type",
+    "label",
+    "value",
+    "unit",
+    "code",
+    "lab",
+    "specimen",
+    "date",
+    "status",
+    "confidence",
+    "source",
+  ]);
+  const result = value as Record<string, unknown>;
+  const resultKey = result.resultKey;
+  boundedText(resultKey, 100, false);
+  if (resultKey === null || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(resultKey)) invalidOutput();
+  if (
+    typeof result.type !== "string" ||
+    !DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES.includes(
+      result.type as DocumentIntelligenceStructuredResult["type"],
+    )
+  ) {
+    invalidOutput();
+  }
+  const label = result.label;
+  boundedText(label, 200, false);
+  if (label === null || !isRussianText(label)) invalidOutput();
+  boundedText(result.value, 500, true);
+  boundedText(result.unit, 100, true);
+  boundedText(result.code, 100, true);
+  boundedText(result.lab, 200, true);
+  boundedText(result.specimen, 200, true);
+  boundedText(result.date, 10, true);
+  if (result.unit !== null && result.value === null) invalidOutput();
+  if (result.date !== null && !isCanonicalDate(result.date)) invalidOutput();
+  if (
+    typeof result.status !== "string" ||
+    !DOCUMENT_INTELLIGENCE_RESULT_STATUSES.includes(
+      result.status as DocumentIntelligenceStructuredResult["status"],
+    )
+  ) {
+    invalidOutput();
+  }
+  if (
+    typeof result.confidence !== "number" ||
+    !Number.isFinite(result.confidence) ||
+    result.confidence < 0 ||
+    result.confidence > 1
+  ) {
+    invalidOutput();
+  }
+  const source = result.source as DocumentIntelligenceStructuredResult["source"];
+  exactSourceFragment(source, pages);
+  return {
+    resultKey,
+    type: result.type as DocumentIntelligenceStructuredResult["type"],
+    label,
+    value: result.value as string | null,
+    unit: result.unit as string | null,
+    code: result.code as string | null,
+    lab: result.lab as string | null,
+    specimen: result.specimen as string | null,
+    date: result.date as string | null,
+    status: result.status as DocumentIntelligenceStructuredResult["status"],
+    confidence: result.confidence,
+    source: { pageNumber: source.pageNumber, fragment: source.fragment },
+  };
+}
+
+function completeDocumentIntelligence(
+  value: DocumentIntelligenceResult,
+  pages: ReadonlyMap<number, ParsedDocumentPage>,
+): DocumentIntelligenceResult {
+  boundedText(value.modelId, 100, false);
+  boundedText(value.runtimeVersion, 100, false);
+  boundedText(value.title, 200, false);
+  boundedText(value.shortSummary, 500, false);
+  if (
+    value.contractVersion !== DOCUMENT_INTELLIGENCE_CONTRACT_VERSION ||
+    value.provider !== "codex" ||
+    !DOCUMENT_CATEGORIES.includes(value.category) ||
+    !isRussianText(value.title) ||
+    !isRussianText(value.shortSummary) ||
+    !Number.isFinite(value.confidence) ||
+    value.confidence < 0 ||
+    value.confidence > 1 ||
+    (value.documentDate !== null && !isCanonicalDate(value.documentDate))
+  ) {
+    invalidOutput();
+  }
+
+  boundedText(value.detailedSummary, 4_000, false);
+  if (!isRussianText(value.detailedSummary)) {
+    invalidOutput();
+  }
+  if (
+    !Array.isArray(value.structuredResults) ||
+    value.structuredResults.length > MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS
+  ) {
+    invalidOutput();
+  }
+  const seen = new Set<string>();
+  const structuredResults = value.structuredResults.map((item) => {
+    const result = structuredResult(item, pages);
+    if (seen.has(result.resultKey)) invalidOutput();
+    seen.add(result.resultKey);
+    return result;
+  });
+  return {
+    ...value,
+    structuredResults,
+  };
+}
+
+export function normalizeDocumentIntelligenceSearchText(value: DocumentIntelligenceResult): string {
+  const resultFields = value.structuredResults.flatMap((result) => [
+    result.label,
+    result.value,
+    result.unit,
+    result.code,
+    result.lab,
+    result.specimen,
+    result.date,
+    result.status,
+  ]);
+  const normalized = [value.title, value.shortSummary, value.detailedSummary, ...resultFields]
+    .filter((part): part is string => part !== null)
+    .join(" ")
+    .normalize("NFKC")
+    .toLocaleLowerCase("ru-RU")
+    .replace(/\s+/gu, " ")
+    .trim();
+  if (normalized.length <= MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH) return normalized;
+  const candidate = normalized.slice(0, MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH + 1);
+  const wordBoundary = candidate.lastIndexOf(" ");
+  return candidate.slice(
+    0,
+    wordBoundary > 0 ? wordBoundary : MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH,
+  );
 }
 
 function assertPage(page: ParsedDocumentPage, seen: Set<number>): void {
@@ -454,13 +769,15 @@ function assertFact(
   seen.add(fact.factKey);
 }
 
-function validateOutput(output: ParsedLabExtraction): void {
+function validateOutput(output: ProcessingExtractionOutput): DocumentIntelligenceResult | null {
+  const isCodexOutput = "intelligence" in output;
   if (
     output.extraction.schemaVersion !== LAB_EXTRACTION_SCHEMA_VERSION ||
-    output.extraction.extractorVersion !== SYNTHETIC_LAB_PARSER_VERSION ||
+    (output.extraction.extractorVersion !== SYNTHETIC_LAB_PARSER_VERSION &&
+      output.extraction.extractorVersion !== CODEX_DOCUMENT_INTELLIGENCE_VERSION) ||
     output.pages.length === 0 ||
     output.pages.length > 50 ||
-    output.extraction.items.length === 0 ||
+    (!isCodexOutput && output.extraction.items.length === 0) ||
     output.extraction.items.length > 100
   ) {
     invalidOutput();
@@ -472,6 +789,7 @@ function validateOutput(output: ParsedLabExtraction): void {
   }
   const facts = new Set<string>();
   for (const fact of output.extraction.items) assertFact(fact, pages, facts);
+  return isCodexOutput ? completeDocumentIntelligence(output.intelligence, pages) : null;
 }
 
 async function jobRow(
@@ -490,12 +808,19 @@ function pageId(job: LeasedProcessingJob, page: ParsedDocumentPage): string {
   return stableId("page", job.familyId, job.documentVersionId, page.pageNumber);
 }
 
-function runId(job: LeasedProcessingJob): string {
-  return stableId("run", job.familyId, job.documentVersionId, job.id, SYNTHETIC_LAB_PARSER_VERSION);
+function runId(
+  job: LeasedProcessingJob,
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
+): string {
+  return stableId("run", job.familyId, job.documentVersionId, job.id, extractorVersion);
 }
 
-function factId(job: LeasedProcessingJob, fact: StrictLabExtractionFact): string {
-  return stableId("fact", runId(job), fact.factKey);
+function factId(
+  job: LeasedProcessingJob,
+  fact: StrictLabExtractionFact,
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
+): string {
+  return stableId("fact", runId(job, extractorVersion), fact.factKey);
 }
 
 type AutomatedProcessingOutcome =
@@ -632,8 +957,9 @@ async function insertOrVerifyFact(
   fact: StrictLabExtractionFact,
   pages: ReadonlyMap<number, ParsedDocumentPage>,
   createdAt: string,
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
 ): Promise<void> {
-  const id = factId(job, fact);
+  const id = factId(job, fact, extractorVersion);
   const page = pages.get(fact.source.pageNumber);
   if (page === undefined) throw new InvalidProcessingOutputError();
   const documentPageId = pageId(job, page);
@@ -653,7 +979,7 @@ async function insertOrVerifyFact(
       id,
       job.familyId,
       job.documentVersionId,
-      runId(job),
+      runId(job, extractorVersion),
       documentPageId,
       fact.factKey,
       ...values,
@@ -669,7 +995,7 @@ async function insertOrVerifyFact(
               confidence, validation_issues, review_status
          FROM extracted_facts
         WHERE family_id = $1 AND extraction_run_id = $2 AND fact_key = $3`,
-      [job.familyId, runId(job), fact.factKey],
+      [job.familyId, runId(job, extractorVersion), fact.factKey],
     )
   ).rows[0];
   if (
@@ -705,8 +1031,9 @@ async function completionFromStored(
   job: LeasedProcessingJob,
   expectedFactCount: number,
   status: ProcessingCompletion["status"],
+  extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
 ): Promise<ProcessingCompletion> {
-  const expectedRunId = runId(job);
+  const expectedRunId = runId(job, extractorVersion);
   const run = (
     await client.query<ExtractionRunRow>(
       `SELECT id, status, extractor_version, output_schema_version
@@ -726,7 +1053,7 @@ async function completionFromStored(
   if (
     run === undefined ||
     run.id !== expectedRunId ||
-    run.extractor_version !== SYNTHETIC_LAB_PARSER_VERSION ||
+    run.extractor_version !== extractorVersion ||
     run.output_schema_version !== LAB_EXTRACTION_SCHEMA_VERSION ||
     (run.status !== "awaiting_review" && run.status !== "completed") ||
     factCount !== expectedFactCount
@@ -734,6 +1061,77 @@ async function completionFromStored(
     throw new ProcessingPersistenceConflictError();
   }
   return { status, extractionRunId: expectedRunId, factCount, needsReviewCount };
+}
+
+async function insertOrVerifyIntelligence(
+  client: DatabaseClient,
+  claim: LeasedProcessingJob,
+  documentId: string,
+  value: DocumentIntelligenceResult,
+  createdAt: string,
+): Promise<void> {
+  const id = stableId("intelligence", claim.familyId, claim.documentVersionId, claim.id);
+  const structuredResultsJson = JSON.stringify(value.structuredResults);
+  const searchText = normalizeDocumentIntelligenceSearchText(value);
+  await client.query(
+    `INSERT INTO document_intelligence_results
+       (id, family_id, document_id, document_version_id, processing_job_id,
+        provider, model_id, runtime_version, schema_version, category,
+        title, short_summary, detailed_summary, structured_results_json, search_text,
+        document_date, confidence, created_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
+             $15, $16, $17, $18)
+     ON CONFLICT (family_id, processing_job_id) DO NOTHING`,
+    [
+      id,
+      claim.familyId,
+      documentId,
+      claim.documentVersionId,
+      claim.id,
+      value.provider,
+      value.modelId,
+      value.runtimeVersion,
+      value.contractVersion,
+      value.category,
+      value.title,
+      value.shortSummary,
+      value.detailedSummary,
+      structuredResultsJson,
+      searchText,
+      value.documentDate,
+      value.confidence,
+      createdAt,
+    ],
+  );
+  const stored = (
+    await client.query<DocumentIntelligenceRow>(
+      `SELECT id, document_id, provider, model_id, runtime_version, schema_version,
+              category, title, short_summary, detailed_summary, structured_results_json,
+              search_text, document_date, confidence
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND processing_job_id = $2`,
+      [claim.familyId, claim.id],
+    )
+  ).rows[0];
+  if (
+    stored === undefined ||
+    stored.id !== id ||
+    stored.document_id !== documentId ||
+    stored.provider !== "codex" ||
+    stored.model_id !== value.modelId ||
+    stored.runtime_version !== value.runtimeVersion ||
+    stored.schema_version !== DOCUMENT_INTELLIGENCE_CONTRACT_VERSION ||
+    stored.category !== value.category ||
+    stored.title !== value.title ||
+    stored.short_summary !== value.shortSummary ||
+    stored.detailed_summary !== value.detailedSummary ||
+    stored.structured_results_json !== structuredResultsJson ||
+    stored.search_text !== searchText ||
+    stored.document_date !== value.documentDate ||
+    Number(stored.confidence) !== value.confidence
+  ) {
+    throw new ProcessingPersistenceConflictError();
+  }
 }
 
 export function createProcessingJobService(
@@ -782,6 +1180,14 @@ export function createProcessingJobService(
             ],
           );
           if (updatedExpiredLease.rowCount !== 1) continue;
+          await appendProcessingEventInTransaction(client, {
+            familyId: exhaustedLease.family_id,
+            documentVersionId: exhaustedLease.document_version_id,
+            jobId: exhaustedLease.id,
+            code: "failed",
+            attempt: Number(exhaustedLease.attempt_count),
+            occurredAt: input.now,
+          });
           await auditAutomatedProcessingOutcome(
             client,
             asClaim(exhaustedLease),
@@ -809,6 +1215,7 @@ export function createProcessingJobService(
                      AND p.archived_at IS NULL
                    WHERE v.family_id = processing_jobs.family_id
                      AND v.id = processing_jobs.document_version_id
+                     AND d.deleted_at IS NULL
                 )
                 AND (
                   (state IN ('pending', 'retry_wait') AND available_at <= $3)
@@ -844,6 +1251,14 @@ export function createProcessingJobService(
         if (updated.rowCount !== 1) return null;
         const row = await jobRow(client, { familyId: candidate.family_id, jobId: candidate.id });
         if (row === undefined) throw new Error("Claimed processing job disappeared");
+        await appendProcessingEventInTransaction(client, {
+          familyId: row.family_id,
+          documentVersionId: row.document_version_id,
+          jobId: row.id,
+          code: "security_check_started",
+          attempt: Number(row.attempt_count),
+          occurredAt: input.now,
+        });
         return asClaim(row);
       });
     },
@@ -881,13 +1296,30 @@ export function createProcessingJobService(
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
         const row = await jobRow(client, { familyId: claim.familyId, jobId: claim.id });
         if (row === undefined) throw new Error("Processing job disappeared");
+        const eventCode: Record<ProcessingStage, DocumentProcessingEventCode> = {
+          security_check: "security_check_started",
+          text_extraction: "text_extraction_started",
+          document_classification: "document_classification_started",
+          structured_extraction: "codex_analysis_started",
+          validation: "result_validation_started",
+        };
+        await appendProcessingEventInTransaction(client, {
+          familyId: row.family_id,
+          documentVersionId: row.document_version_id,
+          jobId: row.id,
+          code: eventCode[stage],
+          attempt: Number(row.attempt_count),
+          occurredAt: changedAt,
+        });
         return asClaim(row);
       });
     },
 
     async completeExtraction(claim, output, completedAt) {
       assertDate(completedAt, "completedAt");
-      validateOutput(output);
+      const intelligence = validateOutput(output);
+      const extractorVersion = output.extraction.extractorVersion;
+      const isCodexOutput = intelligence !== null;
       const now = completedAt.toISOString();
       const pages = new Map(output.pages.map((page) => [page.pageNumber, page]));
       return database.transaction(async (client) => {
@@ -898,6 +1330,7 @@ export function createProcessingJobService(
             claim,
             output.extraction.items.length,
             "already_completed",
+            extractorVersion,
           );
         }
         if (
@@ -912,8 +1345,8 @@ export function createProcessingJobService(
         if (stored.current_stage !== "validation") {
           throw new InvalidProcessingStageTransitionError();
         }
-        const activeProfile = await client.query<{ id: string }>(
-          `SELECT p.id
+        const activeProfile = await client.query<{ document_id: string; id: string }>(
+          `SELECT p.id, d.id AS document_id
              FROM document_versions v
              JOIN documents d
                ON d.family_id = v.family_id
@@ -922,12 +1355,15 @@ export function createProcessingJobService(
                ON p.family_id = d.family_id
               AND p.id = d.patient_profile_id
               AND p.archived_at IS NULL
-            WHERE v.family_id = $1 AND v.id = $2`,
+            WHERE v.family_id = $1 AND v.id = $2
+              AND d.deleted_at IS NULL`,
           [claim.familyId, claim.documentVersionId],
         );
-        if (activeProfile.rows[0] === undefined) throw new ProcessingPersistenceConflictError();
+        const source = activeProfile.rows[0];
+        if (source === undefined) throw new ProcessingPersistenceConflictError();
 
-        const extractionStatus = "awaiting_review";
+        const extractionStatus =
+          output.extraction.items.length === 0 ? "completed" : "awaiting_review";
         await client.query(
           `INSERT INTO extraction_runs
                (id, family_id, document_version_id, job_id, extractor_kind,
@@ -936,12 +1372,12 @@ export function createProcessingJobService(
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $9)
              ON CONFLICT (family_id, job_id) DO NOTHING`,
           [
-            runId(claim),
+            runId(claim, extractorVersion),
             claim.familyId,
             claim.documentVersionId,
             claim.id,
-            DOCUMENT_EXTRACTION_KIND,
-            SYNTHETIC_LAB_PARSER_VERSION,
+            isCodexOutput ? CODEX_DOCUMENT_EXTRACTION_KIND : DOCUMENT_EXTRACTION_KIND,
+            extractorVersion,
             LAB_EXTRACTION_SCHEMA_VERSION,
             extractionStatus,
             claim.updatedAt,
@@ -950,7 +1386,17 @@ export function createProcessingJobService(
         );
         for (const page of output.pages) await insertOrVerifyPage(client, claim, page, now);
         for (const fact of output.extraction.items) {
-          await insertOrVerifyFact(client, claim, fact, pages, now);
+          await insertOrVerifyFact(
+            client,
+            claim,
+            await enrichFactFromAnalyteMappings(client, fact),
+            pages,
+            now,
+            extractorVersion,
+          );
+        }
+        if (isCodexOutput) {
+          await insertOrVerifyIntelligence(client, claim, source.document_id, intelligence, now);
         }
         const updated = await client.query(
           `UPDATE processing_jobs
@@ -964,6 +1410,14 @@ export function createProcessingJobService(
           [now, claim.id, claim.familyId, claim.leaseOwner],
         );
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
+        await appendProcessingEventInTransaction(client, {
+          familyId: stored.family_id,
+          documentVersionId: stored.document_version_id,
+          jobId: stored.id,
+          code: "result_saved",
+          attempt: Number(stored.attempt_count),
+          occurredAt: completedAt,
+        });
         await auditAutomatedProcessingOutcome(
           client,
           claim,
@@ -973,7 +1427,13 @@ export function createProcessingJobService(
           },
           now,
         );
-        return completionFromStored(client, claim, output.extraction.items.length, "completed");
+        return completionFromStored(
+          client,
+          claim,
+          output.extraction.items.length,
+          "completed",
+          extractorVersion,
+        );
       });
     },
 
@@ -1018,6 +1478,14 @@ export function createProcessingJobService(
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
         const row = await jobRow(client, { familyId: claim.familyId, jobId: claim.id });
         if (row === undefined) throw new Error("Processing job disappeared");
+        await appendProcessingEventInTransaction(client, {
+          familyId: stored.family_id,
+          documentVersionId: stored.document_version_id,
+          jobId: stored.id,
+          code: exhausted ? "failed" : "retry_scheduled",
+          attempt: Number(stored.attempt_count),
+          occurredAt: input.now,
+        });
         await auditAutomatedProcessingOutcome(
           client,
           claim,

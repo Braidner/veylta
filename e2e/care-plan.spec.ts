@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
+import { uploadSyntheticDocument } from "./support/document-upload";
 import { createSyntheticFamily } from "./support/synthetic-family";
 
 const syntheticLabFixture = new URL("../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -18,6 +19,7 @@ test("an owner plans and completes a dated home-care action without losing it on
   page,
 }) => {
   await openSyntheticProfile(page);
+  await page.getByRole("tab", { name: "План", exact: true }).click();
 
   const plan = page.getByRole("region", { name: "План заботы" });
   await expect(plan).toBeVisible();
@@ -56,25 +58,21 @@ test("an owner explicitly sends a confirmed summary to the ChatGPT Codex session
 }) => {
   await openSyntheticProfile(page);
   const profileUrl = page.url();
-  await page.getByLabel("Синтетический документ", { exact: true }).setInputFiles({
+  await uploadSyntheticDocument(page, {
     name: `care-plan-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",
     buffer: syntheticLabBytes,
   });
-  await page.getByRole("button", { name: "Загрузить исходник" }).click();
-  await expect(page.getByRole("heading", { name: "Проверьте извлечённые значения" })).toBeVisible();
-  const facts = page.locator(".review-fact");
-  await facts
-    .first()
-    .getByRole("button", { name: /^Подтвердить / })
-    .click();
-  await facts
-    .nth(1)
-    .getByRole("button", { name: /^Отклонить / })
-    .click();
+  await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
+  const facts = page.locator(".document-result-card--selectable");
+  await facts.first().click();
+  await page.getByRole("button", { name: "Подтвердить результат" }).click();
+  await facts.nth(1).click();
+  await page.getByRole("button", { name: "Отклонить результат" }).click();
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
 
   await page.goto(profileUrl);
+  await page.getByRole("tab", { name: "План", exact: true }).click();
   const plan = page.getByRole("region", { name: "План заботы" });
   await plan.getByRole("button", { name: "Предложения Codex" }).click();
   const disclosure = plan.getByRole("region", {
@@ -92,7 +90,7 @@ test("an owner explicitly sends a confirmed summary to the ChatGPT Codex session
   const proposal = plan.locator("li", { hasText: /Обсудить контроль:/ });
   await expect(proposal.getByText("Предложение · ждёт решения")).toBeVisible();
   await proposal.getByText("Почему это предложено").click();
-  await expect(proposal.getByText(/Модель gpt-5\.4-mini/)).toBeVisible();
+  await expect(proposal.getByText(/Модель gpt-5\.6-sol/)).toBeVisible();
   await proposal.getByRole("button", { name: "Принять" }).click();
   await expect(proposal.getByText("Принято без срока")).toBeVisible();
 

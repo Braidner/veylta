@@ -12,7 +12,7 @@ including the `observation-history/v1` and `audit-log/v1` read boundaries.
   UUIDv4 form. Fact identifiers are opaque `fact_<40 lower-case hex>` values;
   alternate forms fail request validation before domain or storage access.
 - RFC 3339 timestamps and explicit medically distinct date fields.
-- `Idempotency-Key` is required for upload, retry, and fact-review commands.
+- `Idempotency-Key` is required for upload, retry, restart, and fact-review commands.
 - Browser identity is resolved server-side. A caller-supplied user ID is never
   accepted as authentication.
 - Cookie-authenticated mutations require an exact `Origin` match with the
@@ -169,11 +169,11 @@ names, filesystem paths, or Codex status.
 
 ### `GET /v1/settings`
 
-Returns the administrator-only `home-settings/v1` projection:
+Returns the administrator-only `home-settings/v2` projection:
 
 ```json
 {
-  "contractVersion": "home-settings/v1",
+  "contractVersion": "home-settings/v2",
   "codex": {
     "installed": true,
     "authenticated": true,
@@ -182,6 +182,31 @@ Returns the administrator-only `home-settings/v1` projection:
     "daemonRunning": false,
     "cliVersion": "codex-cli 0.x",
     "runtimeVersion": null,
+    "preference": {
+      "modelId": "gpt-5.6-sol",
+      "reasoningEffort": "medium",
+      "serviceTier": "standard"
+    },
+    "models": [
+      {
+        "id": "gpt-5.6-sol",
+        "displayName": "GPT-5.6 Sol",
+        "isDefault": true,
+        "defaultReasoningEffort": "medium",
+        "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max", "ultra"],
+        "supportsFastMode": true,
+        "upgradeModelId": null
+      }
+    ],
+    "usageLimits": [
+      {
+        "name": "Codex",
+        "usedPercent": 35,
+        "remainingPercent": 65,
+        "windowDurationMinutes": 10080,
+        "resetsAt": "2026-08-18T12:00:00.000Z"
+      }
+    ],
     "experimental": true
   },
   "storage": {
@@ -205,8 +230,9 @@ Returns the administrator-only `home-settings/v1` projection:
 }
 ```
 
-The Codex projection contains capability and version data only. Veylta never
-reads or returns Codex OAuth tokens, API keys, or Codex-home contents.
+The Codex projection contains capability/version data, the local app-server
+model catalog, and its current rate-limit windows. Veylta never reads or returns
+Codex OAuth tokens, API keys, account identifiers, or Codex-home contents.
 
 ### `POST /v1/settings/accounts`
 
@@ -250,6 +276,24 @@ Requests local `codex app-server daemon` startup. Codex owns authentication via
 `codex login`; Veylta accepts and stores no API key. The safe status response and
 payload-free audit report the result. This adapter is experimental and consumes
 the household's Codex subscription limits.
+
+### `PUT /v1/settings/codex/preferences`
+
+Stores one server-wide execution profile used by new document analysis,
+document dialogue, and care-plan proposal tasks. The administrator may choose
+only a model and reasoning effort advertised by the local `model/list` result;
+`fast` is accepted only when that model advertises the priority tier. The route
+requires the configured `Origin`, records a payload-free audit event, returns
+`422 CODEX_PREFERENCE_UNSUPPORTED` for a stale/unsupported choice, and returns
+`503 CODEX_CATALOG_UNAVAILABLE` when the local catalog cannot be verified.
+
+```json
+{
+  "modelId": "gpt-5.6-sol",
+  "reasoningEffort": "high",
+  "serviceTier": "fast"
+}
+```
 
 ### `POST /v1/families/{familyId}/profiles`
 
@@ -428,7 +472,8 @@ Response `202`:
 
 ```json
 {
-  "contractVersion": "document/v3",
+  "contractVersion": "document/v5",
+  "disposition": "created",
   "document": {
     "id": "document_placeholder",
     "familyId": "family_placeholder",
@@ -452,12 +497,13 @@ Response `202`:
 }
 ```
 
-On a same-family matching checksum, `possible` is true and the document/profile
-IDs may refer to the authorized match. The server does not create another blob
-or delete either logical record automatically. A match in another family is
-never exposed. The upload transaction also creates one idempotent deterministic
-extraction job, so a newly accepted document reports `queued` rather than a
-fictional completed result.
+The first accepted source returns `202` with `disposition: "created"`. An
+identical active SHA-256 in the same family and profile returns `200` with
+`disposition: "already_exists"` and the existing logical document; it creates
+neither a document nor another processing job. An identical source for another
+profile can create a separate logical record while reusing the family-scoped
+blob. A match in another family is never exposed. A newly accepted document
+reports `queued` rather than a fictional completed result.
 
 Replaying the same key and equivalent request returns the original outcome and
 records a separate payload-free replay audit event rather than another upload
@@ -477,7 +523,17 @@ object on retry. Automated orphan retention/cleanup remains deferred.
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
 
 Returns immutable version metadata, possible same-family duplicate information,
-and real processing state. Its `document.status` remains `uploaded`; the nested
+full latest Codex intelligence (`intelligence`, nullable while queued), and real
+processing state. Intelligence v2 contains a Russian `shortSummary`, Russian
+`detailedSummary`, and bounded `structuredResults`. Every result has a closed
+type/status, optional value/unit/code/laboratory/specimen/date, confidence, page,
+and exact source fragment. These are source-derived proposals, not confirmed
+Observations or medical recommendations. A result may be `above_range` only
+when the source explicitly marks it high or its printed numeric value exceeds
+the explicit range printed in the same source; the UI places those results
+first and labels them `Выше диапазона`. No outside reference interval or medical
+knowledge is used to derive that status. Its `document.status` remains
+`uploaded`; the nested
 processing state is one of `queued`, `security_check`, `text_extraction`,
 `document_classification`, `structured_extraction`, `validation`,
 `awaiting_review`, `completed`, or sanitized `failed`. `awaiting_review`
@@ -488,25 +544,68 @@ category and retry eligibility, never a raw parser/database exception.
 Every successful metadata read records a payload-free audit event with actor,
 tenant, document, correlation ID, and time.
 
+### `GET /v1/families/{familyId}/profiles/{profileId}/documents?q={query}&limit={limit}`
+
+Returns `document-search/v1` with at most 20 documents by default (maximum 50).
+`q` is required and contains 2–120 visible characters. The server applies NFKC,
+Russian-aware lowercasing, whitespace collapse, and an authorized local
+substring match against the latest title, short/detailed summaries, and
+structured result fields. The response is `private, no-store`; audit metadata
+records only the contract version and never the raw query or medical matches.
+
+### `DELETE /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
+
+Requires the configured trusted `Origin` and an `Idempotency-Key`. It returns a
+`document-lifecycle/v1` receipt with `documentId` and `deletedAt`; an exact replay
+returns the same receipt. The tombstone removes the source from active metadata,
+content, processing, fact, agent, overview, search, export, and duplicate reads.
+Immutable audit and already-confirmed provenance remain; this endpoint does not
+claim physical storage or backup erasure.
+
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/processing`
 
 Returns a compact status response and records a payload-free access audit event:
 
 ```json
 {
-  "contractVersion": "document/v3",
+  "contractVersion": "document/v5",
   "documentId": "document_placeholder",
   "processing": {
     "state": "awaiting_review",
     "updatedAt": "2026-08-12T00:00:00.000Z",
     "factCount": 2,
     "needsReviewCount": 1
-  }
+  },
+  "activity": [
+    {
+      "code": "queued",
+      "attempt": 0,
+      "occurredAt": "2026-08-12T00:00:00.000Z"
+    },
+    {
+      "code": "security_check_started",
+      "attempt": 1,
+      "occurredAt": "2026-08-12T00:00:01.000Z"
+    },
+    {
+      "code": "result_saved",
+      "attempt": 1,
+      "occurredAt": "2026-08-12T00:00:08.000Z"
+    }
+  ]
 }
 ```
 
+`activity` is an ordered, append-only journal for the latest processing job.
+Its closed codes describe only real persisted transitions: queued, source
+security check, text extraction, document classification, Codex analysis,
+result validation, saved result, scheduled retry, or terminal failure. It never
+contains source text, extracted values, model output, prompts, chain-of-thought,
+storage paths, or raw exceptions. The browser polls this read endpoint and does
+not fabricate intermediate events.
+
 `failed` contains only one of `document_unavailable`, `invalid_document`,
-`unsupported_document`, `extraction_failed`, `validation_failed`, or
+`agent_unavailable`, `agent_output_invalid`, `extraction_failed`, `validation_failed`, or
 `attempts_exhausted`, plus `retryAllowed`. Neither processing status nor errors
 contain document text, a filename, a storage key, parser diagnostics, or values.
 
@@ -520,17 +619,63 @@ one final review decision; the browser never fabricates either state.
 Requires the exact configured `Origin` and an `Idempotency-Key`. It accepts no
 body and is available only for the authorized document's `dead_letter` job. The
 server records an immutable retry request, resets that existing job to `queued`,
-and returns `202` with the same `document/v3` processing response shape.
+and returns `202` with the same `document/v5` processing status shape. The next
+processing read includes the appended requeue event in its journal.
 Replaying the same family/actor/key returns the original accepted retry; a key
 used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
 select a job kind, parser, storage key, OCR provider, LLM provider, or URL.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/processing/restart`
+
+Requires the exact configured `Origin` and an `Idempotency-Key`, accepts no
+body, and is available only when the latest job is terminal. It creates a fresh
+`queued` Codex analysis job and returns `202`. The original bytes, earlier
+extraction runs, review decisions, confirmed observations, and audit history
+remain immutable. Reads and review actions use only the latest completed run;
+an older fact selector cannot be reviewed after a restart. Replaying the same
+family/actor/key returns the original accepted response and never creates a
+second job.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/agent`
+
+Returns the local `document-agent/v1` conversation for a document. Only the
+administrator/owner or the self-linked adult who can write that profile may
+open it; consent-only readers receive the same non-disclosing `404` as an
+unknown document. An unopened conversation returns `conversationId: null` and
+an empty `messages` array. Every message includes `role`, Russian `text`,
+`createdAt`, and either `provenance: null` for the user or exact
+Codex/model/runtime provenance for the assistant. The response is private and
+`no-store`.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/agent/messages`
+
+Requires the session cookie, exact trusted `Origin`, and `Idempotency-Key`.
+The closed body is `{ "message": "..." }`, trimmed and bounded to 2,000
+characters. A new exchange returns `201`; an exact replay returns the stored
+conversation with `200` and no second Codex call. Reusing a key with different
+text returns `409`.
+
+Veylta starts or resumes one local Codex CLI thread. For the duration of that
+turn it supplies a random short-lived bearer capability to the loopback-only
+`/mcp/document-agent` transport. MCP exposes only the zero-argument read-only
+`get_document_context` tool; family/profile/document selectors come from the
+server capability rather than model arguments. The tool returns the current
+document metadata, processing state, and source-bound facts after fresh write
+authorization. It cannot read the original bytes, access SQLite/filesystem,
+confirm a fact, restart a job, or mutate Veylta state.
+
+The user message and bounded context are sent through the locally authenticated
+Codex CLI to the Codex model service. Veylta stores no Codex OAuth token or API
+key. Dialogue and document content are never included in audit metadata or
+server logs.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/content`
 
 After fresh authorization, proxies the original PDF, PNG, or JPEG stream from the configured
 `ObjectStorage/v1` adapter. The default is local storage; the optional
 S3-compatible adapter does not change this HTTP surface or turn the path into a
-provider bearer URL. Uses `Content-Disposition: attachment`, `nosniff`, a
+provider bearer URL. Uses a safe UTF-8 `Content-Disposition: attachment` derived
+from the stored original display filename, `nosniff`, a
 sandbox policy, and `private, no-store`. Range behavior is not implemented in
 Task 4. The response never exposes a local or provider path. Authorized access
 produces a payload-free audit event.
@@ -590,10 +735,30 @@ is not changed by review.
 ```
 
 `review` is `null` until the explicit decision is stored; afterwards it is the
-immutable decision summary, including its outcome, time, optional observation
-identifier, and (for `correct`) the confirmed source correction. The UI must
-display source and proposed fields distinctly. A low-confidence or ambiguous
-fact cannot be silently confirmed.
+immutable decision summary, including its outcome, deciding account, decision
+time, optional observation identifier, and (for `correct`) the confirmed source
+correction. The enclosing facts response retains the extraction run and source
+version. The UI must display source and proposed fields distinctly. A
+low-confidence or ambiguous fact cannot be silently confirmed.
+
+A bulk UI action may include only `reviewStatus: "extracted"` facts with an
+empty `validationIssues` array. Every `needs_review` fact remains an individual
+decision. When document intelligence and the lab extraction describe the same
+measurement, the client pairs them only after exact page/fragment, source value,
+and unit provenance match. The provider may then normalize a differing generic
+result key to the fact key; a shared key never overrides conflicting provenance.
+The client must not render two decision contexts for
+one source measurement.
+
+The document workspace may select one fact at a time and place its source page
+and exact fragment beside the actions. It must disclose missing laboratory,
+sample-date, and canonical-code fields as missing rather than manufacture them.
+For an exact existing canonical code it may request the authorized
+`observation-history/v1` filter and show that source-first history. The full
+history link must preserve that exact `canonicalCode`; pagination remains bound
+to the same filter. A contextual
+"ask Codex" action only opens the existing document conversation; it does not
+change a fact or create a decision.
 
 ### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/facts/{factId}/review`
 
@@ -634,21 +799,28 @@ The first accepted command returns `201`:
 
 ```json
 {
-  "contractVersion": "document/v3",
+  "contractVersion": "document/v5",
   "review": {
     "id": "review_placeholder",
     "factId": "fact_0123456789abcdef0123456789abcdef01234567",
     "factVersion": 1,
     "outcome": "confirmed",
     "decidedAt": "2026-08-12T00:00:00.000Z",
+    "decidedBy": {
+      "id": "user_placeholder",
+      "displayName": "Synthetic owner"
+    },
     "observationId": "observation_placeholder"
   }
 }
 ```
 
 `outcome` is `confirmed`, `corrected`, or `rejected`; `observationId` is `null`
-for a rejection. The same family, actor, idempotency key, fact, and canonical
-command replay the original response with `200`. A conflicting key reuse,
+for a rejection. `decidedBy` and `decidedAt` identify the immutable human
+decision; the associated facts read also retains its extraction run and source
+version, so clients can render a decision journal without rewriting the source.
+The same family, actor, idempotency key, fact, and canonical command replay the
+original response with `200`. A conflicting key reuse,
 stale version, or a different command after the fact has its final decision
 returns `409`; inaccessible resources return `404`.
 
@@ -1249,12 +1421,15 @@ Jobs are internal and not accepted from arbitrary browser payloads. The worker
 polls SQLite for the single known `document_extraction` kind and versioned
 identifier-only payloads, claims a bounded lease, and persists an attempt with
 one of the implemented stages. It reads the authorized version through
-`ObjectStorage/v1`, bounds and verifies its bytes, and extracts a PDF text
-layer. Only when that layer is absent does it render at most three bounded pages
-for the checked-in local English OCR model. Direct PNG/JPEG uses the same model
-only after exact-signature and bounded header-pixel checks. Every path accepts
-only the versioned synthetic grammar. There is no external OCR/LLM provider
-SDK, arbitrary URL, or worker HTTP command surface.
+`ObjectStorage/v1`, bounds and verifies its bytes, and extracts page evidence
+with PDF.js or bounded local OCR. It then calls `DocumentIntelligenceProvider`.
+The delivered Codex adapter runs ephemeral/read-only with tools and user
+customizations disabled, returns a closed `document-intelligence/v2` result,
+and is post-validated against exact page fragments. The result contains Russian
+short and detailed summaries plus bounded generic structured results; compatible
+quantitative laboratory facts continue through explicit review. A document with
+no quantitative laboratory facts still completes and is filed by category.
+There is no arbitrary URL or worker HTTP command surface.
 
 User-visible retry is the authorized endpoint above. It can requeue only the
 stable failed job and cannot inject a job kind, storage key, URL, or

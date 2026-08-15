@@ -19,20 +19,33 @@ async function registerDemoFamily(page: Page) {
   await expect(page).toHaveTitle(`${names.profile} — Veylta`);
   const overview = page.getByRole("region", { name: "Обзор профиля" });
   await expect(overview).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Разделы профиля" })).toBeVisible();
-  await expect(overview.getByRole("heading", { name: "Состояние данных" })).toBeVisible();
-  await expect(overview.getByText("Не оценка здоровья", { exact: true })).toBeVisible();
-  const evidence = overview.getByLabel("Состояние данных");
-  await expect(evidence.getByText("Источники", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("Проверка", { exact: true })).toBeVisible();
-  await expect(evidence.getByText("Подтверждено", { exact: true })).toBeVisible();
-  await expect(overview.getByText("Ничего не ожидает проверки.")).toBeVisible();
-  await expect(overview.getByText("Исходников пока нет.")).toBeVisible();
-  await expect(
-    overview.getByRole("link", { name: "Скачать локальный пакет источников" }),
-  ).toBeVisible();
+  await expect(page.getByRole("tablist", { name: "Основные разделы профиля" })).toBeVisible();
+  await expect(overview.getByRole("heading", { name: "Помощники" })).toBeVisible();
+  await expect(overview.getByText("Не заменяют специалиста", { exact: true })).toBeVisible();
+  const signals = overview.getByRole("region", { name: "Сигналы здоровья" });
+  await expect(signals).toBeVisible();
+  await expect(signals.getByText("Без общего балла", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Ждёт проверки", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Отмечено источником", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Подтверждено", { exact: true })).toBeVisible();
+  await openProfileManagement(page);
+  const archive = page.getByRole("region", { name: "Архив документов" });
+  await expect(archive.getByText("Ничего не ожидает проверки.")).toBeVisible();
+  await expect(archive.getByText("Исходников пока нет.")).toBeVisible();
+  await expect(archive.getByText("Экспорт источников", { exact: true })).toBeVisible();
+  await page.getByRole("tab", { name: "Обзор", exact: true }).click();
+  await expect(page).toHaveURL(/\/profiles\/[0-9a-f-]{36}$/);
 
   return names;
+}
+
+async function openProfileManagement(page: Page): Promise<void> {
+  await page.getByRole("tab", { name: "Документы", exact: true }).click();
+  await expect(page.getByRole("tabpanel", { name: "Документы" })).toBeVisible();
+  const drawer = page.locator("summary").filter({ hasText: "Управление профилем и доступом" });
+  if ((await drawer.count()) > 0) {
+    await drawer.click();
+  }
 }
 
 test("a synthetic family session survives reload and keeps the active profile in the URL", async ({
@@ -49,6 +62,7 @@ test("a synthetic family session survives reload and keeps the active profile in
   await expect(page).toHaveURL(ownerProfileUrl);
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
 
+  await openProfileManagement(page);
   await page.getByRole("button", { name: "Добавить профиль" }).click();
   await page.getByLabel("Имя нового профиля").fill(names.dependent);
   await page.getByRole("button", { name: "Создать профиль" }).click();
@@ -73,6 +87,7 @@ test("a synthetic family session survives reload and keeps the active profile in
 
 test("an owner can inspect the payload-free family activity log", async ({ page }) => {
   await registerDemoFamily(page);
+  await openProfileManagement(page);
 
   const auditLog = page.getByRole("region", { name: "Журнал действий семьи" });
   await expect(auditLog).toBeVisible();
@@ -87,6 +102,7 @@ test("an owner archives and restores a profile without deleting it", async ({ pa
   const names = await registerDemoFamily(page);
   const ownerProfileUrl = page.url();
 
+  await openProfileManagement(page);
   await page.getByRole("button", { name: "Добавить профиль" }).click();
   await page.getByLabel("Имя нового профиля").fill(names.dependent);
   await page.getByRole("button", { name: "Создать профиль" }).click();
@@ -94,6 +110,7 @@ test("an owner archives and restores a profile without deleting it", async ({ pa
 
   await page.getByLabel("Активный профиль").selectOption({ label: names.profile });
   await expect(page).toHaveURL(ownerProfileUrl);
+  await openProfileManagement(page);
   const archive = page.getByRole("region", { name: "Архив профиля" });
   await expect(archive).toBeVisible();
   await archive.getByRole("button", { name: "Архивировать профиль" }).click();
@@ -103,6 +120,7 @@ test("an owner archives and restores a profile without deleting it", async ({ pa
   await expect(page.getByRole("heading", { level: 1, name: names.dependent })).toBeVisible();
   await expect(page.getByLabel("Активный профиль")).not.toContainText(names.profile);
 
+  await openProfileManagement(page);
   const restoredArchive = page.getByRole("region", { name: "Архив профиля" });
   await restoredArchive.getByRole("button", { name: "Показать архивные профили" }).click();
   await expect(restoredArchive.getByText(names.profile, { exact: true })).toBeVisible();
@@ -120,6 +138,7 @@ test("an owner can issue a one-time local adult invitation with no access to ano
   const names = await registerDemoFamily(page);
   const ownerProfile = page.url();
 
+  await openProfileManagement(page);
   const invitation = page.getByRole("region", { name: "Пригласить участника" });
   await expect(invitation).toBeVisible();
   await invitation.getByRole("button", { name: "Создать код для взрослого" }).click();
@@ -136,7 +155,7 @@ test("an owner can issue a one-time local adult invitation with no access to ano
 
   await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
-  await expect(page.getByText("Участник пространства:", { exact: false })).toBeVisible();
+  await expect(page.getByText("Участник пространства", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Пригласить участника" })).toHaveCount(0);
 
   await page.goto(ownerProfile);
@@ -157,6 +176,7 @@ test("an owner grants and revokes read-only access to a profile for an invited a
   try {
     const names = await registerDemoFamily(ownerPage);
     const ownerProfileUrl = ownerPage.url();
+    await openProfileManagement(ownerPage);
     const invitation = ownerPage.getByRole("region", { name: "Пригласить участника" });
     await invitation.getByRole("button", { name: "Создать код для взрослого" }).click();
     const code = await invitation.locator("code").textContent();
@@ -171,6 +191,7 @@ test("an owner grants and revokes read-only access to a profile for an invited a
     await expect(adultPage.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
 
     await ownerPage.reload();
+    await openProfileManagement(ownerPage);
     const consent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
     await expect(consent).toBeVisible();
     await consent.getByRole("button", { name: "Разрешить чтение" }).click();
@@ -179,11 +200,14 @@ test("an owner grants and revokes read-only access to a profile for an invited a
 
     await adultPage.goto(ownerProfileUrl);
     await expect(adultPage.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
-    await expect(adultPage.getByText("Доступ по согласию: только чтение")).toBeVisible();
+    await expect(
+      adultPage.locator(".profile-heading__access").getByText("Только чтение", { exact: true }),
+    ).toBeVisible();
+    await openProfileManagement(adultPage);
     await expect(
       adultPage.getByRole("heading", { level: 2, name: "Доступ выдан владельцем профиля" }),
     ).toBeVisible();
-    await expect(adultPage.getByLabel("Синтетический документ", { exact: true })).toHaveCount(0);
+    await expect(adultPage.getByRole("button", { name: "Загрузить документ" })).toHaveCount(0);
 
     await consent.getByRole("button", { name: "Отозвать доступ" }).click();
     await expect(consent.getByText("Нет доступа", { exact: true })).toBeVisible();
@@ -210,6 +234,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
 
   try {
     const names = await registerDemoFamily(ownerPage);
+    await openProfileManagement(ownerPage);
     await ownerPage.getByRole("button", { name: "Добавить профиль" }).click();
     await ownerPage.getByLabel("Имя нового профиля").fill(names.dependent);
     await ownerPage.getByRole("button", { name: "Создать профиль" }).click();
@@ -217,6 +242,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     await expect(ownerPage.getByRole("heading", { level: 1, name: names.dependent })).toBeVisible();
     const sharedProfileUrl = ownerPage.url();
 
+    await openProfileManagement(ownerPage);
     const invitation = ownerPage.getByRole("region", { name: "Пригласить участника" });
     await invitation.getByLabel("Роль приглашения").selectOption("caregiver");
     await invitation.getByRole("button", { name: "Создать код для помощника" }).click();
@@ -233,6 +259,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     await expect(caregiverPage.getByText(names.dependent, { exact: true })).toHaveCount(0);
 
     await ownerPage.reload();
+    await openProfileManagement(ownerPage);
     const consent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
     await expect(consent.getByText("Помощник по уходу", { exact: true })).toBeVisible();
     await consent.getByRole("button", { name: "Разрешить чтение" }).click();
@@ -243,12 +270,13 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     await expect(
       caregiverPage.getByRole("heading", { level: 1, name: names.dependent }),
     ).toBeVisible();
-    await expect(caregiverPage.getByText("Доступ по согласию: только чтение")).toBeVisible();
-    await expect(caregiverPage.getByLabel("Синтетический документ", { exact: true })).toHaveCount(
-      0,
-    );
+    await expect(
+      caregiverPage.locator(".profile-heading__access").getByText("Только чтение", { exact: true }),
+    ).toBeVisible();
+    await expect(caregiverPage.getByRole("button", { name: "Загрузить документ" })).toHaveCount(0);
 
     await ownerPage.goto(sharedProfileUrl);
+    await openProfileManagement(ownerPage);
     const refreshedConsent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
     await refreshedConsent.getByRole("button", { name: "Отозвать доступ" }).click();
     await caregiverPage.reload();

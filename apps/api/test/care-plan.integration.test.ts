@@ -329,8 +329,14 @@ test("an explicit Codex run stores bounded drafts once and never exposes source 
     app,
     family,
     createCarePlanService(database, {
-      modelId: "gpt-5.4-mini",
       generator: {
+        async executionProfile() {
+          return {
+            modelId: "gpt-5.4-mini",
+            reasoningEffort: "medium",
+            serviceTier: "standard",
+          };
+        },
         async generate(input) {
           generated += 1;
           assert.equal(input.evidence.length, 1);

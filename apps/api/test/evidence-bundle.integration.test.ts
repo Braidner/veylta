@@ -135,7 +135,9 @@ async function uploadDocument(
   owner: Identity,
   filename = "evidence-source.pdf",
 ): Promise<string> {
-  const multipart = multipartFile(await readFile(fixtureUrl), filename);
+  const fixture = await readFile(fixtureUrl);
+  const source = Buffer.concat([fixture, Buffer.from(`\n% ${filename}\n`)]);
+  const multipart = multipartFile(source, filename);
   const uploaded = await context.app.inject({
     method: "POST",
     url: `${profilePath(owner)}/documents`,

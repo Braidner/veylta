@@ -1,0 +1,5 @@
+DROP TRIGGER document_intelligence_results_delete_forbidden;
+DROP TRIGGER document_intelligence_results_update_forbidden;
+DROP INDEX document_intelligence_results_document;
+DROP TABLE document_intelligence_results;
+DROP INDEX document_versions_intelligence_scope;

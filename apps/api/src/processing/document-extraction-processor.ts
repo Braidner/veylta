@@ -13,6 +13,8 @@ import {
   ObjectStorageSecurityError,
   ObjectStorageValidationError,
 } from "../storage/object-storage.js";
+import { CodexDocumentIntelligenceError } from "./codex-document-intelligence-provider.js";
+import type { DocumentIntelligenceProvider } from "./document-intelligence-provider.js";
 import {
   type DirectImageContentType,
   extractImageTextWithLocalSyntheticOcr,
@@ -63,6 +65,7 @@ export interface DocumentExtractionProcessorDependencies {
     contentType: DirectImageContentType,
   ) => Promise<ExtractedPageText[]>;
   parse?: (pages: readonly ExtractedPageText[]) => ParsedLabExtraction;
+  intelligence?: DocumentIntelligenceProvider;
   now?: () => Date;
 }
 
@@ -145,7 +148,8 @@ async function sourceForClaim(
        LEFT JOIN document_blob_content_types AS bt
          ON bt.family_id = b.family_id
         AND bt.blob_id = b.id
-      WHERE v.family_id = $1 AND v.id = $2`,
+      WHERE v.family_id = $1 AND v.id = $2
+        AND d.deleted_at IS NULL`,
     [claim.familyId, claim.documentVersionId],
   );
   const row = result.rows[0];
@@ -236,25 +240,26 @@ function failureCode(error: unknown): ProcessingErrorCode {
   if (error instanceof PdfTextExtractionError) {
     if (error.code === "INVALID_PDF") return "INVALID_DOCUMENT";
     if (error.code === "TEXT_LAYER_MISSING" || error.code === "PDF_LIMIT_EXCEEDED") {
-      return "UNSUPPORTED_DOCUMENT";
+      return "EXTRACTION_FAILED";
     }
   }
   if (error instanceof PdfOcrExtractionError) {
     if (error.code === "INVALID_PDF") return "INVALID_DOCUMENT";
     if (error.code === "PDF_LIMIT_EXCEEDED" || error.code === "OCR_FAILED") {
-      return "UNSUPPORTED_DOCUMENT";
+      return "EXTRACTION_FAILED";
     }
   }
   if (error instanceof ImageOcrExtractionError) {
     if (error.code === "INVALID_IMAGE") return "INVALID_DOCUMENT";
     if (error.code === "IMAGE_LIMIT_EXCEEDED" || error.code === "OCR_FAILED") {
-      return "UNSUPPORTED_DOCUMENT";
+      return "EXTRACTION_FAILED";
     }
   }
   if (error instanceof SyntheticLabParseError) {
-    return error.code === "UNSUPPORTED_SYNTHETIC_FORMAT"
-      ? "UNSUPPORTED_DOCUMENT"
-      : "VALIDATION_FAILED";
+    return "VALIDATION_FAILED";
+  }
+  if (error instanceof CodexDocumentIntelligenceError) {
+    return error.code === "PROVIDER_UNAVAILABLE" ? "AGENT_UNAVAILABLE" : "AGENT_OUTPUT_INVALID";
   }
   if (error instanceof InvalidProcessingOutputError) return "VALIDATION_FAILED";
   return "EXTRACTION_FAILED";
@@ -301,6 +306,7 @@ export function createDocumentExtractionProcessor(
   const extractScannedPdf = dependencies.extractScannedPdf ?? extractPdfTextWithLocalSyntheticOcr;
   const extractImage = dependencies.extractImage ?? extractImageTextWithLocalSyntheticOcr;
   const parse = dependencies.parse ?? parseSyntheticLabPages;
+  const intelligence = dependencies.intelligence;
   const now = dependencies.now ?? (() => new Date());
 
   return {
@@ -330,9 +336,16 @@ export function createDocumentExtractionProcessor(
           pages = await extractImage(bytes, source.contentType);
         }
         await advance(jobs, claim, "document_classification", now);
-        requireSyntheticLabFixture(pages);
         await advance(jobs, claim, "structured_extraction", now);
-        const output = parse(pages);
+        const output =
+          intelligence === undefined
+            ? (() => {
+                // Compatibility seam for isolated deterministic fixtures. The runtime worker
+                // always supplies the Codex provider.
+                requireSyntheticLabFixture(pages);
+                return parse(pages);
+              })()
+            : await intelligence.analyze({ contentType: source.contentType, pages });
         await advance(jobs, claim, "validation", now);
         const completion = await jobs.completeExtraction(claim, output, validNow(now));
         return completedResult(claim, completion);

@@ -3,16 +3,23 @@ import { createServer } from "node:http";
 import { type HealthStatus, HTTP_API_VERSION } from "@veylta/contracts";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./database/pool.js";
+import { createCodexDocumentIntelligenceProvider } from "./processing/codex-document-intelligence-provider.js";
 import { createDocumentExtractionProcessor } from "./processing/document-extraction-processor.js";
+import { createCodexPreferencesStore } from "./settings/codex-preferences.js";
 import { createStorageController } from "./storage/storage-controller.js";
 
 const config = loadConfig();
 const database = createDatabase(config.databasePath);
 const storage = createStorageController(database, config.objectStorage);
 await storage.initialize();
+const codexPreferences = createCodexPreferencesStore(database, config.codexDefaultPreference);
 const processor = createDocumentExtractionProcessor({
   database,
   storage,
+  intelligence: createCodexDocumentIntelligenceProvider({
+    resolveExecutionProfile: () => codexPreferences.get(),
+    timeoutMs: config.codexDocumentTimeoutMs,
+  }),
 });
 const workerId = randomUUID();
 let ready = false;

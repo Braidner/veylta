@@ -62,6 +62,9 @@ erDiagram
   Family ||--o{ AuditEvent : records
   Family ||--o{ ProcessingJob : queues
   ProcessingJob ||--o{ ProcessingRetryRequest : requeued_by
+  Document ||--o| DocumentAgentConversation : discussed_in
+  DocumentAgentConversation ||--o{ DocumentAgentMessage : contains
+  DocumentAgentConversation ||--o{ DocumentAgentMessageRequest : deduplicates
 ```
 
 `ProfileConsentGrant`, Task 20 `HealthSummary`, and Task 33a `CarePlanItem` are
@@ -235,6 +238,28 @@ type without treating the display filename as evidence.
 Unique `(document_version_id, page_number)`. Page text is sensitive medical data
 and must not enter general logs.
 
+### DocumentAgentConversation
+
+- `id`, `family_id`, `patient_profile_id`, `document_id`, `document_version_id`
+- `created_by_user_id`, optional immutable `codex_thread_id`
+- optional immutable `model_id`, `runtime_version`
+- `created_at`, `updated_at`
+
+One conversation is bound to one exact document/version. The Codex thread ID is
+local provider provenance, not a credential. Once established it cannot be
+replaced with another thread.
+
+### DocumentAgentMessage / DocumentAgentMessageRequest
+
+- message `id`, tenant/conversation, monotonic `sequence`, `user | assistant`
+  role, bounded text, optional Codex model/runtime provenance, `created_at`
+- request `id`, actor, SHA-256 idempotency digest, request digest, exact user and
+  assistant message IDs, `created_at`
+
+Messages and completed request records are append-only. User text is sensitive
+dialogue data kept in SQLite; audit events store only the `document-agent/v1`
+marker. The short-lived MCP bearer capability is never persisted in this model.
+
 ### ExtractionRun
 
 - `id`, `family_id`, `document_version_id`
@@ -301,6 +326,15 @@ makes conflicting key reuse fail without creating another decision.
 Unique `(kind, dedupe_key)`. Payload contains identifiers, not document bytes or
 medical text.
 
+### ProcessingJobEvent
+
+- `id`, `family_id`, `document_version_id`, `processing_job_id`, `sequence`
+- closed payload-free `code`, bounded `attempt`, `occurred_at`
+
+Events are append-only and unique by job/sequence. They persist the exact
+observable worker timeline without storing document text, extracted values,
+model responses, prompts, raw errors, or hidden reasoning.
+
 ### ProcessingRetryRequest
 
 - `id`, `family_id`, `actor_user_id`, `document_version_id`, `processing_job_id`
@@ -310,6 +344,16 @@ It is append-only and accepts an insert only while its tenant-scoped job is in
 `dead_letter`. More than one terminal cycle may have a distinct manual requeue;
 the actor/key uniqueness makes an equivalent browser replay return the original
 accepted retry rather than creating new work.
+
+### ProcessingRestartRequest
+
+- `id`, `family_id`, `actor_user_id`, `document_version_id`, `processing_job_id`
+- SHA-256 digest of the restart `Idempotency-Key`, `created_at`
+
+This append-only record binds one explicit user action to one fresh pending
+job. The document version and original object are reused by reference; prior
+jobs, extraction runs, intelligence results, decisions, and observations are
+not updated or deleted.
 
 ## Confirmed medical record
 
@@ -390,8 +434,9 @@ confidence, missing data, and evidence links.
 - sanitized parameters, timing, cost, error category
 - evidence links and safety-policy version
 
-No prompt/model run exists in the deterministic first slice. `ExtractionRun`
-still records its parser/schema version and timing.
+`DocumentIntelligenceResult` records one immutable provider/model/runtime/schema
+classification per document version. `ExtractionRun` names the corresponding
+Codex extractor version; prompts and raw model responses are not persisted.
 
 ### AuditEvent
 
@@ -429,6 +474,12 @@ profile/summary/model/rule result is single-run, replayable, and every Codex
 item is bound to that run. Add broader consent capabilities, extended clinical
 entities, and clinically reviewed recommendations only with the slice that uses
 and tests them.
+
+Migration 0016 adds `DocumentIntelligenceResult`: document/version/job,
+provider/model/runtime/schema, closed category, factual title, optional document
+date, confidence, and creation time. Composite foreign keys bind it to the exact
+tenant document version and processing job; update/delete triggers keep it
+immutable.
 
 ## Database invariants to test
 

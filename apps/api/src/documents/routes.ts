@@ -15,6 +15,7 @@ import {
   sendDomainError,
 } from "../http/route-helpers.js";
 import {
+  type DocumentSearchQuery,
   type DocumentService,
   type HealthSummaryComparisonQuery,
   type HealthSummaryHistoryQuery,
@@ -101,6 +102,21 @@ const observationHistoryQuerySchema = {
   },
 } as const;
 
+const documentSearchQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["q"],
+  properties: {
+    q: {
+      type: "string",
+      minLength: 2,
+      maxLength: 120,
+      pattern: "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$",
+    },
+    limit: { type: "string", pattern: "^(?:[1-9]|[1-4][0-9]|50)$" },
+  },
+} as const;
+
 const healthSummaryQuerySchema = {
   type: "object",
   additionalProperties: false,
@@ -161,6 +177,31 @@ function idempotencyKey(request: FastifyRequest): string {
     throw new InvalidIdempotencyKeyError();
   }
   return value;
+}
+
+function attachmentDisposition(originalFilename: string): string {
+  const cleaned = [...originalFilename]
+    .filter((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint !== undefined && codePoint > 31 && codePoint !== 127;
+    })
+    .join("")
+    .trim();
+  const fallback = [...cleaned]
+    .map((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint >= 32 && codePoint <= 126 && character !== '"' && character !== "\\"
+        ? character
+        : "_";
+    })
+    .join("")
+    .slice(0, 180);
+  const safeFallback = fallback.length > 0 ? fallback : "document";
+  const encoded = encodeURIComponent(cleaned.length > 0 ? cleaned : "document").replace(
+    /['()*]/g,
+    (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+  );
+  return `attachment; filename="${safeFallback}"; filename*=UTF-8''${encoded}`;
 }
 
 async function drain(stream: NodeJS.ReadableStream): Promise<void> {
@@ -491,18 +532,39 @@ export function registerDocumentRoutes(
           }
           if (staged === null || invalidShape) throw new InvalidMultipartUploadError();
 
-          const document = await service.acceptUpload(
+          const accepted = await service.acceptUpload(
             actor,
             request.params,
             staged,
             commandKey,
             request.id,
           );
-          reply.code(202).send({ contractVersion: DOCUMENT_CONTRACT_VERSION, document });
+          reply.code(accepted.disposition === "created" ? 202 : 200).send({
+            contractVersion: DOCUMENT_CONTRACT_VERSION,
+            disposition: accepted.disposition,
+            document: accepted.document,
+          });
         } catch (error) {
           if (!sendDocumentError(error, request, reply)) throw error;
         } finally {
           if (staged !== null) await service.discardStaged(staged).catch(() => undefined);
+        }
+      },
+    );
+
+    scope.get<{ Params: ProfileParams; Querystring: DocumentSearchQuery }>(
+      "/v1/families/:familyId/profiles/:profileId/documents",
+      { schema: { params: profileParamsSchema, querystring: documentSearchQuerySchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        const actor = await requireActor(familyService, request, reply);
+        if (actor === null) return;
+        try {
+          reply.send(
+            await service.searchDocuments(actor, request.params, request.query, request.id),
+          );
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
         }
       },
     );
@@ -532,20 +594,36 @@ export function registerDocumentRoutes(
         if (actor === null) return;
         try {
           const content = await service.getContent(actor, request.params, request.id);
-          const filename =
-            content.contentType === "application/pdf"
-              ? "document.pdf"
-              : content.contentType === "image/png"
-                ? "document.png"
-                : "document.jpg";
           return reply
             .type(content.contentType)
             .header("content-length", content.byteSize)
-            .header("content-disposition", `attachment; filename="${filename}"`)
+            .header("content-disposition", attachmentDisposition(content.originalFilename))
             .header("x-content-type-options", "nosniff")
             .header("cache-control", "private, no-store")
             .header("content-security-policy", "sandbox")
             .send(content.body);
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.delete<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        try {
+          if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+          const actor = await requireActor(familyService, request, reply);
+          if (actor === null) return;
+          const result = await service.deleteDocument(
+            actor,
+            request.params,
+            idempotencyKey(request),
+            request.id,
+          );
+          reply.code(200).send(result.response);
         } catch (error) {
           if (!sendDocumentError(error, request, reply)) throw error;
         }
@@ -619,6 +697,28 @@ export function registerDocumentRoutes(
             actor,
             request.params,
             commandKey,
+            request.id,
+          );
+          reply.code(202).send(processing);
+        } catch (error) {
+          if (!sendDocumentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.post<{ Params: DocumentParams }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/processing/restart",
+      { schema: { params: documentParamsSchema } },
+      async (request, reply) => {
+        privateResponse(reply);
+        try {
+          if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+          const actor = await requireActor(familyService, request, reply);
+          if (actor === null) return;
+          const processing = await service.restartProcessing(
+            actor,
+            request.params,
+            idempotencyKey(request),
             request.id,
           );
           reply.code(202).send(processing);

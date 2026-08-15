@@ -16,7 +16,7 @@ Users may be reviewing unfamiliar medical language while worried or short on tim
 
 ## Product Purpose
 
-Veylta is a home health-care PWA backed by SQLite and immutable source documents. It helps a household upload a result, review uncertain extraction, confirm facts, and understand what is known, missing, or due without presenting itself as a clinician or an electronic health record.
+Veylta is a home health-care PWA backed by SQLite and immutable source documents. It helps a household upload a result, review uncertain extraction, confirm facts, and understand what is known, missing, or due without presenting itself as a clinician or an electronic health record. The profile landing page turns those existing states into a small inbox of assistants and factual health signals so the next safe action is visible immediately.
 
 Success means a user can verify every displayed medical value against a specific page and fragment of the source, distinguish evidence from safe suggestions, correct uncertain extraction without destroying the raw value, and control who may open each profile.
 
@@ -45,6 +45,13 @@ Calm, exact, and humane. The product should lower cognitive load without softeni
 4. Progressive disclosure: lead with the next useful action, then reveal raw, technical, and provenance details.
 5. Familiar controls, careful language: interaction should disappear into the task while medical meaning stays precise.
 6. Home-server clarity: account, storage, Codex runtime, and access settings must expose their actual local state without revealing secrets.
+
+## Assistant Surfaces
+
+- `Медицинский навигатор` is deterministic navigation over the current source, processing, and review state. It is not a doctor, chatbot, diagnosis, or model inference.
+- `Питание` and `Движение` lead to the existing care plan. Codex may prepare a bounded draft only after the user explicitly requests it and accepts the disclosed egress boundary.
+- No assistant sends unsolicited medical advice or silently changes the care plan. Every proposal remains a draft until an explicit human action.
+- `Сигналы здоровья` reports only counts and explicit source flags: pending review, source-marked range flags, recent sources, and confirmed values. There is no aggregate health score, risk score, or inferred clinical state.
 
 ## Accessibility & Inclusion
 

@@ -5,10 +5,15 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
+    "@fontsource-variable/geist": "5.2.9",
     "@veylta/contracts": "workspace:*",
+    "class-variance-authority": "0.7.1",
+    "clsx": "2.1.1",
+    "lucide-react": "1.21.0",
     "next": "16.3.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "tailwind-merge": "3.6.0"
   },
   "scripts": {
     "build": "next build",

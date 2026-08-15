@@ -4,13 +4,20 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { DOCUMENT_INTELLIGENCE_CONTRACT_VERSION } from "@veylta/contracts";
 import { migrateUp } from "../database/migrations.js";
 import { createDatabase, type Database } from "../database/pool.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "./codex-document-intelligence-provider.js";
+import type {
+  DocumentIntelligenceOutput,
+  DocumentIntelligenceV2Output,
+} from "./document-intelligence-provider.js";
 import {
   createProcessingJobService,
   enqueueDocumentExtractionInTransaction,
   InvalidProcessingOutputError,
   InvalidProcessingStageTransitionError,
+  normalizeDocumentIntelligenceSearchText,
   ProcessingPersistenceConflictError,
   StaleProcessingLeaseError,
 } from "./processing-job-service.js";
@@ -72,6 +79,49 @@ function highConfidenceExtraction(): ParsedLabExtraction {
       extractionVersion: "pdfjs-dist/6.2.108",
     },
   ]);
+}
+
+function codexExtraction(): DocumentIntelligenceV2Output {
+  const parsed = parsedExtraction();
+  return {
+    pages: parsed.pages,
+    extraction: {
+      ...parsed.extraction,
+      extractorVersion: CODEX_DOCUMENT_INTELLIGENCE_VERSION,
+    },
+    intelligence: {
+      contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+      provider: "codex",
+      modelId: "gpt-5.4-mini",
+      runtimeVersion: "codex-cli/0.147.0",
+      category: "laboratory",
+      title: "Синтетические лабораторные результаты",
+      documentDate: "2026-08-12",
+      confidence: 0.93,
+      shortSummary: "В документе найден один синтетический лабораторный результат.",
+      detailedSummary:
+        "Документ содержит синтетическое измерение, которое остаётся черновиком до проверки пользователем.",
+      structuredResults: [
+        {
+          resultKey: "synthetic-analyte-a",
+          type: "measurement",
+          label: "СИНТЕТИЧЕСКИЙ АНАЛИТ A",
+          value: "7.0",
+          unit: "synthetic-unit",
+          code: "synthetic-analyte-a",
+          lab: "Синтетическая лаборатория",
+          specimen: "Венозная кровь",
+          date: "2026-08-12",
+          status: "abnormal",
+          confidence: 0.93,
+          source: {
+            pageNumber: 1,
+            fragment: "NAME|СИНТЕТИЧЕСКИЙ АНАЛИТ A",
+          },
+        },
+      ],
+    },
+  };
 }
 
 async function advanceToValidation(
@@ -198,6 +248,10 @@ test("enqueue uses a stable document/version dedupe key", async () => {
       "SELECT count(*) AS count FROM processing_jobs",
     );
     assert.equal(Number(stored.rows[0]?.count), 1);
+    const activity = await database.query<{ attempt: number; code: string }>(
+      "SELECT code, attempt FROM processing_job_events ORDER BY sequence",
+    );
+    assert.deepEqual(activity.rows, [{ code: "queued", attempt: 0 }]);
   });
 });
 
@@ -353,13 +407,13 @@ test("failures wait for retry and exhaust into a visible dead-letter state", asy
       [
         {
           automated: true,
-          contractVersion: "document/v3",
+          contractVersion: "document/v5",
           errorCode: "EXTRACTION_FAILED",
           outcome: "retry_wait",
         },
         {
           automated: true,
-          contractVersion: "document/v3",
+          contractVersion: "document/v5",
           errorCode: "VALIDATION_FAILED",
           outcome: "dead_letter",
         },
@@ -397,7 +451,7 @@ test("an expired final attempt is dead-lettered instead of remaining leased fore
           correlationId: `worker:${job.id}`,
           metadata: {
             automated: true,
-            contractVersion: "document/v3",
+            contractVersion: "document/v5",
             errorCode: "ATTEMPT_LIMIT",
             outcome: "dead_letter",
           },
@@ -468,10 +522,147 @@ test("completion atomically persists provenance once and is idempotent on acknow
     );
     assert.deepEqual(JSON.parse(events[0]?.metadata ?? ""), {
       automated: true,
-      contractVersion: "document/v3",
+      contractVersion: "document/v5",
       outcome: "completed",
     });
     assert.doesNotMatch(events[0]?.metadata ?? "", /synthetic-analyte-a|reference|7\.0/i);
+  });
+});
+
+test("Codex completion stores immutable v2 intelligence and normalized search text beside lab facts", async () => {
+  await withDatabase(async (database, fixture) => {
+    const jobs = createProcessingJobService(database);
+    await jobs.enqueueDocumentExtraction({ ...fixture, now: start });
+    const claim = await jobs.claimNext({
+      workerId: "worker-codex",
+      now: start,
+      leaseDurationMs: 60_000,
+    });
+    assert.ok(claim !== null);
+    await advanceToValidation(jobs, claim);
+
+    const output = codexExtraction();
+    const completion = await jobs.completeExtraction(claim, output, after(500));
+    assert.equal(completion.factCount, 1);
+    const stored = await database.query<{
+      category: string;
+      detailed_summary: string;
+      model_id: string;
+      provider: string;
+      schema_version: string;
+      search_text: string;
+      short_summary: string;
+      structured_results_json: string;
+      title: string;
+    }>(
+      `SELECT provider, model_id, schema_version, category, title, short_summary,
+              detailed_summary, structured_results_json, search_text
+         FROM document_intelligence_results
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.deepEqual(stored.rows, [
+      {
+        provider: "codex",
+        model_id: "gpt-5.4-mini",
+        schema_version: "document-intelligence/v2",
+        category: "laboratory",
+        title: "Синтетические лабораторные результаты",
+        short_summary: "В документе найден один синтетический лабораторный результат.",
+        detailed_summary:
+          "Документ содержит синтетическое измерение, которое остаётся черновиком до проверки пользователем.",
+        structured_results_json: JSON.stringify(output.intelligence.structuredResults),
+        search_text: normalizeDocumentIntelligenceSearchText(output.intelligence),
+      },
+    ]);
+    assert.equal(stored.rows[0]?.search_text, stored.rows[0]?.search_text.normalize("NFKC"));
+    assert.equal(
+      stored.rows[0]?.search_text,
+      stored.rows[0]?.search_text.toLocaleLowerCase("ru-RU"),
+    );
+    assert.doesNotMatch(
+      JSON.stringify(await auditEvents(database)),
+      /черновиком|synthetic-analyte-a-result|СИНТЕТИЧЕСКИЙ АНАЛИТ A/,
+    );
+    await assert.rejects(
+      database.query(
+        "UPDATE document_intelligence_results SET title = 'mutated' WHERE family_id = $1",
+        [fixture.familyId],
+      ),
+      /immutable/,
+    );
+  });
+});
+
+test("completion resolves a known laboratory alias through the local analyte catalog", async () => {
+  await withDatabase(async (database, fixture) => {
+    const jobs = createProcessingJobService(database);
+    await jobs.enqueueDocumentExtraction({ ...fixture, now: start });
+    const claim = await jobs.claimNext({
+      workerId: "worker-analyte-map",
+      now: start,
+      leaseDurationMs: 60_000,
+    });
+    assert.ok(claim !== null);
+    await advanceToValidation(jobs, claim);
+
+    const output = codexExtraction();
+    const sourceFact = output.extraction.items[0];
+    assert.ok(sourceFact !== undefined);
+    const sourceFragment = "9,9 Билирубин общий (ТВ) мкмоль/л 3,4 - 20,5";
+    const mappedOutput: DocumentIntelligenceOutput = {
+      ...output,
+      intelligence: { ...output.intelligence, structuredResults: [] },
+      pages: [
+        {
+          pageNumber: 1,
+          text: sourceFragment,
+          extractionMethod: "pdf_text_layer",
+          extractionVersion: "pdfjs-dist/6.2.108",
+          textSha256: createHash("sha256").update(sourceFragment).digest("hex"),
+        },
+      ],
+      extraction: {
+        ...output.extraction,
+        items: [
+          {
+            ...sourceFact,
+            factKey: "bilirubin-total",
+            sourceName: "Билирубин общий (ТВ)",
+            sourceValue: "9,9",
+            sourceUnit: "мкмоль/л",
+            proposedCanonicalCode: null,
+            proposedNormalizedValue: null,
+            proposedNormalizedUnit: null,
+            source: { pageNumber: 1, fragment: sourceFragment },
+          },
+        ],
+      },
+    };
+
+    await jobs.completeExtraction(claim, mappedOutput, after(500));
+    const stored = await database.query<{
+      proposed_canonical_code: string | null;
+      proposed_normalized_unit: string | null;
+      proposed_normalized_value: string | null;
+      source_unit: string;
+      source_value: string;
+    }>(
+      `SELECT proposed_canonical_code, proposed_normalized_value, proposed_normalized_unit,
+              source_value, source_unit
+         FROM extracted_facts
+        WHERE family_id = $1 AND document_version_id = $2`,
+      [fixture.familyId, fixture.documentVersionId],
+    );
+    assert.deepEqual(stored.rows, [
+      {
+        proposed_canonical_code: "bilirubin.total",
+        proposed_normalized_value: "9.9",
+        proposed_normalized_unit: "µmol/L",
+        source_value: "9,9",
+        source_unit: "мкмоль/л",
+      },
+    ]);
   });
 });
 
@@ -536,6 +727,7 @@ test("missing or cross-tenant document source rolls back a processing outcome an
       assert.ok(claim !== null);
       await advanceToValidation(jobs, claim);
 
+      await database.exec("DROP TRIGGER documents_hard_delete_forbidden");
       await database.exec("PRAGMA foreign_keys = OFF");
       if (corruption === "missing") {
         await database.query("DELETE FROM documents WHERE id = $1", [fixture.documentId]);

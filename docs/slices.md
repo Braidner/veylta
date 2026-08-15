@@ -104,7 +104,7 @@ Commit intent: `feat: review and confirm extracted observations`
 - Transactional decision + observation + source reference/range + audit event.
 - Idempotency, stale-version, rollback, and cross-family tests.
 
-Delivered in the Task 6 implementation: `document/v3` adds a tenant-scoped
+Delivered in the Task 6 implementation: the document contract adds a tenant-scoped
 fact-review command requiring exact `Origin` and `Idempotency-Key`. It accepts
 `factVersion` plus `confirm`, `correct`, or `reject`; correction fields are
 required only for `correct`. The UI keeps source evidence and proposed values
@@ -169,7 +169,7 @@ not claim a remote CI run or production readiness.
 | --- | --- |
 | One documented startup sequence | Clean local/CI startup smoke test |
 | Original survives restart | Integration test with persistent local volume |
-| Repeat upload is a possible duplicate | Same-family upload integration test |
+| Repeat upload creates no second active document | Same-profile lifecycle integration and browser deduplication tests |
 | No cross-family duplicate oracle | Two-family negative integration test |
 | Page-level provenance | Extraction schema/DB/API assertions |
 | Uncertain fact requires review | Domain + UI tests |
@@ -590,6 +590,136 @@ Status: delivered.
   Codex call. The adapter uses an empty temporary directory, read-only sandbox,
   ephemeral session, closed output schema, and disabled shell/browser/plugins.
 
+### Task 34 — Codex document intelligence and batch intake
+
+Commit intent: `feat: analyze document batches with codex`
+
+Status: delivered.
+
+- Up to twenty PDF/PNG/JPEG files can be selected or dropped in one dialog;
+  every file retains its own size/signature/SHA-256/idempotency boundary.
+- The dialog explicitly identifies Codex model-service egress. Originals remain
+  immutable in household storage.
+- `DocumentIntelligenceProvider` separates semantic analysis from storage and
+  byte transport. The delivered Codex adapter classifies into a closed archive
+  category and extracts only exact-fragment-bound quantitative facts.
+- Non-laboratory documents complete with zero facts; malformed or invented
+  provider output fails closed. Classification is immutable and versioned by
+  provider, model, runtime, and schema.
+
+### Task 35 — Immutable document reanalysis
+
+Commit intent: `feat: restart document analysis`
+
+Status: delivered.
+
+- An owner can explicitly restart a terminal Codex analysis from document
+  detail with an exact-Origin, idempotent command.
+- Restart creates a fresh job, extraction run, facts, and intelligence result;
+  it never overwrites the original object, older runs, review decisions, or
+  confirmed observations.
+- Status, overview, facts, and review actions select the latest run
+  deterministically, while prior provenance remains retained for later run
+  history UX.
+
+### Task 36 — Persistent Codex document dialogue
+
+Commit intent: `feat: add codex document agent runtime`
+
+Status: delivered backend boundary.
+
+- One local, append-only Russian conversation is bound to an exact authorized
+  document and resumes the same Codex thread without copying OAuth tokens or
+  requiring an API key.
+- During each turn Codex receives a fresh short-lived bearer capability and a
+  single read-only `get_document_context` MCP tool. The capability is scoped to
+  the current actor/family/profile/document and is revoked when the CLI exits.
+- The MCP route rejects browser `Origin`, arbitrary document selectors, direct
+  SQLite/filesystem access, and unauthenticated calls. Shell, browser, plugins,
+  memories, apps, collaboration, computer use, and image generation remain
+  disabled in the Codex process.
+- Messages and model/runtime provenance are persisted locally; exact-key
+  replays return the stored exchange without another model call. Audit events
+  contain only the contract version, never the dialogue or medical payload.
+- The first dialogue boundary is read-only: Codex may explain missing context
+  and accept corrections conversationally, but cannot confirm a fact or mutate
+  a document. Explicit action tools remain a separate human-confirmed task.
+
+### Task 37 — Honest document processing activity
+
+Commit intent: `feat: expose document processing activity`
+
+Status: delivered backend boundary.
+
+- Every real queue, worker claim, processing stage, saved result, scheduled
+  retry, and terminal failure appends one immutable closed-code event.
+- `document/v5` returns the ordered journal for the latest job with only event
+  code, attempt number, and timestamp. It never exposes source text, medical
+  values, model output, prompts, raw exceptions, or chain-of-thought.
+- The browser may poll and render these persisted events; it must not invent
+  intermediate activity or imitate token streaming.
+
+### Task 38 — Document dialogue and activity interface
+
+Commit intent: `feat(web): add codex document activity`
+
+Status: delivered.
+
+- Render the persisted Russian conversation beside the source-first review.
+- Render the append-only processing journal while work is active and after a
+  reload, using ordinary status updates rather than fake character streaming.
+- Disclose Codex model-service egress before the first message, keep the source
+  text visually distinct, and show bounded pending/error/replay states.
+- The first interface uses React state and ordinary HTTP polling only; no chat
+  component dependency, LangGraph runtime, fake token stream, or chain-of-thought
+  display is introduced.
+
+### Task 39 — Universal document intelligence
+
+Commit intent: `feat: add universal document intelligence`
+
+Status: delivered.
+
+- One bounded Codex invocation returns a Russian short summary, Russian detailed
+  summary, closed classification, and source-provenanced structured results.
+- Results can represent a measurement, genetic variant, finding, procedure,
+  medication, diagnosis stated by the source, or a bounded `other` fallback.
+- Each result carries an explicit source-derived status, optional code/unit/
+  laboratory/specimen/date, confidence, page, and exact source fragment.
+- Existing quantitative laboratory facts still use the human review and
+  Observation path; generic results are document analytics, not silently
+  confirmed longitudinal records.
+- The immutable v2 intelligence row stores a bounded normalized local search
+  projection. No separate model call or external search service is introduced.
+
+### Task 40 — Searchable document lifecycle and workspace
+
+Commit intent: `feat: manage searchable documents`
+
+Status: delivered.
+
+- The profile archive searches the latest authorized summaries and structured
+  results with Unicode normalization performed in Node.js.
+- A repeated active SHA-256 in the same profile reuses the existing logical
+  document and job; another profile can retain a separate logical record while
+  the family blob remains physically deduplicated.
+- Authorized download returns the checksum-verified original bytes with a safe
+  UTF-8 `Content-Disposition` using the stored display filename.
+- Trusted-Origin, idempotent deletion tombstones the logical document and hides
+  it from active metadata, content, processing, agent, overview, and search
+  reads. It retains immutable provenance and does not claim physical backup
+  erasure.
+- The document route uses a dense responsive dashboard: short summary and
+  structured results are primary; detailed summary, source integrity,
+  processing activity, conversation, review, restart, download, and deletion
+  remain clearly separated. The evolved detail workspace keeps the selected
+  result beside its source evidence and review decision rather than duplicating
+  a profile-level heading. It discloses missing laboratory/sample-date/code
+  fields, routes a contextual question to Codex, exposes compatible canonical
+  history, and preserves one immutable reviewer/time/run/source-version journal
+  entry for every final decision. Bulk confirmation includes only warning-free
+  extracted facts; ambiguous or low-confidence facts remain individual actions.
+
 ## Later MVP slices
 
 Each item requires its own design, tests, security review, license check, and
@@ -597,7 +727,7 @@ commit chain:
 
 1. Alternate synthetic fixtures and any OCR language/model expansion beyond the
    delivered local English PDF/image fallback.
-2. Broader classification/extraction with provider interfaces and strict schemas.
+2. Additional document-intelligence providers implementing the delivered port.
 3. Clinically reviewed evidence summaries and recommendations beyond the
    delivered non-clinical `health-summary/v1` snapshot.
 4. Broader role/consent UX: additional capability sets, expiry, delegation, and
@@ -606,6 +736,6 @@ commit chain:
 5. Portable export, controlled deletion, backup, and verified restore.
 6. FHIR R4 mappings and Bundle import/export at the system edge.
 
-The complete MVP is not part of the first vertical slice. External OCR, broader
-LLM access beyond the delivered bounded Codex proposal job, clinical advice,
-and real-data readiness remain off until their production gates are met.
+The complete MVP is not part of the first vertical slice. External OCR,
+clinical advice, and real-data readiness remain off until their production
+gates are met.

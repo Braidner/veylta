@@ -1,8 +1,12 @@
-import { spawn } from "node:child_process";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CarePlanCategory } from "@veylta/contracts";
+import type { CarePlanCategory, CodexExecutionPreference } from "@veylta/contracts";
+import { type CodexCliExecutor, createCodexCliExecutor } from "../codex/codex-cli-executor.js";
+import {
+  type CodexExecutionProfileResolver,
+  codexExecutionArguments,
+} from "../codex/codex-execution-profile.js";
 
 const maximumOutputBytes = 64 * 1024;
 const missingContextCodes = [
@@ -49,106 +53,11 @@ export interface CarePlanGeneratorResult {
 }
 
 export interface CarePlanProposalGenerator {
-  generate(input: CarePlanGeneratorInput): Promise<CarePlanGeneratorResult>;
-}
-
-interface ExecutorFiles {
-  cwd: string;
-  outputPath: string;
-  schemaPath: string;
-  writeOutput(value: string): Promise<void>;
-}
-
-type Executor = (
-  arguments_: readonly string[],
-  input: string,
-  files: ExecutorFiles,
-) => Promise<{ stdout: string; stderr: string; runtimeVersion: string }>;
-
-function boundedAppend(current: string, chunk: Buffer): string {
-  const next = current + chunk.toString("utf8");
-  if (Buffer.byteLength(next, "utf8") > maximumOutputBytes) {
-    throw new Error("Codex output exceeded its bounded transport");
-  }
-  return next;
-}
-
-async function runProcess(
-  command: string,
-  arguments_: readonly string[],
-  input: string,
-  timeoutMs: number,
-): Promise<{ stdout: string; stderr: string }> {
-  if (Buffer.byteLength(input, "utf8") > maximumOutputBytes) {
-    return Promise.reject(new Error("Codex input exceeded its bounded transport"));
-  }
-  return new Promise((resolve, reject) => {
-    const environment = { ...process.env };
-    delete environment.OPENAI_API_KEY;
-    delete environment.OPENAI_BASE_URL;
-    delete environment.OPENAI_ORG_ID;
-    delete environment.OPENAI_PROJECT_ID;
-    const child = spawn(command, arguments_, {
-      cwd: undefined,
-      env: environment,
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-    });
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const finish = (operation: () => void) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      operation();
-    };
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      finish(() => reject(new Error("Codex proposal generation timed out")));
-    }, timeoutMs);
-    child.once("error", (error) => finish(() => reject(error)));
-    child.stdin.once("error", (error) => finish(() => reject(error)));
-    child.stdout.on("data", (chunk: Buffer) => {
-      try {
-        stdout = boundedAppend(stdout, chunk);
-      } catch (error) {
-        child.kill("SIGKILL");
-        finish(() => reject(error));
-      }
-    });
-    child.stderr.on("data", (chunk: Buffer) => {
-      try {
-        stderr = boundedAppend(stderr, chunk);
-      } catch (error) {
-        child.kill("SIGKILL");
-        finish(() => reject(error));
-      }
-    });
-    child.once("close", (code, signal) => {
-      finish(() => {
-        if (code === 0) resolve({ stdout, stderr });
-        else reject(new Error(`Codex exited with ${signal ?? code}`));
-      });
-    });
-    child.stdin.end(input);
-  });
-}
-
-function createExecutor(timeoutMs: number): Executor {
-  return async (arguments_, input, _files) => {
-    const version = await runProcess("codex", ["--version"], "", 10_000);
-    const runtimeVersion = version.stdout.trim();
-    if (!/^codex-cli [a-z0-9._+-]{1,100}$/i.test(runtimeVersion)) {
-      throw new Error("Codex runtime version is unavailable");
-    }
-    const login = await runProcess("codex", ["login", "status"], "", 10_000);
-    if (!/Logged in using ChatGPT/i.test(`${login.stdout}\n${login.stderr}`)) {
-      throw new Error("Codex ChatGPT subscription is unavailable");
-    }
-    const result = await runProcess("codex", arguments_, input, timeoutMs);
-    return { ...result, runtimeVersion };
-  };
+  executionProfile(): ReturnType<CodexExecutionProfileResolver>;
+  generate(
+    input: CarePlanGeneratorInput,
+    profile: CodexExecutionPreference,
+  ): Promise<CarePlanGeneratorResult>;
 }
 
 const outputSchema = {
@@ -264,14 +173,19 @@ function prompt(input: CarePlanGeneratorInput): string {
 }
 
 export function createCodexCarePlanGenerator(
-  options: { modelId: string; timeoutMs: number },
-  executor: Executor = createExecutor(options.timeoutMs),
+  options: { resolveExecutionProfile: CodexExecutionProfileResolver; timeoutMs: number },
+  executor: CodexCliExecutor = createCodexCliExecutor({
+    timeoutMs: options.timeoutMs,
+    maximumInputBytes: maximumOutputBytes,
+    maximumOutputBytes,
+  }),
 ): CarePlanProposalGenerator {
-  if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(options.modelId) || options.timeoutMs < 1_000) {
+  if (options.timeoutMs < 1_000) {
     throw new Error("Codex care-plan configuration is invalid");
   }
   return {
-    async generate(input) {
+    executionProfile: options.resolveExecutionProfile,
+    async generate(input, profile) {
       const directory = await mkdtemp(join(tmpdir(), "veylta-codex-care-plan-"));
       const schemaPath = join(directory, "output.schema.json");
       const outputPath = join(directory, "output.json");
@@ -285,8 +199,7 @@ export function createCodexCarePlanGenerator(
           "--skip-git-repo-check",
           "--sandbox",
           "read-only",
-          "--model",
-          options.modelId,
+          ...codexExecutionArguments(profile),
           "--output-schema",
           schemaPath,
           "--output-last-message",
@@ -322,7 +235,7 @@ export function createCodexCarePlanGenerator(
           throw new Error("Codex proposal output is invalid");
         }
         return {
-          modelId: options.modelId,
+          modelId: profile.modelId,
           runtimeVersion: result.runtimeVersion,
           items: parseOutput(output, input.evidence.length),
         };

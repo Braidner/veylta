@@ -496,7 +496,7 @@ async function completedProposalResponse(
 
 export function createCarePlanService(
   database: Database,
-  proposals?: { generator: CarePlanProposalGenerator; modelId: string; leaseDurationMs?: number },
+  proposals?: { generator: CarePlanProposalGenerator; leaseDurationMs?: number },
 ): CarePlanService {
   return {
     async get(actor, requestedScope, correlationId) {
@@ -514,7 +514,9 @@ export function createCarePlanService(
           }>(
             `SELECT
                (SELECT count(*) FROM documents d
-                 WHERE d.family_id = $1 AND d.patient_profile_id = $2) AS source_count,
+                 WHERE d.family_id = $1
+                   AND d.patient_profile_id = $2
+                   AND d.deleted_at IS NULL) AS source_count,
                (SELECT count(*)
                   FROM extracted_facts fact
                   JOIN extraction_runs run
@@ -528,6 +530,7 @@ export function createCarePlanService(
                    AND decision.extracted_fact_id = fact.id
                  WHERE document.family_id = $1
                    AND document.patient_profile_id = $2
+                   AND document.deleted_at IS NULL
                    AND decision.id IS NULL) AS pending_review_count,
                (SELECT count(*) FROM observations observation
                  WHERE observation.family_id = $1
@@ -758,6 +761,7 @@ export function createCarePlanService(
 
     async generateProposals(actor, requestedScope, correlationId) {
       if (proposals === undefined) throw new CarePlanProposalGenerationError("CODEX_UNAVAILABLE");
+      const executionProfile = await proposals.generator.executionProfile();
       const scope = canonicalScope(requestedScope);
       const leaseDurationMs = proposals.leaseDurationMs ?? 180_000;
       const claimed = await database.transaction(async (client) => {
@@ -782,7 +786,7 @@ export function createCarePlanService(
               scope.familyId,
               scope.profileId,
               summary.id,
-              proposals.modelId,
+              executionProfile.modelId,
               CODEX_CARE_PLAN_RULE_VERSION,
             ],
           )
@@ -822,7 +826,7 @@ export function createCarePlanService(
               scope.profileId,
               summary.id,
               actor.userId,
-              proposals.modelId,
+              executionProfile.modelId,
               CODEX_CARE_PLAN_RULE_VERSION,
               leaseExpiresAt,
               now,
@@ -904,11 +908,14 @@ export function createCarePlanService(
       }
       let generated: CarePlanGeneratorResult;
       try {
-        generated = await proposals.generator.generate({
-          healthSummary: claimed.summary,
-          evidence: claimed.evidence,
-        });
-        if (generated.modelId !== proposals.modelId) {
+        generated = await proposals.generator.generate(
+          {
+            healthSummary: claimed.summary,
+            evidence: claimed.evidence,
+          },
+          executionProfile,
+        );
+        if (generated.modelId !== executionProfile.modelId) {
           throw new Error("Codex proposal model is invalid");
         }
       } catch (error) {

@@ -2,7 +2,8 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
-import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { type CodexExecutionPreference, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { requireCodexExecutionPreference } from "./codex/codex-execution-profile.js";
 import type { S3ServerSideEncryption } from "./storage/s3-object-storage.js";
 
 function findProjectRoot(start: string): string {
@@ -76,11 +77,19 @@ function databasePath(): string {
 }
 
 function codexModel(): string {
-  const value = process.env.CODEX_CARE_PLAN_MODEL ?? "gpt-5.4-mini";
+  const value = process.env.CODEX_MODEL ?? "gpt-5.6-sol";
   if (!/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(value)) {
-    throw new Error("CODEX_CARE_PLAN_MODEL must be a canonical Codex model id");
+    throw new Error("CODEX_MODEL must be a canonical Codex model id");
   }
   return value;
+}
+
+function codexDefaultPreference(): CodexExecutionPreference {
+  return requireCodexExecutionPreference({
+    modelId: codexModel(),
+    reasoningEffort: process.env.CODEX_REASONING_EFFORT ?? "medium",
+    serviceTier: process.env.CODEX_SERVICE_TIER ?? "standard",
+  });
 }
 
 export type ObjectStorageRuntimeConfig =
@@ -154,8 +163,10 @@ export interface RuntimeConfig {
   apiHost: string;
   apiPort: number;
   databasePath: string;
-  codexCarePlanModel: string;
+  codexDefaultPreference: CodexExecutionPreference;
   codexCarePlanTimeoutMs: number;
+  codexDocumentTimeoutMs: number;
+  codexDocumentAgentTimeoutMs: number;
   demoRegistrationEnabled: boolean;
   maxDocumentBytes: number;
   objectStorage: ObjectStorageRuntimeConfig;
@@ -179,17 +190,30 @@ export function loadConfig(): RuntimeConfig {
   if (maxDocumentBytes > MAX_SYNTHETIC_DOCUMENT_BYTES) {
     throw new Error(`MAX_DOCUMENT_BYTES must not exceed ${MAX_SYNTHETIC_DOCUMENT_BYTES}`);
   }
+  const codexDocumentTimeoutMs = boundedInteger("CODEX_DOCUMENT_TIMEOUT_MS", 300_000, 600_000);
+  const processingLeaseDurationMs = integer("PROCESSING_LEASE_DURATION_MS", 360_000);
+  if (processingLeaseDurationMs < codexDocumentTimeoutMs + 30_000) {
+    throw new Error(
+      "PROCESSING_LEASE_DURATION_MS must exceed CODEX_DOCUMENT_TIMEOUT_MS by at least 30000",
+    );
+  }
 
   return {
     apiHost,
     apiPort: integer("API_PORT", 4301),
-    codexCarePlanModel: codexModel(),
+    codexDefaultPreference: codexDefaultPreference(),
     codexCarePlanTimeoutMs: boundedInteger("CODEX_CARE_PLAN_TIMEOUT_MS", 120_000, 600_000),
+    codexDocumentTimeoutMs,
+    codexDocumentAgentTimeoutMs: boundedInteger(
+      "CODEX_DOCUMENT_AGENT_TIMEOUT_MS",
+      120_000,
+      600_000,
+    ),
     databasePath: databasePath(),
     demoRegistrationEnabled,
     maxDocumentBytes,
     objectStorage: objectStorage(),
-    processingLeaseDurationMs: integer("PROCESSING_LEASE_DURATION_MS", 60_000),
+    processingLeaseDurationMs,
     processingPollIntervalMs: integer("PROCESSING_POLL_INTERVAL_MS", 500),
     processingRetryDelayMs: integer("PROCESSING_RETRY_DELAY_MS", 1_000),
     secureSessionCookie: boolean("SESSION_COOKIE_SECURE", false),

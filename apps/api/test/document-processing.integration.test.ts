@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,7 @@ import test from "node:test";
 import {
   type DemoRegistrationResponse,
   DOCUMENT_CONTRACT_VERSION,
+  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
   LAB_EXTRACTION_SCHEMA_VERSION,
   MAX_SYNTHETIC_PDF_BYTES,
 } from "@veylta/contracts";
@@ -18,7 +19,10 @@ import { createDocumentService } from "../src/documents/document-service.js";
 import { registerDocumentRoutes } from "../src/documents/routes.js";
 import { createFamilyService } from "../src/family/family-service.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
+import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../src/processing/codex-document-intelligence-provider.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
+import type { DocumentIntelligenceProvider } from "../src/processing/document-intelligence-provider.js";
+import { parseSyntheticLabPages } from "../src/processing/synthetic-lab-parser.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
 import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
@@ -153,9 +157,51 @@ async function processOneDocument(
 ): Promise<
   Awaited<ReturnType<ReturnType<typeof createDocumentExtractionProcessor>["processNext"]>>
 > {
+  const intelligence: DocumentIntelligenceProvider = {
+    async analyze(input) {
+      const pages = input.pages.map((page) => ({
+        ...page,
+        textSha256: createHash("sha256").update(page.text, "utf8").digest("hex"),
+      }));
+      let items: ReturnType<typeof parseSyntheticLabPages>["extraction"]["items"] = [];
+      try {
+        items = parseSyntheticLabPages(input.pages).extraction.items;
+      } catch {
+        // This deterministic double simulates Codex classifying a non-lab document with no facts.
+      }
+      return {
+        pages,
+        extraction: {
+          schemaVersion: LAB_EXTRACTION_SCHEMA_VERSION,
+          extractorVersion: CODEX_DOCUMENT_INTELLIGENCE_VERSION,
+          items,
+        },
+        intelligence: {
+          contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
+          provider: "codex",
+          modelId: "gpt-5.4-mini",
+          runtimeVersion: "codex-cli/test",
+          category: items.length > 0 ? "laboratory" : "other",
+          title: items.length > 0 ? "Синтетические анализы" : "Синтетический документ",
+          shortSummary:
+            items.length > 0
+              ? "Синтетические лабораторные результаты."
+              : "Синтетический документ без лабораторных результатов.",
+          detailedSummary:
+            items.length > 0
+              ? "Источник содержит только синтетические лабораторные данные для тестирования."
+              : "Источник содержит только безопасные синтетические данные для тестирования.",
+          structuredResults: [],
+          documentDate: null,
+          confidence: 0.95,
+        },
+      };
+    },
+  };
   const processor = createDocumentExtractionProcessor({
     database,
     storage: createLocalObjectStorage(storageRoot),
+    intelligence,
   });
   return processor.processNext({
     workerId: `test-worker-${randomUUID()}`,
@@ -182,6 +228,13 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
     assert.equal(queued.json().documentId, documentId);
     assert.equal(queued.json().processing.state, "queued");
     assert.match(queued.json().processing.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(
+      queued.json().activity.map(({ code, attempt }: { code: string; attempt: number }) => ({
+        code,
+        attempt,
+      })),
+      [{ code: "queued", attempt: 0 }],
+    );
 
     const processed = await processOneDocument(database, storageRoot);
     assert.equal(processed.status, "completed");
@@ -212,6 +265,21 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
       },
     );
     assert.match(processing.json().processing.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(
+      processing.json().activity.map(({ code, attempt }: { code: string; attempt: number }) => ({
+        code,
+        attempt,
+      })),
+      [
+        { code: "queued", attempt: 0 },
+        { code: "security_check_started", attempt: 1 },
+        { code: "text_extraction_started", attempt: 1 },
+        { code: "document_classification_started", attempt: 1 },
+        { code: "codex_analysis_started", attempt: 1 },
+        { code: "result_validation_started", attempt: 1 },
+        { code: "result_saved", attempt: 1 },
+      ],
+    );
 
     const facts = await app.inject({
       method: "GET",
@@ -220,7 +288,7 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
     });
     assert.equal(facts.statusCode, 200);
     assert.equal(facts.json().schemaVersion, LAB_EXTRACTION_SCHEMA_VERSION);
-    assert.equal(facts.json().extractorVersion, "synthetic-lab-text/v1");
+    assert.equal(facts.json().extractorVersion, CODEX_DOCUMENT_INTELLIGENCE_VERSION);
     assert.equal(facts.json().items.length, 2);
     assert.deepEqual(
       facts.json().items.map((item: { factKey: string }) => item.factKey),
@@ -377,7 +445,7 @@ for (const [format, contentType, filename] of [
       assert.equal(content.headers["content-type"], contentType);
       assert.equal(
         content.headers["content-disposition"],
-        `attachment; filename="${format === "png" ? "document.png" : "document.jpg"}"`,
+        `attachment; filename="${filename}"; filename*=UTF-8''${filename}`,
       );
 
       const provenance = await database.query<{
@@ -400,7 +468,7 @@ for (const [format, contentType, filename] of [
   });
 }
 
-test("an image-only PDF outside the synthetic grammar records no facts", async () => {
+test("Codex classifies an image-only PDF outside the lab grammar without inventing facts", async () => {
   await withTestContext(async ({ app, database, storageRoot }) => {
     const owner = await registerOwner(app, "Unsupported scanned processing");
     const uploaded = await upload(
@@ -413,11 +481,8 @@ test("an image-only PDF outside the synthetic grammar records no facts", async (
     const documentId = uploaded.json().document.id as string;
 
     const processed = await processOneDocument(database, storageRoot);
-    assert.equal(processed.status, "retry_wait");
-    assert.equal(
-      "errorCode" in processed ? processed.errorCode : undefined,
-      "UNSUPPORTED_DOCUMENT",
-    );
+    assert.equal(processed.status, "completed");
+    assert.equal("factCount" in processed ? processed.factCount : undefined, 0);
     const facts = await database.query<{ count: number }>(
       `SELECT count(*) AS count
          FROM extracted_facts f
@@ -426,6 +491,15 @@ test("an image-only PDF outside the synthetic grammar records no facts", async (
       [owner.body.family.id, documentId],
     );
     assert.equal(Number(facts.rows[0]?.count), 0);
+    const intelligence = await database.query<{ category: string; title: string }>(
+      `SELECT category, title
+         FROM document_intelligence_results i
+         JOIN document_versions v
+           ON v.family_id = i.family_id AND v.id = i.document_version_id
+        WHERE v.family_id = $1 AND v.document_id = $2`,
+      [owner.body.family.id, documentId],
+    );
+    assert.deepEqual(intelligence.rows, [{ category: "other", title: "Синтетический документ" }]);
   });
 });
 
@@ -687,5 +761,102 @@ test("terminal processing retry requires a trusted idempotent command and is rep
       [owner.body.family.id, documentId],
     );
     assert.equal(Number(retryRequests.rows[0]?.count), 2);
+  });
+});
+
+test("a trusted restart creates a fresh immutable analysis run without replacing prior results", async () => {
+  await withTestContext(async ({ app, database, storageRoot }) => {
+    const owner = await registerOwner(app, "Restart analysis");
+    const uploaded = await upload(
+      app,
+      owner,
+      await readFile(fixtureUrl),
+      "restart-analysis-upload",
+    );
+    assert.equal(uploaded.statusCode, 202);
+    const documentId = uploaded.json().document.id as string;
+    assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
+
+    const noOrigin = await app.inject({
+      method: "POST",
+      url: `${documentUrl(owner, documentId)}/processing/restart`,
+      headers: {
+        cookie: owner.cookie,
+        "idempotency-key": "restart-without-origin".padEnd(16, "_"),
+      },
+    });
+    assert.equal(noOrigin.statusCode, 403);
+
+    const headers = {
+      cookie: owner.cookie,
+      origin: webOrigin,
+      "idempotency-key": "restart-successful-analysis".padEnd(16, "_"),
+    };
+    const restarted = await app.inject({
+      method: "POST",
+      url: `${documentUrl(owner, documentId)}/processing/restart`,
+      headers,
+    });
+    assert.equal(restarted.statusCode, 202);
+    assert.equal(restarted.json().contractVersion, DOCUMENT_CONTRACT_VERSION);
+    assert.equal(restarted.json().documentId, documentId);
+    assert.equal(restarted.json().processing.state, "queued");
+
+    const replay = await app.inject({
+      method: "POST",
+      url: `${documentUrl(owner, documentId)}/processing/restart`,
+      headers,
+    });
+    assert.equal(replay.statusCode, 202);
+    assert.deepEqual(replay.json(), restarted.json());
+
+    const beforeProcessing = await database.query<{ jobs: number; results: number; runs: number }>(
+      `SELECT
+         (SELECT count(*)
+            FROM processing_jobs j
+            JOIN document_versions v ON v.family_id = j.family_id AND v.id = j.document_version_id
+           WHERE v.document_id = $1) AS jobs,
+         (SELECT count(*)
+            FROM document_intelligence_results i
+            JOIN document_versions v ON v.family_id = i.family_id AND v.id = i.document_version_id
+           WHERE v.document_id = $1) AS results,
+         (SELECT count(*)
+            FROM extraction_runs r
+            JOIN document_versions v ON v.family_id = r.family_id AND v.id = r.document_version_id
+           WHERE v.document_id = $1) AS runs`,
+      [documentId],
+    );
+    assert.deepEqual(beforeProcessing.rows, [{ jobs: 2, results: 1, runs: 1 }]);
+
+    assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
+    const afterProcessing = await database.query<{
+      jobs: number;
+      results: number;
+      runs: number;
+    }>(
+      `SELECT
+         (SELECT count(*)
+            FROM processing_jobs j
+            JOIN document_versions v ON v.family_id = j.family_id AND v.id = j.document_version_id
+           WHERE v.document_id = $1) AS jobs,
+         (SELECT count(*)
+            FROM document_intelligence_results i
+            JOIN document_versions v ON v.family_id = i.family_id AND v.id = i.document_version_id
+           WHERE v.document_id = $1) AS results,
+         (SELECT count(*)
+            FROM extraction_runs r
+            JOIN document_versions v ON v.family_id = r.family_id AND v.id = r.document_version_id
+           WHERE v.document_id = $1) AS runs`,
+      [documentId],
+    );
+    assert.deepEqual(afterProcessing.rows, [{ jobs: 2, results: 2, runs: 2 }]);
+
+    const restartAudits = await database.query<{ count: number }>(
+      `SELECT count(*) AS count
+         FROM audit_events
+        WHERE resource_id = $1 AND action = 'document.processing.restarted'`,
+      [documentId],
+    );
+    assert.equal(Number(restartAudits.rows[0]?.count), 1);
   });
 });

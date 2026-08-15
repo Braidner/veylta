@@ -206,7 +206,8 @@ async function rowCounts(database: Database): Promise<Record<string, number>> {
     `SELECT
        (SELECT count(*) FROM document_blobs) AS blobs,
        (SELECT count(*) FROM documents) AS documents,
-       (SELECT count(*) FROM document_upload_requests) AS requests,
+       ((SELECT count(*) FROM document_upload_requests) +
+        (SELECT count(*) FROM document_upload_reuse_requests)) AS requests,
        (SELECT count(*) FROM document_versions) AS versions`,
   );
   const row = result.rows[0];
@@ -243,6 +244,7 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
     const pdf = syntheticPdf("SYNTHETIC_UPLOAD_A");
     const first = await upload(app, owner, pdf, "upload-first");
     assert.equal(first.statusCode, 202);
+    assert.equal(first.json().disposition, "created");
     assert.deepEqual(first.json().document.duplicate, {
       possible: false,
       documentId: null,
@@ -258,7 +260,8 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
     assert.match(first.json().document.processing.updatedAt, /^\d{4}-\d{2}-\d{2}T/);
 
     const replay = await upload(app, owner, pdf, "upload-first");
-    assert.equal(replay.statusCode, 202);
+    assert.equal(replay.statusCode, 200);
+    assert.equal(replay.json().disposition, "already_exists");
     assert.equal(replay.json().document.id, first.json().document.id);
     assert.deepEqual(await rowCounts(database), {
       blobs: 1,
@@ -268,18 +271,19 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
     });
 
     const duplicate = await upload(app, owner, pdf, "upload-duplicate");
-    assert.equal(duplicate.statusCode, 202);
-    assert.notEqual(duplicate.json().document.id, first.json().document.id);
+    assert.equal(duplicate.statusCode, 200);
+    assert.equal(duplicate.json().disposition, "already_exists");
+    assert.equal(duplicate.json().document.id, first.json().document.id);
     assert.deepEqual(duplicate.json().document.duplicate, {
-      possible: true,
-      documentId: first.json().document.id,
-      profileId: owner.body.profile.id,
+      possible: false,
+      documentId: null,
+      profileId: null,
     });
     assert.deepEqual(await rowCounts(database), {
       blobs: 1,
-      documents: 2,
+      documents: 1,
       requests: 2,
-      versions: 2,
+      versions: 1,
     });
 
     const documentUrl = `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${first.json().document.id}`;
@@ -289,7 +293,10 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
       headers: { cookie: owner.cookie },
     });
     assert.equal(metadata.statusCode, 200);
-    assert.deepEqual(metadata.json(), first.json());
+    assert.deepEqual(metadata.json(), {
+      contractVersion: first.json().contractVersion,
+      document: first.json().document,
+    });
 
     const content = await app.inject({
       method: "GET",
@@ -299,7 +306,10 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
     assert.equal(content.statusCode, 200);
     assert.deepEqual(content.rawPayload, pdf);
     assert.equal(content.headers["content-type"], "application/pdf");
-    assert.equal(content.headers["content-disposition"], 'attachment; filename="document.pdf"');
+    assert.equal(
+      content.headers["content-disposition"],
+      `attachment; filename="synthetic-result.pdf"; filename*=UTF-8''synthetic-result.pdf`,
+    );
     assert.equal(content.headers["x-content-type-options"], "nosniff");
     assert.equal(content.headers["cache-control"], "private, no-store");
     assert.equal(content.headers["content-security-policy"], "sandbox");
@@ -330,6 +340,7 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
         "document.content.opened",
         "document.content.opened",
         "document.metadata.opened",
+        "document.upload.deduplicated",
         "document.upload.received",
         "document.upload.replayed",
       ].sort(),
@@ -507,24 +518,23 @@ test("concurrent replay and same-family deduplication remain single-write", asyn
       upload(app, owner, pdf, "concurrent-replay"),
       upload(app, owner, pdf, "concurrent-replay"),
     ]);
-    assert.equal(firstReplay.statusCode, 202);
-    assert.equal(secondReplay.statusCode, 202);
+    assert.deepEqual([firstReplay.statusCode, secondReplay.statusCode].sort(), [200, 202]);
     assert.equal(firstReplay.json().document.id, secondReplay.json().document.id);
 
     const [firstDuplicate, secondDuplicate] = await Promise.all([
       upload(app, owner, pdf, "concurrent-duplicate-one"),
       upload(app, owner, pdf, "concurrent-duplicate-two"),
     ]);
-    assert.equal(firstDuplicate.statusCode, 202);
-    assert.equal(secondDuplicate.statusCode, 202);
-    assert.notEqual(firstDuplicate.json().document.id, secondDuplicate.json().document.id);
-    assert.equal(firstDuplicate.json().document.duplicate.possible, true);
-    assert.equal(secondDuplicate.json().document.duplicate.possible, true);
+    assert.equal(firstDuplicate.statusCode, 200);
+    assert.equal(secondDuplicate.statusCode, 200);
+    assert.equal(firstDuplicate.json().document.id, secondDuplicate.json().document.id);
+    assert.equal(firstDuplicate.json().document.duplicate.possible, false);
+    assert.equal(secondDuplicate.json().document.duplicate.possible, false);
     assert.deepEqual(await rowCounts(database), {
       blobs: 1,
-      documents: 3,
+      documents: 1,
       requests: 3,
-      versions: 3,
+      versions: 1,
     });
   });
 });

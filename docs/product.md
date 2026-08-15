@@ -24,12 +24,13 @@ later visits require local sign-in. Administrators manage accounts, storage,
 Codex connectivity, and access, while each profile remains an independently
 authorized medical boundary.
 
-Document analysis is explicit and visible. The local deterministic worker is
-the default. An optional Codex adapter may process selected documents through a
-locally installed `codex app-server`; the user's `codex login` session remains
-owned by Codex. Veylta stores no model key or OAuth token, and the confirmation
-screen must disclose which source can leave the home server. A person still
-makes every final fact decision.
+Document analysis is explicit and visible. The worker sends bounded page
+content through a provider-neutral intelligence port; the delivered provider
+uses local `codex exec --ephemeral` and the user's existing `codex login`
+session. Veylta stores no model key or OAuth token. The batch dialog names Codex
+and requires acknowledgement before upload; a person still makes every final
+fact decision. A later provider must implement the same closed contract rather
+than leaking provider-specific behavior into the domain.
 
 ## Users and access model
 
@@ -70,30 +71,47 @@ events.
 The first slice proves one complete and safe path with synthetic data:
 
 1. An authenticated demo user creates a family and a patient profile.
-2. The user uploads a synthetic Russian-language PDF with a text layer, an
-   image-only PDF scan, or a direct synthetic PNG/JPEG using the fixed local
-   English OCR and synthetic fallback grammar.
+2. The user selects or drops up to twenty synthetic PDFs, PNGs, or JPEGs in one
+   batch and explicitly acknowledges Codex model-service egress.
 3. The API validates and streams it to the default local `ObjectStorage/v1`,
    calculating SHA-256 without loading the entire file into memory. An optional
    S3-compatible adapter exists for synthetic operator testing only; it is not
    enabled in the demo default.
-4. A repeat SHA-256 within the same family is reported as a possible duplicate;
-   no document is automatically deleted.
-5. A durable SQLite-backed background job reads a PDF text layer. Only when
-   that layer is absent, it renders at most three bounded PDF pages and runs the
-   checked-in local English OCR model; direct PNG/JPEG enters the same bounded
-   local OCR path after image-header preflight. All paths then use the same
-   deterministic parser for one explicitly supported synthetic report format.
-6. Extracted facts retain raw text, value, unit, confidence, page, and fragment.
+4. A repeat SHA-256 for an active document in the same family and profile
+   returns the existing logical document and does not enqueue another analysis.
+   Another profile may retain its own logical record while reusing the
+   family-scoped immutable blob; another family never receives a checksum
+   oracle.
+5. A durable SQLite-backed job reads a PDF text layer or uses bounded local OCR
+   after image preflight. In one bounded invocation, the Codex provider creates
+   a closed classification, Russian archive title, short factual summary,
+   detailed factual summary, and source-provenanced structured results. The
+   result vocabulary covers measurements, genetic variants, findings,
+   procedures, medications, and diagnoses explicitly stated by the source.
+6. Quantitative laboratory facts continue through the existing review model.
+   Every generic structured result retains its raw value, optional unit/code,
+   confidence, page, and exact source fragment. Generic results remain
+   untrusted source-derived analytics until a compatible explicit review path
+   confirms them.
 7. The parser marks uncertain or ambiguous facts as `needs_review`; all other
    extracted facts remain `extracted`. Both are untrusted and await an explicit
    human decision.
 8. A user explicitly confirms, corrects, or rejects each fact. Confirmation or
    correction atomically creates an `Observation` and audit event without
    altering the raw extracted fact; rejection creates no observation (Task 6,
-   delivered).
+   delivered). The document workspace makes one selected result the active
+   context: its source page and fragment, raw/proposed values, decision controls,
+   and immutable decision journal appear together. A person may bulk-confirm
+   only pending facts without extraction warnings; every `needs_review` fact
+   requires its own source check. Veylta still writes one explicit immutable
+   decision per accepted fact and stops on any failed command.
+   Missing laboratory, biomaterial date, or indicator code is disclosed rather
+   than inferred; the person can ask Codex to investigate it through the bounded
+   document conversation.
 9. Indicator history displays the confirmed value, unit/reference, and an
-   authorized link to its source (Task 7, delivered).
+   authorized link to its source (Task 7, delivered). Where a fact has an exact
+   canonical code, the workspace may show only that authorized source-first
+   history; it never compares unknown codes or silently converts units.
 10. The two explicit synthetic analytes receive deterministic demonstration
     codes. A profile catalog and a compact chart compare only confirmed values
     with an identical code and exact source unit (Task 9, delivered).
@@ -103,8 +121,11 @@ The first slice proves one complete and safe path with synthetic data:
     values (Task 12, delivered).
 12. The profile landing view lists a bounded source-first operational overview:
     recent immutable documents, sources awaiting explicit review, and explicitly
-    confirmed values. It does not calculate a health score, clinical state,
-    diagnosis, trend, or recommendation (Task 17, delivered).
+    confirmed values. Its assistant inbox is a deterministic projection of those
+    same states; nutrition and movement only open the explicit care-plan flow.
+    Its health signals count pending review, explicit source flags, recent
+    sources, and confirmed values. It does not calculate a health score,
+    clinical state, diagnosis, trend, or recommendation (Task 17, delivered).
 13. An owner or self-linked adult can download a bounded local TAR snapshot of
     up to five latest synthetic source files and an immutable manifest. This is
     deliberately not a backup, restore format, or production portability claim
@@ -181,6 +202,15 @@ independently reviewed.
   persistent local document storage without a database container.
 - Original bytes and SHA-256 remain stable across process restarts.
 - Same-family duplicate detection is visible and does not create another blob.
+- Repeating the same active source in one profile reuses its existing logical
+  document instead of creating a duplicate document or processing job.
+- Authorized document search matches Russian summaries and structured result
+  fields locally without exposing the query through audit metadata.
+- Download returns the verified original bytes under a safely encoded original
+  display filename.
+- An authenticated idempotent delete removes a document from the active archive
+  and search while retaining immutable provenance; it is not presented as
+  physical backup erasure.
 - A different family cannot discover or retrieve the document, facts, or
   observations; inaccessible IDs return a non-disclosing response.
 - Provenance reaches the document version, page number, and source fragment.
@@ -197,6 +227,8 @@ independently reviewed.
   immutable provenance, and remains only a proposal until a person accepts it.
 - A failed confirmation produces no partial medical record.
 - Job retry produces no duplicate facts or observations.
+- A manual analysis restart creates a new immutable run while preserving the
+  original source, earlier extraction, and confirmed history.
 - All access and state-changing actions are audited without logging medical
   values.
 - Worker completion, retry scheduling, and terminal failure are audit events
@@ -208,6 +240,10 @@ independently reviewed.
 - The profile overview is bounded, profile-authorized, source-first, and links
   only to already-authorized document detail paths; opening it neither creates
   a clinical summary nor changes a record.
+- The document-detail shell is compact and uses the same dashboard system as
+  the profile without repeating its greeting/header. It leads with the archive
+  context, document title, one short factual summary, selected result and source
+  evidence; download, restart, and deletion remain secondary lifecycle actions.
 - The health summary is a bounded, profile-authorized, versioned snapshot of
   confirmed observations. It distinguishes new evidence from carried-forward
   evidence, has no clinical interpretation, and re-authorizes each source link.
@@ -252,7 +288,10 @@ membership without a processing or clinical state.
   provider deployment runbook. The optional S3 adapter is not a real-data
   readiness claim.
 - Any cloud OCR provider.
-- Any LLM extraction, analysis, explanation, nutrition, or training agent.
+- Persistent autonomous chat agents, unsolicited medical recommendations, and
+  any LLM extraction, diagnosis, explanation, nutrition, or training decision.
+  The delivered assistant cards are deterministic navigation; the existing
+  bounded Codex care-plan draft still requires a separate acknowledged request.
 - Automated clinical trend summaries, clinical recommendations, and red-flag UI.
 - Full role-management UX, FHIR R4 mapping/import/export, controlled account deletion,
   and production backup/restore workflows.

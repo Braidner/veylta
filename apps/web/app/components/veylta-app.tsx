@@ -8,13 +8,25 @@ import type {
   CarePlanItemResponse,
   CarePlanProposalResponse,
   CarePlanResponse,
+  CodexExecutionPreference,
+  CodexPreferenceUpdateResponse,
+  CodexReasoningEffort,
   CodexRuntimeActionResponse,
+  CodexServiceTier,
+  DocumentAgentConversationResponse,
+  DocumentAgentMessage,
+  DocumentDeleteResponse,
+  DocumentDetail,
+  DocumentDetailResponse,
   DocumentFactsResponse,
+  DocumentIntelligenceResultStatus,
+  DocumentIntelligenceStructuredResult,
+  DocumentProcessingActivityEvent,
   DocumentProcessingResponse,
-  DocumentProcessingRetryResponse,
+  DocumentProcessingRestartResponse,
   DocumentProcessingStatus,
-  DocumentResponse,
   DocumentSummary,
+  DocumentUploadResponse,
   ExtractedFactReviewStatus,
   FactReviewCommand,
   FactReviewResponse,
@@ -46,12 +58,47 @@ import type {
   SetupStatusResponse,
   StorageRelocationResponse,
 } from "@veylta/contracts";
-import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import {
+  ArrowRight,
+  Bot,
+  CalendarDays,
+  CheckCheck,
+  ClipboardList,
+  Clock3,
+  Files,
+  FileText,
+  FileUp,
+  History,
+  House,
+  LogOut,
+  MessageCircle,
+  Search,
+  Send,
+  Settings,
+  ShieldCheck,
+  Trash2,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  type DragEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type RefObject,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
+import { DocumentHero } from "./document-hero";
+import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
+import { VeyltaMark } from "./veylta-mark";
 
 const apiPrefix = "/health-api";
 const processingPollIntervalMs = 2_000;
@@ -139,6 +186,19 @@ function profilePath(familyId: string, profileId: string): string {
   return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;
 }
 
+const profileTabs = ["overview", "documents", "history", "plan"] as const;
+type ProfileTab = (typeof profileTabs)[number];
+type WorkspaceTab = ProfileTab | "settings";
+
+function normalizeProfileTab(value: string | undefined): ProfileTab {
+  return profileTabs.includes(value as ProfileTab) ? (value as ProfileTab) : "overview";
+}
+
+function profileTabPath(familyId: string, profileId: string, tab: ProfileTab): string {
+  const base = profilePath(familyId, profileId);
+  return tab === "overview" ? base : `${base}?tab=${tab}`;
+}
+
 function documentPath(familyId: string, profileId: string, documentId: string): string {
   return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }
@@ -149,6 +209,41 @@ function documentProcessingPath(familyId: string, profileId: string, documentId:
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
   return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
+}
+
+function documentAgentPath(familyId: string, profileId: string, documentId: string): string {
+  return `/v1${documentPath(familyId, profileId, documentId)}/agent`;
+}
+
+export function buildDocumentSearchPath(
+  familyId: string,
+  profileId: string,
+  query: string,
+): string {
+  const params = new URLSearchParams({ q: query.trim() });
+  return `/v1${profilePath(familyId, profileId)}/documents?${params.toString()}`;
+}
+
+function isDocumentSummary(value: unknown): value is DocumentSummary {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<DocumentSummary>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.originalFilename === "string" &&
+    typeof candidate.uploadedAt === "string" &&
+    typeof candidate.processing === "object" &&
+    candidate.processing !== null
+  );
+}
+
+export function normalizeDocumentSearchResponse(response: unknown): readonly DocumentSummary[] {
+  const candidates = Array.isArray(response)
+    ? response
+    : typeof response === "object" && response !== null
+      ? ((response as { documents?: unknown; items?: unknown }).documents ??
+        (response as { items?: unknown }).items)
+      : null;
+  return Array.isArray(candidates) ? candidates.filter(isDocumentSummary) : [];
 }
 
 function profileOverviewPath(familyId: string, profileId: string): string {
@@ -183,6 +278,27 @@ function observationHistoryPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/observations`;
 }
 
+export function buildIndicatorHistoryPath(
+  familyId: string,
+  profileId: string,
+  canonicalCode: string,
+): string {
+  const query = new URLSearchParams({ canonicalCode, limit: "5" });
+  return `${observationHistoryPath(familyId, profileId)}?${query.toString()}`;
+}
+
+export function documentResultMissingFields(result: {
+  readonly code: string | null;
+  readonly date: string | null;
+  readonly lab: string | null;
+}): readonly string[] {
+  return [
+    result.code === null ? "Код показателя" : null,
+    result.date === null ? "Дата биоматериала" : null,
+    result.lab === null ? "Лаборатория" : null,
+  ].filter((value): value is string => value !== null);
+}
+
 function indicatorsPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/indicators`;
 }
@@ -215,6 +331,8 @@ interface VeyltaAppProps {
   requestedFamilyId?: string;
   requestedProfileId?: string;
   requestedDocumentId?: string;
+  requestedTab?: string | undefined;
+  requestedCanonicalCode?: string | undefined;
   requestedSettings?: boolean;
 }
 
@@ -222,6 +340,8 @@ export function VeyltaApp({
   requestedFamilyId,
   requestedProfileId,
   requestedDocumentId,
+  requestedTab,
+  requestedCanonicalCode,
   requestedSettings = false,
 }: VeyltaAppProps) {
   const router = useRouter();
@@ -419,6 +539,12 @@ export function VeyltaApp({
       ? findProfileContext(session, requestedContext.familyId, requestedContext.profileId)
       : undefined;
   const redirectProfile = session === undefined ? undefined : firstProfile(session);
+  const navigationProfile = context?.profile ?? redirectProfile;
+  const activeTab: WorkspaceTab = requestedSettings
+    ? "settings"
+    : requestedDocumentId !== undefined
+      ? "documents"
+      : normalizeProfileTab(requestedTab);
   const pageTitle = requestedSettings
     ? "Настройки — Veylta"
     : context === undefined
@@ -429,31 +555,146 @@ export function VeyltaApp({
     document.title = pageTitle;
   }, [pageTitle]);
 
+  function handleTabKeyDown(event: KeyboardEvent<HTMLElement>) {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLAnchorElement>('[role="tab"]'),
+    );
+    const current = tabs.indexOf(document.activeElement as HTMLAnchorElement);
+    if (current < 0 || tabs.length === 0) return;
+
+    event.preventDefault();
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? tabs.length - 1
+          : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+    tabs[nextIndex]?.focus();
+    tabs[nextIndex]?.click();
+  }
+
   return (
     <>
       <a className="skip-link" href="#main-content">
         Перейти к содержанию
       </a>
-      <header className="workspace-bar">
+      <header
+        className={
+          navigationProfile === undefined ? "workspace-bar" : "workspace-bar workspace-bar--profile"
+        }
+      >
         <Link className="wordmark" href="/" aria-label="Veylta — главная">
-          <span aria-hidden="true">V</span>
+          <VeyltaMark className="wordmark__mark" />
           Veylta
         </Link>
-        <div className="workspace-actions">
-          <span className="environment">Домашний сервер</span>
-          {session?.user.role === "admin" ? (
-            <Link className="text-button" href={requestedSettings ? "/" : "/settings"}>
-              {requestedSettings ? "Профили" : "Настройки"}
+        {navigationProfile !== undefined ? (
+          <div
+            className="workspace-primary-nav"
+            aria-label="Основные разделы профиля"
+            role="tablist"
+            onKeyDown={handleTabKeyDown}
+          >
+            <Link
+              id="workspace-tab-overview"
+              className={`workspace-primary-nav__item ${activeTab === "overview" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "overview")}
+              role="tab"
+              aria-selected={activeTab === "overview"}
+              aria-controls="workspace-panel-overview"
+              tabIndex={activeTab === "overview" ? 0 : -1}
+            >
+              <House size={17} aria-hidden="true" />
+              Обзор
             </Link>
+            <Link
+              id="workspace-tab-documents"
+              className={`workspace-primary-nav__item ${activeTab === "documents" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "documents")}
+              role="tab"
+              aria-selected={activeTab === "documents"}
+              aria-controls="workspace-panel-documents"
+              tabIndex={activeTab === "documents" ? 0 : -1}
+            >
+              <Files size={17} aria-hidden="true" />
+              Документы
+            </Link>
+            <Link
+              id="workspace-tab-history"
+              className={`workspace-primary-nav__item ${activeTab === "history" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "history")}
+              role="tab"
+              aria-selected={activeTab === "history"}
+              aria-controls="workspace-panel-history"
+              tabIndex={activeTab === "history" ? 0 : -1}
+            >
+              <History size={17} aria-hidden="true" />
+              История
+            </Link>
+            <Link
+              id="workspace-tab-plan"
+              className={`workspace-primary-nav__item ${activeTab === "plan" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "plan")}
+              role="tab"
+              aria-selected={activeTab === "plan"}
+              aria-controls="workspace-panel-plan"
+              tabIndex={activeTab === "plan" ? 0 : -1}
+            >
+              <ClipboardList size={17} aria-hidden="true" />
+              План
+            </Link>
+            {session?.user.role === "admin" ? (
+              <Link
+                id="workspace-tab-settings"
+                className={`workspace-primary-nav__item ${activeTab === "settings" ? "workspace-primary-nav__item--active" : ""}`}
+                href="/settings"
+                role="tab"
+                aria-selected={activeTab === "settings"}
+                aria-controls="workspace-panel-settings"
+                tabIndex={activeTab === "settings" ? 0 : -1}
+              >
+                <Settings size={17} aria-hidden="true" />
+                Настройки
+              </Link>
+            ) : null}
+          </div>
+        ) : null}
+        {navigationProfile !== undefined ? (
+          <Link
+            className="workspace-search"
+            href={`${profileTabPath(navigationProfile.familyId, navigationProfile.id, "history")}#indicator-catalog`}
+            aria-label="Поиск по архиву"
+          >
+            <Search size={18} aria-hidden="true" />
+            <span>Поиск по архиву</span>
+          </Link>
+        ) : null}
+        <div className="workspace-actions">
+          <span className="environment">
+            <span aria-hidden="true" />
+            Домашний сервер
+          </span>
+          {session !== undefined ? (
+            <span className="workspace-identity">
+              <span aria-hidden="true">{session.user.displayName.slice(0, 2).toUpperCase()}</span>
+              <span>
+                <strong>{session.user.displayName}</strong>
+                <small>
+                  {session.user.role === "admin" ? "Администратор системы" : "Пользователь системы"}
+                </small>
+              </span>
+            </span>
           ) : null}
           {session !== undefined ? (
             <button
-              className="text-button"
+              className="workspace-icon-action"
               type="button"
               onClick={handleLogout}
               disabled={action === "logout"}
+              aria-label={action === "logout" ? "Выходим…" : "Выйти"}
+              title={action === "logout" ? "Выходим…" : "Выйти"}
             >
-              {action === "logout" ? "Выходим…" : "Выйти"}
+              <LogOut size={19} aria-hidden="true" />
             </button>
           ) : null}
         </div>
@@ -500,6 +741,8 @@ export function VeyltaApp({
             family={context.family}
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
+            activeTab={activeTab === "settings" ? "overview" : activeTab}
+            requestedCanonicalCode={requestedCanonicalCode}
             addProfileOpen={addProfileOpen}
             action={action}
             error={actionError}
@@ -527,20 +770,34 @@ interface HomeSettingsScreenProps {
 }
 
 function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenProps) {
+  const settingsLoadGeneration = useRef(0);
   const [settings, setSettings] = useState<HomeSettingsResponse | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "error">("loading");
-  const [pending, setPending] = useState<"account" | "storage" | "codex" | null>(null);
+  const [pending, setPending] = useState<"account" | "storage" | "codex" | "preference" | null>(
+    null,
+  );
   const [accountError, setAccountError] = useState<string | null>(null);
   const [storageError, setStorageError] = useState<string | null>(null);
   const [codexError, setCodexError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [draftPreference, setDraftPreference] = useState<CodexExecutionPreference>({
+    modelId: "",
+    reasoningEffort: "medium",
+    serviceTier: "standard",
+  });
+  const { modelId, reasoningEffort, serviceTier } = draftPreference;
 
   const load = useCallback(async () => {
+    const generation = ++settingsLoadGeneration.current;
     setLoadState("loading");
     try {
-      setSettings(await apiRequest<HomeSettingsResponse>("/v1/settings"));
+      const loaded = await apiRequest<HomeSettingsResponse>("/v1/settings");
+      if (generation !== settingsLoadGeneration.current) return;
+      setSettings(loaded);
+      setDraftPreference(loaded.codex.preference);
       setLoadState("ready");
     } catch (error) {
+      if (generation !== settingsLoadGeneration.current) return;
       setLoadState(error instanceof ApiError && error.status === 404 ? "denied" : "error");
     }
   }, []);
@@ -631,6 +888,7 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
         method: "POST",
       });
       setSettings((current) => (current === null ? current : { ...current, codex: started.codex }));
+      setDraftPreference(started.codex.preference);
       if (started.codex.daemonRunning) {
         setNotice("Codex runtime запущен и готов принимать локальные задания.");
       } else {
@@ -640,6 +898,39 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
       }
     } catch {
       setCodexError("Не удалось запустить Codex runtime. Данные Veylta не изменились.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  async function saveCodexPreference(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const preference = {
+      modelId: String(form.get("modelId") ?? ""),
+      reasoningEffort: String(form.get("reasoningEffort") ?? "") as CodexReasoningEffort,
+      serviceTier: String(form.get("serviceTier") ?? "") as CodexServiceTier,
+    };
+    setPending("preference");
+    setCodexError(null);
+    setNotice(null);
+    try {
+      const updated = await apiRequest<CodexPreferenceUpdateResponse>(
+        "/v1/settings/codex/preferences",
+        {
+          method: "PUT",
+          body: JSON.stringify(preference),
+        },
+      );
+      setSettings((current) => (current === null ? current : { ...current, codex: updated.codex }));
+      setDraftPreference(updated.codex.preference);
+      setNotice("Профиль Codex сохранён. Новые задания будут использовать эти параметры.");
+    } catch (error) {
+      setCodexError(
+        error instanceof ApiError && error.code === "CODEX_CATALOG_UNAVAILABLE"
+          ? "Codex не сообщил список моделей. Проверьте вход через ChatGPT и повторите."
+          : "Этот профиль недоступен в установленном Codex. Обновите список и выберите другой.",
+      );
     } finally {
       setPending(null);
     }
@@ -662,9 +953,25 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
         : "Готов к запуску";
   const subscriptionConnected =
     settings.codex.authenticated && settings.codex.authenticationMode === "chatgpt";
+  const selectedModel =
+    settings.codex.models.find((model) => model.id === modelId) ?? settings.codex.models[0];
+  const reasoningLabels: Record<CodexReasoningEffort, string> = {
+    low: "Низкий",
+    medium: "Средний",
+    high: "Высокий",
+    xhigh: "Очень высокий",
+    max: "Максимальный",
+    ultra: "Ультра",
+  };
 
   return (
-    <section className="settings-shell" aria-labelledby="settings-title">
+    <section
+      id="workspace-panel-settings"
+      className="settings-shell workspace-tab-panel workspace-tab-panel--settings"
+      role="tabpanel"
+      aria-labelledby="workspace-tab-settings settings-title"
+      aria-label="Настройки"
+    >
       <div className="settings-heading">
         <div>
           <p className="context-line">Управление домашним контуром</p>
@@ -725,14 +1032,177 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
                 </dd>
               </div>
               <div>
-                <dt>App-server</dt>
+                <dt>Профиль</dt>
                 <dd>
-                  {settings.codex.runtimeVersion ??
-                    (settings.codex.daemonRunning ? "Запущен" : "Остановлен")}
+                  {selectedModel?.displayName ?? settings.codex.preference.modelId} ·{" "}
+                  {reasoningLabels[settings.codex.preference.reasoningEffort]}
                 </dd>
               </div>
             </dl>
           </div>
+          {settings.codex.models.length > 0 ? (
+            <form
+              className="codex-profile"
+              onSubmit={saveCodexPreference}
+              aria-busy={pending === "preference"}
+            >
+              <div className="codex-profile__fields">
+                <label className="field">
+                  <span>Модель</span>
+                  <select
+                    name="modelId"
+                    value={modelId}
+                    disabled={pending !== null}
+                    onChange={(event) => {
+                      const nextModel = settings.codex.models.find(
+                        (model) => model.id === event.currentTarget.value,
+                      );
+                      if (nextModel === undefined) return;
+                      setDraftPreference((current) => ({
+                        modelId: nextModel.id,
+                        reasoningEffort: nextModel.supportedReasoningEfforts.includes(
+                          current.reasoningEffort,
+                        )
+                          ? current.reasoningEffort
+                          : nextModel.defaultReasoningEffort,
+                        serviceTier: nextModel.supportsFastMode ? current.serviceTier : "standard",
+                      }));
+                    }}
+                  >
+                    {settings.codex.models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.displayName}
+                        {model.isDefault ? " · рекомендуется" : ""}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Уровень рассуждений</span>
+                  <select
+                    name="reasoningEffort"
+                    value={reasoningEffort}
+                    disabled={pending !== null}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value as CodexReasoningEffort;
+                      setDraftPreference((current) => ({
+                        ...current,
+                        reasoningEffort: value,
+                      }));
+                    }}
+                  >
+                    {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                      <option key={effort} value={effort}>
+                        {reasoningLabels[effort]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <fieldset className="codex-speed">
+                <legend>Режим выполнения</legend>
+                <label data-active={serviceTier === "standard"}>
+                  <input
+                    type="radio"
+                    name="serviceTier"
+                    value="standard"
+                    checked={serviceTier === "standard"}
+                    disabled={pending !== null}
+                    onChange={() =>
+                      setDraftPreference((current) => ({ ...current, serviceTier: "standard" }))
+                    }
+                  />
+                  <span>
+                    <strong>Стандартный</strong>
+                    <small>Обычный расход лимита</small>
+                  </span>
+                </label>
+                <label
+                  data-active={serviceTier === "fast"}
+                  data-disabled={!selectedModel?.supportsFastMode}
+                >
+                  <input
+                    type="radio"
+                    name="serviceTier"
+                    value="fast"
+                    checked={serviceTier === "fast"}
+                    disabled={pending !== null || !selectedModel?.supportsFastMode}
+                    onChange={() =>
+                      setDraftPreference((current) => ({ ...current, serviceTier: "fast" }))
+                    }
+                  />
+                  <span>
+                    <strong>Fast · 1,5× быстрее</strong>
+                    <small>
+                      {selectedModel?.supportsFastMode
+                        ? "Расходует лимит подписки быстрее"
+                        : "Недоступен для этой модели"}
+                    </small>
+                  </span>
+                </label>
+              </fieldset>
+              <output className="codex-profile__preview" aria-live="polite">
+                Новые задания: {selectedModel?.displayName ?? modelId} ·{" "}
+                {reasoningLabels[reasoningEffort]} ·{" "}
+                {serviceTier === "fast" ? "Fast" : "Стандартный"}
+              </output>
+              {selectedModel?.upgradeModelId === null || selectedModel === undefined ? null : (
+                <p className="codex-profile__upgrade">
+                  Codex рекомендует перейти на {selectedModel.upgradeModelId}.
+                </p>
+              )}
+              <button
+                className="button button--secondary codex-profile__save"
+                type="submit"
+                disabled={
+                  pending !== null ||
+                  (modelId === settings.codex.preference.modelId &&
+                    reasoningEffort === settings.codex.preference.reasoningEffort &&
+                    serviceTier === settings.codex.preference.serviceTier)
+                }
+              >
+                {pending === "preference" ? "Сохраняем…" : "Сохранить профиль"}
+              </button>
+            </form>
+          ) : settings.codex.authenticated ? (
+            <p className="codex-console__instruction">
+              Codex не сообщил доступные модели. Обновите CLI или проверьте вход через ChatGPT.
+            </p>
+          ) : null}
+          <section className="codex-usage" aria-labelledby="codex-usage-title">
+            <div className="codex-usage__heading">
+              <h3 id="codex-usage-title">Лимиты подписки</h3>
+              <span>Данные Codex</span>
+            </div>
+            {settings.codex.usageLimits.length === 0 ? (
+              <p>Codex не сообщил текущий лимит.</p>
+            ) : (
+              <ul>
+                {settings.codex.usageLimits.map((limit) => (
+                  <li key={`${limit.name}-${limit.resetsAt}`}>
+                    <div className="codex-usage__line">
+                      <strong>{limit.name}</strong>
+                      <span>Осталось {limit.remainingPercent}%</span>
+                    </div>
+                    <progress
+                      max={100}
+                      value={limit.usedPercent}
+                      aria-label={`${limit.name}: использовано ${limit.usedPercent}%`}
+                    />
+                    <small>
+                      Обновится{" "}
+                      {new Intl.DateTimeFormat("ru-RU", {
+                        day: "numeric",
+                        month: "short",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }).format(new Date(limit.resetsAt))}
+                    </small>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
           {!settings.codex.installed ? (
             <p className="codex-console__instruction">
               Установите CLI на домашнем сервере: <code>npm install -g @openai/codex</code>
@@ -1192,6 +1662,8 @@ interface ProfileWorkspaceProps {
   family: SessionFamily;
   profile: PatientProfileSummary;
   requestedDocumentId: string | undefined;
+  activeTab: ProfileTab;
+  requestedCanonicalCode?: string | undefined;
   addProfileOpen: boolean;
   action: "setup" | "login" | "add-profile" | "logout" | null;
   error: string | null;
@@ -1207,6 +1679,8 @@ function ProfileWorkspace({
   family,
   profile,
   requestedDocumentId,
+  activeTab,
+  requestedCanonicalCode,
   addProfileOpen,
   action,
   error,
@@ -1221,111 +1695,276 @@ function ProfileWorkspace({
   const ownerCanAddProfile = family.role === "owner";
   const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [selectedUploads, setSelectedUploads] = useState<readonly File[]>([]);
+  const [codexConsent, setCodexConsent] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const [documentError, setDocumentError] = useState<string | null>(null);
-  const uploadAttempt = useRef<{ fingerprint: string; key: string } | null>(null);
+  const [uploadNotice, setUploadNotice] = useState<string | null>(null);
+  const uploadDialog = useRef<HTMLDialogElement>(null);
+  const uploadAttempts = useRef(new Map<string, string>());
+  const now = new Date();
+  const greeting =
+    now.getHours() < 12 ? "Доброе утро" : now.getHours() < 18 ? "Добрый день" : "Добрый вечер";
+  const dashboardDate = new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+  }).format(now);
+  const uploadNoticeLocationKey = `${activeTab}:${requestedDocumentId ?? ""}`;
+
+  useEffect(() => {
+    const dialog = uploadDialog.current;
+    if (dialog === null) return;
+    if (uploadOpen && !dialog.open) dialog.showModal();
+    if (!uploadOpen && dialog.open) dialog.close();
+  }, [uploadOpen]);
+
+  useEffect(() => {
+    if (
+      uploadNoticeLocationKey.length > 0 &&
+      new URLSearchParams(window.location.search).get("upload") === "already_exists"
+    ) {
+      setUploadNotice("Этот файл уже есть в архиве — открываем существующий документ.");
+    }
+  }, [uploadNoticeLocationKey]);
+
+  function openUploadDialog() {
+    setSelectedUploads([]);
+    setCodexConsent(false);
+    setDocumentError(null);
+    setUploadNotice(null);
+    setDragActive(false);
+    setUploadOpen(true);
+  }
+
+  function closeUploadDialog() {
+    if (uploadPending) return;
+    setUploadOpen(false);
+  }
+
+  function uploadFingerprint(file: File) {
+    return `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
+  }
+
+  function selectUploads(files: readonly File[]) {
+    const valid: File[] = [];
+    const rejected: string[] = [];
+    for (const file of files) {
+      if (
+        file.size === 0 ||
+        file.size > MAX_SYNTHETIC_DOCUMENT_BYTES ||
+        !isSupportedSyntheticDocument(file)
+      ) {
+        rejected.push(file.name || "без имени");
+        continue;
+      }
+      valid.push(file);
+    }
+    setSelectedUploads((current) => {
+      const known = new Set(current.map(uploadFingerprint));
+      const merged = [...current];
+      for (const file of valid) {
+        const fingerprint = uploadFingerprint(file);
+        if (!known.has(fingerprint) && merged.length < 20) {
+          merged.push(file);
+          known.add(fingerprint);
+        }
+      }
+      return merged;
+    });
+    setDocumentError(
+      rejected.length > 0
+        ? `Не добавлены: ${rejected.join(", ")}. Нужны PDF, PNG или JPEG до 5 МБ.`
+        : valid.length > 20
+          ? "За один раз можно загрузить не больше 20 документов."
+          : null,
+    );
+  }
+
+  function handleDrop(event: DragEvent<HTMLLabelElement>) {
+    event.preventDefault();
+    setDragActive(false);
+    selectUploads(Array.from(event.dataTransfer.files));
+  }
+
+  function uploadFailureMessage(error: unknown) {
+    if (error instanceof ApiError) {
+      if (error.status === 413 || error.code === "PAYLOAD_TOO_LARGE") {
+        return "Файл превышает лимит 5 МБ. Выберите документ меньшего размера.";
+      }
+      if (
+        error.code === "INVALID_DOCUMENT_SIGNATURE" ||
+        error.code === "UNSUPPORTED_DOCUMENT_TYPE" ||
+        error.code === "INVALID_MULTIPART_UPLOAD" ||
+        error.status === 415
+      ) {
+        return "Файл не похож на поддерживаемый PDF, PNG или JPEG. Проверьте формат и содержимое.";
+      }
+      if (error.status === 409) {
+        return "Не удалось безопасно повторить эту загрузку. Удалите файл из списка и добавьте его снова.";
+      }
+    }
+    return "Документ не загрузился. Исходник не изменён; проверьте соединение и повторите попытку.";
+  }
 
   async function handleDocumentUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setDocumentError(null);
 
-    const form = new FormData(event.currentTarget);
-    const file = form.get("file");
-    if (!(file instanceof File) || file.size === 0) {
-      setDocumentError("Выберите один синтетический PDF, PNG или JPEG-файл.");
+    if (selectedUploads.length === 0) {
+      setDocumentError("Выберите хотя бы один PDF, PNG или JPEG-файл.");
       return;
     }
-    if (file.size > MAX_SYNTHETIC_DOCUMENT_BYTES) {
-      setDocumentError("Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.");
+    if (!codexConsent) {
+      setDocumentError("Подтвердите передачу содержимого документов в Codex.");
       return;
-    }
-
-    const fingerprint = `${file.name}:${file.type}:${file.size}:${file.lastModified}`;
-    if (uploadAttempt.current?.fingerprint !== fingerprint) {
-      uploadAttempt.current = { fingerprint, key: crypto.randomUUID() };
     }
 
     setUploadPending(true);
+    const failed: Array<{ file: File; error: unknown }> = [];
+    let singleDocumentId: string | null = null;
+    let reusedDocumentCount = 0;
     try {
-      const body = new FormData();
-      body.append("file", file, file.name);
-      const response = await apiRequest<DocumentResponse>(
-        `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": uploadAttempt.current.key },
-          body,
-        },
-      );
-      uploadAttempt.current = null;
-      router.push(documentPath(family.id, profile.id, response.document.id));
-    } catch (error) {
-      if (error instanceof ApiError && [400, 409, 413, 415].includes(error.status)) {
-        uploadAttempt.current = null;
+      for (const file of selectedUploads) {
+        const fingerprint = uploadFingerprint(file);
+        const key = uploadAttempts.current.get(fingerprint) ?? crypto.randomUUID();
+        uploadAttempts.current.set(fingerprint, key);
+        const body = new FormData();
+        body.append("file", file, file.name);
+        try {
+          const response = await apiRequest<DocumentUploadResponse>(
+            `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents`,
+            {
+              method: "POST",
+              headers: {
+                "Idempotency-Key": key,
+                "X-Veylta-Document-Intelligence": "codex/v1",
+              },
+              body,
+            },
+          );
+          if (response.disposition === "already_exists") reusedDocumentCount += 1;
+          if (selectedUploads.length === 1) singleDocumentId = response.document.id;
+          uploadAttempts.current.delete(fingerprint);
+        } catch (requestError) {
+          if (
+            requestError instanceof ApiError &&
+            [400, 409, 413, 415].includes(requestError.status)
+          ) {
+            uploadAttempts.current.delete(fingerprint);
+          }
+          failed.push({ file, error: requestError });
+        }
       }
-      setDocumentError(uploadErrorCopy(error));
+      if (failed.length > 0) {
+        setSelectedUploads(failed.map(({ file }) => file));
+        if (selectedUploads.length === 1) {
+          setDocumentError(uploadFailureMessage(failed[0]?.error));
+        } else if (failed.length === selectedUploads.length) {
+          setDocumentError(
+            `${failed.length} документа не загрузились. Ничего не передано Codex; проверьте файлы и повторите попытку.`,
+          );
+        } else {
+          setDocumentError(
+            `${failed.length} ${failed.length === 1 ? "документ не загрузился" : "документа не загрузились"}. Остальные уже переданы Codex.`,
+          );
+        }
+      } else {
+        setUploadOpen(false);
+        const destination =
+          singleDocumentId === null
+            ? profileTabPath(family.id, profile.id, "documents")
+            : documentPath(family.id, profile.id, singleDocumentId);
+        const reusedDestination =
+          reusedDocumentCount === 0
+            ? destination
+            : `${destination}${destination.includes("?") ? "&" : "?"}upload=already_exists`;
+        if (reusedDocumentCount > 0) {
+          setUploadNotice(
+            selectedUploads.length === 1
+              ? "Этот файл уже есть в архиве — открываем существующий документ."
+              : `${reusedDocumentCount} ${russianPlural(reusedDocumentCount, "файл уже есть", "файла уже есть", "файлов уже есть")} в архиве. Новые документы добавлены отдельно.`,
+          );
+        }
+        router.push(reusedDestination);
+        router.refresh();
+      }
     } finally {
       setUploadPending(false);
     }
   }
 
   return (
-    <section className="profile-shell" aria-labelledby="profile-title">
-      <nav className="profile-navigation" aria-label="Разделы профиля">
-        <a
-          className="profile-navigation__item profile-navigation__item--active"
-          href="#profile-dashboard"
-        >
-          Обзор
-        </a>
-        <a className="profile-navigation__item" href="#document-inbox-title">
-          Источники
-        </a>
-        <a className="profile-navigation__item" href="#observation-history">
-          История
-        </a>
-        <a className="profile-navigation__item" href="#indicator-catalog">
-          Динамика
-        </a>
-      </nav>
-      <div className="profile-heading">
-        <div>
-          <p className="context-line">
-            <span>{family.displayName}</span>
-            <span aria-hidden="true">/</span>
-            <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
-          </p>
-          <h1 id="profile-title">{profile.displayName}</h1>
-          <p className="profile-owner">
-            {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}:{" "}
-            {session.user.displayName}
-          </p>
-          {session.user.role !== null ? (
-            <p className="profile-access">
-              {session.user.role === "admin" ? "Администратор системы" : "Пользователь системы"}
+    <section
+      className={`profile-shell profile-shell--${requestedDocumentId === undefined ? activeTab : "documents"}${requestedDocumentId === undefined ? "" : " profile-shell--document-detail"}`}
+      aria-label={requestedDocumentId === undefined ? undefined : "Документ профиля"}
+      aria-labelledby={requestedDocumentId === undefined ? "profile-title" : undefined}
+    >
+      {requestedDocumentId === undefined ? (
+        <div className="profile-heading">
+          <div>
+            <p className="context-line">
+              <span>{family.displayName}</span>
+              <span aria-hidden="true">/</span>
+              <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
             </p>
-          ) : null}
-          {profile.access === "granted_read" ? (
-            <p className="profile-access">Доступ по согласию: только чтение</p>
-          ) : null}
-        </div>
+            <h1 id="profile-title" aria-label={profile.displayName}>
+              {greeting}, {profile.displayName.split(" ")[0]}
+            </h1>
+            <p className="profile-owner">
+              Документы, сигналы и план заботы этого профиля — в одном месте.
+            </p>
+            <div className="profile-heading__access">
+              <span>
+                {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}
+              </span>
+              {profile.access === "granted_read" ? <span>Только чтение</span> : null}
+            </div>
+          </div>
 
-        <label className="profile-switcher">
-          <span>Активный профиль</span>
-          <select
-            value={profile.id}
-            onChange={(event) => {
-              const selected = profiles.find((item) => item.id === event.target.value);
-              if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
-            }}
-          >
-            {profiles.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.displayName}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
+          <div className="profile-heading__controls">
+            <span className="profile-heading__control">
+              <CalendarDays size={18} aria-hidden="true" />
+              {dashboardDate}
+            </span>
+            <span className="profile-heading__control">
+              <Clock3 size={18} aria-hidden="true" />
+              30 дней
+            </span>
+            <label className="profile-switcher">
+              <span className="visually-hidden">Активный профиль</span>
+              <select
+                aria-label="Активный профиль"
+                value={profile.id}
+                onChange={(event) => {
+                  const selected = profiles.find((item) => item.id === event.target.value);
+                  if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
+                }}
+              >
+                {profiles.map((item) => (
+                  <option key={item.id} value={item.id}>
+                    {item.displayName}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {canWriteProfile ? (
+              <button
+                className="profile-heading__upload"
+                type="button"
+                aria-label="Загрузить документ"
+                onClick={openUploadDialog}
+              >
+                Загрузить
+                <span aria-hidden="true">
+                  <ArrowRight size={18} />
+                </span>
+              </button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
 
       {error !== null && !addProfileOpen ? (
         <p className="form-error workspace-error" role="alert">
@@ -1333,146 +1972,292 @@ function ProfileWorkspace({
         </p>
       ) : null}
 
-      <div className="profile-workspace">
-        <div className="profile-workspace__main">
-          {requestedDocumentId === undefined ? (
-            <>
-              <ProfileOverviewPanel
-                key={`overview:${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-                canWriteProfile={canWriteProfile}
-              />
-              <HealthSummaryPanel
-                key={`summary:${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-              />
-              {canWriteProfile ? (
-                <DocumentInbox
-                  pending={uploadPending}
-                  error={documentError}
-                  onSubmit={handleDocumentUpload}
+      {uploadNotice === null ? null : (
+        <div className="upload-reuse-notice" role="status">
+          <CheckCheck size={18} aria-hidden="true" />
+          <span>{uploadNotice}</span>
+          <button
+            type="button"
+            onClick={() => setUploadNotice(null)}
+            aria-label="Закрыть сообщение"
+          >
+            <X size={16} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
+      {requestedDocumentId === undefined && activeTab === "overview" ? (
+        <div
+          id="workspace-panel-overview"
+          className="workspace-tab-panel workspace-tab-panel--overview"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-overview"
+          aria-label="Обзор"
+        >
+          <ProfileOverviewPanel
+            key={`overview:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            canWriteProfile={canWriteProfile}
+            view="dashboard"
+            onUpload={openUploadDialog}
+          />
+        </div>
+      ) : null}
+
+      {requestedDocumentId === undefined && activeTab === "documents" ? (
+        <div
+          id="workspace-panel-documents"
+          className="workspace-tab-panel workspace-tab-panel--documents"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-documents"
+          aria-label="Документы"
+        >
+          <div className="documents-workspace">
+            {canWriteProfile ? (
+              <DocumentInbox onUpload={openUploadDialog} />
+            ) : (
+              <ReadOnlyProfileNotice />
+            )}
+            <ProfileOverviewPanel
+              key={`documents:${family.id}:${profile.id}`}
+              familyId={family.id}
+              profileId={profile.id}
+              canWriteProfile={canWriteProfile}
+              view="documents"
+              onUpload={openUploadDialog}
+            />
+            {ownerCanAddProfile || family.role === "owner" ? (
+              <details className="profile-management-drawer">
+                <summary>Управление профилем и доступом</summary>
+                <ProfileManagementRail
+                  family={family}
+                  profile={profile}
+                  ownerCanAddProfile={ownerCanAddProfile}
+                  addProfileOpen={addProfileOpen}
+                  action={action}
+                  error={error}
+                  onAddProfileToggle={onAddProfileToggle}
+                  onAddProfile={onAddProfile}
+                  onProfileArchived={onProfileArchived}
+                  onProfileRestored={onProfileRestored}
                 />
-              ) : (
-                <section className="read-only-profile" aria-labelledby="read-only-profile-title">
-                  <p className="context-line">Только чтение</p>
-                  <h2 id="read-only-profile-title">Доступ выдан владельцем профиля</h2>
-                  <p>
-                    Здесь можно читать источник и подтверждённую историю. Загрузка, повторная
-                    обработка и проверка извлечений остаются только у владельца или личного профиля.
-                  </p>
-                </section>
-              )}
-              <ObservationHistoryPanel
-                key={`${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-              />
-              <IndicatorCatalogPanel
-                key={`indicators:${family.id}:${profile.id}`}
-                familyId={family.id}
-                profileId={profile.id}
-              />
-            </>
-          ) : (
+              </details>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
+      {requestedDocumentId === undefined && activeTab === "history" ? (
+        <div
+          id="workspace-panel-history"
+          className="workspace-tab-panel workspace-tab-panel--history"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-history"
+          aria-label="История"
+        >
+          <ObservationHistoryPanel
+            key={`${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            canonicalCode={requestedCanonicalCode}
+          />
+          <IndicatorCatalogPanel
+            key={`indicators:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            canonicalCode={requestedCanonicalCode}
+          />
+        </div>
+      ) : null}
+
+      {requestedDocumentId === undefined && activeTab === "plan" ? (
+        <div
+          id="workspace-panel-plan"
+          className="workspace-tab-panel workspace-tab-panel--plan"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-plan"
+          aria-label="План"
+        >
+          <HealthSummaryPanel
+            key={`summary:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+          />
+          <CarePlanPanel
+            familyId={family.id}
+            profileId={profile.id}
+            canWriteProfile={canWriteProfile}
+          />
+        </div>
+      ) : null}
+
+      {requestedDocumentId !== undefined ? (
+        <div
+          id="workspace-panel-documents"
+          className="workspace-tab-panel workspace-tab-panel--documents workspace-tab-panel--document-detail"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-documents"
+          aria-label="Документы"
+        >
+          <div className="document-detail-workspace">
             <DocumentView
               family={family}
               profile={profile}
               documentId={requestedDocumentId}
               canWriteProfile={canWriteProfile}
             />
-          )}
+          </div>
         </div>
+      ) : null}
 
-        <aside className="workspace-rail" aria-label="Действия с профилем">
-          {requestedDocumentId !== undefined ? (
-            <div className="rail-section">
-              <h2>Другой документ</h2>
-              <p>Вернитесь в профиль, чтобы загрузить следующий синтетический исходник.</p>
-              <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
-                Загрузить ещё документ
-              </Link>
-            </div>
-          ) : null}
-
-          {ownerCanAddProfile ? (
-            <div className="profile-addition">
-              <h2>Семейные профили</h2>
-              <p>Добавьте человека без отдельного входа, если это нужно для проверки сценария.</p>
-              <button
-                className="button button--secondary"
-                type="button"
-                aria-expanded={addProfileOpen}
-                aria-controls="add-profile-form"
-                onClick={onAddProfileToggle}
-              >
-                {addProfileOpen ? "Закрыть форму" : "Добавить профиль"}
-              </button>
-
-              {addProfileOpen ? (
-                <form
-                  id="add-profile-form"
-                  className="inline-form"
-                  onSubmit={(event) => onAddProfile(event, family)}
-                >
-                  <div>
-                    <h3>Зависимый профиль</h3>
-                    <p>Для ребёнка или другого человека без отдельного входа.</p>
-                  </div>
-                  <label className="field">
-                    <span>Имя нового профиля</span>
-                    <input
-                      name="profileName"
-                      type="text"
-                      required
-                      minLength={1}
-                      maxLength={120}
-                      autoComplete="off"
-                      placeholder="Например, Подопечный 01"
-                      disabled={action === "add-profile"}
-                    />
-                  </label>
-                  {error !== null ? (
-                    <p className="form-error" role="alert">
-                      {error}
-                    </p>
-                  ) : null}
-                  <button
-                    className="button button--primary"
-                    type="submit"
-                    disabled={action === "add-profile"}
-                  >
-                    {action === "add-profile" ? "Создаём…" : "Создать профиль"}
-                  </button>
-                </form>
-              ) : null}
-            </div>
-          ) : null}
-          {family.role === "owner" ? (
-            <ProfileArchivePanel
-              key={`archive:${family.id}:${profile.id}`}
-              familyId={family.id}
-              profile={profile}
-              activeProfileCount={family.profiles.length}
-              onArchived={onProfileArchived}
-              onRestored={onProfileRestored}
-            />
-          ) : null}
-          {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
-          {family.role === "owner" ? (
-            <ProfileConsentPanel
-              key={`consent:${family.id}:${profile.id}`}
-              familyId={family.id}
-              profileId={profile.id}
-            />
-          ) : null}
-          {family.role === "owner" ? (
-            <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
-          ) : null}
-        </aside>
-      </div>
+      {canWriteProfile ? (
+        <DocumentUploadDialog
+          dialogRef={uploadDialog}
+          open={uploadOpen}
+          pending={uploadPending}
+          selectedFiles={selectedUploads}
+          codexConsent={codexConsent}
+          error={documentError}
+          dragActive={dragActive}
+          onClose={closeUploadDialog}
+          onClosed={() => {
+            setUploadOpen(false);
+            setSelectedUploads([]);
+            setCodexConsent(false);
+            setDocumentError(null);
+            setDragActive(false);
+          }}
+          onDragActiveChange={setDragActive}
+          onDrop={handleDrop}
+          onSelect={selectUploads}
+          onRemove={(file) => {
+            const fingerprint = uploadFingerprint(file);
+            uploadAttempts.current.delete(fingerprint);
+            setSelectedUploads((current) =>
+              current.filter((candidate) => uploadFingerprint(candidate) !== fingerprint),
+            );
+          }}
+          onConsentChange={setCodexConsent}
+          onSubmit={handleDocumentUpload}
+        />
+      ) : null}
     </section>
+  );
+}
+
+function ReadOnlyProfileNotice() {
+  return (
+    <section className="read-only-profile" aria-labelledby="read-only-profile-title">
+      <p className="context-line">Только чтение</p>
+      <h2 id="read-only-profile-title">Доступ выдан владельцем профиля</h2>
+      <p>
+        Здесь можно читать источник и подтверждённую историю. Загрузка, повторная обработка и
+        проверка извлечений остаются только у владельца или личного профиля.
+      </p>
+    </section>
+  );
+}
+
+function ProfileManagementRail({
+  family,
+  profile,
+  ownerCanAddProfile,
+  addProfileOpen,
+  action,
+  error,
+  onAddProfileToggle,
+  onAddProfile,
+  onProfileArchived,
+  onProfileRestored,
+}: {
+  family: SessionFamily;
+  profile: PatientProfileSummary;
+  ownerCanAddProfile: boolean;
+  addProfileOpen: boolean;
+  action: "setup" | "login" | "add-profile" | "logout" | null;
+  error: string | null;
+  onAddProfileToggle: () => void;
+  onAddProfile: (event: FormEvent<HTMLFormElement>, family: SessionFamily) => void;
+  onProfileArchived: () => Promise<void>;
+  onProfileRestored: () => Promise<void>;
+}) {
+  return (
+    <aside className="workspace-rail" aria-label="Действия с профилем">
+      {ownerCanAddProfile ? (
+        <div className="profile-addition">
+          <h2>Семейные профили</h2>
+          <p>Добавьте человека без отдельного входа, если это нужно для проверки сценария.</p>
+          <button
+            className="button button--secondary"
+            type="button"
+            aria-expanded={addProfileOpen}
+            aria-controls="add-profile-form"
+            onClick={onAddProfileToggle}
+          >
+            {addProfileOpen ? "Закрыть форму" : "Добавить профиль"}
+          </button>
+          {addProfileOpen ? (
+            <form
+              id="add-profile-form"
+              className="inline-form"
+              onSubmit={(event) => onAddProfile(event, family)}
+            >
+              <div>
+                <h3>Зависимый профиль</h3>
+                <p>Для ребёнка или другого человека без отдельного входа.</p>
+              </div>
+              <label className="field">
+                <span>Имя нового профиля</span>
+                <input
+                  name="profileName"
+                  type="text"
+                  required
+                  minLength={1}
+                  maxLength={120}
+                  autoComplete="off"
+                  placeholder="Например, Подопечный 01"
+                  disabled={action === "add-profile"}
+                />
+              </label>
+              {error !== null ? (
+                <p className="form-error" role="alert">
+                  {error}
+                </p>
+              ) : null}
+              <button
+                className="button button--primary"
+                type="submit"
+                disabled={action === "add-profile"}
+              >
+                {action === "add-profile" ? "Создаём…" : "Создать профиль"}
+              </button>
+            </form>
+          ) : null}
+        </div>
+      ) : null}
+      {family.role === "owner" ? (
+        <ProfileArchivePanel
+          key={`archive:${family.id}:${profile.id}`}
+          familyId={family.id}
+          profile={profile}
+          activeProfileCount={family.profiles.length}
+          onArchived={onProfileArchived}
+          onRestored={onProfileRestored}
+        />
+      ) : null}
+      {family.role === "owner" ? <FamilyInvitationPanel familyId={family.id} /> : null}
+      {family.role === "owner" ? (
+        <ProfileConsentPanel
+          key={`consent:${family.id}:${profile.id}`}
+          familyId={family.id}
+          profileId={profile.id}
+        />
+      ) : null}
+      {family.role === "owner" ? (
+        <FamilyAuditLogPanel key={`audit:${family.id}`} familyId={family.id} />
+      ) : null}
+    </aside>
   );
 }
 
@@ -2063,32 +2848,16 @@ function FamilyAuditLogPanel({ familyId }: { familyId: string }) {
   );
 }
 
-function uploadErrorCopy(error: unknown): string {
-  if (!(error instanceof ApiError)) {
-    return "Не удалось загрузить документ. Проверьте соединение и повторите попытку.";
-  }
-  if (error.status === 415) {
-    return "Файл не похож на поддерживаемый PDF, PNG или JPEG. Проверьте формат и содержимое.";
-  }
-  if (error.status === 413) {
-    return "Файл больше 5 МБ. Выберите синтетический исходник меньшего размера.";
-  }
-  if (error.status === 409) {
-    return "Эта попытка загрузки уже относится к другому файлу. Выберите файл заново.";
-  }
-  if (error.status === 400) {
-    return "Нужен ровно один синтетический PDF, PNG или JPEG-файл.";
-  }
-  if (error.status === 401 || error.status === 404) {
-    return "Профиль недоступен. Обновите страницу и проверьте активный профиль.";
-  }
-  return "Не удалось загрузить документ. Данные не изменились; попробуйте ещё раз.";
-}
-
 type ProfileOverviewState =
   | { kind: "loading" }
   | { kind: "ready"; overview: ProfileOverviewResponse }
   | { kind: "error"; copy: string };
+
+type DocumentSearchState =
+  | { kind: "idle" }
+  | { kind: "loading"; query: string }
+  | { kind: "ready"; query: string; documents: readonly DocumentSummary[] }
+  | { kind: "error"; query: string };
 
 function profileOverviewErrorCopy(error: unknown): string {
   if (error instanceof ApiError && [401, 404].includes(error.status)) {
@@ -2110,7 +2879,7 @@ function profileOverviewProcessingCopy(
     case "text_extraction":
       return "Извлекаем текст";
     case "document_classification":
-      return "Проверяем тип документа";
+      return "Codex определяет раздел";
     case "structured_extraction":
       return "Готовим черновые значения";
     case "validation":
@@ -2124,71 +2893,113 @@ function profileOverviewProcessingCopy(
   }
 }
 
-function sourceCountCopy(count: number): string {
-  const remainder10 = count % 10;
-  const remainder100 = count % 100;
-  if (remainder10 === 1 && remainder100 !== 11) return `${count} источник`;
-  if ([2, 3, 4].includes(remainder10) && ![12, 13, 14].includes(remainder100)) {
-    return `${count} источника`;
-  }
-  return `${count} источников`;
-}
+const documentCategoryLabels: Record<(typeof DOCUMENT_CATEGORIES)[number], string> = {
+  laboratory: "Анализы",
+  imaging: "Снимки и исследования",
+  prescription: "Назначения",
+  discharge_summary: "Выписки",
+  consultation: "Консультации",
+  vaccination: "Вакцинация",
+  insurance: "Страховые документы",
+  other: "Другое",
+};
 
-function profileDataState(overview: ProfileOverviewResponse): {
-  label: string;
-  detail: string;
-  actionHref: string;
-  actionLabel: string;
-} {
-  if (overview.reviewQueue.pendingFactCount > 0) {
-    const firstReview = overview.reviewQueue.documents[0];
-    return {
-      label: "Нужна ваша проверка",
-      detail: `${factCountCopy(overview.reviewQueue.pendingFactCount)} ещё не стали подтверждёнными данными.`,
-      actionHref:
-        firstReview === undefined
-          ? "#document-inbox-title"
-          : documentPath(overview.profile.familyId, overview.profile.id, firstReview.id),
-      actionLabel: firstReview === undefined ? "Открыть источники" : "Проверить значения",
-    };
-  }
-  const activeProcessing = overview.recentDocuments.find(
-    (document) => !["completed", "failed", "awaiting_review"].includes(document.processing.state),
+function DocumentArchiveList({
+  documents,
+  familyId,
+  profileId,
+}: {
+  documents: ProfileOverviewResponse["recentDocuments"];
+  familyId: string;
+  profileId: string;
+}) {
+  const groups = [
+    {
+      id: "processing",
+      label: "Codex распределяет",
+      documents: documents.filter((document) => document.intelligence === null),
+    },
+    ...DOCUMENT_CATEGORIES.map((category) => ({
+      id: category,
+      label: documentCategoryLabels[category],
+      documents: documents.filter((document) => document.intelligence?.category === category),
+    })),
+  ].filter((group) => group.documents.length > 0);
+
+  return (
+    <div className="document-category-groups">
+      {groups.map((group) => (
+        <section
+          key={group.id}
+          className="document-category-group"
+          aria-labelledby={`group-${group.id}`}
+        >
+          <div className="document-category-group__heading">
+            <h4 id={`group-${group.id}`}>{group.label}</h4>
+            <span>{group.documents.length}</span>
+          </div>
+          <ol className="profile-overview__list">
+            {group.documents.map((document) => (
+              <li key={document.id} className="profile-overview__row">
+                <div className="document-archive-row__identity">
+                  <span className="document-archive-row__icon" aria-hidden="true">
+                    <Files size={17} />
+                  </span>
+                  <div>
+                    <strong>{document.intelligence?.title ?? document.originalFilename}</strong>
+                    <span>
+                      {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)}
+                    </span>
+                    {document.intelligence?.shortSummary ? (
+                      <p className="document-archive-row__summary">
+                        {document.intelligence.shortSummary}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="document-archive-row__actions">
+                  <span className={`document-status document-status--${document.processing.state}`}>
+                    {profileOverviewProcessingCopy(document.processing)}
+                  </span>
+                  <Link
+                    className="document-archive-row__open"
+                    href={documentPath(familyId, profileId, document.id)}
+                    aria-label={`Открыть источник ${document.intelligence?.title ?? document.originalFilename}`}
+                  >
+                    <span>Открыть источник</span>
+                    <ArrowRight
+                      className="document-archive-row__arrow"
+                      size={17}
+                      aria-hidden="true"
+                    />
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ol>
+        </section>
+      ))}
+    </div>
   );
-  if (activeProcessing !== undefined) {
-    return {
-      label: "Обрабатываем источник",
-      detail: profileOverviewProcessingCopy(activeProcessing.processing),
-      actionHref: documentPath(overview.profile.familyId, overview.profile.id, activeProcessing.id),
-      actionLabel: "Открыть статус",
-    };
-  }
-  if (overview.recentObservations.length > 0) {
-    return {
-      label: "Данные подтверждены",
-      detail: "Последние значения связаны с исходными документами и готовы для просмотра.",
-      actionHref: "#observation-history",
-      actionLabel: "Открыть историю",
-    };
-  }
-  return {
-    label: "Нужен первый источник",
-    detail: "Добавьте документ, чтобы начать собирать проверяемую историю.",
-    actionHref: "#document-inbox-title",
-    actionLabel: "Добавить документ",
-  };
 }
 
 function ProfileOverviewPanel({
   familyId,
   profileId,
   canWriteProfile,
+  view,
+  onUpload,
 }: {
   familyId: string;
   profileId: string;
   canWriteProfile: boolean;
+  view: "dashboard" | "documents";
+  onUpload: () => void;
 }) {
   const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchState, setSearchState] = useState<DocumentSearchState>({ kind: "idle" });
+  const [searchRevision, setSearchRevision] = useState(0);
 
   const loadOverview = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -2206,54 +3017,90 @@ function ProfileOverviewPanel({
     [familyId, profileId],
   );
 
+  const refreshOverview = useCallback(async (): Promise<void> => {
+    try {
+      const overview = await apiRequest<ProfileOverviewResponse>(
+        profileOverviewPath(familyId, profileId),
+      );
+      setState({ kind: "ready", overview });
+    } catch {
+      // Keep the last authorized snapshot during a transient background refresh failure.
+    }
+  }, [familyId, profileId]);
+
   useEffect(() => {
     const controller = new AbortController();
     void loadOverview(controller.signal);
     return () => controller.abort();
   }, [loadOverview]);
 
+  useEffect(() => {
+    if (
+      state.kind !== "ready" ||
+      !state.overview.recentDocuments.some((document) =>
+        [
+          "queued",
+          "security_check",
+          "text_extraction",
+          "document_classification",
+          "structured_extraction",
+          "validation",
+        ].includes(document.processing.state),
+      )
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => void refreshOverview(), 1_000);
+    return () => window.clearTimeout(timer);
+  }, [refreshOverview, state]);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (view !== "documents" || query.length < 2) {
+      setSearchState({ kind: "idle" });
+      return;
+    }
+
+    const controller = new AbortController();
+    setSearchState({ kind: "loading", query });
+    const timeout = window.setTimeout(
+      () => {
+        void apiRequest<unknown>(buildDocumentSearchPath(familyId, profileId, query), {
+          signal: controller.signal,
+        })
+          .then((response) => {
+            if (!controller.signal.aborted) {
+              setSearchState({
+                kind: "ready",
+                query,
+                documents: normalizeDocumentSearchResponse(response),
+              });
+            }
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) setSearchState({ kind: "error", query });
+          });
+      },
+      searchRevision === 0 ? 260 : 0,
+    );
+
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [familyId, profileId, searchQuery, searchRevision, view]);
+
   return (
     <section
-      id="profile-dashboard"
-      className="profile-overview"
+      id={view === "dashboard" ? "profile-dashboard" : "document-archive"}
+      className={`profile-overview profile-overview--${view}`}
       aria-labelledby="profile-overview-title"
+      aria-label={view === "dashboard" ? "Обзор профиля" : "Архив документов"}
       aria-busy={state.kind === "loading"}
     >
-      <div className="profile-overview__heading">
-        <p className="context-line">Живая карта профиля</p>
-        <h2 id="profile-overview-title">Обзор профиля</h2>
-        <p className="profile-overview__description">
-          Документы, проверка и подтверждённые значения собраны в одном месте. Каждый результат
-          остаётся связан с исходником.
-        </p>
-        {canWriteProfile ? (
-          <div className="profile-overview__exports">
-            <p className="profile-overview__export">
-              <a
-                className="text-link"
-                href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-                download
-              >
-                Скачать локальный пакет источников
-              </a>
-              <span>До 5 последних synthetic-источников; это не резервная копия.</span>
-            </p>
-            <p className="profile-overview__export">
-              <a
-                className="text-link"
-                href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
-                download
-              >
-                Скачать полный synthetic-экспорт профиля
-              </a>
-              <span>
-                Все источники и подтверждённые записи, если их не больше 10; это не восстановление и
-                не production backup.
-              </span>
-            </p>
-          </div>
-        ) : null}
-      </div>
+      <h2 id="profile-overview-title" className="visually-hidden">
+        {view === "dashboard" ? "Обзор профиля" : "Архив документов"}
+      </h2>
 
       {state.kind === "loading" ? (
         <div className="profile-overview__loading" aria-live="polite">
@@ -2277,251 +3124,235 @@ function ProfileOverviewPanel({
       ) : null}
 
       {state.kind === "ready" ? (
-        <>
-          {(() => {
-            const dataState = profileDataState(state.overview);
-            const latestDocument = state.overview.recentDocuments[0];
-            return (
-              <div className="profile-cockpit">
-                <section
-                  className="profile-cockpit__map"
-                  aria-labelledby="profile-data-state-title"
+        view === "dashboard" ? (
+          <ProfileDashboard overview={state.overview} onUpload={onUpload} />
+        ) : (
+          <>
+            <div className="document-library__toolbar">
+              <div className="document-library__search-wrap">
+                <label className="document-library__search">
+                  <Search size={18} aria-hidden="true" />
+                  <span className="visually-hidden">Поиск по документам</span>
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => {
+                      setSearchRevision(0);
+                      setSearchQuery(event.target.value);
+                    }}
+                    placeholder="Поиск по саммари и результатам"
+                    autoComplete="off"
+                    maxLength={120}
+                    aria-describedby="document-search-hint"
+                  />
+                  {searchQuery.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      aria-label="Очистить поиск"
+                    >
+                      <X size={16} aria-hidden="true" />
+                    </button>
+                  ) : null}
+                </label>
+                <span
+                  id="document-search-hint"
+                  className={
+                    searchQuery.trim().length === 1
+                      ? "document-library__search-hint is-visible"
+                      : "document-library__search-hint"
+                  }
                 >
-                  <div className="profile-cockpit__title-row">
-                    <div>
-                      <p>Контур профиля</p>
-                      <h3 id="profile-data-state-title">Состояние данных</h3>
-                    </div>
-                    <span className="profile-cockpit__boundary">Не оценка здоровья</span>
-                  </div>
-
-                  <div className="evidence-map">
-                    <div className="evidence-map__core">
-                      <span>{state.overview.recentDocuments.length}</span>
-                      <small>
-                        {sourceCountCopy(state.overview.recentDocuments.length)} в обзоре
-                      </small>
-                    </div>
-                    <ol className="evidence-map__steps">
-                      <li
-                        data-state={state.overview.recentDocuments.length > 0 ? "ready" : "empty"}
-                      >
-                        <span className="evidence-map__step-index">1</span>
-                        <strong>Источники</strong>
-                        <small>
-                          {latestDocument === undefined
-                            ? "Ещё не добавлены"
-                            : `Последний · ${formatDate(latestDocument.uploadedAt)}`}
-                        </small>
-                      </li>
-                      <li
-                        data-state={
-                          state.overview.reviewQueue.pendingFactCount > 0 ? "attention" : "ready"
-                        }
-                      >
-                        <span className="evidence-map__step-index">2</span>
-                        <strong>Проверка</strong>
-                        <small>
-                          {state.overview.reviewQueue.pendingFactCount === 0
-                            ? "Нет ожидающих решений"
-                            : `${factCountCopy(state.overview.reviewQueue.pendingFactCount)} ожидают проверки`}
-                        </small>
-                      </li>
-                      <li
-                        data-state={
-                          state.overview.recentObservations.length > 0 ? "ready" : "empty"
-                        }
-                      >
-                        <span className="evidence-map__step-index">3</span>
-                        <strong>Подтверждено</strong>
-                        <small>
-                          {state.overview.recentObservations.length === 0
-                            ? "Пока нет значений"
-                            : `${state.overview.recentObservations.length} последних значения`}
-                        </small>
-                      </li>
-                    </ol>
-                  </div>
-                </section>
-
-                <aside
-                  className="profile-cockpit__action"
-                  aria-labelledby="profile-next-action-title"
-                >
-                  <span className="profile-cockpit__pulse" aria-hidden="true" />
-                  <p>Следующее действие</p>
-                  <h3 id="profile-next-action-title">{dataState.label}</h3>
-                  <p className="profile-cockpit__action-copy">{dataState.detail}</p>
-                  {dataState.actionHref.startsWith("/") ? (
-                    <Link className="button button--primary" href={dataState.actionHref}>
-                      {dataState.actionLabel}
-                    </Link>
-                  ) : (
-                    <a className="button button--primary" href={dataState.actionHref}>
-                      {dataState.actionLabel}
-                    </a>
-                  )}
-                  <dl className="profile-cockpit__facts">
-                    <div>
-                      <dt>Документы в проверке</dt>
-                      <dd>{state.overview.reviewQueue.documentCount}</dd>
-                    </div>
-                    <div>
-                      <dt>Недавние подтверждения</dt>
-                      <dd>{state.overview.recentObservations.length}</dd>
-                    </div>
-                  </dl>
-                </aside>
-              </div>
-            );
-          })()}
-
-          <CarePlanPanel
-            familyId={familyId}
-            profileId={profileId}
-            canWriteProfile={canWriteProfile}
-          />
-
-          <div className="profile-overview__sections">
-            <section className="profile-overview__section" aria-labelledby="overview-review-title">
-              <div className="profile-overview__section-heading">
-                <div>
-                  <p className="context-line">Следующее действие</p>
-                  <h3 id="overview-review-title">Проверка исходников</h3>
-                </div>
-                <span className="profile-overview__count">
-                  <span className="visually-hidden">Документов в очереди: </span>
-                  {state.overview.reviewQueue.documentCount}
+                  Введите минимум 2 символа
                 </span>
               </div>
-              {state.overview.reviewQueue.documentCount === 0 ? (
-                <div className="profile-overview__empty">
-                  <p>
-                    Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
-                  </p>
+              <div className="document-library__tools">
+                <div className="document-library__stats">
+                  <span>
+                    <strong>{state.overview.recentDocuments.length}</strong>в архиве
+                  </span>
+                  <span>
+                    <strong>{state.overview.reviewQueue.documentCount}</strong>
+                    ждут проверки
+                  </span>
                 </div>
-              ) : (
-                <ol className="profile-overview__list">
-                  {state.overview.reviewQueue.documents.map((document) => (
-                    <li key={document.id} className="profile-overview__row">
-                      <div>
-                        <strong>{document.originalFilename}</strong>
+                {canWriteProfile ? (
+                  <details className="profile-overview__exports">
+                    <summary>Экспорт источников</summary>
+                    <div>
+                      <p className="profile-overview__export">
+                        <a
+                          className="text-link"
+                          href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
+                          download
+                        >
+                          Скачать локальный пакет источников
+                        </a>
+                        <span>До 5 синтетических исходников; это не резервная копия.</span>
+                      </p>
+                      <p className="profile-overview__export">
+                        <a
+                          className="text-link"
+                          href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
+                          download
+                        >
+                          Скачать полный synthetic-экспорт профиля
+                        </a>
                         <span>
-                          {factCountCopy(document.pendingFactCount)} ждут решения
-                          {document.needsAttentionFactCount > 0
-                            ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
-                            : ""}
+                          Все источники и подтверждённые записи в пределах локального лимита.
                         </span>
-                      </div>
-                      <Link
-                        className="text-link"
-                        href={documentPath(familyId, profileId, document.id)}
-                      >
-                        Открыть проверку
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-              {state.overview.reviewQueue.documentCount >
-              state.overview.reviewQueue.documents.length ? (
-                <p className="profile-overview__more">
-                  Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
-                  очереди.
-                </p>
-              ) : null}
-            </section>
-
-            <section
-              className="profile-overview__section"
-              aria-labelledby="overview-documents-title"
-            >
-              <div className="profile-overview__section-heading">
-                <div>
-                  <p className="context-line">Неизменяемые байты</p>
-                  <h3 id="overview-documents-title">Последние исходники</h3>
-                </div>
+                      </p>
+                    </div>
+                  </details>
+                ) : null}
               </div>
-              {state.overview.recentDocuments.length === 0 ? (
-                <div className="profile-overview__empty">
-                  <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
-                  {canWriteProfile ? (
-                    <a className="text-link" href="#document-inbox-title">
-                      Добавить исходник
-                    </a>
-                  ) : null}
-                </div>
-              ) : (
-                <ol className="profile-overview__list">
-                  {state.overview.recentDocuments.map((document) => (
-                    <li key={document.id} className="profile-overview__row">
-                      <div>
-                        <strong>{document.originalFilename}</strong>
-                        <span>
-                          {documentKindLabel(document.contentType)} ·{" "}
-                          {formatDate(document.uploadedAt)} ·{" "}
-                          {profileOverviewProcessingCopy(document.processing)}
-                        </span>
-                      </div>
-                      <Link
-                        className="text-link"
-                        href={documentPath(familyId, profileId, document.id)}
-                      >
-                        Открыть источник
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
+            </div>
 
-            <section
-              className="profile-overview__section"
-              aria-labelledby="overview-observations-title"
-            >
-              <div className="profile-overview__section-heading">
-                <div>
-                  <p className="context-line">Явно подтверждено</p>
-                  <h3 id="overview-observations-title">Последние значения</h3>
+            <div className="profile-overview__sections">
+              <section
+                className={`profile-overview__section profile-overview__section--review${state.overview.reviewQueue.documentCount === 0 ? " profile-overview__section--quiet" : ""}`}
+                aria-labelledby="overview-review-title"
+              >
+                <div className="profile-overview__section-heading">
+                  <div>
+                    <p className="context-line">Следующее действие</p>
+                    <h3 id="overview-review-title">Проверка исходников</h3>
+                  </div>
+                  <span className="profile-overview__count">
+                    <span className="visually-hidden">Документов в очереди: </span>
+                    {state.overview.reviewQueue.documentCount}
+                  </span>
                 </div>
-                <a className="text-link" href="#observation-history">
-                  Вся история
-                </a>
-              </div>
-              {state.overview.recentObservations.length === 0 ? (
-                <div className="profile-overview__empty">
-                  <p>
-                    Подтверждённых значений пока нет. Они появятся здесь только после явного
-                    решения.
+                {state.overview.reviewQueue.documentCount === 0 ? (
+                  <div className="profile-overview__empty">
+                    <p>
+                      Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
+                    </p>
+                  </div>
+                ) : (
+                  <ol className="profile-overview__list">
+                    {state.overview.reviewQueue.documents.map((document) => (
+                      <li key={document.id} className="profile-overview__row">
+                        <div className="review-queue-row__identity">
+                          <span className="review-queue-row__mark" aria-hidden="true">
+                            !
+                          </span>
+                          <div>
+                            <strong>{document.originalFilename}</strong>
+                            <span>
+                              {factCountCopy(document.pendingFactCount)} ждут решения
+                              {document.needsAttentionFactCount > 0
+                                ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                                : ""}
+                            </span>
+                          </div>
+                        </div>
+                        <Link
+                          className="button button--secondary review-queue-row__action"
+                          href={documentPath(familyId, profileId, document.id)}
+                        >
+                          Открыть проверку
+                          <ArrowRight size={16} aria-hidden="true" />
+                        </Link>
+                      </li>
+                    ))}
+                  </ol>
+                )}
+                {state.overview.reviewQueue.documentCount >
+                state.overview.reviewQueue.documents.length ? (
+                  <p className="profile-overview__more">
+                    Показаны 3 последних из {state.overview.reviewQueue.documentCount} документов в
+                    очереди.
                   </p>
+                ) : null}
+              </section>
+
+              <section
+                className="profile-overview__section"
+                aria-labelledby="overview-documents-title"
+                aria-busy={searchState.kind === "loading"}
+              >
+                <div className="profile-overview__section-heading">
+                  <div>
+                    <p className="context-line">
+                      {searchState.kind === "idle" ? "Неизменяемые байты" : "Результаты поиска"}
+                    </p>
+                    <h3 id="overview-documents-title">
+                      {searchState.kind === "ready"
+                        ? `${searchState.documents.length} ${russianPlural(searchState.documents.length, "документ", "документа", "документов")}`
+                        : "Архив исходников"}
+                    </h3>
+                  </div>
                 </div>
-              ) : (
-                <ol className="profile-overview__list">
-                  {state.overview.recentObservations.map((observation) => (
-                    <li key={observation.id} className="profile-overview__row">
-                      <div>
-                        <strong>
-                          {observation.source.name}: {observation.source.value}{" "}
-                          {observation.source.unit}
-                        </strong>
-                        <span>
-                          Подтверждено {formatDate(observation.confirmed.at)} · документ, страница{" "}
-                          {observation.sourceDocument.pageNumber}
-                        </span>
-                      </div>
-                      <Link
-                        className="text-link"
-                        href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                {searchState.kind === "loading" ? (
+                  <div className="document-search-state" role="status">
+                    <span className="document-search-state__spinner" aria-hidden="true" />
+                    <div>
+                      <strong>Ищем по саммари и результатам</strong>
+                      <p>Запрос «{searchState.query}» проверяется в локальном архиве.</p>
+                    </div>
+                  </div>
+                ) : null}
+                {searchState.kind === "error" ? (
+                  <div className="document-search-state document-search-state--error" role="alert">
+                    <div>
+                      <strong>Поиск временно недоступен</strong>
+                      <p>Архив не изменён. Можно повторить тот же запрос.</p>
+                    </div>
+                    <button
+                      className="button button--secondary"
+                      type="button"
+                      onClick={() => setSearchRevision((current) => current + 1)}
+                    >
+                      Повторить
+                    </button>
+                  </div>
+                ) : null}
+                {searchState.kind === "ready" && searchState.documents.length === 0 ? (
+                  <div className="profile-overview__empty document-search-empty" role="status">
+                    <Search size={20} aria-hidden="true" />
+                    <p>По запросу «{searchState.query}» ничего не найдено.</p>
+                    <button
+                      className="text-link text-link--button"
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                    >
+                      Показать весь архив
+                    </button>
+                  </div>
+                ) : null}
+                {searchState.kind === "idle" && state.overview.recentDocuments.length === 0 ? (
+                  <div className="profile-overview__empty">
+                    <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
+                    {canWriteProfile ? (
+                      <button
+                        className="text-link text-link--button"
+                        type="button"
+                        onClick={onUpload}
                       >
-                        Открыть источник
-                      </Link>
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </section>
-          </div>
-        </>
+                        Добавить исходник
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                {searchState.kind === "idle" && state.overview.recentDocuments.length > 0 ? (
+                  <DocumentArchiveList
+                    documents={state.overview.recentDocuments}
+                    familyId={familyId}
+                    profileId={profileId}
+                  />
+                ) : null}
+                {searchState.kind === "ready" && searchState.documents.length > 0 ? (
+                  <DocumentArchiveList
+                    documents={searchState.documents}
+                    familyId={familyId}
+                    profileId={profileId}
+                  />
+                ) : null}
+              </section>
+            </div>
+          </>
+        )
       ) : null}
     </section>
   );
@@ -2739,6 +3570,7 @@ function CarePlanPanel({
 
   return (
     <section
+      id="care-plan"
       className="care-plan"
       aria-labelledby={`${formId}-title`}
       aria-busy={state.kind === "loading"}
@@ -3256,9 +4088,9 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
             Сводка появится после завершения проверки хотя бы одного документа: все извлечённые
             значения должны получить явное решение.
           </p>
-          <a className="text-link" href="#document-inbox-title">
+          <Link className="text-link" href={profileTabPath(familyId, profileId, "documents")}>
             Добавить или проверить источник
-          </a>
+          </Link>
         </div>
       ) : null}
 
@@ -3460,60 +4292,225 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
   );
 }
 
-interface DocumentInboxProps {
+const supportedSyntheticDocumentTypes = new Set(["application/pdf", "image/png", "image/jpeg"]);
+
+function isSupportedSyntheticDocument(file: File): boolean {
+  if (supportedSyntheticDocumentTypes.has(file.type.toLowerCase())) return true;
+  return /\.(pdf|png|jpe?g)$/i.test(file.name);
+}
+
+function formatUploadSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} Б`;
+  return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
+}
+
+function DocumentInbox({ onUpload }: { onUpload: () => void }) {
+  return (
+    <section className="document-inbox" aria-labelledby="document-inbox-title">
+      <div className="document-inbox__copy">
+        <p className="context-line">Исходники и подтверждения</p>
+        <h2 id="document-inbox-title">Документы профиля</h2>
+        <p className="document-intro">
+          Добавьте один файл или пачку. Codex распределит документы по разделам и подготовит
+          значения для вашей проверки, не меняя оригиналы.
+        </p>
+      </div>
+      <div className="document-inbox__actions">
+        <button className="button button--primary" type="button" onClick={onUpload}>
+          <FileUp size={18} aria-hidden="true" />
+          Загрузить документы
+        </button>
+        <p className="synthetic-reminder" role="note">
+          Только вымышленные PDF, PNG и JPEG до 5 МБ. Не загружайте реальные медицинские данные.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+interface DocumentUploadDialogProps {
+  dialogRef: RefObject<HTMLDialogElement | null>;
+  open: boolean;
   pending: boolean;
+  selectedFiles: readonly File[];
+  codexConsent: boolean;
   error: string | null;
+  dragActive: boolean;
+  onClose: () => void;
+  onClosed: () => void;
+  onDragActiveChange: (active: boolean) => void;
+  onDrop: (event: DragEvent<HTMLLabelElement>) => void;
+  onSelect: (files: readonly File[]) => void;
+  onRemove: (file: File) => void;
+  onConsentChange: (checked: boolean) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-function DocumentInbox({ pending, error, onSubmit }: DocumentInboxProps) {
+function DocumentUploadDialog({
+  dialogRef,
+  open,
+  pending,
+  selectedFiles,
+  codexConsent,
+  error,
+  dragActive,
+  onClose,
+  onClosed,
+  onDragActiveChange,
+  onDrop,
+  onSelect,
+  onRemove,
+  onConsentChange,
+  onSubmit,
+}: DocumentUploadDialogProps) {
   return (
-    <section className="document-inbox" aria-labelledby="document-inbox-title">
-      <span className="source-mark" aria-hidden="true">
-        PDF · PNG · JPEG
-      </span>
-      <p className="context-line">Исходные документы</p>
-      <h2 id="document-inbox-title">Добавьте синтетический исходник</h2>
-      <p className="document-intro">
-        Мы сохраним исходные байты без изменений и рассчитаем SHA-256. Затем локальная
-        детерминированная обработка поставит в очередь черновое извлечение значений для проверки.
-      </p>
-
-      <div className="synthetic-reminder" role="note">
-        <strong>Не загружайте реальные медицинские данные.</strong>
-        <span> Контур принимает только вымышленные PDF, PNG и JPEG до 5 МБ.</span>
-      </div>
-
-      <form className="upload-form" onSubmit={onSubmit} aria-busy={pending}>
-        <label className="file-field">
-          <span>Синтетический документ</span>
-          <input
-            name="file"
-            type="file"
-            accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
-            required
+    <dialog
+      ref={dialogRef}
+      className="upload-dialog"
+      aria-labelledby="upload-dialog-title"
+      data-state={open ? "open" : "closed"}
+      onClose={onClosed}
+      onCancel={(event) => {
+        if (pending) event.preventDefault();
+      }}
+    >
+      <form className="upload-dialog__surface" onSubmit={onSubmit} aria-busy={pending}>
+        <div className="upload-dialog__heading">
+          <div>
+            <p className="context-line">Новый источник</p>
+            <h2 id="upload-dialog-title">Загрузить документы</h2>
+            <p>
+              Оригиналы останутся локально. Codex сам определит тип каждого документа и распределит
+              их по разделам архива.
+            </p>
+          </div>
+          <button
+            className="workspace-icon-action upload-dialog__close"
+            type="button"
+            aria-label="Закрыть загрузку"
+            onClick={onClose}
             disabled={pending}
-            aria-describedby="document-requirements"
+          >
+            <X size={19} aria-hidden="true" />
+          </button>
+        </div>
+
+        <label
+          className={`upload-dropzone ${dragActive ? "upload-dropzone--active" : ""} ${selectedFiles.length > 0 ? "upload-dropzone--selected" : ""}`}
+          onDragEnter={(event) => {
+            event.preventDefault();
+            onDragActiveChange(true);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            onDragActiveChange(true);
+          }}
+          onDragLeave={(event) => {
+            if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+              onDragActiveChange(false);
+            }
+          }}
+          onDrop={onDrop}
+        >
+          <input
+            className="visually-hidden"
+            aria-label="Документы для Codex"
+            type="file"
+            multiple
+            accept="application/pdf,image/png,image/jpeg,.pdf,.png,.jpg,.jpeg"
+            disabled={pending}
+            onChange={(event) => onSelect(Array.from(event.currentTarget.files ?? []))}
           />
+          <span className="upload-dropzone__icon" aria-hidden="true">
+            <FileUp size={26} strokeWidth={1.7} />
+          </span>
+          {selectedFiles.length === 0 ? (
+            <span className="upload-dropzone__copy">
+              <strong>Перетащите файлы сюда</strong>
+              <span>или нажмите, чтобы выбрать на диске</span>
+            </span>
+          ) : (
+            <span className="upload-dropzone__copy">
+              <strong>Выбрано {selectedFiles.length}</strong>
+              <span>Можно добавить ещё — до 20 документов за раз</span>
+            </span>
+          )}
+          <span className="upload-dropzone__formats">PDF · PNG · JPEG · до 5 МБ</span>
         </label>
-        <p id="document-requirements" className="form-note">
-          Один PDF, PNG или JPEG, не больше 5 МБ. Имя файла используется только для отображения.
-        </p>
+
+        {selectedFiles.length > 0 ? (
+          <ul className="upload-file-list" aria-label="Выбранные документы">
+            {selectedFiles.map((file) => (
+              <li key={`${file.name}:${file.size}:${file.lastModified}`}>
+                <span>
+                  <strong>{file.name}</strong>
+                  <small>{formatUploadSize(file.size)}</small>
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Убрать ${file.name}`}
+                  onClick={() => onRemove(file)}
+                  disabled={pending}
+                >
+                  <X size={16} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        <label className="codex-consent">
+          <input
+            type="checkbox"
+            checked={codexConsent}
+            onChange={(event) => onConsentChange(event.currentTarget.checked)}
+            disabled={pending}
+          />
+          <span>
+            Я согласен передать содержимое этих документов в Codex для классификации и извлечения.
+            Исходные файлы остаются в локальном хранилище Veylta.
+          </span>
+        </label>
+
+        <div className="synthetic-reminder" role="note">
+          <strong>Не загружайте реальные медицинские данные.</strong>
+          <span> Этот demo-контур предназначен только для вымышленных документов.</span>
+        </div>
+
         {error !== null ? (
           <p className="form-error" role="alert">
             {error}
           </p>
         ) : null}
-        <button className="button button--primary" type="submit" disabled={pending}>
-          {pending ? "Сохраняем исходник…" : "Загрузить исходник"}
-        </button>
+
+        <div className="upload-dialog__actions">
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={onClose}
+            disabled={pending}
+          >
+            Отмена
+          </button>
+          <button
+            className="button button--primary"
+            type="submit"
+            disabled={pending || selectedFiles.length === 0 || !codexConsent}
+          >
+            {pending
+              ? "Передаём документы…"
+              : selectedFiles.length === 1
+                ? "Загрузить документ"
+                : `Загрузить ${selectedFiles.length} документа`}
+          </button>
+        </div>
         {pending ? (
           <p className="form-note" role="status">
-            Загружаем и проверяем исходник…
+            Сохраняем оригиналы, считаем SHA-256 и ставим анализ Codex в очередь…
           </p>
         ) : null}
       </form>
-    </section>
+    </dialog>
   );
 }
 
@@ -3531,6 +4528,22 @@ type ObservationHistoryState =
 interface ObservationHistoryPanelProps {
   familyId: string;
   profileId: string;
+  canonicalCode?: string | undefined;
+}
+
+function observationHistoryRequestPath(
+  familyId: string,
+  profileId: string,
+  canonicalCode?: string,
+  cursor?: string,
+): string {
+  const parameters = new URLSearchParams();
+  if (canonicalCode !== undefined && canonicalCode.length > 0) {
+    parameters.set("canonicalCode", canonicalCode);
+  }
+  if (cursor !== undefined) parameters.set("cursor", cursor);
+  const query = parameters.toString();
+  return `${observationHistoryPath(familyId, profileId)}${query.length === 0 ? "" : `?${query}`}`;
 }
 
 interface ObservationDate {
@@ -3580,7 +4593,11 @@ function referenceRangeCopy(
   return referenceRange.sourceUnit === null ? bounds : `${bounds} ${referenceRange.sourceUnit}`;
 }
 
-function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPanelProps) {
+function ObservationHistoryPanel({
+  familyId,
+  profileId,
+  canonicalCode,
+}: ObservationHistoryPanelProps) {
   const [history, setHistory] = useState<ObservationHistoryState>({ kind: "loading" });
   const [loadMorePending, setLoadMorePending] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);
@@ -3592,7 +4609,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
       setLoadMoreError(null);
       try {
         const response = await apiRequest<ObservationHistoryResponse>(
-          observationHistoryPath(familyId, profileId),
+          observationHistoryRequestPath(familyId, profileId, canonicalCode),
           signal === undefined ? undefined : { signal },
         );
         if (signal?.aborted) return;
@@ -3606,7 +4623,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
           setHistory({ kind: "error", copy: observationHistoryErrorCopy(error) });
       }
     },
-    [familyId, profileId],
+    [canonicalCode, familyId, profileId],
   );
 
   useEffect(() => {
@@ -3628,7 +4645,7 @@ function ObservationHistoryPanel({ familyId, profileId }: ObservationHistoryPane
     setLoadMoreError(null);
     try {
       const response = await apiRequest<ObservationHistoryResponse>(
-        `${observationHistoryPath(familyId, profileId)}?cursor=${encodeURIComponent(history.nextCursor)}`,
+        observationHistoryRequestPath(familyId, profileId, canonicalCode, history.nextCursor),
         { signal: controller.signal },
       );
       if (controller.signal.aborted) return;
@@ -3877,7 +4894,11 @@ function indicatorCatalogErrorCopy(error: unknown): string {
   return "Не удалось загрузить каталог. Подтверждённые значения и исходные документы не изменены.";
 }
 
-function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelProps) {
+function IndicatorCatalogPanel({
+  familyId,
+  profileId,
+  canonicalCode,
+}: ObservationHistoryPanelProps) {
   const [catalog, setCatalog] = useState<IndicatorCatalogState>({ kind: "loading" });
   const [selected, setSelected] = useState<{ canonicalCode: string; unit: string } | null>(null);
 
@@ -3902,7 +4923,9 @@ function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelP
           ) {
             return current;
           }
-          const first = response.items[0];
+          const first =
+            response.items.find((item) => item.canonicalCode === canonicalCode) ??
+            response.items[0];
           const firstUnit = first?.units[0];
           return first === undefined || firstUnit === undefined
             ? null
@@ -3912,7 +4935,7 @@ function IndicatorCatalogPanel({ familyId, profileId }: ObservationHistoryPanelP
         if (!signal?.aborted) setCatalog({ kind: "error", copy: indicatorCatalogErrorCopy(error) });
       }
     },
-    [familyId, profileId],
+    [canonicalCode, familyId, profileId],
   );
 
   useEffect(() => {
@@ -4271,9 +5294,64 @@ function IndicatorSeriesPanel({
 
 type DocumentViewState =
   | { kind: "loading" }
-  | { kind: "ready"; document: DocumentSummary }
+  | { kind: "ready"; document: DocumentDetail }
   | { kind: "missing" }
   | { kind: "error" };
+
+export function documentResultStatusCopy(status: DocumentIntelligenceResultStatus): string {
+  switch (status) {
+    case "above_range":
+      return "Выше диапазона";
+    case "normal":
+      return "В пределах источника";
+    case "abnormal":
+      return "Отмечено источником";
+    case "detected":
+      return "Обнаружено";
+    case "not_detected":
+      return "Не обнаружено";
+    case "completed":
+      return "Выполнено";
+    case "informational":
+      return "Информация";
+    case "unknown":
+      return "Без оценки";
+  }
+}
+
+export function documentResultStatusPriority(
+  status: DocumentIntelligenceResultStatus | null,
+): number {
+  return status === "above_range" ? 0 : 1;
+}
+
+export function prioritizeDocumentResults(
+  results: readonly DocumentIntelligenceStructuredResult[],
+): readonly DocumentIntelligenceStructuredResult[] {
+  return [...results].sort(
+    (left, right) =>
+      documentResultStatusPriority(left.status) - documentResultStatusPriority(right.status),
+  );
+}
+
+export function documentResultTypeCopy(type: string): string {
+  switch (type) {
+    case "measurement":
+      return "Измерение";
+    case "genetic_variant":
+      return "Генетический вариант";
+    case "finding":
+      return "Наблюдение";
+    case "procedure":
+      return "Процедура";
+    case "medication":
+      return "Препарат";
+    case "diagnosis":
+      return "Формулировка источника";
+    default:
+      return "Результат";
+  }
+}
 
 interface DocumentViewProps {
   family: SessionFamily;
@@ -4284,13 +5362,38 @@ interface DocumentViewProps {
 
 function DocumentView({ family, profile, documentId, canWriteProfile }: DocumentViewProps) {
   const [state, setState] = useState<DocumentViewState>({ kind: "loading" });
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restartPending, setRestartPending] = useState(false);
+  const [restartError, setRestartError] = useState<string | null>(null);
+  const [suggestedAgentMessage, setSuggestedAgentMessage] = useState<{
+    id: string;
+    prompt: string;
+  } | null>(null);
+  const [reviewRevision, setReviewRevision] = useState(0);
+  const deleteKey = useRef<string | null>(null);
+  const restartKey = useRef<string | null>(null);
+  const refreshedTerminalProcessing = useRef<string | null>(null);
+  const previousDocumentId = useRef(documentId);
+  const router = useRouter();
+  const endpoint = `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(documentId)}`;
+
+  const handleProcessingChange = useCallback((processing: DocumentProcessingStatus) => {
+    setState((current) => {
+      if (current.kind !== "ready") return current;
+      if (processingStatusesEqual(current.document.processing, processing)) return current;
+      return {
+        kind: "ready",
+        document: { ...current.document, processing },
+      };
+    });
+  }, []);
 
   useEffect(() => {
     let active = true;
     setState({ kind: "loading" });
-    apiRequest<DocumentResponse>(
-      `/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(documentId)}`,
-    )
+    apiRequest<DocumentDetailResponse>(endpoint)
       .then((response) => {
         if (active) setState({ kind: "ready", document: response.document });
       })
@@ -4305,7 +5408,46 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
     return () => {
       active = false;
     };
-  }, [documentId, family.id, profile.id]);
+  }, [endpoint]);
+
+  const terminalProcessingVersion =
+    state.kind === "ready" &&
+    (state.document.processing.state === "awaiting_review" ||
+      state.document.processing.state === "completed")
+      ? `${state.document.processing.state}:${state.document.processing.updatedAt}`
+      : null;
+
+  useEffect(() => {
+    if (
+      terminalProcessingVersion === null ||
+      refreshedTerminalProcessing.current === terminalProcessingVersion
+    ) {
+      return;
+    }
+    let active = true;
+    refreshedTerminalProcessing.current = terminalProcessingVersion;
+    void apiRequest<DocumentDetailResponse>(endpoint)
+      .then((response) => {
+        if (active) setState({ kind: "ready", document: response.document });
+      })
+      .catch(() => {
+        if (active) refreshedTerminalProcessing.current = null;
+      });
+    return () => {
+      active = false;
+    };
+  }, [endpoint, terminalProcessingVersion]);
+
+  useEffect(() => {
+    if (previousDocumentId.current === documentId) return;
+    previousDocumentId.current = documentId;
+    setDeleteDialogOpen(false);
+    setDeleteError(null);
+    setRestartError(null);
+    deleteKey.current = null;
+    restartKey.current = null;
+    refreshedTerminalProcessing.current = null;
+  }, [documentId]);
 
   const title =
     state.kind === "ready"
@@ -4334,7 +5476,10 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
           Документа нет или у этой сессии нет к нему доступа. Дополнительные сведения не
           раскрываются.
         </p>
-        <Link className="button button--secondary" href={profilePath(family.id, profile.id)}>
+        <Link
+          className="button button--secondary"
+          href={profileTabPath(family.id, profile.id, "documents")}
+        >
           Вернуться в профиль
         </Link>
       </section>
@@ -4359,34 +5504,192 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
   }
 
   const { document: savedDocument } = state;
-  const contentUrl = `${apiPrefix}/v1/families/${encodeURIComponent(family.id)}/profiles/${encodeURIComponent(profile.id)}/documents/${encodeURIComponent(savedDocument.id)}/content`;
+  const contentUrl = `${apiPrefix}${endpoint}/content`;
+  const intelligence = savedDocument.intelligence;
+  const results = intelligence?.structuredResults ?? [];
+  const processing = savedDocument.processing;
+  const terminalFactCount =
+    processing.state === "awaiting_review" || processing.state === "completed"
+      ? processing.factCount
+      : 0;
+  const resultAvailability = documentResultAvailabilityCopy(results.length, terminalFactCount);
+  const canRestart =
+    canWriteProfile &&
+    (processing.state === "failed" ||
+      processing.state === "awaiting_review" ||
+      processing.state === "completed");
+
+  async function handleRestart(): Promise<void> {
+    if (state.kind !== "ready") return;
+    setRestartPending(true);
+    setRestartError(null);
+    const commandKey = restartKey.current ?? crypto.randomUUID();
+    restartKey.current = commandKey;
+    try {
+      const response = await apiRequest<DocumentProcessingRestartResponse>(
+        `${documentProcessingPath(family.id, profile.id, savedDocument.id)}/restart`,
+        { method: "POST", headers: { "Idempotency-Key": commandKey } },
+      );
+      setState({
+        kind: "ready",
+        document: { ...savedDocument, processing: response.processing },
+      });
+      restartKey.current = null;
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) restartKey.current = null;
+      setRestartError("Не удалось запустить новый разбор. Предыдущий результат сохранён.");
+    } finally {
+      setRestartPending(false);
+    }
+  }
+
+  async function handleDelete(): Promise<void> {
+    setDeletePending(true);
+    setDeleteError(null);
+    const commandKey = deleteKey.current ?? crypto.randomUUID();
+    deleteKey.current = commandKey;
+    try {
+      await apiRequest<DocumentDeleteResponse>(endpoint, {
+        method: "DELETE",
+        headers: { "Idempotency-Key": commandKey },
+      });
+      deleteKey.current = null;
+      router.push(profileTabPath(family.id, profile.id, "documents"));
+      router.refresh();
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) deleteKey.current = null;
+      setDeleteError("Не удалось удалить документ из активного архива. Ничего не изменилось.");
+    } finally {
+      setDeletePending(false);
+    }
+  }
 
   return (
     <section className="document-view" aria-labelledby="document-title">
-      <Link className="back-link" href={profilePath(family.id, profile.id)}>
-        ← {profile.displayName}
-      </Link>
-      <p className="document-state">
-        <span aria-hidden="true" />
-        Исходник сохранён без изменений
-      </p>
-      <h2 id="document-title">{savedDocument.originalFilename}</h2>
-      <p className="document-meta">
-        {documentKindLabel(savedDocument.contentType)} · {formatBytes(savedDocument.byteSize)} ·{" "}
-        {formatDate(savedDocument.uploadedAt)}
-      </p>
+      <DocumentHero
+        title={intelligence?.title ?? savedDocument.originalFilename}
+        metadata={`${documentKindLabel(savedDocument.contentType)} · ${formatBytes(savedDocument.byteSize)} · ${formatDate(savedDocument.uploadedAt)}`}
+        summary={
+          intelligence?.shortSummary ??
+          "Короткое саммари появится здесь после завершения нового разбора документа."
+        }
+        resultAvailability={
+          processing.state === "awaiting_review" || processing.state === "completed"
+            ? resultAvailability
+            : null
+        }
+        downloadHref={contentUrl}
+        canRestart={canRestart}
+        restartPending={restartPending}
+        restartError={restartError}
+        canDelete={canWriteProfile}
+        onRestart={() => void handleRestart()}
+        onDelete={() => setDeleteDialogOpen(true)}
+      />
 
       {savedDocument.duplicate.possible ? (
         <div className="duplicate-note" role="status">
-          <strong>Возможный дубликат</strong>
-          <p>SHA-256 совпадает с ранее загруженным документом этой семьи.</p>
+          <strong>Такой исходник уже встречался</strong>
+          <p>Контрольная сумма совпадает с документом этой семьи.</p>
         </div>
       ) : null}
 
-      <div className="document-actions">
-        <a className="button button--primary" href={contentUrl} download>
-          {downloadLabel(savedDocument.contentType)}
-        </a>
+      <div className="document-dashboard-grid">
+        <div className="document-dashboard-grid__main">
+          <DocumentReviewPanel
+            key={`${family.id}:${profile.id}:${savedDocument.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            documentId={savedDocument.id}
+            results={results}
+            processing={processing}
+            contentUrl={contentUrl}
+            canWriteProfile={canWriteProfile}
+            onReviewSaved={() => setReviewRevision((current) => current + 1)}
+            onAskCodex={(prompt) => setSuggestedAgentMessage({ id: crypto.randomUUID(), prompt })}
+          />
+
+          <section className="document-detailed-summary" aria-labelledby="document-detail-title">
+            <div className="document-section-heading">
+              <div>
+                <p className="context-line">Подробно</p>
+                <h3 id="document-detail-title">Развёрнутое саммари</h3>
+              </div>
+            </div>
+            <p>
+              {intelligence?.detailedSummary ??
+                "Развёрнутое саммари появится после завершения нового разбора документа."}
+            </p>
+          </section>
+        </div>
+
+        <aside className="document-dashboard-grid__rail" aria-label="Сведения об источнике">
+          <section className="document-rail-card">
+            <div className="document-rail-card__title">
+              <FileText size={18} aria-hidden="true" />
+              <h3>Исходник</h3>
+            </div>
+            <dl>
+              <div>
+                <dt>Файл</dt>
+                <dd>{savedDocument.originalFilename}</dd>
+              </div>
+              <div>
+                <dt>Формат</dt>
+                <dd>{documentKindLabel(savedDocument.contentType)}</dd>
+              </div>
+              <div>
+                <dt>Размер</dt>
+                <dd>{formatBytes(savedDocument.byteSize)}</dd>
+              </div>
+              <div>
+                <dt>Загружен</dt>
+                <dd>{formatDate(savedDocument.uploadedAt)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="document-rail-card">
+            <div className="document-rail-card__title">
+              <Bot size={18} aria-hidden="true" />
+              <h3>Классификация</h3>
+            </div>
+            {intelligence === null ? (
+              <p className="document-rail-card__empty">Codex ещё распределяет документ.</p>
+            ) : (
+              <dl>
+                <div>
+                  <dt>Раздел</dt>
+                  <dd>{documentCategoryLabels[intelligence.category]}</dd>
+                </div>
+                <div>
+                  <dt>Дата документа</dt>
+                  <dd>{intelligence.documentDate ?? "Не указана"}</dd>
+                </div>
+                <div>
+                  <dt>Модель</dt>
+                  <dd>{intelligence.modelId}</dd>
+                </div>
+                <div>
+                  <dt>Уверенность</dt>
+                  <dd>{Math.round(intelligence.confidence * 100)}%</dd>
+                </div>
+              </dl>
+            )}
+          </section>
+
+          <section className="document-rail-card document-rail-card--integrity">
+            <div className="document-rail-card__title">
+              <ShieldCheck size={18} aria-hidden="true" />
+              <h3>Целостность</h3>
+            </div>
+            <p>Оригинальные байты сверяются перед каждой обработкой.</p>
+            <details>
+              <summary>Показать SHA-256</summary>
+              <code>{savedDocument.sha256}</code>
+            </details>
+          </section>
+        </aside>
       </div>
 
       <DocumentProcessingPanel
@@ -4394,7 +5697,65 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
         profileId={profile.id}
         document={savedDocument}
         canWriteProfile={canWriteProfile}
+        onProcessingChange={handleProcessingChange}
+        reviewRevision={reviewRevision}
+        suggestedAgentMessage={suggestedAgentMessage}
       />
+
+      {deleteDialogOpen ? (
+        <div
+          className="document-delete-dialog"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="document-delete-title"
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && !deletePending) setDeleteDialogOpen(false);
+          }}
+        >
+          <button
+            className="document-delete-dialog__backdrop"
+            type="button"
+            aria-label="Закрыть подтверждение удаления"
+            onClick={() => {
+              if (!deletePending) setDeleteDialogOpen(false);
+            }}
+          />
+          <div className="document-delete-dialog__panel">
+            <span className="document-delete-dialog__icon" aria-hidden="true">
+              <Trash2 size={22} />
+            </span>
+            <p className="context-line">Необратимо для активного архива</p>
+            <h3 id="document-delete-title">Удалить документ из Veylta?</h3>
+            <p>
+              Он исчезнет из активного архива и поиска. Уже подтверждённые записи и их происхождение
+              останутся в истории для целостности журнала.
+            </p>
+            {deleteError === null ? null : (
+              <p className="form-error" role="alert">
+                {deleteError}
+              </p>
+            )}
+            <div className="document-delete-dialog__actions">
+              <button
+                className="button button--secondary"
+                type="button"
+                disabled={deletePending}
+                onClick={() => setDeleteDialogOpen(false)}
+              >
+                Отмена
+              </button>
+              <button
+                className="button button--danger"
+                type="button"
+                disabled={deletePending}
+                onClick={() => void handleDelete()}
+              >
+                {deletePending ? "Удаляем…" : "Удалить документ"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -4404,6 +5765,9 @@ interface DocumentProcessingPanelProps {
   profileId: string;
   document: DocumentSummary;
   canWriteProfile: boolean;
+  onProcessingChange?: (processing: DocumentProcessingStatus) => void;
+  reviewRevision: number;
+  suggestedAgentMessage: { id: string; prompt: string } | null;
 }
 
 interface ProcessingPresentation {
@@ -4488,17 +5852,6 @@ function documentKindLabel(contentType: DocumentSummary["contentType"]): string 
   }
 }
 
-function downloadLabel(contentType: DocumentSummary["contentType"]): string {
-  switch (contentType) {
-    case "application/pdf":
-      return "Скачать исходный PDF";
-    case "image/png":
-      return "Скачать исходный PNG";
-    case "image/jpeg":
-      return "Скачать исходный JPEG";
-  }
-}
-
 function processingFailureCopy(
   status: Extract<DocumentProcessingStatus, { state: "failed" }>,
 ): string {
@@ -4507,8 +5860,10 @@ function processingFailureCopy(
       return "Исходник сейчас недоступен обработчику. Сам файл не менялся.";
     case "invalid_document":
       return "Документ нельзя обработать безопасно. Исходник сохранён без изменений.";
-    case "unsupported_document":
-      return "Этот вариант исходника пока не поддерживается детерминированным извлечением.";
+    case "agent_unavailable":
+      return "Codex сейчас недоступен. Исходник сохранён локально, можно повторить анализ позже.";
+    case "agent_output_invalid":
+      return "Ответ Codex не прошёл проверку структуры и привязки к источнику.";
     case "extraction_failed":
       return "Не удалось надёжно извлечь текст. Никаких значений не интерпретировано.";
     case "validation_failed":
@@ -4547,31 +5902,31 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "text_extraction":
       return {
         heading: "Извлекаем текст из исходника",
-        copy: "Используем детерминированный локальный обработчик. Медицинские выводы не формируются.",
+        copy: "Локально получаем текст или изображение, которые затем будут переданы выбранному AI-провайдеру.",
         integrityLabel: "Извлечение текста",
         mark: "…",
         tone: "active",
       };
     case "document_classification":
       return {
-        heading: "Проверяем тип документа",
-        copy: "Сверяем документ с ограниченным синтетическим форматом этого контура.",
-        integrityLabel: "Проверка типа",
+        heading: "Codex определяет тип документа",
+        copy: "AI выбирает раздел архива и короткое понятное название документа.",
+        integrityLabel: "Классификация Codex",
         mark: "…",
         tone: "active",
       };
     case "structured_extraction":
       return {
-        heading: "Готовим черновые значения",
-        copy: "Связываем каждое значение со страницей и фрагментом исходника.",
+        heading: "Codex разбирает документ",
+        copy: "Каждое найденное значение должно быть связано со страницей и точным фрагментом исходника.",
         integrityLabel: "Структурирование",
         mark: "…",
         tone: "active",
       };
     case "validation":
       return {
-        heading: "Проверяем черновой результат",
-        copy: "Проверяем формат, источник и ограничения перед тем, как показать значения для проверки.",
+        heading: "Проверяем ответ Codex",
+        copy: "Отбрасываем результат, если структура или ссылка на источник не проходят строгую проверку.",
         integrityLabel: "Проверка результата",
         mark: "…",
         tone: "active",
@@ -4603,17 +5958,129 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
   }
 }
 
+interface ProcessingActivityCopy {
+  heading: string;
+  detail: string;
+}
+
+function processingActivityCopy(event: DocumentProcessingActivityEvent): ProcessingActivityCopy {
+  switch (event.code) {
+    case "queued":
+      return {
+        heading: "Документ поставлен в очередь",
+        detail: "Локальный worker принял задачу на обработку.",
+      };
+    case "security_check_started":
+      return {
+        heading: "Проверяем исходник",
+        detail: "Сверяем доступ, размер и контрольную сумму сохранённого файла.",
+      };
+    case "text_extraction_started":
+      return {
+        heading: "Извлекаем текст",
+        detail: "Текстовый слой или изображение подготавливается локально.",
+      };
+    case "document_classification_started":
+      return {
+        heading: "Определяем тип документа",
+        detail: "Codex выбирает раздел архива и понятное русское название.",
+      };
+    case "codex_analysis_started":
+      return {
+        heading: "Codex разбирает данные документа",
+        detail: "Модель формирует структурированный JSON со ссылками на фрагменты источника.",
+      };
+    case "result_validation_started":
+      return {
+        heading: "Проверяем ответ Codex",
+        detail: "Сервер проверяет структуру, типы и точные ссылки на источник.",
+      };
+    case "result_saved":
+      return {
+        heading: "Результат сохранён для проверки",
+        detail: "Черновые данные записаны отдельно от неизменяемого исходника.",
+      };
+    case "retry_scheduled":
+      return {
+        heading: "Назначена повторная попытка",
+        detail: "Предыдущая попытка завершилась безопасно; исходник не изменён.",
+      };
+    case "failed":
+      return {
+        heading: "Обработка остановлена",
+        detail: "Результат не принят. Исходник и предыдущая история сохранены.",
+      };
+  }
+}
+
+function DocumentProcessingActivity({
+  activity,
+  active,
+}: {
+  activity: readonly DocumentProcessingActivityEvent[];
+  active: boolean;
+}) {
+  return (
+    <section className="processing-activity" aria-labelledby="processing-activity-title">
+      <div className="processing-activity__heading">
+        <div>
+          <p className="context-line">Реальные события сервера</p>
+          <h3 id="processing-activity-title">Ход обработки</h3>
+        </div>
+        <span
+          className={active ? "processing-activity__live" : "processing-activity__live is-idle"}
+        >
+          <span aria-hidden="true" />
+          {active ? "Обновляется" : "Журнал сохранён"}
+        </span>
+      </div>
+      {activity.length === 0 ? (
+        <p className="processing-activity__empty">Ждём первое подтверждённое событие worker.</p>
+      ) : (
+        <ol className="processing-activity__list" aria-live="polite">
+          {activity.map((event, index) => {
+            const copy = processingActivityCopy(event);
+            const current = active && index === activity.length - 1;
+            return (
+              <li
+                className={
+                  current ? "processing-activity__event is-current" : "processing-activity__event"
+                }
+                key={`${event.occurredAt}:${event.code}:${event.attempt}`}
+              >
+                <span className="processing-activity__node" aria-hidden="true" />
+                <div>
+                  <div className="processing-activity__event-heading">
+                    <strong>{copy.heading}</strong>
+                    <time dateTime={event.occurredAt}>{formatTime(event.occurredAt)}</time>
+                  </div>
+                  <p>{copy.detail}</p>
+                  {event.attempt > 1 ? <small>Попытка {event.attempt}</small> : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+      <p className="processing-activity__boundary">
+        Журнал не показывает скрытые рассуждения, текст документа или служебный вывод Codex.
+      </p>
+    </section>
+  );
+}
+
 function DocumentProcessingPanel({
   familyId,
   profileId,
   document: savedDocument,
   canWriteProfile,
+  onProcessingChange,
+  reviewRevision,
+  suggestedAgentMessage,
 }: DocumentProcessingPanelProps) {
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
+  const [activity, setActivity] = useState<readonly DocumentProcessingActivityEvent[]>([]);
   const [refreshFailed, setRefreshFailed] = useState(false);
-  const [retryPending, setRetryPending] = useState(false);
-  const [retryError, setRetryError] = useState<string | null>(null);
-  const retryKey = useRef<string | null>(null);
 
   const refreshProcessing = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -4627,22 +6094,19 @@ function DocumentProcessingPanel({
         setProcessing((current) =>
           processingStatusesEqual(current, response.processing) ? current : response.processing,
         );
+        onProcessingChange?.(response.processing);
+        setActivity(response.activity);
       } catch {
         if (!signal?.aborted) setRefreshFailed(true);
       }
     },
-    [familyId, profileId, savedDocument.id],
+    [familyId, onProcessingChange, profileId, savedDocument.id],
   );
-
-  const refreshAfterReview = useCallback(() => {
-    void refreshProcessing();
-  }, [refreshProcessing]);
 
   useEffect(() => {
     setProcessing(savedDocument.processing);
     setRefreshFailed(false);
-    setRetryError(null);
-    retryKey.current = null;
+    setActivity([]);
   }, [savedDocument.processing]);
 
   useEffect(() => {
@@ -4664,39 +6128,18 @@ function DocumentProcessingPanel({
     };
   }, [processing, refreshProcessing]);
 
-  async function handleRetry(): Promise<void> {
-    setRetryPending(true);
-    setRetryError(null);
-    const commandKey = retryKey.current ?? crypto.randomUUID();
-    retryKey.current = commandKey;
-    try {
-      const response = await apiRequest<DocumentProcessingRetryResponse>(
-        `${documentProcessingPath(familyId, profileId, savedDocument.id)}/retry`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": commandKey },
-        },
-      );
-      setRefreshFailed(false);
-      setProcessing(response.processing);
-      retryKey.current = null;
-    } catch (error) {
-      if (error instanceof ApiError && error.status < 500) retryKey.current = null;
-      setRetryError("Не удалось запустить повторную обработку. Статус и исходник не изменились.");
-    } finally {
-      setRetryPending(false);
-    }
-  }
+  useEffect(() => {
+    if (reviewRevision > 0) void refreshProcessing();
+  }, [refreshProcessing, reviewRevision]);
 
   const presentation = processingPresentation(processing);
-  const showRetry = canWriteProfile && processing.state === "failed" && processing.retryAllowed;
 
   return (
-    <>
+    <div className="document-processing-dashboard">
       <section
         className={`processing-state processing-state--${presentation.tone}`}
         aria-labelledby="processing-title"
-        aria-busy={isProcessingActive(processing) || retryPending}
+        aria-busy={isProcessingActive(processing)}
       >
         <div className="processing-state__mark" aria-hidden="true">
           {presentation.mark}
@@ -4715,50 +6158,231 @@ function DocumentProcessingPanel({
               Не удалось обновить статус. Исходник не изменён.
             </p>
           ) : null}
-          {showRetry ? (
-            <button
-              className="button button--secondary processing-state__retry"
-              type="button"
-              onClick={handleRetry}
-              disabled={retryPending}
-            >
-              {retryPending ? "Запускаем повтор…" : "Повторить обработку"}
-            </button>
-          ) : null}
-          {retryError !== null ? (
-            <p className="form-error processing-state__error" role="alert">
-              {retryError}
-            </p>
-          ) : null}
         </div>
       </section>
 
-      {canWriteProfile &&
-      (processing.state === "awaiting_review" || processing.state === "completed") ? (
-        <DocumentReviewPanel
+      <DocumentProcessingActivity activity={activity} active={isProcessingActive(processing)} />
+
+      {canWriteProfile ? (
+        <DocumentAgentPanel
           familyId={familyId}
           profileId={profileId}
           documentId={savedDocument.id}
-          onReviewSaved={refreshAfterReview}
+          suggestedMessage={suggestedAgentMessage}
         />
       ) : null}
+    </div>
+  );
+}
 
-      <details className="integrity-details">
-        <summary>Проверить целостность</summary>
-        <dl>
-          <div>
-            <dt>SHA-256</dt>
-            <dd>
-              <code>{savedDocument.sha256}</code>
-            </dd>
+type DocumentAgentState =
+  | { kind: "loading" }
+  | { kind: "ready"; messages: readonly DocumentAgentMessage[] }
+  | { kind: "error" };
+
+interface DocumentAgentAttempt {
+  key: string;
+  message: string;
+}
+
+function DocumentAgentPanel({
+  familyId,
+  profileId,
+  documentId,
+  suggestedMessage,
+}: {
+  familyId: string;
+  profileId: string;
+  documentId: string;
+  suggestedMessage: { id: string; prompt: string } | null;
+}) {
+  const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
+  const [message, setMessage] = useState("");
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
+  const attemptRef = useRef<DocumentAgentAttempt | null>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const endpoint = documentAgentPath(familyId, profileId, documentId);
+
+  const loadConversation = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      try {
+        const response = await apiRequest<DocumentAgentConversationResponse>(
+          endpoint,
+          signal === undefined ? undefined : { signal },
+        );
+        if (!signal?.aborted) setState({ kind: "ready", messages: response.messages });
+      } catch {
+        if (!signal?.aborted) setState({ kind: "error" });
+      }
+    },
+    [endpoint],
+  );
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    setMessage("");
+    setPendingMessage(null);
+    setSendError(null);
+    attemptRef.current = null;
+    void loadConversation(controller.signal);
+    return () => controller.abort();
+  }, [loadConversation]);
+
+  useEffect(() => {
+    if (suggestedMessage === null) return;
+    setMessage(suggestedMessage.prompt);
+    composerRef.current?.focus();
+    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [suggestedMessage]);
+
+  async function handleSend(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const normalized = message.trim();
+    if (normalized.length === 0 || normalized.length > 2_000 || pendingMessage !== null) return;
+
+    const previousAttempt = attemptRef.current;
+    const attempt =
+      previousAttempt?.message === normalized
+        ? previousAttempt
+        : { key: crypto.randomUUID(), message: normalized };
+    attemptRef.current = attempt;
+    setPendingMessage(normalized);
+    setSendError(null);
+    try {
+      const response = await apiRequest<DocumentAgentConversationResponse>(`${endpoint}/messages`, {
+        method: "POST",
+        headers: { "Idempotency-Key": attempt.key },
+        body: JSON.stringify({ message: normalized }),
+      });
+      setState({ kind: "ready", messages: response.messages });
+      setMessage("");
+      attemptRef.current = null;
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) attemptRef.current = null;
+      setSendError(
+        error instanceof ApiError && error.status === 503
+          ? "Codex сейчас недоступен. Сообщение не потеряно — повторите отправку позже."
+          : "Не удалось получить ответ Codex. Проверьте соединение и повторите отправку.",
+      );
+    } finally {
+      setPendingMessage(null);
+    }
+  }
+
+  const messages = state.kind === "ready" ? state.messages : [];
+
+  return (
+    <section className="document-agent" aria-labelledby="document-agent-title">
+      <header className="document-agent__heading">
+        <span className="document-agent__icon" aria-hidden="true">
+          <MessageCircle size={20} strokeWidth={1.8} />
+        </span>
+        <div>
+          <p className="context-line">Контекст этого источника</p>
+          <h3 id="document-agent-title">Диалог с Codex</h3>
+          <p>Уточняйте пропущенные поля и направляйте повторную проверку обычным русским языком.</p>
+        </div>
+      </header>
+
+      <div className="document-agent__disclosure">
+        <Bot size={18} strokeWidth={1.8} aria-hidden="true" />
+        <div>
+          <strong>Codex получает только контекст этого документа</strong>
+          <p>
+            Сообщение и ограниченные извлечённые данные уходят в модель через вашу локальную
+            подписку. Исходный файл остаётся в хранилище Veylta. Codex ничего не подтверждает и не
+            меняет автоматически.
+          </p>
+        </div>
+      </div>
+
+      <div className="document-agent__conversation" aria-live="polite">
+        {state.kind === "loading" ? (
+          <div className="document-agent__loading" role="status" aria-label="Загружаем диалог">
+            <span />
+            <span />
+            <span />
           </div>
-          <div>
-            <dt>Статус обработки</dt>
-            <dd>{presentation.integrityLabel}</dd>
+        ) : null}
+        {state.kind === "error" ? (
+          <div className="document-agent__empty" role="status">
+            <strong>Диалог пока не открылся</strong>
+            <p>Документ не изменён. Попробуйте обновить страницу.</p>
           </div>
-        </dl>
-      </details>
-    </>
+        ) : null}
+        {state.kind === "ready" && messages.length === 0 ? (
+          <div className="document-agent__empty">
+            <strong>Начните с конкретного вопроса</strong>
+            <p>Например: «Каких полей не хватает?» или «Проверь ещё раз дату биоматериала».</p>
+          </div>
+        ) : null}
+        {messages.map((item) => (
+          <article
+            className={`document-agent__message document-agent__message--${item.role}`}
+            key={item.id}
+          >
+            <div className="document-agent__message-meta">
+              <strong>{item.role === "assistant" ? "Codex" : "Вы"}</strong>
+              <time dateTime={item.createdAt}>{formatTime(item.createdAt)}</time>
+            </div>
+            <p>{item.text}</p>
+            {item.provenance !== null ? <small>{item.provenance.modelId}</small> : null}
+          </article>
+        ))}
+        {pendingMessage !== null ? (
+          <>
+            <article className="document-agent__message document-agent__message--user is-pending">
+              <div className="document-agent__message-meta">
+                <strong>Вы</strong>
+                <span>Отправляется</span>
+              </div>
+              <p>{pendingMessage}</p>
+            </article>
+            <div className="document-agent__waiting" role="status">
+              <Bot size={18} strokeWidth={1.8} aria-hidden="true" />
+              <span>Ждём полный проверенный ответ Codex…</span>
+            </div>
+          </>
+        ) : null}
+      </div>
+
+      <form className="document-agent__composer" onSubmit={handleSend}>
+        <label htmlFor="document-agent-message">Сообщение для Codex</label>
+        <div className="document-agent__composer-row">
+          <textarea
+            ref={composerRef}
+            id="document-agent-message"
+            value={message}
+            maxLength={2_000}
+            rows={3}
+            placeholder="Например: проверь ещё раз лабораторию и дату биоматериала"
+            onChange={(event) => setMessage(event.target.value)}
+            disabled={pendingMessage !== null || state.kind === "loading"}
+          />
+          <button
+            className="button button--primary document-agent__send"
+            type="submit"
+            disabled={
+              message.trim().length === 0 || pendingMessage !== null || state.kind !== "ready"
+            }
+          >
+            <span>Отправить</span>
+            <Send size={17} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+        <div className="document-agent__composer-meta">
+          <span>{message.length} / 2000</span>
+          <span>Ответ появится целиком после проверки структуры.</span>
+        </div>
+        {sendError !== null ? (
+          <p className="form-error" role="alert">
+            {sendError}
+          </p>
+        ) : null}
+      </form>
+    </section>
   );
 }
 
@@ -4767,7 +6391,12 @@ type ReviewFact = DocumentFactsResponse["items"][number];
 
 type FactListState =
   | { kind: "loading" }
-  | { kind: "ready"; items: readonly ReviewFact[] }
+  | {
+      kind: "ready";
+      items: readonly ReviewFact[];
+      extractionRunId: string;
+      extractorVersion: string;
+    }
   | { kind: "error" };
 
 type ReviewCommand = FactReviewCommand;
@@ -4778,15 +6407,67 @@ interface ReviewCommandAttempt {
   readonly key: string;
 }
 
+type BulkReviewState =
+  | { kind: "idle" }
+  | { kind: "running"; completed: number; total: number }
+  | { kind: "success"; total: number }
+  | { kind: "error"; completed: number; total: number };
+
 function isPendingReview(status: ReviewFactStatus): boolean {
   return status === "extracted" || status === "needs_review";
+}
+
+export function canBulkConfirmFact(fact: {
+  readonly reviewStatus: ExtractedFactReviewStatus;
+  readonly validationIssues: readonly string[];
+}): boolean {
+  return fact.reviewStatus === "extracted" && fact.validationIssues.length === 0;
+}
+
+export function documentResultAvailabilityCopy(
+  structuredResultCount: number,
+  extractedFactCount: number,
+): string | null {
+  return structuredResultCount === 0 && extractedFactCount === 0
+    ? "Структурированных результатов нет"
+    : null;
+}
+
+export function documentResultMatchesFact(
+  result: {
+    readonly resultKey: string;
+    readonly type: DocumentIntelligenceStructuredResult["type"];
+    readonly value: string | null;
+    readonly unit: string | null;
+    readonly source: { readonly pageNumber: number; readonly fragment: string };
+  },
+  fact: {
+    readonly factKey: string;
+    readonly sourceValue: string;
+    readonly sourceUnit: string;
+    readonly source: { readonly pageNumber: number; readonly fragment: string };
+  },
+): boolean {
+  if (
+    result.type !== "measurement" ||
+    result.value !== fact.sourceValue ||
+    (result.unit ?? "") !== fact.sourceUnit ||
+    result.source.pageNumber !== fact.source.pageNumber
+  ) {
+    return false;
+  }
+  return (
+    fact.source.fragment.includes(result.source.fragment) ||
+    result.source.fragment.includes(fact.source.fragment)
+  );
 }
 
 function reviewStatusLabel(status: ReviewFactStatus): string {
   switch (status) {
     case "extracted":
+      return "Готово к подтверждению";
     case "needs_review":
-      return "Не подтверждено";
+      return "Нужна отдельная проверка";
     case "confirmed":
       return "Подтверждено пользователем";
     case "rejected":
@@ -4797,13 +6478,13 @@ function reviewStatusLabel(status: ReviewFactStatus): string {
 function reviewStatusDescription(status: ReviewFactStatus): string {
   switch (status) {
     case "extracted":
-      return "Автоматическое извлечение ожидает явного решения пользователя.";
+      return "Замечаний извлечения нет, но решение всё равно принимает человек.";
     case "needs_review":
-      return "Есть неопределённость в извлечении; решение нельзя принять автоматически.";
+      return "Есть неопределённость: сверьте источник и примите решение отдельно.";
     case "confirmed":
-      return "Создано подтверждённое значение с сохранённой ссылкой на источник.";
+      return "Значение подтверждено пользователем с сохранённой ссылкой на источник.";
     case "rejected":
-      return "Исходное извлечение сохранено как источник, но не стало подтверждённым значением.";
+      return "Извлечение сохранено как источник, но не стало подтверждённым значением.";
   }
 }
 
@@ -4828,6 +6509,13 @@ function proposedValue(value: string | null): string {
   return value ?? "Не предложено";
 }
 
+function labReferenceRangeCopy(range: NonNullable<ReviewFact["referenceRange"]>): string {
+  if (range.sourceText !== null) return range.sourceText;
+  if (range.sourceLow === null && range.sourceHigh === null) return "Не указан";
+  const bounds = `${range.sourceLow ?? "…"}–${range.sourceHigh ?? "…"}`;
+  return range.sourceUnit === null ? bounds : `${bounds} ${range.sourceUnit}`;
+}
+
 function reviewErrorCopy(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
     return "Версия извлечения уже изменилась. Обновите список и проверьте источник ещё раз.";
@@ -4842,14 +6530,24 @@ interface DocumentReviewPanelProps {
   familyId: string;
   profileId: string;
   documentId: string;
+  results: readonly DocumentIntelligenceStructuredResult[];
+  processing: DocumentProcessingStatus;
+  contentUrl: string;
+  canWriteProfile: boolean;
   onReviewSaved: () => void;
+  onAskCodex: (prompt: string) => void;
 }
 
 function DocumentReviewPanel({
   familyId,
   profileId,
   documentId,
+  results,
+  processing,
+  contentUrl,
+  canWriteProfile,
   onReviewSaved,
+  onAskCodex,
 }: DocumentReviewPanelProps) {
   const [facts, setFacts] = useState<FactListState>({ kind: "loading" });
   const [pendingFactId, setPendingFactId] = useState<string | null>(null);
@@ -4859,6 +6557,8 @@ function DocumentReviewPanel({
   const [confirmedCorrections, setConfirmedCorrections] = useState<
     ReadonlyMap<string, ConfirmedCorrection>
   >(() => new Map());
+  const [bulkReview, setBulkReview] = useState<BulkReviewState>({ kind: "idle" });
+  const [selectedResultKey, setSelectedResultKey] = useState<string | null>(null);
   const commandAttempts = useRef<Map<string, ReviewCommandAttempt>>(new Map());
 
   const loadFacts = useCallback(
@@ -4873,6 +6573,8 @@ function DocumentReviewPanel({
         setFacts({
           kind: "ready",
           items: response.items,
+          extractionRunId: response.extractionRunId,
+          extractorVersion: response.extractorVersion,
         });
       } catch {
         if (!signal?.aborted) setFacts({ kind: "error" });
@@ -4883,14 +6585,27 @@ function DocumentReviewPanel({
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadFacts(controller.signal);
+    const reviewAvailable =
+      processing.state === "awaiting_review" || processing.state === "completed";
+    setFacts({ kind: "loading" });
+    setPendingFactId(null);
+    setReviewError(null);
+    setReviewNotice(null);
+    setCorrectionFactId(null);
+    setConfirmedCorrections(new Map());
+    setBulkReview({ kind: "idle" });
+    setSelectedResultKey(null);
+    commandAttempts.current.clear();
+    if (reviewAvailable) {
+      void loadFacts(controller.signal);
+    }
 
     return () => {
       controller.abort();
     };
-  }, [loadFacts]);
+  }, [loadFacts, processing.state]);
 
-  async function submitDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
+  async function persistDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
     const fingerprint = JSON.stringify(command);
     const previousAttempt = commandAttempts.current.get(fact.id);
     const attempt =
@@ -4898,10 +6613,6 @@ function DocumentReviewPanel({
         ? previousAttempt
         : { fingerprint, key: crypto.randomUUID() };
     commandAttempts.current.set(fact.id, attempt);
-    setPendingFactId(fact.id);
-    setReviewError(null);
-    setReviewNotice(null);
-
     try {
       await apiRequest<FactReviewResponse>(
         `${documentFactsPath(familyId, profileId, documentId)}/${encodeURIComponent(fact.id)}/review`,
@@ -4912,17 +6623,39 @@ function DocumentReviewPanel({
         },
       );
       commandAttempts.current.delete(fact.id);
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) {
+        commandAttempts.current.delete(fact.id);
+      }
+      throw error;
+    }
+  }
+
+  function updateFactStatus(factId: string, status: ReviewFactStatus): void {
+    setFacts((current) =>
+      current.kind !== "ready"
+        ? current
+        : {
+            kind: "ready",
+            items: current.items.map((item) =>
+              item.id === factId ? { ...item, reviewStatus: status } : item,
+            ),
+            extractionRunId: current.extractionRunId,
+            extractorVersion: current.extractorVersion,
+          },
+    );
+  }
+
+  async function submitDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
+    setPendingFactId(fact.id);
+    setReviewError(null);
+    setReviewNotice(null);
+    setBulkReview({ kind: "idle" });
+
+    try {
+      await persistDecision(fact, command);
       const nextStatus: ReviewFactStatus = command.decision === "reject" ? "rejected" : "confirmed";
-      setFacts((current) =>
-        current.kind !== "ready"
-          ? current
-          : {
-              kind: "ready",
-              items: current.items.map((item) =>
-                item.id === fact.id ? { ...item, reviewStatus: nextStatus } : item,
-              ),
-            },
-      );
+      updateFactStatus(fact.id, nextStatus);
       const confirmedCorrection =
         command.decision === "correct" && command.correction !== undefined
           ? command.correction
@@ -4940,356 +6673,673 @@ function DocumentReviewPanel({
               ? "Исправлено и подтверждено"
               : "Подтверждено пользователем",
       });
+      const nextPending =
+        facts.kind === "ready"
+          ? facts.items.find(
+              (candidate) => candidate.id !== fact.id && isPendingReview(candidate.reviewStatus),
+            )
+          : undefined;
+      if (nextPending !== undefined) setSelectedResultKey(nextPending.factKey);
       onReviewSaved();
       void loadFacts();
     } catch (error) {
-      if (error instanceof ApiError && error.status < 500) {
-        commandAttempts.current.delete(fact.id);
-      }
       setReviewError({ factId: fact.id, copy: reviewErrorCopy(error) });
     } finally {
       setPendingFactId(null);
     }
   }
 
+  async function confirmAll(pendingFacts: readonly ReviewFact[]): Promise<void> {
+    const total = pendingFacts.length;
+    if (total === 0) return;
+
+    setReviewError(null);
+    setReviewNotice(null);
+    setCorrectionFactId(null);
+    setBulkReview({ kind: "running", completed: 0, total });
+
+    let completed = 0;
+    for (const fact of pendingFacts) {
+      try {
+        await persistDecision(fact, {
+          factVersion: fact.factVersion,
+          decision: "confirm",
+        });
+        completed += 1;
+        updateFactStatus(fact.id, "confirmed");
+        setBulkReview({ kind: "running", completed, total });
+      } catch {
+        setBulkReview({ kind: "error", completed, total });
+        if (completed > 0) onReviewSaved();
+        void loadFacts();
+        return;
+      }
+    }
+
+    setBulkReview({ kind: "success", total });
+    onReviewSaved();
+    void loadFacts();
+  }
+
+  const pendingFacts =
+    facts.kind === "ready" ? facts.items.filter((fact) => isPendingReview(fact.reviewStatus)) : [];
+  const bulkConfirmableFacts = pendingFacts.filter(canBulkConfirmFact);
+  const individualReviewCount = pendingFacts.length - bulkConfirmableFacts.length;
+  const reviewPending = pendingFactId !== null || bulkReview.kind === "running";
+  const factItems = facts.kind === "ready" ? facts.items : [];
+  const pairedFactIds = new Set<string>();
+  const resultRows = prioritizeDocumentResults(results).map((result) => {
+    const fact = factItems.find(
+      (candidate) =>
+        !pairedFactIds.has(candidate.id) && documentResultMatchesFact(result, candidate),
+    );
+    if (fact !== undefined) pairedFactIds.add(fact.id);
+    return {
+      key: fact?.factKey ?? `result:${result.resultKey}`,
+      result,
+      fact: fact ?? null,
+    };
+  });
+  const rows: readonly {
+    key: string;
+    result: DocumentIntelligenceStructuredResult | null;
+    fact: ReviewFact | null;
+  }[] =
+    facts.kind === "loading"
+      ? []
+      : [
+          ...resultRows,
+          ...factItems
+            .filter((fact) => !pairedFactIds.has(fact.id))
+            .map((fact) => ({ key: fact.factKey, result: null, fact })),
+        ];
+  const selectedRow = rows.find((row) => row.key === selectedResultKey) ?? rows[0] ?? null;
+  const selectedFact = selectedRow?.fact ?? null;
+  const selectedResult = selectedRow?.result ?? null;
+  const selectedCode =
+    selectedFact === null ? (selectedResult?.code ?? null) : selectedFact.proposedCanonicalCode;
+  const selectedDate =
+    selectedFact === null ? (selectedResult?.date ?? null) : selectedFact.proposedSampledAt;
+  const selectedLaboratory =
+    selectedFact === null ? (selectedResult?.lab ?? null) : selectedFact.proposedLaboratory;
+  const selectedMissingFields = documentResultMissingFields({
+    code: selectedCode,
+    date: selectedDate,
+    lab: selectedLaboratory,
+  });
+  const selectedDisplayName =
+    selectedFact?.canonicalDisplayName ??
+    selectedResult?.label ??
+    selectedFact?.sourceName ??
+    "Результат";
+  const selectedSource = selectedFact?.source ?? selectedResult?.source ?? null;
+  const selectedConfidence = selectedFact?.confidence ?? selectedResult?.confidence ?? null;
+  const selectedConfidenceCopy =
+    selectedConfidence === null
+      ? null
+      : new Intl.NumberFormat("ru-RU", {
+          style: "percent",
+          maximumFractionDigits: 0,
+        }).format(selectedConfidence);
+  const selectedCorrection =
+    selectedFact === null
+      ? undefined
+      : (selectedFact.review?.correction ?? confirmedCorrections.get(selectedFact.id));
+  const journalFact = selectedFact;
+  const historyFact = selectedFact;
+  const historyCode = historyFact?.proposedCanonicalCode ?? null;
+
   return (
     <section
-      className="document-review"
+      className="document-review-workspace"
       aria-labelledby="document-review-title"
-      aria-busy={facts.kind === "loading" || pendingFactId !== null}
+      aria-busy={facts.kind === "loading" || reviewPending}
+      data-testid="document-review-workspace"
     >
-      <div className="document-review__heading">
-        <p className="context-line">Проверка источника</p>
-        <h3 id="document-review-title">Проверьте извлечённые значения</h3>
-        <p>
-          Автоматическое извлечение остаётся черновиком, пока вы не сверите его со страницей и не
-          выберете действие. Здесь нет медицинской интерпретации.
-        </p>
-        <Link
-          className="document-review__history-link"
-          href={`${profilePath(familyId, profileId)}#observation-history`}
-        >
-          Открыть историю подтверждённых значений
-        </Link>
+      <div className="document-review-workspace__body">
+        <header className="document-review-workspace__heading">
+          <div>
+            <p className="context-line">Структурированные данные</p>
+            <h3 id="document-review-title">Результаты исследования</h3>
+            <p>Выберите значение, сверьте источник и примите отдельное решение.</p>
+          </div>
+          {pendingFacts.length > 0 ? (
+            <div className="document-review-workspace__bulk">
+              <span>
+                {factCountCopy(pendingFacts.length)} требуют решения
+                {individualReviewCount > 0 ? (
+                  <small>{factCountCopy(individualReviewCount)} — только по одному</small>
+                ) : null}
+              </span>
+              {bulkConfirmableFacts.length > 0 ? (
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() => void confirmAll(bulkConfirmableFacts)}
+                >
+                  <CheckCheck size={18} aria-hidden="true" />
+                  {bulkReview.kind === "running"
+                    ? `Подтверждаем ${bulkReview.completed} из ${bulkReview.total}…`
+                    : `Подтвердить без замечаний ${bulkConfirmableFacts.length}`}
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+        </header>
+
+        {bulkReview.kind === "success" ? (
+          <p className="document-review__bulk-notice" role="status">
+            Подтверждено {factCountCopy(bulkReview.total)}
+          </p>
+        ) : null}
+        {bulkReview.kind === "error" ? (
+          <p className="form-error document-review__bulk-error" role="alert">
+            {bulkReview.completed === 0
+              ? "Не удалось начать массовое подтверждение. Ни одно значение не изменено."
+              : `Подтверждено ${bulkReview.completed} из ${bulkReview.total}. Остальные значения не изменены; повторите действие.`}
+          </p>
+        ) : null}
+
+        {reviewNotice !== null ? (
+          <p className="review-fact__notice document-review-workspace__notice" role="status">
+            {reviewNotice.copy}
+          </p>
+        ) : null}
+
+        {processing.state !== "awaiting_review" && processing.state !== "completed" ? (
+          <div className="review-empty" role="status">
+            <p>Новый разбор ещё не завершён. Предыдущие результаты скрыты до проверки источника.</p>
+          </div>
+        ) : null}
+
+        {facts.kind === "loading" &&
+        (processing.state === "awaiting_review" || processing.state === "completed") ? (
+          <div className="review-skeleton" aria-live="polite">
+            <div className="skeleton skeleton--review-row" aria-hidden="true" />
+            <p>Загружаем значения и их источники…</p>
+          </div>
+        ) : null}
+
+        {facts.kind === "error" ? (
+          <div className="review-empty" role="alert">
+            <p>
+              Черновые факты сейчас не загрузились. Общие результаты видны только как источник;
+              решения временно недоступны.
+            </p>
+            <button
+              className="button button--secondary"
+              type="button"
+              onClick={() => void loadFacts()}
+            >
+              Обновить список
+            </button>
+          </div>
+        ) : null}
+
+        {rows.length > 0 ? (
+          <ol
+            className="document-result-grid document-result-grid--selectable"
+            aria-label="Результаты документа"
+          >
+            {rows.map(({ key, result, fact }) => {
+              const active = selectedRow?.key === key;
+              const aboveRange = result?.status === "above_range";
+              const displayName =
+                fact?.canonicalDisplayName ?? result?.label ?? fact?.sourceName ?? "Результат";
+              const value = result?.value ?? fact?.sourceValue ?? "Не указано";
+              const unit = result?.unit ?? fact?.sourceUnit ?? null;
+              return (
+                <li key={key}>
+                  <button
+                    className={`document-result-card document-result-card--selectable${aboveRange ? " document-result-card--above-range" : ""}`}
+                    type="button"
+                    aria-pressed={active}
+                    data-testid={`document-result-card-${key}`}
+                    onClick={() => setSelectedResultKey(key)}
+                  >
+                    <span className="document-result-card__heading">
+                      <span>
+                        <span>
+                          {[
+                            result?.code ?? fact?.proposedCanonicalCode,
+                            result === null
+                              ? "Извлечённый факт"
+                              : documentResultTypeCopy(result.type),
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </span>
+                        <strong>{displayName}</strong>
+                      </span>
+                      <span className="document-result-card__statuses">
+                        {aboveRange ? (
+                          <span className="document-result-status document-result-status--above_range">
+                            {documentResultStatusCopy("above_range")}
+                          </span>
+                        ) : null}
+                        {aboveRange && fact === null ? null : (
+                          <span
+                            className={`document-result-status document-result-status--${fact?.reviewStatus ?? result?.status ?? "unknown"}`}
+                          >
+                            {fact === null
+                              ? result === null
+                                ? "Результат"
+                                : documentResultStatusCopy(result.status)
+                              : reviewStatusLabel(fact.reviewStatus)}
+                          </span>
+                        )}
+                      </span>
+                    </span>
+                    <span className="document-result-card__value">
+                      {value}
+                      {unit === null ? null : <small>{unit}</small>}
+                    </span>
+                    <span className="document-result-card__meta">
+                      {[
+                        fact?.proposedLaboratory ?? result?.lab,
+                        fact?.proposedSampledAt ?? result?.date,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "Есть незаполненные поля"}
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
       </div>
 
-      {facts.kind === "loading" ? (
-        <div className="review-skeleton" aria-live="polite">
-          <div className="skeleton skeleton--review-heading" aria-hidden="true" />
-          <div className="skeleton skeleton--review-row" aria-hidden="true" />
-          <p>Загружаем черновые значения и их источник…</p>
-        </div>
-      ) : null}
+      {selectedRow !== null ? (
+        <aside
+          className="document-review-context"
+          aria-label="Источник результата"
+          data-testid="document-review-source"
+        >
+          <div className="document-review-context__eyebrow">
+            <span>Источник результата</span>
+            {selectedFact === null ? null : (
+              <span>{reviewStatusLabel(selectedFact.reviewStatus)}</span>
+            )}
+          </div>
+          <h4>{selectedDisplayName}</h4>
+          <p className="document-review-context__value">
+            {selectedFact?.sourceValue ?? selectedResult?.value ?? "Не указано"}{" "}
+            <span>{selectedFact?.sourceUnit ?? selectedResult?.unit ?? ""}</span>
+          </p>
 
-      {facts.kind === "error" ? (
-        <div className="review-empty" role="status">
-          <p>Черновые значения сейчас не загрузились. Исходник и решения не изменены.</p>
-          <button
-            className="button button--secondary"
-            type="button"
-            onClick={() => void loadFacts()}
+          {selectedFact !== null ? (
+            <p className={`document-review-context__state is-${selectedFact.reviewStatus}`}>
+              <strong>{reviewStatusLabel(selectedFact.reviewStatus)}</strong>
+              <span>{reviewStatusDescription(selectedFact.reviewStatus)}</span>
+            </p>
+          ) : null}
+
+          {selectedSource !== null ? (
+            <section className="document-review-context__source">
+              <div>
+                <strong>Страница {selectedSource.pageNumber}</strong>
+                <a href={contentUrl} download>
+                  Открыть PDF
+                </a>
+              </div>
+              <pre>
+                <code>{selectedSource.fragment}</code>
+              </pre>
+              {selectedFact?.referenceRange !== null &&
+              selectedFact?.referenceRange !== undefined ? (
+                <dl className="document-review-context__range">
+                  <div>
+                    <dt>Диапазон в документе</dt>
+                    <dd>{labReferenceRangeCopy(selectedFact.referenceRange)}</dd>
+                  </div>
+                </dl>
+              ) : null}
+            </section>
+          ) : null}
+
+          {selectedFact !== null &&
+          isPendingReview(selectedFact.reviewStatus) &&
+          canWriteProfile ? (
+            <section className="document-review-context__decision">
+              <h5>Ваше решение</h5>
+              <p>Исходный факт останется неизменным при любом выборе.</p>
+              <div className="document-review-context__actions">
+                <button
+                  className="button button--primary"
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() =>
+                    void submitDecision(selectedFact, {
+                      factVersion: selectedFact.factVersion,
+                      decision: "confirm",
+                    })
+                  }
+                >
+                  {pendingFactId === selectedFact.id ? "Сохраняем…" : "Подтвердить результат"}
+                </button>
+                <button
+                  className="button button--secondary"
+                  type="button"
+                  disabled={reviewPending}
+                  aria-expanded={correctionFactId === selectedFact.id}
+                  onClick={() =>
+                    setCorrectionFactId((current) =>
+                      current === selectedFact.id ? null : selectedFact.id,
+                    )
+                  }
+                >
+                  Исправить результат
+                </button>
+                <button
+                  className="text-button document-review-context__reject"
+                  type="button"
+                  disabled={reviewPending}
+                  onClick={() =>
+                    void submitDecision(selectedFact, {
+                      factVersion: selectedFact.factVersion,
+                      decision: "reject",
+                    })
+                  }
+                >
+                  Отклонить результат
+                </button>
+              </div>
+              {correctionFactId === selectedFact.id ? (
+                <form
+                  className="review-correction review-correction--context"
+                  aria-label="Исправление результата"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const form = new FormData(event.currentTarget);
+                    void submitDecision(selectedFact, {
+                      factVersion: selectedFact.factVersion,
+                      decision: "correct",
+                      correction: {
+                        sourceName: String(form.get("sourceName") ?? "").trim(),
+                        sourceValue: String(form.get("sourceValue") ?? "").trim(),
+                        sourceUnit: String(form.get("sourceUnit") ?? "").trim(),
+                      },
+                    });
+                  }}
+                >
+                  <label>
+                    <span>Корректное название</span>
+                    <input
+                      name="sourceName"
+                      required
+                      maxLength={200}
+                      defaultValue={selectedFact.sourceName}
+                    />
+                  </label>
+                  <label>
+                    <span>Корректное значение</span>
+                    <input
+                      name="sourceValue"
+                      required
+                      maxLength={100}
+                      defaultValue={selectedFact.sourceValue}
+                    />
+                  </label>
+                  <label>
+                    <span>Корректная единица</span>
+                    <input
+                      name="sourceUnit"
+                      required
+                      maxLength={100}
+                      defaultValue={selectedFact.sourceUnit}
+                    />
+                  </label>
+                  <button className="button button--primary" type="submit" disabled={reviewPending}>
+                    Сохранить исправление
+                  </button>
+                </form>
+              ) : null}
+            </section>
+          ) : null}
+
+          {selectedFact !== null ? (
+            <section
+              className="document-review-context__proposal"
+              aria-label={`Предложенные поля: ${selectedFact.sourceName}`}
+            >
+              <h5>Предложенные поля</h5>
+              <dl>
+                <div>
+                  <dt>Код показателя</dt>
+                  <dd>
+                    {selectedFact.canonicalDisplayName === null
+                      ? proposedValue(selectedFact.proposedCanonicalCode)
+                      : `${selectedFact.canonicalDisplayName} · ${proposedValue(selectedFact.proposedCanonicalCode)}`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Нормализованное значение</dt>
+                  <dd>
+                    {selectedFact.proposedNormalizedValue === null
+                      ? "Не предложено"
+                      : `${selectedFact.proposedNormalizedValue} ${proposedValue(selectedFact.proposedNormalizedUnit)}`}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Дата биоматериала</dt>
+                  <dd>{proposedValue(selectedFact.proposedSampledAt)}</dd>
+                </div>
+                <div>
+                  <dt>Лаборатория</dt>
+                  <dd>{proposedValue(selectedFact.proposedLaboratory)}</dd>
+                </div>
+              </dl>
+              {selectedConfidenceCopy === null ? null : (
+                <p className="document-review-context__confidence">
+                  <span>Уверенность извлечения</span>
+                  <strong>{selectedConfidenceCopy}</strong>
+                </p>
+              )}
+              {selectedFact.validationIssues.length > 0 ? (
+                <ul className="document-review-context__issues" aria-label="Причины проверки">
+                  {selectedFact.validationIssues.map((issue) => (
+                    <li key={issue}>{reviewIssueLabel(issue)}</li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="document-review-context__issues-empty">Замечаний извлечения нет</p>
+              )}
+            </section>
+          ) : null}
+
+          <section
+            className="document-review-completeness"
+            data-testid="document-review-completeness"
           >
-            Обновить список
-          </button>
-        </div>
-      ) : null}
+            <h5>Поля сопоставления</h5>
+            {selectedMissingFields.length === 0 ? (
+              <p className="is-complete">Код, дата и лаборатория найдены</p>
+            ) : (
+              <>
+                <ul>
+                  {selectedMissingFields.map((field) => (
+                    <li key={field}>
+                      <strong>{field}</strong>
+                      <span>Не найдено</span>
+                    </li>
+                  ))}
+                </ul>
+                {canWriteProfile ? (
+                  <button
+                    className="text-button"
+                    type="button"
+                    onClick={() =>
+                      onAskCodex(
+                        `Уточни лабораторию, дату биоматериала и код показателя для результата «${selectedDisplayName}». Используй только этот исходник и укажи страницу и точный фрагмент.`,
+                      )
+                    }
+                  >
+                    Уточнить у Codex
+                  </button>
+                ) : null}
+              </>
+            )}
+          </section>
 
-      {facts.kind === "ready" && facts.items.length === 0 ? (
-        <div className="review-empty" role="status">
-          <p>В этом запуске нет значений для проверки.</p>
-        </div>
-      ) : null}
+          {selectedCorrection !== undefined ? (
+            <section
+              className="document-review-context__correction"
+              aria-label="Подтверждённое исправление"
+            >
+              <h5>Подтверждённое исправление</h5>
+              <dl>
+                <div>
+                  <dt>Название</dt>
+                  <dd>{selectedCorrection.sourceName}</dd>
+                </div>
+                <div>
+                  <dt>Значение</dt>
+                  <dd>
+                    {selectedCorrection.sourceValue} {selectedCorrection.sourceUnit}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Единица</dt>
+                  <dd>{selectedCorrection.sourceUnit}</dd>
+                </div>
+              </dl>
+            </section>
+          ) : null}
 
-      {facts.kind === "ready" && facts.items.length > 0 ? (
-        <div className="review-fact-list">
-          {facts.items.map((fact) => (
-            <ReviewFactCard
-              key={fact.id}
-              fact={fact}
-              pending={pendingFactId === fact.id}
-              anyPending={pendingFactId !== null}
-              correctionOpen={correctionFactId === fact.id}
-              error={reviewError?.factId === fact.id ? reviewError.copy : null}
-              notice={reviewNotice?.factId === fact.id ? reviewNotice.copy : null}
-              confirmedCorrection={fact.review?.correction ?? confirmedCorrections.get(fact.id)}
-              onCorrectionToggle={() => {
-                setReviewError(null);
-                setReviewNotice(null);
-                setCorrectionFactId((current) => (current === fact.id ? null : fact.id));
-              }}
-              onDecision={submitDecision}
+          {journalFact?.review !== null && journalFact?.review !== undefined ? (
+            <section className="document-review-journal" data-testid="document-review-journal">
+              <h5>Журнал решения</h5>
+              <dl>
+                <div>
+                  <dt>Решение</dt>
+                  <dd>{reviewStatusLabel(journalFact.reviewStatus)}</dd>
+                </div>
+                <div>
+                  <dt>Кто</dt>
+                  <dd>{journalFact.review.decidedBy.displayName}</dd>
+                </div>
+                <div>
+                  <dt>Когда</dt>
+                  <dd>
+                    <time dateTime={journalFact.review.decidedAt}>
+                      {formatDate(journalFact.review.decidedAt)}
+                    </time>
+                  </dd>
+                </div>
+                {facts.kind === "ready" ? (
+                  <>
+                    <div>
+                      <dt>Идентификатор разбора</dt>
+                      <dd>
+                        <code>{facts.extractionRunId}</code>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Версия экстрактора</dt>
+                      <dd>{facts.extractorVersion}</dd>
+                    </div>
+                    <div>
+                      <dt>Версия источника</dt>
+                      <dd>{journalFact.source.documentVersionId.slice(0, 8)}</dd>
+                    </div>
+                  </>
+                ) : null}
+              </dl>
+            </section>
+          ) : null}
+
+          {historyCode === null || historyFact === null ? null : (
+            <DocumentIndicatorHistory
+              familyId={familyId}
+              profileId={profileId}
+              canonicalCode={historyCode}
+              displayName={historyFact.canonicalDisplayName ?? historyFact.sourceName}
             />
-          ))}
-        </div>
+          )}
+
+          {selectedFact !== null && reviewError?.factId === selectedFact.id ? (
+            <p className="form-error" role="alert">
+              {reviewError.copy}
+            </p>
+          ) : null}
+        </aside>
       ) : null}
     </section>
   );
 }
 
-interface ReviewFactCardProps {
-  fact: ReviewFact;
-  pending: boolean;
-  anyPending: boolean;
-  correctionOpen: boolean;
-  error: string | null;
-  notice: string | null;
-  confirmedCorrection: ConfirmedCorrection | undefined;
-  onCorrectionToggle: () => void;
-  onDecision: (fact: ReviewFact, command: ReviewCommand) => Promise<void>;
-}
+type DocumentIndicatorHistoryState =
+  | { kind: "loading" }
+  | { kind: "ready"; items: ObservationHistoryResponse["items"] }
+  | { kind: "error" };
 
-function ReviewFactCard({
-  fact,
-  pending,
-  anyPending,
-  correctionOpen,
-  error,
-  notice,
-  confirmedCorrection,
-  onCorrectionToggle,
-  onDecision,
-}: ReviewFactCardProps) {
-  const pendingDecision = isPendingReview(fact.reviewStatus);
-  const confidence = new Intl.NumberFormat("ru-RU", {
-    style: "percent",
-    maximumFractionDigits: 0,
-  }).format(fact.confidence);
-  const isDisabled = anyPending;
+function DocumentIndicatorHistory({
+  familyId,
+  profileId,
+  canonicalCode,
+  displayName,
+}: {
+  familyId: string;
+  profileId: string;
+  canonicalCode: string;
+  displayName: string;
+}) {
+  const [state, setState] = useState<DocumentIndicatorHistoryState>({ kind: "loading" });
 
-  async function submitCorrection(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    await onDecision(fact, {
-      factVersion: fact.factVersion,
-      decision: "correct",
-      correction: {
-        sourceName: String(form.get("sourceName") ?? "").trim(),
-        sourceValue: String(form.get("sourceValue") ?? "").trim(),
-        sourceUnit: String(form.get("sourceUnit") ?? "").trim(),
-      },
-    });
-  }
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ kind: "loading" });
+    void apiRequest<ObservationHistoryResponse>(
+      buildIndicatorHistoryPath(familyId, profileId, canonicalCode),
+      { signal: controller.signal },
+    )
+      .then((response) => {
+        if (!controller.signal.aborted) setState({ kind: "ready", items: response.items });
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setState({ kind: "error" });
+      });
+    return () => controller.abort();
+  }, [canonicalCode, familyId, profileId]);
 
   return (
-    <article className="review-fact" aria-labelledby={`review-fact-${fact.id}`}>
-      <div className="review-fact__summary">
+    <section className="document-review-history" data-testid="document-review-history">
+      <div className="document-review-history__heading">
         <div>
-          <p className="review-fact__key">Извлечённый факт</p>
-          <h4 id={`review-fact-${fact.id}`}>{fact.sourceName}</h4>
+          <h5>История показателя</h5>
+          <span>{displayName}</span>
         </div>
-        <p className={`review-fact__state review-fact__state--${fact.reviewStatus}`}>
-          <strong>{reviewStatusLabel(fact.reviewStatus)}</strong>
-          <span>{reviewStatusDescription(fact.reviewStatus)}</span>
-        </p>
-      </div>
-
-      <div className="review-fact__evidence">
-        <section className="review-fact__source" aria-label={`Источник: ${fact.sourceName}`}>
-          <h5>Источник</h5>
-          <dl>
-            <div>
-              <dt>Как в документе</dt>
-              <dd>
-                {fact.sourceValue} {fact.sourceUnit}
-              </dd>
-            </div>
-            <div>
-              <dt>Страница</dt>
-              <dd>Страница {fact.source.pageNumber}</dd>
-            </div>
-            {fact.referenceRange !== null && fact.referenceRange.sourceText !== null ? (
-              <div>
-                <dt>Диапазон в документе</dt>
-                <dd>{fact.referenceRange.sourceText}</dd>
-              </div>
-            ) : null}
-          </dl>
-          <p className="review-fact__provenance">Фрагмент из исходника</p>
-          <pre className="review-fact__fragment">
-            <code>{fact.source.fragment}</code>
-          </pre>
-        </section>
-
-        <section
-          className="review-fact__proposal"
-          aria-label={`Предложенные поля: ${fact.sourceName}`}
+        <Link
+          href={`${profileTabPath(familyId, profileId, "history")}&canonicalCode=${encodeURIComponent(canonicalCode)}#observation-history`}
         >
-          <h5>Предложенные поля</h5>
-          <dl>
-            <div>
-              <dt>Код показателя</dt>
-              <dd>{proposedValue(fact.proposedCanonicalCode)}</dd>
-            </div>
-            <div>
-              <dt>Нормализованное значение</dt>
-              <dd>
-                {fact.proposedNormalizedValue === null
-                  ? "Не предложено"
-                  : `${fact.proposedNormalizedValue} ${proposedValue(fact.proposedNormalizedUnit)}`}
-              </dd>
-            </div>
-            <div>
-              <dt>Дата биоматериала</dt>
-              <dd>{proposedValue(fact.proposedSampledAt)}</dd>
-            </div>
-            <div>
-              <dt>Лаборатория</dt>
-              <dd>{proposedValue(fact.proposedLaboratory)}</dd>
-            </div>
-          </dl>
-          <p className="review-fact__confidence">Уверенность извлечения: {confidence}</p>
-          {fact.validationIssues.length > 0 ? (
-            <ul className="review-fact__issues" aria-label="Причины проверки">
-              {fact.validationIssues.map((issue) => (
-                <li key={issue}>{reviewIssueLabel(issue)}</li>
-              ))}
-            </ul>
-          ) : null}
-        </section>
+          Открыть всю историю
+        </Link>
       </div>
-
-      {confirmedCorrection !== undefined ? (
-        <section
-          className="review-fact__confirmed-correction"
-          aria-label={`Подтверждённое исправление: ${fact.sourceName}`}
-        >
-          <h5>Подтверждённое исправление</h5>
-          <dl>
-            <div>
-              <dt>Название</dt>
-              <dd>{confirmedCorrection.sourceName}</dd>
-            </div>
-            <div>
-              <dt>Значение</dt>
-              <dd>
-                {confirmedCorrection.sourceValue} {confirmedCorrection.sourceUnit}
-              </dd>
-            </div>
-            <div>
-              <dt>Единица</dt>
-              <dd>{confirmedCorrection.sourceUnit}</dd>
-            </div>
-          </dl>
-        </section>
+      {state.kind === "loading" ? <p role="status">Собираем подтверждённые значения…</p> : null}
+      {state.kind === "error" ? <p>История сейчас недоступна.</p> : null}
+      {state.kind === "ready" && state.items.length === 0 ? (
+        <p>После подтверждения здесь появится сопоставимая история.</p>
       ) : null}
-
-      {pendingDecision ? (
-        <div className="review-fact__decision">
-          <p>
-            Сверьте источник. Подтверждение создаст отдельное подтверждённое значение; исходный факт
-            останется неизменным.
-          </p>
-          <div className="review-fact__actions">
-            <button
-              className="button button--primary"
-              type="button"
-              disabled={isDisabled}
-              aria-label={`Подтвердить ${fact.sourceName}`}
-              onClick={() =>
-                void onDecision(fact, { factVersion: fact.factVersion, decision: "confirm" })
-              }
-            >
-              {pending ? "Сохраняем…" : "Подтвердить"}
-            </button>
-            <button
-              className="button button--secondary"
-              type="button"
-              disabled={isDisabled}
-              aria-expanded={correctionOpen}
-              aria-controls={`correction-${fact.id}`}
-              aria-label={`Исправить ${fact.sourceName}`}
-              onClick={onCorrectionToggle}
-            >
-              Исправить
-            </button>
-            <button
-              className="button button--secondary review-fact__reject"
-              type="button"
-              disabled={isDisabled}
-              aria-label={`Отклонить ${fact.sourceName}`}
-              onClick={() =>
-                void onDecision(fact, { factVersion: fact.factVersion, decision: "reject" })
-              }
-            >
-              Отклонить
-            </button>
-          </div>
-
-          {correctionOpen ? (
-            <form
-              id={`correction-${fact.id}`}
-              className="review-correction"
-              aria-label={`Исправление: ${fact.sourceName}`}
-              onSubmit={(event) => void submitCorrection(event)}
-            >
-              <p>Введите проверенные поля. Исходное извлечение останется доступным выше.</p>
-              <div className="review-correction__fields">
-                <label className="field">
-                  <span>Корректное название</span>
-                  <input
-                    name="sourceName"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={200}
-                    defaultValue={fact.sourceName}
-                    disabled={isDisabled}
-                  />
-                </label>
-                <label className="field">
-                  <span>Корректное значение</span>
-                  <input
-                    name="sourceValue"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={100}
-                    defaultValue={fact.sourceValue}
-                    disabled={isDisabled}
-                  />
-                </label>
-                <label className="field">
-                  <span>Корректная единица</span>
-                  <input
-                    name="sourceUnit"
-                    type="text"
-                    required
-                    minLength={1}
-                    maxLength={100}
-                    defaultValue={fact.sourceUnit}
-                    disabled={isDisabled}
-                  />
-                </label>
-              </div>
-              <div className="review-correction__actions">
-                <button className="button button--primary" type="submit" disabled={isDisabled}>
-                  {pending ? "Сохраняем…" : "Сохранить исправление"}
-                </button>
-                <button
-                  className="text-button"
-                  type="button"
-                  disabled={isDisabled}
-                  onClick={onCorrectionToggle}
-                >
-                  Отменить
-                </button>
-              </div>
-            </form>
-          ) : null}
-        </div>
+      {state.kind === "ready" && state.items.length > 0 ? (
+        <ol>
+          {state.items.slice(0, 3).map((item) => (
+            <li key={item.id}>
+              <span>
+                {new Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).format(
+                  new Date(item.timelineAt),
+                )}
+              </span>
+              <strong>
+                {item.normalized.value ?? item.source.value}{" "}
+                {item.normalized.unit ?? item.source.unit}
+              </strong>
+            </li>
+          ))}
+        </ol>
       ) : null}
-
-      {notice !== null ? (
-        <p className="review-fact__notice" role="status">
-          {notice}
-        </p>
-      ) : null}
-      {error !== null ? (
-        <p className="form-error review-fact__error" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </article>
+    </section>
   );
 }
 
@@ -5302,5 +7352,13 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat("ru-RU", {
     dateStyle: "long",
     timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatTime(value: string): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   }).format(new Date(value));
 }
