@@ -93,8 +93,14 @@ import {
   useState,
 } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
+import {
+  buildDocumentsArchiveHero,
+  bulkConfirmableCount,
+  isRestartable,
+} from "../documents-archive";
 import { DocumentAgentWorkspace } from "./document-agent-workspace";
 import { DocumentHero } from "./document-hero";
+import { DocumentsHero } from "./documents-hero";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
 import { VeyltaMark } from "./veylta-mark";
@@ -1903,10 +1909,16 @@ function ProfileWorkspace({
   return (
     <section
       className={`profile-shell profile-shell--${requestedDocumentId === undefined ? activeTab : "documents"}${requestedDocumentId === undefined ? "" : " profile-shell--document-detail"}`}
-      aria-label={requestedDocumentId === undefined ? undefined : "Документ профиля"}
-      aria-labelledby={requestedDocumentId === undefined ? "profile-title" : undefined}
+      aria-label={
+        requestedDocumentId === undefined && activeTab !== "documents"
+          ? undefined
+          : "Документы профиля"
+      }
+      aria-labelledby={
+        requestedDocumentId === undefined && activeTab !== "documents" ? "profile-title" : undefined
+      }
     >
-      {requestedDocumentId === undefined ? (
+      {requestedDocumentId === undefined && activeTab !== "documents" ? (
         <div className="profile-heading">
           <div>
             <p className="context-line">
@@ -2002,7 +2014,11 @@ function ProfileWorkspace({
           <ProfileOverviewPanel
             key={`overview:${family.id}:${profile.id}`}
             familyId={family.id}
+            familyName={family.displayName}
             profileId={profile.id}
+            profileName={profile.displayName}
+            profiles={profiles}
+            onProfileChange={onProfileChange}
             canWriteProfile={canWriteProfile}
             view="dashboard"
             onUpload={openUploadDialog}
@@ -2019,15 +2035,15 @@ function ProfileWorkspace({
           aria-label="Документы"
         >
           <div className="documents-workspace">
-            {canWriteProfile ? (
-              <DocumentInbox onUpload={openUploadDialog} />
-            ) : (
-              <ReadOnlyProfileNotice />
-            )}
+            {canWriteProfile ? null : <ReadOnlyProfileNotice />}
             <ProfileOverviewPanel
               key={`documents:${family.id}:${profile.id}`}
               familyId={family.id}
+              familyName={family.displayName}
               profileId={profile.id}
+              profileName={profile.displayName}
+              profiles={profiles}
+              onProfileChange={onProfileChange}
               canWriteProfile={canWriteProfile}
               view="documents"
               onUpload={openUploadDialog}
@@ -2990,21 +3006,110 @@ function DocumentArchiveList({
 
 function ProfileOverviewPanel({
   familyId,
+  familyName,
   profileId,
+  profileName,
+  profiles,
   canWriteProfile,
   view,
   onUpload,
+  onProfileChange,
 }: {
   familyId: string;
+  familyName: string;
   profileId: string;
+  profileName: string;
+  profiles: readonly PatientProfileSummary[];
   canWriteProfile: boolean;
   view: "dashboard" | "documents";
   onUpload: () => void;
+  onProfileChange: (familyId: string, profileId: string) => void;
 }) {
   const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchState, setSearchState] = useState<DocumentSearchState>({ kind: "idle" });
   const [searchRevision, setSearchRevision] = useState(0);
+
+  type ArchiveAction =
+    | { kind: "idle" }
+    | { kind: "confirming"; completed: number; total: number }
+    | { kind: "restarting" }
+    | { kind: "error"; copy: string };
+  const [archiveAction, setArchiveAction] = useState<ArchiveAction>({ kind: "idle" });
+
+  /**
+   * Confirms only the values the review workspace would also confirm in bulk. Each decision
+   * is a separate idempotent command, so a failure part-way leaves the rest untouched and
+   * says exactly how far it got.
+   */
+  async function confirmArchiveQueue(overview: ProfileOverviewResponse): Promise<void> {
+    const queue = overview.reviewQueue.documents.filter(
+      (document) => bulkConfirmableCount(document) > 0,
+    );
+    if (queue.length === 0) return;
+
+    setArchiveAction({ kind: "confirming", completed: 0, total: 0 });
+    let completed = 0;
+    let total = 0;
+    try {
+      for (const document of queue) {
+        const response = await apiRequest<DocumentFactsResponse>(
+          documentFactsPath(familyId, profileId, document.id),
+        );
+        const confirmable = response.items.filter(canBulkConfirmFact);
+        total += confirmable.length;
+        setArchiveAction({ kind: "confirming", completed, total });
+        for (const fact of confirmable) {
+          await apiRequest<FactReviewResponse>(
+            `${documentFactsPath(familyId, profileId, document.id)}/${encodeURIComponent(fact.id)}/review`,
+            {
+              method: "POST",
+              headers: { "Idempotency-Key": crypto.randomUUID() },
+              body: JSON.stringify({ factVersion: fact.factVersion, decision: "confirm" }),
+            },
+          );
+          completed += 1;
+          setArchiveAction({ kind: "confirming", completed, total });
+        }
+      }
+      setArchiveAction({ kind: "idle" });
+      await loadOverview();
+    } catch {
+      setArchiveAction({
+        kind: "error",
+        copy:
+          completed === 0
+            ? "Не удалось начать подтверждение. Ни одно значение не изменено."
+            : `Подтверждено ${completed} из ${total}. Остальные значения не изменены; повторите действие.`,
+      });
+      await loadOverview();
+    }
+  }
+
+  async function restartFailedDocuments(overview: ProfileOverviewResponse): Promise<void> {
+    const failed = overview.recentDocuments.filter(
+      (document) => document.processing.state === "failed" && isRestartable(document),
+    );
+    if (failed.length === 0) return;
+
+    setArchiveAction({ kind: "restarting" });
+    try {
+      for (const document of failed) {
+        await apiRequest<DocumentProcessingRestartResponse>(
+          `${documentProcessingPath(familyId, profileId, document.id)}/restart`,
+          { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } },
+        );
+      }
+      setArchiveAction({ kind: "idle" });
+      await loadOverview();
+    } catch {
+      setArchiveAction({
+        kind: "error",
+        copy: "Не удалось перезапустить разбор. Исходники не изменены; повторите действие.",
+      });
+      await loadOverview();
+    }
+  }
 
   const loadOverview = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -3107,6 +3212,30 @@ function ProfileOverviewPanel({
         {view === "dashboard" ? "Обзор профиля" : "Архив документов"}
       </h2>
 
+      {state.kind !== "ready" && view === "documents" ? (
+        <DocumentsHero
+          familyName={familyName}
+          profileName={profileName}
+          profileId={profileId}
+          profiles={profiles}
+          onProfileChange={onProfileChange}
+          canWrite={canWriteProfile}
+          summary={null}
+          bulkConfirmPending={false}
+          bulkConfirmProgress={null}
+          bulkConfirmError={null}
+          restartAllPending={false}
+          searchQuery={searchQuery}
+          onSearchChange={(query) => {
+            setSearchRevision(0);
+            setSearchQuery(query);
+          }}
+          onUpload={onUpload}
+          onConfirmAll={() => undefined}
+          onRestartFailed={() => undefined}
+        />
+      ) : null}
+
       {state.kind === "loading" ? (
         <div className="profile-overview__loading" aria-live="polite">
           <div className="skeleton skeleton--overview-row" aria-hidden="true" />
@@ -3133,44 +3262,32 @@ function ProfileOverviewPanel({
           <ProfileDashboard overview={state.overview} onUpload={onUpload} />
         ) : (
           <>
+            <DocumentsHero
+              familyName={familyName}
+              profileName={profileName}
+              profileId={profileId}
+              profiles={profiles}
+              onProfileChange={onProfileChange}
+              canWrite={canWriteProfile}
+              summary={buildDocumentsArchiveHero(state.overview)}
+              bulkConfirmPending={archiveAction.kind === "confirming"}
+              bulkConfirmProgress={
+                archiveAction.kind === "confirming"
+                  ? `Подтверждаем ${archiveAction.completed} из ${archiveAction.total}…`
+                  : null
+              }
+              bulkConfirmError={archiveAction.kind === "error" ? archiveAction.copy : null}
+              restartAllPending={archiveAction.kind === "restarting"}
+              searchQuery={searchQuery}
+              onSearchChange={(query) => {
+                setSearchRevision(0);
+                setSearchQuery(query);
+              }}
+              onUpload={onUpload}
+              onConfirmAll={() => void confirmArchiveQueue(state.overview)}
+              onRestartFailed={() => void restartFailedDocuments(state.overview)}
+            />
             <div className="document-library__toolbar">
-              <div className="document-library__search-wrap">
-                <label className="document-library__search">
-                  <Search size={18} aria-hidden="true" />
-                  <span className="visually-hidden">Поиск по документам</span>
-                  <input
-                    type="search"
-                    value={searchQuery}
-                    onChange={(event) => {
-                      setSearchRevision(0);
-                      setSearchQuery(event.target.value);
-                    }}
-                    placeholder="Поиск по саммари и результатам"
-                    autoComplete="off"
-                    maxLength={120}
-                    aria-describedby="document-search-hint"
-                  />
-                  {searchQuery.length > 0 ? (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery("")}
-                      aria-label="Очистить поиск"
-                    >
-                      <X size={16} aria-hidden="true" />
-                    </button>
-                  ) : null}
-                </label>
-                <span
-                  id="document-search-hint"
-                  className={
-                    searchQuery.trim().length === 1
-                      ? "document-library__search-hint is-visible"
-                      : "document-library__search-hint"
-                  }
-                >
-                  Введите минимум 2 символа
-                </span>
-              </div>
               <div className="document-library__tools">
                 <div className="document-library__stats">
                   <span>
@@ -4307,30 +4424,6 @@ function isSupportedSyntheticDocument(file: File): boolean {
 function formatUploadSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`;
   return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
-}
-
-function DocumentInbox({ onUpload }: { onUpload: () => void }) {
-  return (
-    <section className="document-inbox" aria-labelledby="document-inbox-title">
-      <div className="document-inbox__copy">
-        <p className="context-line">Исходники и подтверждения</p>
-        <h2 id="document-inbox-title">Документы профиля</h2>
-        <p className="document-intro">
-          Добавьте один файл или пачку. Codex распределит документы по разделам и подготовит
-          значения для вашей проверки, не меняя оригиналы.
-        </p>
-      </div>
-      <div className="document-inbox__actions">
-        <button className="button button--primary" type="button" onClick={onUpload}>
-          <FileUp size={18} aria-hidden="true" />
-          Загрузить документы
-        </button>
-        <p className="synthetic-reminder" role="note">
-          Только вымышленные PDF, PNG и JPEG до 5 МБ. Не загружайте реальные медицинские данные.
-        </p>
-      </div>
-    </section>
-  );
 }
 
 interface DocumentUploadDialogProps {

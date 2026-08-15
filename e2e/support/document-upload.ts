@@ -9,7 +9,13 @@ export async function uploadSyntheticDocument(
   page: Page,
   file: { name: string; mimeType: string; buffer: Buffer },
 ): Promise<void> {
-  await page.locator(".profile-heading__upload").click();
+  // The documents tab leads with its own hero, so the upload entry point differs by tab.
+  // Match on the accessible name: the heading button is labelled «Загрузить документ», the
+  // hero button «Загрузить документы». A role locator auto-waits; counting first would race.
+  await page
+    .getByRole("button", { name: /^Загрузить документ/ })
+    .first()
+    .click();
   const dialog = page.getByRole("dialog", { name: "Загрузить документы" });
   await dialog.getByLabel("Документы для Codex", { exact: true }).setInputFiles(file);
   await dialog

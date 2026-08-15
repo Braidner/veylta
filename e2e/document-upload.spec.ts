@@ -135,7 +135,7 @@ test("a direct synthetic PNG is accepted, OCRed, and downloaded with its origina
 
   await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
   await expect(page.locator("#document-title")).toBeVisible();
-  await expect(page.locator(".document-meta")).toContainText("PNG");
+  await expect(page.locator(".page-hero__meta")).toContainText("PNG");
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
