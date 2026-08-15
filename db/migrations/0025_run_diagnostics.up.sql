@@ -43,6 +43,9 @@ CREATE TABLE processing_job_exchanges (
       'invalid_number',
       'invalid_timestamp',
       'inconsistent_fields',
+      'unproven_above_range',
+      'duplicate_binding',
+      'response_too_large',
       'provider_unavailable',
       'input_invalid'
     )

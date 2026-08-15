@@ -66,6 +66,9 @@ const rejectionReasons: Record<ProcessingRejectionReason, string> = {
   invalid_number: "Число вне допустимого диапазона",
   invalid_timestamp: "Дата или время в неверном формате либо противоречат друг другу",
   inconsistent_fields: "Поля ответа противоречат друг другу",
+  unproven_above_range: "Codex пометил результат как выше нормы, но источник этого не подтверждает",
+  duplicate_binding: "Один и тот же источник привязан к нескольким результатам",
+  response_too_large: "Ответ превысил допустимый размер",
   provider_unavailable: "Codex не ответил",
   input_invalid: "Veylta отказалась отправлять такой запрос",
 };

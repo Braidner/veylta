@@ -765,19 +765,20 @@ function parseOutput(
         (fact.source.fragment.includes(result.source.fragment) ||
           result.source.fragment.includes(fact.source.fragment)),
     );
-    if (matchingFacts.length > 1) invalidOutput();
+    if (matchingFacts.length > 1) invalidOutput("duplicate_binding");
     const aboveRange = sourceProvesAboveRange(result, matchingFacts[0]);
     if (result.status === "above_range" && !aboveRange) {
-      invalidOutput();
+      invalidOutput("unproven_above_range");
     }
     const normalizedResult =
       aboveRange && result.status !== "above_range"
         ? ({ ...result, status: "above_range" } as const)
         : result;
     const sameKeyFact = facts.find((fact) => fact.factKey === result.resultKey);
-    if (sameKeyFact !== undefined && !matchingFacts.includes(sameKeyFact)) invalidOutput();
+    if (sameKeyFact !== undefined && !matchingFacts.includes(sameKeyFact))
+      invalidOutput("duplicate_binding");
     const resultKey = matchingFacts[0]?.factKey ?? result.resultKey;
-    if (linkedResultKeys.has(resultKey)) invalidOutput();
+    if (linkedResultKeys.has(resultKey)) invalidOutput("duplicate_binding");
     linkedResultKeys.add(resultKey);
     return resultKey === normalizedResult.resultKey
       ? normalizedResult
@@ -888,7 +889,8 @@ export function createCodexDocumentIntelligenceProvider(
           startedAt,
         );
         try {
-          if (Buffer.byteLength(output, "utf8") > maximumOutputBytes) invalidOutput();
+          if (Buffer.byteLength(output, "utf8") > maximumOutputBytes)
+            invalidOutput("response_too_large");
           const parsed = parseOutput(output, pages, profile.modelId, result.runtimeVersion);
           return { ...parsed, exchange };
         } catch (error) {

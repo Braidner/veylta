@@ -827,3 +827,57 @@ test("a refused Codex answer names the exact rule it broke", async () => {
   assert.ok(badDate instanceof CodexDocumentIntelligenceError);
   assert.equal(badDate.reason, "invalid_timestamp");
 });
+
+test("an unproven above_range flag is refused under its own reason", async () => {
+  const provider = createCodexDocumentIntelligenceProvider(
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
+    executorFor(
+      {
+        classification: {
+          category: "laboratory",
+          title: "Синтетический лабораторный отчёт",
+          shortSummary: "В документе указан один синтетический результат.",
+          detailedSummary: "Документ содержит синтетическое измерение и исходный диапазон.",
+          documentDate: "2026-08-12",
+          sampledAt: null,
+          resultedAt: null,
+          specimenType: null,
+          laboratory: null,
+          confidence: 0.9,
+        },
+        structuredResults: [
+          {
+            resultKey: "synthetic-glucose",
+            type: "measurement",
+            label: "Синтетическая глюкоза",
+            value: "7.0",
+            unit: "synthetic-unit",
+            code: null,
+            lab: null,
+            specimen: null,
+            date: null,
+            // The page prints no high flag and no comparable range, so this must fail closed.
+            status: "above_range",
+            confidence: 0.9,
+            source: { pageNumber: 1, fragment: "Synthetic glucose: 7.0 synthetic-unit" },
+          },
+        ],
+        facts: [],
+      },
+      [],
+    ),
+  );
+
+  await assert.rejects(
+    () => provider.analyze({ contentType: "application/pdf", pages }),
+    (error: unknown) =>
+      error instanceof CodexDocumentIntelligenceError && error.reason === "unproven_above_range",
+  );
+});
