@@ -151,7 +151,15 @@ YOU MUST NOT relax these to make a feature easier.
 - Reject a Codex extraction unless every fact cites an exact source fragment with a page
   number. Fail closed rather than accept an unbound fact.
 - Audit events are payload-free: actor, tenant, action, resource selector, result, time.
-  No filenames, medical values, fragments, or cursors.
+  No filenames, medical values, fragments, or cursors. This holds without exception —
+  `processing_job_exchanges` is never copied into an audit event.
+- The run journal is the one diagnostic surface that may carry document content: it shows
+  the owner their own source and Codex's raw answer for a failed run. It is reachable only
+  through the same profile authorization as the document. Worker stdout, logs, metrics, and
+  audit rows stay payload-free.
+- A rejection reason is always a server-derived code from `PROCESSING_REJECTION_REASONS`,
+  rendered through `rejectionReasonCopy`. Never surface a sentence the model produced as
+  the reason a run failed.
 - The UI must not produce a health score, diagnosis, triage, risk, trend, or treatment
   advice — including from a comparison of two summary versions.
 - Archiving a profile flips `patient_profiles.archived_at` only; it never deletes sources,

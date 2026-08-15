@@ -265,9 +265,15 @@ required. Shared code is extracted only when two real consumers need it.
 - A user-requested restart creates another job/run/result chain. Latest-result
   projections move forward without deleting or rewriting prior provenance.
 - Every real queue, claim, stage, completion, retry, and terminal-failure
-  transition also appends one closed-code `ProcessingJobEvent`. The public
-  journal exposes only code, attempt number, and timestamp; it is not stdout,
-  model token streaming, prompt content, or chain-of-thought.
+  transition also appends one closed-code `ProcessingJobEvent`. That timeline
+  exposes only code, attempt number, and timestamp; it is never token streaming
+  or chain-of-thought.
+- Each Codex attempt additionally writes one immutable `processing_job_exchanges`
+  row: the bounded request, the raw response, the stage, and a closed rejection
+  reason. This is the diagnostic surface the owner opens to answer "why did this
+  run fail". It deliberately carries document content, is bounded to 64 KiB per
+  side, and is authorized exactly like the document. It is never copied into an
+  audit event, worker stdout, log, or metric.
 
 ### SQLite
 

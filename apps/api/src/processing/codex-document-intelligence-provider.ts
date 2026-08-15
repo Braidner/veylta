@@ -11,6 +11,7 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
   LAB_FACT_VALIDATION_ISSUES,
   MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
+  type ProcessingRejectionReason,
 } from "@veylta/contracts";
 import { type CodexCliExecutor, createCodexCliExecutor } from "../codex/codex-cli-executor.js";
 import {
@@ -18,6 +19,7 @@ import {
   codexExecutionArguments,
 } from "../codex/codex-execution-profile.js";
 import type {
+  DocumentIntelligenceExchange,
   DocumentIntelligenceInput,
   DocumentIntelligenceProvider,
   DocumentIntelligenceV2Output,
@@ -46,9 +48,28 @@ export type CodexDocumentIntelligenceErrorCode =
   | "PROVIDER_UNAVAILABLE";
 
 export class CodexDocumentIntelligenceError extends Error {
-  constructor(readonly code: CodexDocumentIntelligenceErrorCode) {
+  /**
+   * The closed reason the server derived while refusing the answer. It is what the run
+   * journal shows, so it must stay a code — never a sentence the model produced.
+   */
+  readonly reason: ProcessingRejectionReason;
+
+  /** The attempt that produced this failure, so the run journal can show it. */
+  exchange: DocumentIntelligenceExchange | null = null;
+
+  constructor(
+    readonly code: CodexDocumentIntelligenceErrorCode,
+    reason?: ProcessingRejectionReason,
+  ) {
     super(`Codex document intelligence failed: ${code}`);
     this.name = "CodexDocumentIntelligenceError";
+    this.reason =
+      reason ??
+      (code === "PROVIDER_UNAVAILABLE"
+        ? "provider_unavailable"
+        : code === "INPUT_INVALID"
+          ? "input_invalid"
+          : "schema_shape");
   }
 }
 
@@ -275,8 +296,42 @@ const outputSchema = {
   },
 } as const;
 
-function invalidOutput(): never {
-  throw new CodexDocumentIntelligenceError("OUTPUT_INVALID");
+function invalidOutput(reason: ProcessingRejectionReason = "schema_shape"): never {
+  throw new CodexDocumentIntelligenceError("OUTPUT_INVALID", reason);
+}
+
+/** Bounded so one oversized answer cannot grow the database without limit. */
+const maximumExchangeCharacters = 65_536;
+
+function boundedExchangeText(value: string): string {
+  return value.length <= maximumExchangeCharacters
+    ? value
+    : `${value.slice(0, maximumExchangeCharacters - 1)}…`;
+}
+
+function exchangeOf(
+  request: string,
+  response: string,
+  modelId: string,
+  runtimeVersion: string | null,
+  pageCount: number,
+  startedAt: number,
+): DocumentIntelligenceExchange {
+  return {
+    requestText: boundedExchangeText(request),
+    responseText: boundedExchangeText(response),
+    requestBytes: Buffer.byteLength(request, "utf8"),
+    responseBytes: Buffer.byteLength(response, "utf8"),
+    modelId,
+    runtimeVersion,
+    pageCount,
+    durationMs: Math.max(0, Date.now() - startedAt),
+  };
+}
+
+function withExchange(error: unknown, exchange: DocumentIntelligenceExchange): unknown {
+  if (error instanceof CodexDocumentIntelligenceError) error.exchange = exchange;
+  return error;
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -302,14 +357,14 @@ function boundedString(value: unknown, maximum: number): string {
     value !== value.trim() ||
     hasControlCharacter
   ) {
-    invalidOutput();
+    invalidOutput("schema_shape");
   }
   return value;
 }
 
 function russianBoundedString(value: unknown, maximum: number): string {
   const result = boundedString(value, maximum);
-  if (!/[А-Яа-яЁё]/u.test(result)) invalidOutput();
+  if (!/[А-Яа-яЁё]/u.test(result)) invalidOutput("not_russian");
   return result;
 }
 
@@ -329,7 +384,7 @@ function boundedSourceFragment(value: unknown): string {
       return (code < 32 && code !== 10) || code === 127;
     })
   ) {
-    invalidOutput();
+    invalidOutput("fragment_not_on_page");
   }
   return normalized;
 }
@@ -341,7 +396,7 @@ function completeSourceLines(pageText: string, requestedFragment: string): strin
     firstMatch < 0 ||
     normalizedPage.indexOf(requestedFragment, firstMatch + requestedFragment.length) >= 0
   ) {
-    invalidOutput();
+    invalidOutput("fragment_not_on_page");
   }
   const lineStart = normalizedPage.lastIndexOf("\n", firstMatch - 1) + 1;
   const followingLineBreak = normalizedPage.indexOf("\n", firstMatch + requestedFragment.length);
@@ -351,7 +406,7 @@ function completeSourceLines(pageText: string, requestedFragment: string): strin
 
 function confidence(value: unknown): number {
   if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1) {
-    invalidOutput();
+    invalidOutput("invalid_number");
   }
   return value;
 }
@@ -360,14 +415,15 @@ function canonicalTimestamp(value: unknown): string | null {
   if (value === null) return null;
   const timestamp = boundedString(value, 40);
   const parsed = new Date(timestamp);
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== timestamp) invalidOutput();
+  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== timestamp)
+    invalidOutput("invalid_timestamp");
   return timestamp;
 }
 
 function canonicalDate(value: unknown): string | null {
   if (value === null) return null;
   const date = boundedString(value, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) invalidOutput();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) invalidOutput("invalid_timestamp");
   const parsed = new Date(`${date}T00:00:00.000Z`);
   if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
     return null;
@@ -408,7 +464,7 @@ function parseReferenceRange(value: unknown): StrictLabExtractionFact["reference
   const range = object(value);
   exactKeys(range, ["sourceText", "sourceLow", "sourceHigh", "sourceUnit", "laboratoryOutOfRange"]);
   if (range.laboratoryOutOfRange !== null && typeof range.laboratoryOutOfRange !== "boolean") {
-    invalidOutput();
+    invalidOutput("schema_shape");
   }
   return {
     sourceText: optionalBoundedString(range.sourceText, 200),
@@ -439,14 +495,14 @@ function parseStructuredResult(
     "source",
   ]);
   const resultKey = boundedString(result.resultKey, 100);
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(resultKey)) invalidOutput();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(resultKey)) invalidOutput("invalid_key");
   if (
     typeof result.type !== "string" ||
     !DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES.includes(
       result.type as DocumentIntelligenceStructuredResult["type"],
     )
   ) {
-    invalidOutput();
+    invalidOutput("schema_shape");
   }
   if (
     typeof result.status !== "string" ||
@@ -454,17 +510,17 @@ function parseStructuredResult(
       result.status as DocumentIntelligenceStructuredResult["status"],
     )
   ) {
-    invalidOutput();
+    invalidOutput("schema_shape");
   }
   const resultValue = optionalBoundedString(result.value, 500);
   const unit = optionalBoundedString(result.unit, 100);
-  if (unit !== null && resultValue === null) invalidOutput();
+  if (unit !== null && resultValue === null) invalidOutput("inconsistent_fields");
   const source = object(result.source);
   exactKeys(source, ["pageNumber", "fragment"]);
-  if (!Number.isSafeInteger(source.pageNumber)) invalidOutput();
+  if (!Number.isSafeInteger(source.pageNumber)) invalidOutput("schema_shape");
   const pageNumber = source.pageNumber as number;
   const page = pages.get(pageNumber);
-  if (page === undefined) invalidOutput();
+  if (page === undefined) invalidOutput("unknown_page");
   const fragment = completeSourceLines(page.text, boundedSourceFragment(source.fragment));
   return {
     resultKey,
@@ -553,26 +609,29 @@ function parseFact(
     "source",
   ]);
   const factKey = boundedString(fact.factKey, 100);
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(factKey)) invalidOutput();
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(factKey)) invalidOutput("invalid_key");
   const normalizedValue = optionalBoundedString(fact.proposedNormalizedValue, 100);
   const normalizedUnit = optionalBoundedString(fact.proposedNormalizedUnit, 100);
-  if ((normalizedValue === null) !== (normalizedUnit === null)) invalidOutput();
+  if ((normalizedValue === null) !== (normalizedUnit === null))
+    invalidOutput("inconsistent_fields");
   const sampledAt = canonicalTimestamp(fact.proposedSampledAt) ?? documentMetadata.sampledAt;
   const resultedAt = canonicalTimestamp(fact.proposedResultedAt) ?? documentMetadata.resultedAt;
-  if (sampledAt !== null && resultedAt !== null && sampledAt > resultedAt) invalidOutput();
-  if (!Array.isArray(fact.validationIssues)) invalidOutput();
+  if (sampledAt !== null && resultedAt !== null && sampledAt > resultedAt)
+    invalidOutput("invalid_timestamp");
+  if (!Array.isArray(fact.validationIssues)) invalidOutput("schema_shape");
   const issues = fact.validationIssues.map((issue) => {
-    if (!LAB_FACT_VALIDATION_ISSUES.includes(issue as ValidationIssue)) invalidOutput();
+    if (!LAB_FACT_VALIDATION_ISSUES.includes(issue as ValidationIssue))
+      invalidOutput("schema_shape");
     return issue as ValidationIssue;
   });
-  if (new Set(issues).size !== issues.length) invalidOutput();
+  if (new Set(issues).size !== issues.length) invalidOutput("inconsistent_fields");
   const source = object(fact.source);
   exactKeys(source, ["pageNumber", "fragment"]);
-  if (!Number.isSafeInteger(source.pageNumber)) invalidOutput();
+  if (!Number.isSafeInteger(source.pageNumber)) invalidOutput("schema_shape");
   const pageNumber = source.pageNumber as number;
   const requestedFragment = boundedSourceFragment(source.fragment);
   const page = pages.get(pageNumber);
-  if (page === undefined) invalidOutput();
+  if (page === undefined) invalidOutput("unknown_page");
   const fragment = completeSourceLines(page.text, requestedFragment);
   return {
     factKey,
@@ -627,7 +686,7 @@ function parseOutput(
   try {
     parsed = JSON.parse(value);
   } catch {
-    invalidOutput();
+    invalidOutput("schema_shape");
   }
   const root = object(parsed);
   exactKeys(root, ["classification", "structuredResults", "facts"]);
@@ -648,7 +707,7 @@ function parseOutput(
     typeof classification.category !== "string" ||
     !DOCUMENT_CATEGORIES.includes(classification.category as (typeof DOCUMENT_CATEGORIES)[number])
   ) {
-    invalidOutput();
+    invalidOutput("schema_shape");
   }
   if (
     !Array.isArray(root.structuredResults) ||
@@ -656,14 +715,14 @@ function parseOutput(
     !Array.isArray(root.facts) ||
     root.facts.length > maximumFacts
   ) {
-    invalidOutput();
+    invalidOutput("schema_shape");
   }
   const pageMap = new Map(pages.map((page) => [page.pageNumber, page]));
   const structuredResults: DocumentIntelligenceStructuredResult[] = [];
   const resultKeys = new Set<string>();
   for (const proposedResult of root.structuredResults) {
     const result = parseStructuredResult(proposedResult, pageMap);
-    if (resultKeys.has(result.resultKey)) invalidOutput();
+    if (resultKeys.has(result.resultKey)) invalidOutput("inconsistent_fields");
     resultKeys.add(result.resultKey);
     structuredResults.push(result);
   }
@@ -678,7 +737,7 @@ function parseOutput(
     documentMetadata.resultedAt !== null &&
     documentMetadata.sampledAt > documentMetadata.resultedAt
   ) {
-    invalidOutput();
+    invalidOutput("invalid_timestamp");
   }
   const facts: StrictLabExtractionFact[] = [];
   const factKeys = new Set<string>();
@@ -694,7 +753,7 @@ function parseOutput(
       }
     }
   }
-  if (root.facts.length > 0 && facts.length === 0) invalidOutput();
+  if (root.facts.length > 0 && facts.length === 0) invalidOutput("inconsistent_fields");
   const linkedResultKeys = new Set<string>();
   const linkedStructuredResults = structuredResults.map((result) => {
     const matchingFacts = facts.filter(
@@ -803,20 +862,38 @@ export function createCodexDocumentIntelligenceProvider(
           directory,
           "-",
         ] as const;
+        const request = prompt(input, pages);
+        const startedAt = Date.now();
         let result: Awaited<ReturnType<DocumentIntelligenceExecutor>>;
         try {
-          result = await executor(arguments_, prompt(input, pages), {
+          result = await executor(arguments_, request, {
             cwd: directory,
             outputPath,
             schemaPath,
             writeOutput: (value) => writeFile(outputPath, value, { encoding: "utf8", mode: 0o600 }),
           });
         } catch {
-          throw new CodexDocumentIntelligenceError("PROVIDER_UNAVAILABLE");
+          throw withExchange(
+            new CodexDocumentIntelligenceError("PROVIDER_UNAVAILABLE"),
+            exchangeOf(request, "", profile.modelId, null, pages.length, startedAt),
+          );
         }
         const output = await readFile(outputPath, "utf8");
-        if (Buffer.byteLength(output, "utf8") > maximumOutputBytes) invalidOutput();
-        return parseOutput(output, pages, profile.modelId, result.runtimeVersion);
+        const exchange = exchangeOf(
+          request,
+          output,
+          profile.modelId,
+          result.runtimeVersion,
+          pages.length,
+          startedAt,
+        );
+        try {
+          if (Buffer.byteLength(output, "utf8") > maximumOutputBytes) invalidOutput();
+          const parsed = parseOutput(output, pages, profile.modelId, result.runtimeVersion);
+          return { ...parsed, exchange };
+        } catch (error) {
+          throw withExchange(error, exchange);
+        }
       } finally {
         await rm(directory, { force: true, recursive: true });
       }

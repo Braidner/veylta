@@ -354,11 +354,16 @@ export function createDocumentExtractionProcessor(
           return { status: "stale", jobId: claim.id };
         }
         const errorCode = failureCode(error);
+        const diagnostics =
+          error instanceof CodexDocumentIntelligenceError && error.exchange !== null
+            ? { rejectionReason: error.reason, exchange: error.exchange }
+            : {};
         try {
           const job = await jobs.recordFailure(claim, {
             now: validNow(now),
             errorCode,
             retryDelayMs: input.retryDelayMs,
+            ...diagnostics,
           });
           return failureResult(job, errorCode);
         } catch (failureError) {

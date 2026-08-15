@@ -23,6 +23,7 @@ import type {
   DocumentProcessingActivityEvent,
   DocumentProcessingResponse,
   DocumentProcessingRestartResponse,
+  DocumentProcessingRunDiagnostics,
   DocumentProcessingStatus,
   DocumentSummary,
   DocumentUploadResponse,
@@ -5984,6 +5985,7 @@ function DocumentProcessingPanel({
   });
   const selectedRunId = pinnedRun.documentId === savedDocument.id ? pinnedRun.runId : null;
   const [activityRunId, setActivityRunId] = useState<string | null>(null);
+  const [diagnostics, setDiagnostics] = useState<DocumentProcessingRunDiagnostics | null>(null);
 
   const refreshProcessing = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -6000,6 +6002,8 @@ function DocumentProcessingPanel({
         onProcessingChange?.(response.processing);
         setActivity(response.activity);
         setActivityRunId(response.activityRunId);
+        // A stub or an older server may omit diagnostics; the panel expects null, not undefined.
+        setDiagnostics(response.diagnostics ?? null);
       } catch {
         if (!signal?.aborted) setRefreshFailed(true);
       }
@@ -6086,6 +6090,7 @@ function DocumentProcessingPanel({
           selectedRunId={selectedRunId}
           activityRunId={activityRunId}
           activity={activity}
+          diagnostics={diagnostics}
           onSelectRun={selectRun}
         />
       ) : null}
@@ -6119,6 +6124,7 @@ function DocumentAgentPanel({
   selectedRunId,
   activityRunId,
   activity,
+  diagnostics,
   onSelectRun,
 }: {
   familyId: string;
@@ -6131,6 +6137,7 @@ function DocumentAgentPanel({
   selectedRunId: string | null;
   activityRunId: string | null;
   activity: readonly DocumentProcessingActivityEvent[];
+  diagnostics: DocumentProcessingRunDiagnostics | null;
   onSelectRun: (runId: string | null) => void;
 }) {
   const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
@@ -6313,6 +6320,7 @@ function DocumentAgentPanel({
       selectedRunId={selectedRunId}
       activityRunId={activityRunId}
       activity={activity}
+      diagnostics={diagnostics}
       composerRef={composerRef}
       onMessageChange={setMessage}
       onSelectRun={onSelectRun}

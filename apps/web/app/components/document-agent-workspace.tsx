@@ -5,6 +5,8 @@ import type {
   DocumentAgentRunSummary,
   DocumentAgentWorkspaceResponse,
   DocumentProcessingActivityEvent,
+  DocumentProcessingExchange,
+  DocumentProcessingRunDiagnostics,
 } from "@veylta/contracts";
 import {
   Bot,
@@ -22,7 +24,12 @@ import {
   documentAgentConversationPreview,
   documentAgentRunPresentation,
 } from "../document-agent-workspace";
-import { processingActivityCopy } from "../document-processing-activity";
+import {
+  failureCodeCopy,
+  processingActivityCopy,
+  rejectionReasonCopy,
+  stageCopy,
+} from "../document-processing-activity";
 
 interface DocumentAgentWorkspaceProps {
   readonly workspace: DocumentAgentWorkspaceResponse | null;
@@ -39,6 +46,7 @@ interface DocumentAgentWorkspaceProps {
   readonly selectedRunId: string | null;
   readonly activityRunId: string | null;
   readonly activity: readonly DocumentProcessingActivityEvent[];
+  readonly diagnostics: DocumentProcessingRunDiagnostics | null;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly onMessageChange: (message: string) => void;
   /** null closes the journal and returns the panel to the conversation. */
@@ -63,6 +71,7 @@ export function DocumentAgentWorkspace({
   selectedRunId,
   activityRunId,
   activity,
+  diagnostics,
   composerRef,
   onMessageChange,
   onSelectRun,
@@ -271,6 +280,9 @@ export function DocumentAgentWorkspace({
           <DocumentAgentRunJournal
             run={selectedRun}
             activity={activityRunId === selectedRun.id ? activity : null}
+            diagnostics={
+              diagnostics !== null && diagnostics.runId === selectedRun.id ? diagnostics : null
+            }
             onClose={() => onSelectRun(null)}
           />
         ) : (
@@ -389,10 +401,12 @@ export function DocumentAgentWorkspace({
 function DocumentAgentRunJournal({
   run,
   activity,
+  diagnostics,
   onClose,
 }: {
   readonly run: DocumentAgentRunSummary;
   readonly activity: readonly DocumentProcessingActivityEvent[] | null;
+  readonly diagnostics: DocumentProcessingRunDiagnostics | null;
   readonly onClose: () => void;
 }) {
   const presentation = documentAgentRunPresentation(run);
@@ -420,8 +434,30 @@ function DocumentAgentRunJournal({
           {live ? "Обновляется" : "Журнал сохранён"}
         </span>
         <span>{presentation.label}</span>
+        {diagnostics !== null ? (
+          <span>
+            Попытка {diagnostics.attemptCount} из {diagnostics.maxAttempts}
+          </span>
+        ) : null}
         {run.provenance !== null ? <small>{run.provenance.modelId}</small> : null}
       </div>
+
+      {diagnostics !== null && diagnostics.failureCode !== null ? (
+        <p className="document-agent-workspace__run-failure" role="status">
+          <strong>{failureCodeCopy(diagnostics.failureCode)}</strong>
+          {diagnostics.stoppedAtStage === null
+            ? null
+            : ` — остановлено на этапе «${stageCopy(diagnostics.stoppedAtStage)}»`}
+        </p>
+      ) : null}
+
+      {diagnostics !== null && diagnostics.exchanges.length > 0 ? (
+        <div className="document-agent-workspace__exchanges">
+          {diagnostics.exchanges.map((exchange) => (
+            <DocumentAgentExchange key={exchange.attempt} exchange={exchange} />
+          ))}
+        </div>
+      ) : null}
 
       <div className="document-agent-workspace__conversation" aria-busy={activity === null}>
         {activity === null ? (
@@ -463,6 +499,54 @@ function DocumentAgentRunJournal({
         Журнал не показывает скрытые рассуждения, текст документа или служебный вывод Codex.
       </p>
     </section>
+  );
+}
+
+/**
+ * The raw round trip for one attempt. It deliberately shows the owner's own document
+ * content — this is the diagnostic surface, not the audit log.
+ */
+function DocumentAgentExchange({ exchange }: { readonly exchange: DocumentProcessingExchange }) {
+  const kilobytes = (bytes: number): string => `${Math.max(1, Math.round(bytes / 1024))} КБ`;
+  return (
+    <details className="document-agent-workspace__exchange">
+      <summary>
+        <strong>Попытка {exchange.attempt}</strong>
+        <span>
+          {exchange.outcome === "accepted"
+            ? "принято"
+            : exchange.rejectionReason === null
+              ? "отклонено"
+              : rejectionReasonCopy(exchange.rejectionReason)}
+        </span>
+      </summary>
+      <dl className="document-agent-workspace__exchange-meta">
+        <div>
+          <dt>Этап</dt>
+          <dd>{stageCopy(exchange.stage)}</dd>
+        </div>
+        <div>
+          <dt>Модель</dt>
+          <dd>{exchange.modelId}</dd>
+        </div>
+        <div>
+          <dt>Отправлено</dt>
+          <dd>
+            {exchange.pageCount} стр. · {kilobytes(exchange.requestBytes)}
+          </dd>
+        </div>
+        <div>
+          <dt>Получено</dt>
+          <dd>
+            {kilobytes(exchange.responseBytes)} за {Math.round(exchange.durationMs / 1000)} с
+          </dd>
+        </div>
+      </dl>
+      <p className="document-agent-workspace__exchange-label">Что отправили</p>
+      <pre>{exchange.requestText}</pre>
+      <p className="document-agent-workspace__exchange-label">Что получили</p>
+      <pre>{exchange.responseText.length === 0 ? "— ответа не было —" : exchange.responseText}</pre>
+    </details>
   );
 }
 

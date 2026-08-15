@@ -845,6 +845,10 @@ test("an explicit run selector opens that exact run journal and refuses a foreig
     assert.equal(latest.json().activityRunId, secondRunId);
     assert.equal(latest.json().activity.length, await eventCount(secondRunId));
 
+    assert.equal(latest.json().diagnostics.runId, secondRunId);
+    assert.equal(latest.json().diagnostics.maxAttempts, 3);
+    assert.ok(Array.isArray(latest.json().diagnostics.exchanges));
+
     const older = await openJournal(firstRunId);
     assert.equal(older.statusCode, 200);
     assert.equal(older.json().activityRunId, firstRunId);

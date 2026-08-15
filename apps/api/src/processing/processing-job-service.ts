@@ -10,11 +10,15 @@ import {
   type DocumentProcessingEventCode,
   LAB_EXTRACTION_SCHEMA_VERSION,
   MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
+  type ProcessingRejectionReason,
 } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import { enrichFactFromAnalyteMappings } from "./analyte-mapping.js";
 import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "./codex-document-intelligence-provider.js";
-import type { DocumentIntelligenceOutput } from "./document-intelligence-provider.js";
+import type {
+  DocumentIntelligenceExchange,
+  DocumentIntelligenceOutput,
+} from "./document-intelligence-provider.js";
 import {
   type ParsedDocumentPage,
   type ParsedLabExtraction,
@@ -28,7 +32,10 @@ export const DOCUMENT_EXTRACTION_PAYLOAD_VERSION = "document-extraction-job/v1" 
 export const DOCUMENT_EXTRACTION_KIND = "deterministic_pdf_text" as const;
 export const CODEX_DOCUMENT_EXTRACTION_KIND = "codex_document_intelligence" as const;
 
-export type ProcessingExtractionOutput = ParsedLabExtraction | DocumentIntelligenceOutput;
+export type ProcessingExtractionOutput = (ParsedLabExtraction | DocumentIntelligenceOutput) & {
+  /** Present only for a real Codex run; deterministic fixtures have no round trip. */
+  exchange?: DocumentIntelligenceExchange;
+};
 
 export type ProcessingJobState = "pending" | "leased" | "retry_wait" | "succeeded" | "dead_letter";
 export type ProcessingStage =
@@ -105,7 +112,13 @@ export interface ProcessingJobService {
   ): Promise<ProcessingCompletion>;
   recordFailure(
     claim: LeasedProcessingJob,
-    input: { now: Date; errorCode: ProcessingErrorCode; retryDelayMs: number },
+    input: {
+      now: Date;
+      errorCode: ProcessingErrorCode;
+      retryDelayMs: number;
+      rejectionReason?: ProcessingRejectionReason;
+      exchange?: DocumentIntelligenceExchange;
+    },
   ): Promise<ProcessingJob>;
   getJob(scope: { familyId: string; jobId: string }): Promise<ProcessingJob | null>;
 }
@@ -343,6 +356,51 @@ function asClaim(row: ProcessingJobRow): LeasedProcessingJob {
     leaseOwner: job.leaseOwner,
     leaseExpiresAt: job.leaseExpiresAt,
   };
+}
+
+/**
+ * Records one Codex round trip against its attempt. A replayed attempt keeps the first
+ * record: the row is immutable and unique per (job, attempt).
+ */
+export async function appendProcessingExchangeInTransaction(
+  client: DatabaseClient,
+  input: {
+    familyId: string;
+    documentVersionId: string;
+    jobId: string;
+    attempt: number;
+    stage: ProcessingStage;
+    outcome: "accepted" | "rejected" | "unavailable";
+    rejectionReason: ProcessingRejectionReason | null;
+    exchange: DocumentIntelligenceExchange;
+  },
+): Promise<void> {
+  if (!Number.isSafeInteger(input.attempt) || input.attempt < 1 || input.attempt > 100) return;
+  await client.query(
+    `INSERT OR IGNORE INTO processing_job_exchanges
+       (id, family_id, document_version_id, processing_job_id, attempt, stage, model_id,
+        runtime_version, page_count, request_bytes, response_bytes, request_text,
+        response_text, outcome, rejection_reason, duration_ms)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
+    [
+      randomUUID(),
+      input.familyId,
+      input.documentVersionId,
+      input.jobId,
+      input.attempt,
+      input.stage,
+      input.exchange.modelId,
+      input.exchange.runtimeVersion,
+      Math.min(1000, Math.max(0, input.exchange.pageCount)),
+      input.exchange.requestBytes,
+      input.exchange.responseBytes,
+      input.exchange.requestText,
+      input.exchange.responseText,
+      input.outcome,
+      input.rejectionReason,
+      Math.min(86_400_000, Math.max(0, input.exchange.durationMs)),
+    ],
+  );
 }
 
 export async function appendProcessingEventInTransaction(
@@ -1410,6 +1468,18 @@ export function createProcessingJobService(
           [now, claim.id, claim.familyId, claim.leaseOwner],
         );
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
+        if (output.exchange !== undefined) {
+          await appendProcessingExchangeInTransaction(client, {
+            familyId: stored.family_id,
+            documentVersionId: stored.document_version_id,
+            jobId: stored.id,
+            attempt: Number(stored.attempt_count),
+            stage: "validation",
+            outcome: "accepted",
+            rejectionReason: null,
+            exchange: output.exchange,
+          });
+        }
         await appendProcessingEventInTransaction(client, {
           familyId: stored.family_id,
           documentVersionId: stored.document_version_id,
@@ -1478,6 +1548,18 @@ export function createProcessingJobService(
         if (updated.rowCount !== 1) throw new StaleProcessingLeaseError();
         const row = await jobRow(client, { familyId: claim.familyId, jobId: claim.id });
         if (row === undefined) throw new Error("Processing job disappeared");
+        if (input.exchange !== undefined) {
+          await appendProcessingExchangeInTransaction(client, {
+            familyId: stored.family_id,
+            documentVersionId: stored.document_version_id,
+            jobId: stored.id,
+            attempt: Number(stored.attempt_count),
+            stage: (stored.current_stage ?? "structured_extraction") as ProcessingStage,
+            outcome: input.errorCode === "AGENT_UNAVAILABLE" ? "unavailable" : "rejected",
+            rejectionReason: input.rejectionReason ?? "schema_shape",
+            exchange: input.exchange,
+          });
+        }
         await appendProcessingEventInTransaction(client, {
           familyId: stored.family_id,
           documentVersionId: stored.document_version_id,

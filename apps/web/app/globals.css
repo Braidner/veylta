@@ -7695,3 +7695,82 @@ body:has(.upload-dialog[open]) {
     grid-column: auto;
   }
 }
+
+.document-agent-workspace__run-failure {
+  margin: 0;
+  padding: 12px 20px;
+  color: oklch(0.42 0.14 27);
+  background: oklch(0.97 0.03 27);
+  border-bottom: 1px solid var(--color-line);
+  font-size: 0.8125rem;
+}
+
+.document-agent-workspace__exchanges {
+  display: grid;
+  gap: 8px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--color-line);
+}
+
+.document-agent-workspace__exchange {
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+  background: var(--color-canvas);
+}
+
+.document-agent-workspace__exchange > summary {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.document-agent-workspace__exchange > summary > span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  text-align: right;
+}
+
+.document-agent-workspace__exchange-meta {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  padding: 0 12px 10px;
+  margin: 0;
+}
+
+.document-agent-workspace__exchange-meta dt {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+}
+
+.document-agent-workspace__exchange-meta dd {
+  margin: 2px 0 0;
+  font-size: 0.75rem;
+}
+
+.document-agent-workspace__exchange-label {
+  padding: 0 12px;
+  margin: 0 0 4px;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.document-agent-workspace__exchange pre {
+  max-height: 260px;
+  padding: 10px 12px;
+  margin: 0 12px 12px;
+  overflow: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  font-size: 0.6875rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

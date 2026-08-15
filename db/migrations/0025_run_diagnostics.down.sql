@@ -1,0 +1,4 @@
+DROP TRIGGER processing_job_exchanges_delete_forbidden;
+DROP TRIGGER processing_job_exchanges_update_forbidden;
+DROP INDEX processing_job_exchanges_job;
+DROP TABLE processing_job_exchanges;

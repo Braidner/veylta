@@ -4,7 +4,7 @@ export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v2" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
-export const DOCUMENT_CONTRACT_VERSION = "document/v6" as const;
+export const DOCUMENT_CONTRACT_VERSION = "document/v7" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
 export const DOCUMENT_LIFECYCLE_CONTRACT_VERSION = "document-lifecycle/v1" as const;
@@ -232,6 +232,23 @@ export const DOCUMENT_PROCESSING_EVENT_CODES = [
   "result_saved",
   "retry_scheduled",
   "failed",
+] as const;
+
+/**
+ * Why one Codex answer was refused. A closed vocabulary: a reason is always a code the
+ * server derived, never a sentence the model produced.
+ */
+export const PROCESSING_REJECTION_REASONS = [
+  "schema_shape",
+  "not_russian",
+  "unknown_page",
+  "fragment_not_on_page",
+  "invalid_key",
+  "invalid_number",
+  "invalid_timestamp",
+  "inconsistent_fields",
+  "provider_unavailable",
+  "input_invalid",
 ] as const;
 
 export const DOCUMENT_CATEGORIES = [
@@ -587,6 +604,7 @@ export type DocumentProcessingState = (typeof DOCUMENT_PROCESSING_STATES)[number
 export type DocumentProcessingFailureCategory =
   (typeof DOCUMENT_PROCESSING_FAILURE_CATEGORIES)[number];
 export type DocumentProcessingEventCode = (typeof DOCUMENT_PROCESSING_EVENT_CODES)[number];
+export type ProcessingRejectionReason = (typeof PROCESSING_REJECTION_REASONS)[number];
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
 export type DocumentIntelligenceStructuredResultType =
   (typeof DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES)[number];
@@ -747,6 +765,38 @@ export interface DocumentProcessingResponse {
   /** The run whose journal `activity` holds; null only while the document has no run. */
   readonly activityRunId: string | null;
   readonly activity: readonly DocumentProcessingActivityEvent[];
+  /** Diagnostics for that same run; null only while the document has no run. */
+  readonly diagnostics: DocumentProcessingRunDiagnostics | null;
+}
+
+/**
+ * One Codex round trip, shown so the owner can see what was sent, what came back, and which
+ * rule refused it. This surface deliberately carries document content: it is the diagnostic
+ * view of the owner's own source, and it is never copied into an audit event.
+ */
+export interface DocumentProcessingExchange {
+  readonly attempt: number;
+  readonly stage: string;
+  readonly modelId: string;
+  readonly runtimeVersion: string | null;
+  readonly pageCount: number;
+  readonly requestBytes: number;
+  readonly responseBytes: number;
+  readonly requestText: string;
+  readonly responseText: string;
+  readonly outcome: "accepted" | "rejected" | "unavailable";
+  readonly rejectionReason: ProcessingRejectionReason | null;
+  readonly durationMs: number;
+  readonly occurredAt: string;
+}
+
+export interface DocumentProcessingRunDiagnostics {
+  readonly runId: string;
+  readonly attemptCount: number;
+  readonly maxAttempts: number;
+  readonly stoppedAtStage: string | null;
+  readonly failureCode: string | null;
+  readonly exchanges: readonly DocumentProcessingExchange[];
 }
 
 export interface DocumentProcessingActivityEvent {

@@ -16,9 +16,11 @@ import {
   type DocumentIntelligenceStructuredResult,
   type DocumentIntelligenceSummary,
   type DocumentProcessingActivityEvent,
+  type DocumentProcessingExchange,
   type DocumentProcessingResponse,
   type DocumentProcessingRestartResponse,
   type DocumentProcessingRetryResponse,
+  type DocumentProcessingRunDiagnostics,
   type DocumentProcessingStatus,
   type DocumentSearchResponse,
   type DocumentSummary,
@@ -52,6 +54,7 @@ import {
   type ObservationHistoryResponse,
   type PatientProfileSummary,
   PROFILE_OVERVIEW_CONTRACT_VERSION,
+  type ProcessingRejectionReason,
   type ProfileOverviewResponse,
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_INDICATOR_CATALOG,
@@ -1848,6 +1851,73 @@ async function activityRunForDocument(
   return runId;
 }
 
+interface ProcessingExchangeRow {
+  attempt: number;
+  stage: string;
+  model_id: string;
+  runtime_version: string | null;
+  page_count: number;
+  request_bytes: number;
+  response_bytes: number;
+  request_text: string;
+  response_text: string;
+  outcome: string;
+  rejection_reason: string | null;
+  duration_ms: number;
+  created_at: string;
+}
+
+async function processingDiagnosticsForRun(
+  client: Queryable,
+  row: DocumentRow,
+  runId: string | null,
+): Promise<DocumentProcessingRunDiagnostics | null> {
+  if (runId === null) return null;
+  const jobs = await client.query<{
+    attempt_count: number;
+    max_attempts: number;
+    current_stage: string | null;
+    last_error_code: string | null;
+  }>(
+    `SELECT attempt_count, max_attempts, current_stage, last_error_code
+       FROM processing_jobs WHERE family_id = $1 AND id = $2`,
+    [row.family_id, runId],
+  );
+  const job = jobs.rows[0];
+  if (job === undefined) return null;
+  const exchanges = await client.query<ProcessingExchangeRow>(
+    `SELECT attempt, stage, model_id, runtime_version, page_count, request_bytes,
+            response_bytes, request_text, response_text, outcome, rejection_reason,
+            duration_ms, created_at
+       FROM processing_job_exchanges
+      WHERE family_id = $1 AND processing_job_id = $2
+      ORDER BY attempt ASC`,
+    [row.family_id, runId],
+  );
+  return {
+    runId,
+    attemptCount: asCount(job.attempt_count, "attempt count"),
+    maxAttempts: asCount(job.max_attempts, "max attempts"),
+    stoppedAtStage: job.current_stage,
+    failureCode: job.last_error_code,
+    exchanges: exchanges.rows.map((exchange) => ({
+      attempt: asCount(exchange.attempt, "exchange attempt"),
+      stage: exchange.stage,
+      modelId: exchange.model_id,
+      runtimeVersion: exchange.runtime_version,
+      pageCount: asCount(exchange.page_count, "exchange page count"),
+      requestBytes: asCount(exchange.request_bytes, "exchange request bytes"),
+      responseBytes: asCount(exchange.response_bytes, "exchange response bytes"),
+      requestText: exchange.request_text,
+      responseText: exchange.response_text,
+      outcome: exchange.outcome as DocumentProcessingExchange["outcome"],
+      rejectionReason: exchange.rejection_reason as ProcessingRejectionReason | null,
+      durationMs: asCount(exchange.duration_ms, "exchange duration"),
+      occurredAt: canonicalTimestamp(exchange.created_at),
+    })),
+  };
+}
+
 async function processingActivityForRun(
   client: Queryable,
   row: DocumentRow,
@@ -3338,6 +3408,7 @@ export function createDocumentService(
         const processing = await processingForDocument(client, row);
         const activityRunId = await activityRunForDocument(client, row, query.runId);
         const activity = await processingActivityForRun(client, row, activityRunId);
+        const diagnostics = await processingDiagnosticsForRun(client, row, activityRunId);
         await audit(client, {
           familyId: scope.familyId,
           actorUserId: actor.userId,
@@ -3352,6 +3423,7 @@ export function createDocumentService(
           processing,
           activityRunId,
           activity,
+          diagnostics,
         };
       });
     },

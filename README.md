@@ -43,9 +43,12 @@ as saved dialogue. The first tool surface is
 read-only: Codex can inspect current metadata, processing state, and
 source-bound facts, but cannot access SQLite/filesystem directly or confirm a
 medical fact for the user. No LangGraph or frontend chat framework is needed.
-The same document surface shows an append-only processing journal: it renders
-only real server transitions and never imitates token streaming or exposes
-model reasoning, raw output, or medical payloads as logs.
+The same document surface shows an append-only processing journal per run. It renders
+only real server transitions and never imitates token streaming. For a failed run it also
+shows the owner the diagnostic record of that attempt: the bounded request Veylta sent, the
+raw answer Codex returned, and the closed reason code that refused it. That record is
+reachable only through the same profile authorization as the document itself, and it is
+never copied into an audit event, worker log, or metric — those remain payload-free.
 
 ## Project status
 

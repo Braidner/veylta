@@ -62,7 +62,7 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
         await route.fulfill({
           contentType: "application/json",
           body: JSON.stringify({
-            contractVersion: "document/v6",
+            contractVersion: "document/v7",
             documentId,
             processing: {
               state: "completed",
@@ -74,6 +74,17 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
               activityRunId === null
                 ? []
                 : [{ code: "queued", attempt: 0, occurredAt: "2026-08-14T15:59:42.000Z" }],
+            diagnostics:
+              activityRunId === null
+                ? null
+                : {
+                    runId: activityRunId,
+                    attemptCount: 1,
+                    maxAttempts: 3,
+                    stoppedAtStage: null,
+                    failureCode: null,
+                    exchanges: [],
+                  },
           }),
         });
         return;
@@ -96,7 +107,7 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
         status: 202,
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v6",
+          contractVersion: "document/v7",
           documentId,
           processing: { state: "queued", updatedAt: "2026-08-14T16:11:00.000Z" },
         }),
