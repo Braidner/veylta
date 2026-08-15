@@ -8159,3 +8159,36 @@ body:has(.upload-dialog[open]) {
   font-size: 0.75rem;
   line-height: 1.5;
 }
+
+/* In settings the profile rail is a full-width section, not a sidebar: management on the
+   left, the long audit log on the right, so neither stretches across the whole page. */
+.profile-settings {
+  margin-top: 40px;
+}
+
+.profile-settings > .settings-section-heading {
+  margin-bottom: 20px;
+}
+
+.profile-settings .workspace-rail {
+  display: grid;
+  gap: 8px 48px;
+  grid-template-columns: minmax(0, 1fr);
+  padding: 8px 0 0;
+}
+
+.profile-settings .workspace-rail > .family-audit-log {
+  min-width: 0;
+}
+
+@media (min-width: 1100px) {
+  .profile-settings .workspace-rail {
+    grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    align-items: start;
+  }
+
+  .profile-settings .workspace-rail > .family-audit-log {
+    grid-column: 2;
+    grid-row: 1 / span 6;
+  }
+}
