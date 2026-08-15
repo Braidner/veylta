@@ -1,0 +1,126 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import type {
+  ProfileOverviewDocument,
+  ProfileOverviewResponse,
+  ProfileOverviewReviewDocument,
+} from "@veylta/contracts";
+import {
+  archiveValueCountCopy,
+  buildDocumentsArchiveHero,
+  bulkConfirmableCount,
+  isRestartable,
+  sourceCountCopy,
+} from "./documents-archive.js";
+
+function reviewDocument(
+  pendingFactCount: number,
+  needsAttentionFactCount: number,
+): ProfileOverviewReviewDocument {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    originalFilename: "synthetic.pdf",
+    contentType: "application/pdf",
+    uploadedAt: "2026-08-15T10:00:00.000Z",
+    pendingFactCount,
+    needsAttentionFactCount,
+  };
+}
+
+function overviewDocument(
+  processing: ProfileOverviewDocument["processing"],
+): ProfileOverviewDocument {
+  return {
+    id: "00000000-0000-4000-8000-000000000002",
+    originalFilename: "synthetic.pdf",
+    contentType: "application/pdf",
+    uploadedAt: "2026-08-15T10:00:00.000Z",
+    intelligence: null,
+    processing,
+  };
+}
+
+test("a bulk count never promises the values that need an individual decision", () => {
+  assert.equal(bulkConfirmableCount(reviewDocument(40, 4)), 36);
+  assert.equal(bulkConfirmableCount(reviewDocument(3, 3)), 0);
+  // Defends against a projection that ever reports more warnings than pending values.
+  assert.equal(bulkConfirmableCount(reviewDocument(2, 5)), 0);
+});
+
+test("restart is offered only where the server would accept it", () => {
+  assert.equal(
+    isRestartable(
+      overviewDocument({
+        state: "failed",
+        updatedAt: "2026-08-15T10:00:00.000Z",
+        category: "agent_output_invalid",
+        retryAllowed: true,
+      }),
+    ),
+    true,
+  );
+  assert.equal(
+    isRestartable(
+      overviewDocument({
+        state: "failed",
+        updatedAt: "2026-08-15T10:00:00.000Z",
+        category: "attempts_exhausted",
+        retryAllowed: false,
+      }),
+    ),
+    false,
+  );
+  assert.equal(isRestartable(overviewDocument({ state: "not_started" })), false);
+  assert.equal(
+    isRestartable(overviewDocument({ state: "queued", updatedAt: "2026-08-15T10:00:00.000Z" })),
+    false,
+  );
+  assert.equal(
+    isRestartable(
+      overviewDocument({
+        state: "awaiting_review",
+        updatedAt: "2026-08-15T10:00:00.000Z",
+        factCount: 40,
+        needsReviewCount: 4,
+      }),
+    ),
+    true,
+  );
+});
+
+test("the archive hero totals the whole queue, not the visible rows", () => {
+  const overview = {
+    reviewQueue: {
+      documentCount: 7,
+      pendingFactCount: 82,
+      needsAttentionFactCount: 6,
+      documents: [reviewDocument(40, 4), reviewDocument(42, 2)],
+    },
+    recentDocuments: [
+      overviewDocument({
+        state: "failed",
+        updatedAt: "2026-08-15T10:00:00.000Z",
+        category: "agent_output_invalid",
+        retryAllowed: true,
+      }),
+      overviewDocument({ state: "queued", updatedAt: "2026-08-15T10:00:00.000Z" }),
+    ],
+  } as unknown as ProfileOverviewResponse;
+
+  assert.deepEqual(buildDocumentsArchiveHero(overview), {
+    sourceCount: 2,
+    pendingDocumentCount: 7,
+    pendingFactCount: 82,
+    needsAttentionFactCount: 6,
+    failedDocumentCount: 1,
+    bulkConfirmableCount: 76,
+  });
+});
+
+test("Russian counts agree with their nouns", () => {
+  assert.equal(sourceCountCopy(1), "1 источник");
+  assert.equal(sourceCountCopy(3), "3 источника");
+  assert.equal(sourceCountCopy(11), "11 источников");
+  assert.equal(archiveValueCountCopy(21), "21 значение");
+  assert.equal(archiveValueCountCopy(42), "42 значения");
+});
