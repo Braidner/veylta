@@ -35,7 +35,7 @@ export function adminSetupError(status: number, _code: string | null): string {
     return "Проверьте логин, имя и пароль по подсказкам в форме.";
   }
   if (status === 403) {
-    return "Откройте Veylta по адресу сервера из WEB_ORIGIN и повторите попытку.";
+    return "Откройте Veylta по одному из адресов WEB_ORIGINS и повторите попытку.";
   }
   if (status === 409) {
     return "Администратор уже создан. Обновите страницу и войдите в систему.";

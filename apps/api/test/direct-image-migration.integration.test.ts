@@ -43,6 +43,7 @@ test("direct-image MIME provenance blocks a lossy schema rollback", async () => 
       );
     });
 
+    assert.equal(await migrateDown(database), "0024_document_agent_threads");
     assert.equal(await migrateDown(database), "0023_document_lifecycle");
     assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
     assert.equal(await migrateDown(database), "0021_codex_preferences");

@@ -1,5 +1,7 @@
 import {
+  DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA,
   DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA,
+  type DocumentAgentConversationCreateCommand,
   type DocumentAgentMessageCommand,
 } from "@veylta/contracts";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
@@ -23,6 +25,14 @@ interface DocumentAgentParams {
   documentId: string;
 }
 
+interface DocumentAgentConversationParams extends DocumentAgentParams {
+  conversationId: string;
+}
+
+interface DocumentAgentQuery {
+  conversationId?: string;
+}
+
 export interface DocumentAgentRouteOptions {
   readonly allowedMutationOrigins: readonly string[];
 }
@@ -36,6 +46,21 @@ const paramsSchema = {
     profileId: canonicalUuidSchema,
     documentId: canonicalUuidSchema,
   },
+} as const;
+
+const conversationParamsSchema = {
+  ...paramsSchema,
+  required: [...paramsSchema.required, "conversationId"],
+  properties: {
+    ...paramsSchema.properties,
+    conversationId: canonicalUuidSchema,
+  },
+} as const;
+
+const querySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: { conversationId: canonicalUuidSchema },
 } as const;
 
 class InvalidDocumentAgentIdempotencyKeyError extends Error {}
@@ -78,26 +103,64 @@ export function registerDocumentAgentRoutes(
 ): void {
   const allowedOrigins = new Set(options.allowedMutationOrigins);
   app.register(async (scope) => {
-    scope.get<{ Params: DocumentAgentParams }>(
+    scope.get<{ Params: DocumentAgentParams; Querystring: DocumentAgentQuery }>(
       "/v1/families/:familyId/profiles/:profileId/documents/:documentId/agent",
-      { schema: { params: paramsSchema } },
+      { schema: { params: paramsSchema, querystring: querySchema } },
       async (request, reply) => {
         privateResponse(reply);
         const actor = await requireActor(familyService, request, reply);
         if (actor === null) return;
         try {
-          reply.send(await service.getConversation(actor, request.params, request.id));
+          reply.send(
+            await service.getWorkspace(
+              actor,
+              request.params,
+              request.query.conversationId ?? null,
+              request.id,
+            ),
+          );
         } catch (error) {
           if (!sendAgentError(error, request, reply)) throw error;
         }
       },
     );
 
-    scope.post<{ Params: DocumentAgentParams; Body: DocumentAgentMessageCommand }>(
-      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/agent/messages",
+    scope.post<{ Params: DocumentAgentParams; Body: DocumentAgentConversationCreateCommand }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/agent/conversations",
       {
         schema: {
           params: paramsSchema,
+          body: DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA,
+        },
+      },
+      async (request, reply) => {
+        privateResponse(reply);
+        try {
+          if (!requireTrustedOrigin(allowedOrigins, request, reply)) return;
+          const actor = await requireActor(familyService, request, reply);
+          if (actor === null) return;
+          const result = await service.createConversation(
+            actor,
+            request.params,
+            request.body.title,
+            idempotencyKey(request),
+            request.id,
+          );
+          reply.code(result.replayed ? 200 : 201).send(result.response);
+        } catch (error) {
+          if (!sendAgentError(error, request, reply)) throw error;
+        }
+      },
+    );
+
+    scope.post<{
+      Params: DocumentAgentConversationParams;
+      Body: DocumentAgentMessageCommand;
+    }>(
+      "/v1/families/:familyId/profiles/:profileId/documents/:documentId/agent/conversations/:conversationId/messages",
+      {
+        schema: {
+          params: conversationParamsSchema,
           body: DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA,
         },
       },
@@ -110,6 +173,7 @@ export function registerDocumentAgentRoutes(
           const result = await service.sendMessage(
             actor,
             request.params,
+            request.params.conversationId,
             request.body.message,
             idempotencyKey(request),
             request.id,

@@ -70,7 +70,7 @@ test("administrator setup maps safe server failures without hiding the next acti
   );
   assert.equal(
     adminSetupError(403, "ORIGIN_NOT_ALLOWED"),
-    "Откройте Veylta по адресу сервера из WEB_ORIGIN и повторите попытку.",
+    "Откройте Veylta по одному из адресов WEB_ORIGINS и повторите попытку.",
   );
   assert.equal(
     adminSetupError(409, "CONFLICT"),

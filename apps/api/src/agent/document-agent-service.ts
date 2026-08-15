@@ -1,8 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   DOCUMENT_AGENT_CONTRACT_VERSION,
-  type DocumentAgentConversationResponse,
+  type DocumentAgentConversationSummary,
   type DocumentAgentMessage,
+  type DocumentAgentRunState,
+  type DocumentAgentRunSummary,
+  type DocumentAgentWorkspaceResponse,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient } from "../database/pool.js";
 import type { DocumentService } from "../documents/document-service.js";
@@ -23,24 +26,43 @@ export class DocumentAgentIdempotencyConflictError extends DomainConflictError {
 export class DocumentAgentUnavailableError extends Error {}
 
 export interface DocumentAgentService extends DocumentAgentContextProvider {
-  getConversation(
+  getWorkspace(
     actor: SessionActor,
     scope: DocumentAgentScope,
+    conversationId: string | null,
     correlationId: string,
-  ): Promise<DocumentAgentConversationResponse>;
+  ): Promise<DocumentAgentWorkspaceResponse>;
+  createConversation(
+    actor: SessionActor,
+    scope: DocumentAgentScope,
+    title: string,
+    idempotencyKey: string,
+    correlationId: string,
+  ): Promise<{ readonly response: DocumentAgentWorkspaceResponse; readonly replayed: boolean }>;
   sendMessage(
     actor: SessionActor,
     scope: DocumentAgentScope,
+    conversationId: string,
     message: string,
     idempotencyKey: string,
     correlationId: string,
-  ): Promise<{ readonly response: DocumentAgentConversationResponse; readonly replayed: boolean }>;
+  ): Promise<{ readonly response: DocumentAgentWorkspaceResponse; readonly replayed: boolean }>;
 }
 
 interface ConversationRow {
   id: string;
   document_version_id: string;
   codex_thread_id: string | null;
+}
+
+interface ConversationSummaryRow {
+  id: string;
+  title: string;
+  message_count: number;
+  last_message_preview: string | null;
+  last_message_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface MessageRow {
@@ -54,6 +76,20 @@ interface MessageRow {
 
 interface RequestRow {
   request_hash: string;
+}
+
+interface ConversationRequestRow extends RequestRow {
+  conversation_id: string;
+}
+
+interface RunRow {
+  id: string;
+  state: "pending" | "leased" | "retry_wait" | "succeeded" | "dead_letter";
+  attempt_count: number;
+  created_at: string;
+  completed_at: string | null;
+  model_id: string | null;
+  runtime_version: string | null;
 }
 
 function sha256(value: string): string {
@@ -165,39 +201,129 @@ async function audit(
   );
 }
 
-async function conversationResponse(
+function conversationSummary(row: ConversationSummaryRow): DocumentAgentConversationSummary {
+  return {
+    id: row.id,
+    title: row.title,
+    messageCount: row.message_count,
+    lastMessagePreview: row.last_message_preview,
+    lastMessageAt: row.last_message_at === null ? null : requiredTimestamp(row.last_message_at),
+    createdAt: requiredTimestamp(row.created_at),
+    updatedAt: requiredTimestamp(row.updated_at),
+  };
+}
+
+function runState(state: RunRow["state"]): DocumentAgentRunState {
+  switch (state) {
+    case "pending":
+      return "pending";
+    case "leased":
+      return "running";
+    case "retry_wait":
+      return "retry_wait";
+    case "succeeded":
+      return "completed";
+    case "dead_letter":
+      return "failed";
+  }
+}
+
+function runSummary(row: RunRow, index: number): DocumentAgentRunSummary {
+  if ((row.model_id === null) !== (row.runtime_version === null)) {
+    throw new Error("Document agent run provenance is invalid");
+  }
+  return {
+    id: row.id,
+    title: index === 0 ? "Первичный анализ" : `Повторный анализ ${index}`,
+    state: runState(row.state),
+    attemptCount: row.attempt_count,
+    createdAt: requiredTimestamp(row.created_at),
+    completedAt: row.completed_at === null ? null : requiredTimestamp(row.completed_at),
+    ephemeral: true,
+    provenance:
+      row.model_id === null || row.runtime_version === null
+        ? null
+        : {
+            provider: "codex",
+            modelId: row.model_id,
+            runtimeVersion: row.runtime_version,
+          },
+  };
+}
+
+async function workspaceResponse(
   client: DatabaseClient,
   scope: DocumentAgentScope,
-): Promise<DocumentAgentConversationResponse> {
-  const conversation = (
-    await client.query<{ id: string }>(
-      `SELECT id
-         FROM document_agent_conversations
-        WHERE family_id = $1 AND document_id = $2`,
-      [scope.familyId, scope.documentId],
-    )
-  ).rows[0];
-  if (conversation === undefined) {
-    return {
-      contractVersion: DOCUMENT_AGENT_CONTRACT_VERSION,
-      documentId: scope.documentId,
-      conversationId: null,
-      messages: [],
-    };
+  requestedConversationId: string | null,
+): Promise<DocumentAgentWorkspaceResponse> {
+  const conversationRows = await client.query<ConversationSummaryRow>(
+    `SELECT conversation.id, conversation.title,
+            count(message.id) AS message_count,
+            (
+              SELECT recent.text
+                FROM document_agent_messages AS recent
+               WHERE recent.family_id = conversation.family_id
+                 AND recent.conversation_id = conversation.id
+               ORDER BY recent.sequence DESC
+               LIMIT 1
+            ) AS last_message_preview,
+            max(message.created_at) AS last_message_at,
+            conversation.created_at, conversation.updated_at
+       FROM document_agent_conversations AS conversation
+       LEFT JOIN document_agent_messages AS message
+         ON message.family_id = conversation.family_id
+        AND message.conversation_id = conversation.id
+      WHERE conversation.family_id = $1
+        AND conversation.document_id = $2
+      GROUP BY conversation.id
+      ORDER BY conversation.updated_at DESC, conversation.created_at DESC
+      LIMIT 20`,
+    [scope.familyId, scope.documentId],
+  );
+  const conversations = conversationRows.rows.map(conversationSummary);
+  const selectedConversationId = requestedConversationId ?? conversations[0]?.id ?? null;
+  if (
+    selectedConversationId !== null &&
+    !conversations.some((conversation) => conversation.id === selectedConversationId)
+  ) {
+    throw new ResourceNotFoundError();
   }
-  const rows = await client.query<MessageRow>(
-    `SELECT id, role, text, model_id, runtime_version, created_at
-      FROM document_agent_messages
-      WHERE family_id = $1 AND conversation_id = $2
-      ORDER BY sequence ASC
-      LIMIT 100`,
-    [scope.familyId, conversation.id],
+  const messages =
+    selectedConversationId === null
+      ? []
+      : (
+          await client.query<MessageRow>(
+            `SELECT id, role, text, model_id, runtime_version, created_at
+               FROM document_agent_messages
+              WHERE family_id = $1 AND conversation_id = $2
+              ORDER BY sequence ASC
+              LIMIT 100`,
+            [scope.familyId, selectedConversationId],
+          )
+        ).rows.map(messageFromRow);
+  const runRows = await client.query<RunRow>(
+    `SELECT job.id, job.state, job.attempt_count, job.created_at, job.completed_at,
+            intelligence.model_id, intelligence.runtime_version
+       FROM processing_jobs AS job
+       JOIN document_versions AS version
+         ON version.family_id = job.family_id
+        AND version.id = job.document_version_id
+       LEFT JOIN document_intelligence_results AS intelligence
+         ON intelligence.family_id = job.family_id
+        AND intelligence.processing_job_id = job.id
+      WHERE job.family_id = $1
+        AND version.document_id = $2
+      ORDER BY job.created_at ASC
+      LIMIT 20`,
+    [scope.familyId, scope.documentId],
   );
   return {
     contractVersion: DOCUMENT_AGENT_CONTRACT_VERSION,
     documentId: scope.documentId,
-    conversationId: conversation.id,
-    messages: rows.rows.map(messageFromRow),
+    selectedConversationId,
+    conversations,
+    messages,
+    runs: runRows.rows.map(runSummary).reverse(),
   };
 }
 
@@ -225,10 +351,10 @@ export function createDocumentAgentService(
   }
 
   return {
-    async getConversation(actor, scope, correlationId) {
+    async getWorkspace(actor, scope, conversationId, correlationId) {
       return database.transaction(async (client) => {
         await requireDocumentWriteAccess(client, actor, scope);
-        const response = await conversationResponse(client, scope);
+        const response = await workspaceResponse(client, scope, conversationId);
         await audit(client, {
           familyId: scope.familyId,
           actorUserId: actor.userId,
@@ -241,14 +367,98 @@ export function createDocumentAgentService(
       });
     },
 
-    async sendMessage(actor, scope, rawMessage, idempotencyKey, correlationId) {
+    async createConversation(actor, scope, rawTitle, idempotencyKey, correlationId) {
+      const title = rawTitle.trim();
+      if (title.length < 1 || title.length > 80) throw new DomainConflictError();
+      return serialized(`${scope.familyId}:${scope.documentId}:create`, async () => {
+        const keyHash = sha256(idempotencyKey);
+        const requestHash = sha256(JSON.stringify({ documentId: scope.documentId, title }));
+        return database.transaction(async (client) => {
+          const documentVersionId = await requireDocumentWriteAccess(client, actor, scope);
+          const replay = (
+            await client.query<ConversationRequestRow>(
+              `SELECT conversation_id, request_hash
+                 FROM document_agent_conversation_requests
+                WHERE family_id = $1 AND actor_user_id = $2 AND idempotency_key_hash = $3`,
+              [scope.familyId, actor.userId, keyHash],
+            )
+          ).rows[0];
+          if (replay !== undefined) {
+            if (replay.request_hash !== requestHash) {
+              throw new DocumentAgentIdempotencyConflictError();
+            }
+            return {
+              response: await workspaceResponse(client, scope, replay.conversation_id),
+              replayed: true,
+            };
+          }
+          const count = await client.query<{ value: number }>(
+            `SELECT count(*) AS value
+               FROM document_agent_conversations
+              WHERE family_id = $1 AND document_id = $2`,
+            [scope.familyId, scope.documentId],
+          );
+          if ((count.rows[0]?.value ?? 0) >= 20) throw new DomainConflictError();
+          const conversationId = randomUUID();
+          const createdAt = new Date();
+          await client.query(
+            `INSERT INTO document_agent_conversations
+               (id, family_id, patient_profile_id, document_id, document_version_id,
+                created_by_user_id, title, codex_thread_id, model_id, runtime_version,
+                created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, NULL, NULL, NULL, $8, $8)`,
+            [
+              conversationId,
+              scope.familyId,
+              scope.profileId,
+              scope.documentId,
+              documentVersionId,
+              actor.userId,
+              title,
+              createdAt,
+            ],
+          );
+          await client.query(
+            `INSERT INTO document_agent_conversation_requests
+               (id, family_id, actor_user_id, conversation_id, idempotency_key_hash,
+                request_hash, created_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              randomUUID(),
+              scope.familyId,
+              actor.userId,
+              conversationId,
+              keyHash,
+              requestHash,
+              createdAt,
+            ],
+          );
+          await audit(client, {
+            familyId: scope.familyId,
+            actorUserId: actor.userId,
+            action: "document.agent.conversation.created",
+            documentId: scope.documentId,
+            correlationId,
+            createdAt,
+          });
+          return {
+            response: await workspaceResponse(client, scope, conversationId),
+            replayed: false,
+          };
+        });
+      });
+    },
+
+    async sendMessage(actor, scope, conversationId, rawMessage, idempotencyKey, correlationId) {
       const message = rawMessage.trim();
       if (message.length < 1 || message.length > 2_000) {
         throw new DomainConflictError();
       }
-      return serialized(`${scope.familyId}:${scope.documentId}`, async () => {
+      return serialized(`${scope.familyId}:${scope.documentId}:${conversationId}`, async () => {
         const keyHash = sha256(idempotencyKey);
-        const requestHash = sha256(JSON.stringify({ documentId: scope.documentId, message }));
+        const requestHash = sha256(
+          JSON.stringify({ documentId: scope.documentId, conversationId, message }),
+        );
         const replay = await database.transaction(async (client) => {
           await requireDocumentWriteAccess(client, actor, scope);
           const request = (
@@ -263,40 +473,22 @@ export function createDocumentAgentService(
           if (request.request_hash !== requestHash) {
             throw new DocumentAgentIdempotencyConflictError();
           }
-          return conversationResponse(client, scope);
+          return workspaceResponse(client, scope, conversationId);
         });
         if (replay !== null) return { response: replay, replayed: true };
 
         const documentVersionId = await authorize(actor, scope);
-        const now = new Date();
         const conversation = await database.transaction(async (client) => {
           const existing = (
             await client.query<ConversationRow>(
               `SELECT id, document_version_id, codex_thread_id
                  FROM document_agent_conversations
-                WHERE family_id = $1 AND document_id = $2`,
-              [scope.familyId, scope.documentId],
+                WHERE family_id = $1 AND document_id = $2 AND id = $3`,
+              [scope.familyId, scope.documentId, conversationId],
             )
           ).rows[0];
-          if (existing !== undefined) return existing;
-          const id = randomUUID();
-          await client.query(
-            `INSERT INTO document_agent_conversations
-               (id, family_id, patient_profile_id, document_id, document_version_id,
-                created_by_user_id, codex_thread_id, model_id, runtime_version,
-                created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, NULL, NULL, NULL, $7, $7)`,
-            [
-              id,
-              scope.familyId,
-              scope.profileId,
-              scope.documentId,
-              documentVersionId,
-              actor.userId,
-              now,
-            ],
-          );
-          return { id, document_version_id: documentVersionId, codex_thread_id: null };
+          if (existing === undefined) throw new ResourceNotFoundError();
+          return existing;
         });
         if (conversation.document_version_id !== documentVersionId) {
           throw new DocumentAgentUnavailableError();
@@ -345,7 +537,7 @@ export function createDocumentAgentService(
             if (existingRequest.request_hash !== requestHash) {
               throw new DocumentAgentIdempotencyConflictError();
             }
-            return conversationResponse(client, scope);
+            return workspaceResponse(client, scope, conversationId);
           }
           const count = await client.query<{ value: number }>(
             `SELECT count(*) AS value
@@ -426,7 +618,7 @@ export function createDocumentAgentService(
             correlationId,
             createdAt,
           });
-          return conversationResponse(client, scope);
+          return workspaceResponse(client, scope, conversationId);
         });
         return { response, replayed: false };
       });

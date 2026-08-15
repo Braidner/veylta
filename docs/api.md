@@ -105,9 +105,10 @@ create isolated synthetic fixtures in browser/integration tests. The normal
 Creates an opaque local demo identity, session, family, owner membership, and
 first linked adult profile in one transaction. The route is available only when
 `DEMO_REGISTRATION_ENABLED=true`; it is disabled by default and rejected unless
-the API binds to a loopback host. The documented dev runner also binds the web
-proxy to loopback. This is synthetic local-development onboarding, not a
-production authentication or account-recovery mechanism.
+the API and every configured `WEB_ORIGINS` browser origin are loopback-only.
+The E2E runner meets that constraint explicitly. A LAN-accessible deployment
+must leave demo registration disabled. This is synthetic local-development
+onboarding, not a production authentication or account-recovery mechanism.
 
 ```json
 {
@@ -638,31 +639,42 @@ second job.
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/agent`
 
-Returns the local `document-agent/v1` conversation for a document. Only the
+Returns the local `document-agent/v2` workspace for a document. Only the
 administrator/owner or the self-linked adult who can write that profile may
 open it; consent-only readers receive the same non-disclosing `404` as an
-unknown document. An unopened conversation returns `conversationId: null` and
-an empty `messages` array. Every message includes `role`, Russian `text`,
-`createdAt`, and either `provenance: null` for the user or exact
-Codex/model/runtime provenance for the assistant. The response is private and
-`no-store`.
+unknown document. An empty workspace returns `selectedConversationId: null`,
+empty `conversations` and `messages` arrays, plus real document-processing jobs
+in `runs`. Runs are explicitly `ephemeral: true` and never become chat history.
+The optional `conversationId` query selects one authorized conversation;
+otherwise the most recently updated conversation is selected. Every message
+includes `role`, Russian `text`, `createdAt`, and either `provenance: null` for
+the user or exact Codex/model/runtime provenance for the assistant. The response
+is private and `no-store`.
 
-### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/agent/messages`
+### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/agent/conversations`
+
+Requires the session cookie, exact trusted `Origin`, and `Idempotency-Key`. The
+closed body is `{ "title": "..." }`, trimmed and bounded to 80 characters. A
+document may have at most 20 conversations. A new conversation returns the v2
+workspace with `201`; an exact replay returns it with `200`; conflicting key
+reuse returns `409`.
+
+### `POST /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/agent/conversations/{conversationId}/messages`
 
 Requires the session cookie, exact trusted `Origin`, and `Idempotency-Key`.
 The closed body is `{ "message": "..." }`, trimmed and bounded to 2,000
 characters. A new exchange returns `201`; an exact replay returns the stored
-conversation with `200` and no second Codex call. Reusing a key with different
-text returns `409`.
+workspace with `200` and no second Codex call. Reusing a key with different text
+returns `409`. The conversation must belong to the same authorized document.
 
-Veylta starts or resumes one local Codex CLI thread. For the duration of that
-turn it supplies a random short-lived bearer capability to the loopback-only
-`/mcp/document-agent` transport. MCP exposes only the zero-argument read-only
-`get_document_context` tool; family/profile/document selectors come from the
-server capability rather than model arguments. The tool returns the current
-document metadata, processing state, and source-bound facts after fresh write
-authorization. It cannot read the original bytes, access SQLite/filesystem,
-confirm a fact, restart a job, or mutate Veylta state.
+Veylta starts or resumes the selected conversation's local Codex CLI thread.
+For the duration of that turn it supplies a random short-lived bearer capability
+to the loopback-only `/mcp/document-agent` transport. MCP exposes only the
+zero-argument read-only `get_document_context` tool; family/profile/document
+selectors come from the server capability rather than model arguments. The tool
+returns the current document metadata, processing state, and source-bound facts
+after fresh write authorization. It cannot read the original bytes, access
+SQLite/filesystem, confirm a fact, restart a job, or mutate Veylta state.
 
 The user message and bounded context are sent through the locally authenticated
 Codex CLI to the Codex model service. Veylta stores no Codex OAuth token or API

@@ -65,7 +65,7 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   await expect(
     page.getByRole("heading", { level: 1, name: "Синтетические лабораторные результаты" }),
   ).toBeVisible();
-  await expect(page.getByText(filename, { exact: false })).toBeVisible();
+  await expect(page.getByText(filename, { exact: false }).first()).toBeVisible();
   await expect(
     page
       .getByRole("region", { name: "Ход обработки" })

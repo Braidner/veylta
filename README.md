@@ -34,9 +34,12 @@ or persists Codex OAuth tokens or API keys, and refuses proposals unless Codex
 confirms ChatGPT authentication. See
 [ADR 0007](docs/adr/0007-home-server-pwa-and-codex-runtime.md).
 
-Document detail also supports one persistent Russian Codex conversation. Each
-turn resumes its local Codex thread and receives a fresh loopback-only MCP
-capability for the exact authorized document. The first tool surface is
+Document detail also supports up to 20 named, persistent Russian Codex
+conversations bound to that document. Each turn resumes its conversation's
+local Codex thread and receives a fresh loopback-only MCP capability for the
+exact authorized document. The same workspace lists real processing jobs
+separately as ephemeral Codex runs, so a background analysis is never presented
+as saved dialogue. The first tool surface is
 read-only: Codex can inspect current metadata, processing state, and
 source-bound facts, but cannot access SQLite/filesystem directly or confirm a
 medical fact for the user. No LangGraph or frontend chat framework is needed.
@@ -99,10 +102,11 @@ The full first slice remains deliberately narrow:
     Codex may select bounded drafts from the latest confirmed summary; every
     draft is provenance-locked and remains `proposed` until a person decides
     (Tasks 33a/33b, delivered).
-18. follow real document-processing stages after reload and hold one persistent
-    Russian Codex dialogue scoped to that exact authorized document. The UI
-    waits for a complete validated response instead of simulating a token stream
-    (Tasks 37/38, delivered).
+18. follow real document-processing stages after reload and hold named,
+    independent Russian Codex dialogues scoped to that exact authorized
+    document. The UI separates those saved dialogues from ephemeral analysis
+    runs and waits for a complete validated response instead of simulating a
+    token stream (Tasks 37/38, delivered; multi-dialogue workspace extended).
 19. search locally across the latest summaries and structured results, download
     verified original bytes under the original display filename, and
     idempotently remove a document from every active read without claiming
@@ -146,9 +150,10 @@ real-data readiness claim.
   implementation. Local bounded PDF/OCR transport produces page evidence;
   Codex classifies the document and returns a closed, source-bound schema.
   Results are rejected unless every fact cites an exact source fragment.
-- `document-agent/v1` stores an append-only Russian conversation and exact
-  Codex model/runtime provenance in SQLite. The official MCP SDK exposes one
-  short-lived, document-scoped read-only context tool to the local Codex CLI.
+- `document-agent/v2` stores named append-only Russian conversations and exact
+  Codex model/runtime provenance in SQLite, while processing runs stay
+  explicitly ephemeral. The official MCP SDK exposes one short-lived,
+  document-scoped read-only context tool to the local Codex CLI.
 - `document/v5` exposes an ordered payload-free timeline for the latest job
   and immutable review summaries with the deciding account and decision time;
   the web UI polls and renders only persisted queue/stage/result events.
@@ -180,9 +185,14 @@ pnpm db:migrate
 pnpm dev
 ```
 
-The web app is available at <http://127.0.0.1:4300>, the API at
-<http://127.0.0.1:4301>, and worker health at <http://127.0.0.1:4302>. `pnpm dev`
-starts all three application processes. Structured state remains in
+The web app listens on port `4300` on every network interface and is available
+locally at <http://127.0.0.1:4300>. The API remains at
+<http://127.0.0.1:4301>, and worker health remains at
+<http://127.0.0.1:4302>. `pnpm dev` starts all three application processes.
+Browser origins are denied unless they appear exactly in `WEB_ORIGINS`; to use
+the app from the local network, copy `.env.example` to `.env`, replace its
+example LAN address with the server's current address, and open
+`http://<server-lan-address>:4300`. Structured state remains in
 `.local/veylta.sqlite` and document bytes remain below `.local/storage`
 across process restarts. The SQLite connection enables foreign keys, a bounded
 busy timeout, and WAL mode. Defaults match `.env.example`; copy it to `.env`
@@ -242,10 +252,12 @@ it fails closed rather than omitting older data. It is a local synthetic export,
 not a restore or production backup. Account setup asks for no email and stores a
 versioned scrypt password hash. The opaque session token exists only in an
 HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is disabled
-by default and enabled only by the E2E runner for legacy synthetic scenarios,
-while both web and API bind only to loopback.
-`DEMO_REGISTRATION_ENABLED=true` is rejected with a non-loopback `API_HOST`, and
-state-changing requests require the exact configured `WEB_ORIGIN`.
+by default and enabled only by the E2E runner for legacy synthetic scenarios.
+The web proxy can accept trusted LAN clients, while the API, worker health
+endpoint, and document-agent MCP transport remain bound to loopback.
+`DEMO_REGISTRATION_ENABLED=true` is rejected when either the API or any trusted
+web origin is non-loopback, and state-changing requests require an exact match
+in the configured `WEB_ORIGINS` allowlist.
 
 An owner can also use the explicit `profile-archive/v1` workflow to hide a
 non-last active profile. Archiving changes only the profile's reversible access

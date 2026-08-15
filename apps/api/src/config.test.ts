@@ -28,9 +28,24 @@ test("demo registration cannot bind to a non-loopback API host", () => {
       API_HOST: "0.0.0.0",
       DEMO_REGISTRATION_ENABLED: "true",
       WEB_ORIGIN: "http://127.0.0.1:4300",
+      WEB_ORIGINS: undefined,
     },
     () => {
       assert.throws(() => loadConfig(), /DEMO_REGISTRATION_ENABLED requires a loopback API_HOST/);
+    },
+  );
+});
+
+test("demo registration cannot be proxied from a LAN browser origin", () => {
+  withEnvironment(
+    {
+      API_HOST: "127.0.0.1",
+      DEMO_REGISTRATION_ENABLED: "true",
+      WEB_ORIGIN: undefined,
+      WEB_ORIGINS: "http://127.0.0.1:4300,http://192.168.2.186:4300",
+    },
+    () => {
+      assert.throws(() => loadConfig(), /loopback WEB_ORIGINS/);
     },
   );
 });
@@ -41,13 +56,36 @@ test("demo registration is disabled unless it is explicitly configured", () => {
       API_HOST: "0.0.0.0",
       DEMO_REGISTRATION_ENABLED: undefined,
       WEB_ORIGIN: "https://veylta.invalid",
+      WEB_ORIGINS: undefined,
     },
     () => {
       const config = loadConfig();
       assert.equal(config.demoRegistrationEnabled, false);
-      assert.equal(config.webOrigin, "https://veylta.invalid");
+      assert.deepEqual(config.webOrigins, ["https://veylta.invalid"]);
     },
   );
+});
+
+test("trusted web origins are an explicit exact allowlist", () => {
+  withEnvironment(
+    {
+      WEB_ORIGIN: undefined,
+      WEB_ORIGINS: "http://127.0.0.1:4300, http://192.168.2.186:4300",
+    },
+    () => {
+      assert.deepEqual(loadConfig().webOrigins, [
+        "http://127.0.0.1:4300",
+        "http://192.168.2.186:4300",
+      ]);
+    },
+  );
+
+  withEnvironment({ WEB_ORIGIN: undefined, WEB_ORIGINS: "http://127.0.0.1:4300," }, () => {
+    assert.throws(() => loadConfig(), /WEB_ORIGINS/);
+  });
+  withEnvironment({ WEB_ORIGIN: undefined, WEB_ORIGINS: "http://192.168.2.0/24" }, () => {
+    assert.throws(() => loadConfig(), /WEB_ORIGINS/);
+  });
 });
 
 test("the configured document limit cannot exceed the contract and database boundary", () => {

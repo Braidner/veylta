@@ -13,8 +13,7 @@ import type {
   CodexReasoningEffort,
   CodexRuntimeActionResponse,
   CodexServiceTier,
-  DocumentAgentConversationResponse,
-  DocumentAgentMessage,
+  DocumentAgentWorkspaceResponse,
   DocumentDeleteResponse,
   DocumentDetail,
   DocumentDetailResponse,
@@ -72,9 +71,7 @@ import {
   History,
   House,
   LogOut,
-  MessageCircle,
   Search,
-  Send,
   Settings,
   ShieldCheck,
   Trash2,
@@ -95,6 +92,7 @@ import {
   useState,
 } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
+import { DocumentAgentWorkspace } from "./document-agent-workspace";
 import { DocumentHero } from "./document-hero";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
@@ -6168,6 +6166,13 @@ function DocumentProcessingPanel({
           familyId={familyId}
           profileId={profileId}
           documentId={savedDocument.id}
+          documentName={savedDocument.originalFilename}
+          documentUploadedAt={savedDocument.uploadedAt}
+          workspaceRefreshKey={
+            processing.state === "not_started"
+              ? processing.state
+              : `${processing.state}:${processing.updatedAt}`
+          }
           suggestedMessage={suggestedAgentMessage}
         />
       ) : null}
@@ -6177,7 +6182,7 @@ function DocumentProcessingPanel({
 
 type DocumentAgentState =
   | { kind: "loading" }
-  | { kind: "ready"; messages: readonly DocumentAgentMessage[] }
+  | { kind: "ready"; workspace: DocumentAgentWorkspaceResponse }
   | { kind: "error" };
 
 interface DocumentAgentAttempt {
@@ -6185,33 +6190,52 @@ interface DocumentAgentAttempt {
   message: string;
 }
 
+interface DocumentAgentConversationAttempt {
+  key: string;
+  title: string;
+}
+
 function DocumentAgentPanel({
   familyId,
   profileId,
   documentId,
+  documentName,
+  documentUploadedAt,
+  workspaceRefreshKey,
   suggestedMessage,
 }: {
   familyId: string;
   profileId: string;
   documentId: string;
+  documentName: string;
+  documentUploadedAt: string;
+  workspaceRefreshKey: string;
   suggestedMessage: { id: string; prompt: string } | null;
 }) {
   const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
+  const [isSwitching, setIsSwitching] = useState(false);
   const [message, setMessage] = useState("");
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<string | null>(null);
   const attemptRef = useRef<DocumentAgentAttempt | null>(null);
+  const conversationAttemptRef = useRef<DocumentAgentConversationAttempt | null>(null);
+  const loadedWorkspaceRefreshKey = useRef(workspaceRefreshKey);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endpoint = documentAgentPath(familyId, profileId, documentId);
 
-  const loadConversation = useCallback(
-    async (signal?: AbortSignal): Promise<void> => {
+  const loadWorkspace = useCallback(
+    async (conversationId?: string, signal?: AbortSignal): Promise<void> => {
       try {
-        const response = await apiRequest<DocumentAgentConversationResponse>(
-          endpoint,
+        const query =
+          conversationId === undefined
+            ? ""
+            : `?conversationId=${encodeURIComponent(conversationId)}`;
+        const response = await apiRequest<DocumentAgentWorkspaceResponse>(
+          `${endpoint}${query}`,
           signal === undefined ? undefined : { signal },
         );
-        if (!signal?.aborted) setState({ kind: "ready", messages: response.messages });
+        if (!signal?.aborted) setState({ kind: "ready", workspace: response });
       } catch {
         if (!signal?.aborted) setState({ kind: "error" });
       }
@@ -6225,10 +6249,21 @@ function DocumentAgentPanel({
     setMessage("");
     setPendingMessage(null);
     setSendError(null);
+    setCreateError(null);
+    setIsSwitching(false);
     attemptRef.current = null;
-    void loadConversation(controller.signal);
+    conversationAttemptRef.current = null;
+    void loadWorkspace(undefined, controller.signal);
     return () => controller.abort();
-  }, [loadConversation]);
+  }, [loadWorkspace]);
+
+  useEffect(() => {
+    if (loadedWorkspaceRefreshKey.current === workspaceRefreshKey) return;
+    loadedWorkspaceRefreshKey.current = workspaceRefreshKey;
+    const conversationId =
+      state.kind === "ready" ? (state.workspace.selectedConversationId ?? undefined) : undefined;
+    void loadWorkspace(conversationId);
+  }, [loadWorkspace, state, workspaceRefreshKey]);
 
   useEffect(() => {
     if (suggestedMessage === null) return;
@@ -6237,10 +6272,62 @@ function DocumentAgentPanel({
     composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, [suggestedMessage]);
 
+  async function handleSelectConversation(conversationId: string): Promise<void> {
+    if (
+      isSwitching ||
+      (state.kind === "ready" && state.workspace.selectedConversationId === conversationId)
+    ) {
+      return;
+    }
+    setIsSwitching(true);
+    setSendError(null);
+    setMessage("");
+    await loadWorkspace(conversationId);
+    setIsSwitching(false);
+  }
+
+  async function handleCreateConversation(title: string): Promise<boolean> {
+    const previousAttempt = conversationAttemptRef.current;
+    const attempt =
+      previousAttempt?.title === title ? previousAttempt : { key: crypto.randomUUID(), title };
+    conversationAttemptRef.current = attempt;
+    setCreateError(null);
+    try {
+      const response = await apiRequest<DocumentAgentWorkspaceResponse>(
+        `${endpoint}/conversations`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": attempt.key },
+          body: JSON.stringify({ title }),
+        },
+      );
+      setState({ kind: "ready", workspace: response });
+      setMessage("");
+      conversationAttemptRef.current = null;
+      return true;
+    } catch (error) {
+      if (error instanceof ApiError && error.status < 500) conversationAttemptRef.current = null;
+      setCreateError(
+        error instanceof ApiError && error.status === 409
+          ? "Нельзя создать больше 20 диалогов для одного документа."
+          : "Не удалось создать диалог. Проверьте соединение и повторите.",
+      );
+      return false;
+    }
+  }
+
   async function handleSend(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
     const normalized = message.trim();
-    if (normalized.length === 0 || normalized.length > 2_000 || pendingMessage !== null) return;
+    if (
+      normalized.length === 0 ||
+      normalized.length > 2_000 ||
+      pendingMessage !== null ||
+      state.kind !== "ready" ||
+      state.workspace.selectedConversationId === null
+    ) {
+      return;
+    }
 
     const previousAttempt = attemptRef.current;
     const attempt =
@@ -6251,12 +6338,15 @@ function DocumentAgentPanel({
     setPendingMessage(normalized);
     setSendError(null);
     try {
-      const response = await apiRequest<DocumentAgentConversationResponse>(`${endpoint}/messages`, {
-        method: "POST",
-        headers: { "Idempotency-Key": attempt.key },
-        body: JSON.stringify({ message: normalized }),
-      });
-      setState({ kind: "ready", messages: response.messages });
+      const response = await apiRequest<DocumentAgentWorkspaceResponse>(
+        `${endpoint}/conversations/${encodeURIComponent(state.workspace.selectedConversationId)}/messages`,
+        {
+          method: "POST",
+          headers: { "Idempotency-Key": attempt.key },
+          body: JSON.stringify({ message: normalized }),
+        },
+      );
+      setState({ kind: "ready", workspace: response });
       setMessage("");
       attemptRef.current = null;
     } catch (error) {
@@ -6271,118 +6361,25 @@ function DocumentAgentPanel({
     }
   }
 
-  const messages = state.kind === "ready" ? state.messages : [];
-
   return (
-    <section className="document-agent" aria-labelledby="document-agent-title">
-      <header className="document-agent__heading">
-        <span className="document-agent__icon" aria-hidden="true">
-          <MessageCircle size={20} strokeWidth={1.8} />
-        </span>
-        <div>
-          <p className="context-line">Контекст этого источника</p>
-          <h3 id="document-agent-title">Диалог с Codex</h3>
-          <p>Уточняйте пропущенные поля и направляйте повторную проверку обычным русским языком.</p>
-        </div>
-      </header>
-
-      <div className="document-agent__disclosure">
-        <Bot size={18} strokeWidth={1.8} aria-hidden="true" />
-        <div>
-          <strong>Codex получает только контекст этого документа</strong>
-          <p>
-            Сообщение и ограниченные извлечённые данные уходят в модель через вашу локальную
-            подписку. Исходный файл остаётся в хранилище Veylta. Codex ничего не подтверждает и не
-            меняет автоматически.
-          </p>
-        </div>
-      </div>
-
-      <div className="document-agent__conversation" aria-live="polite">
-        {state.kind === "loading" ? (
-          <div className="document-agent__loading" role="status" aria-label="Загружаем диалог">
-            <span />
-            <span />
-            <span />
-          </div>
-        ) : null}
-        {state.kind === "error" ? (
-          <div className="document-agent__empty" role="status">
-            <strong>Диалог пока не открылся</strong>
-            <p>Документ не изменён. Попробуйте обновить страницу.</p>
-          </div>
-        ) : null}
-        {state.kind === "ready" && messages.length === 0 ? (
-          <div className="document-agent__empty">
-            <strong>Начните с конкретного вопроса</strong>
-            <p>Например: «Каких полей не хватает?» или «Проверь ещё раз дату биоматериала».</p>
-          </div>
-        ) : null}
-        {messages.map((item) => (
-          <article
-            className={`document-agent__message document-agent__message--${item.role}`}
-            key={item.id}
-          >
-            <div className="document-agent__message-meta">
-              <strong>{item.role === "assistant" ? "Codex" : "Вы"}</strong>
-              <time dateTime={item.createdAt}>{formatTime(item.createdAt)}</time>
-            </div>
-            <p>{item.text}</p>
-            {item.provenance !== null ? <small>{item.provenance.modelId}</small> : null}
-          </article>
-        ))}
-        {pendingMessage !== null ? (
-          <>
-            <article className="document-agent__message document-agent__message--user is-pending">
-              <div className="document-agent__message-meta">
-                <strong>Вы</strong>
-                <span>Отправляется</span>
-              </div>
-              <p>{pendingMessage}</p>
-            </article>
-            <div className="document-agent__waiting" role="status">
-              <Bot size={18} strokeWidth={1.8} aria-hidden="true" />
-              <span>Ждём полный проверенный ответ Codex…</span>
-            </div>
-          </>
-        ) : null}
-      </div>
-
-      <form className="document-agent__composer" onSubmit={handleSend}>
-        <label htmlFor="document-agent-message">Сообщение для Codex</label>
-        <div className="document-agent__composer-row">
-          <textarea
-            ref={composerRef}
-            id="document-agent-message"
-            value={message}
-            maxLength={2_000}
-            rows={3}
-            placeholder="Например: проверь ещё раз лабораторию и дату биоматериала"
-            onChange={(event) => setMessage(event.target.value)}
-            disabled={pendingMessage !== null || state.kind === "loading"}
-          />
-          <button
-            className="button button--primary document-agent__send"
-            type="submit"
-            disabled={
-              message.trim().length === 0 || pendingMessage !== null || state.kind !== "ready"
-            }
-          >
-            <span>Отправить</span>
-            <Send size={17} strokeWidth={2} aria-hidden="true" />
-          </button>
-        </div>
-        <div className="document-agent__composer-meta">
-          <span>{message.length} / 2000</span>
-          <span>Ответ появится целиком после проверки структуры.</span>
-        </div>
-        {sendError !== null ? (
-          <p className="form-error" role="alert">
-            {sendError}
-          </p>
-        ) : null}
-      </form>
-    </section>
+    <DocumentAgentWorkspace
+      workspace={state.kind === "ready" ? state.workspace : null}
+      documentName={documentName}
+      documentUploadedAt={documentUploadedAt}
+      documentContentHref={`${apiPrefix}/v1${documentPath(familyId, profileId, documentId)}/content`}
+      isLoading={state.kind === "loading"}
+      isSwitching={isSwitching}
+      loadError={state.kind === "error"}
+      message={message}
+      pendingMessage={pendingMessage}
+      sendError={sendError}
+      createError={createError}
+      composerRef={composerRef}
+      onMessageChange={setMessage}
+      onSelectConversation={(conversationId) => void handleSelectConversation(conversationId)}
+      onCreateConversation={handleCreateConversation}
+      onSend={(event) => void handleSend(event)}
+    />
   );
 }
 
