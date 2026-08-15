@@ -538,15 +538,6 @@ function parseStructuredResult(
   };
 }
 
-function sourceMarksAboveRange(fragment: string): boolean {
-  return (
-    /(?:^|[\s|;,(])H(?:$|[\s|;,)])/u.test(fragment) ||
-    /[↑⬆]|(?:^|[^\p{L}\p{N}])(?:high|above(?:\s+range)?|повышен(?:о|а|ы)?|выше\s+(?:диапазона|нормы)|высок(?:ий|ая|ое|ие)?)(?:$|[^\p{L}\p{N}])/iu.test(
-      fragment,
-    )
-  );
-}
-
 function numericSourceValue(value: string | null | undefined): number | null {
   if (value === null || value === undefined) return null;
   const normalized = value.trim().replace(",", ".");
@@ -555,29 +546,19 @@ function numericSourceValue(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function printedUpperRange(fragment: string): number | null {
-  const oneSided = fragment.match(
-    /(?:<=|<|≤)\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))|(?:до|up\s+to|maximum|max)\s*:?\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/iu,
-  );
-  const oneSidedValue = numericSourceValue(oneSided?.[1] ?? oneSided?.[2]);
-  if (oneSidedValue !== null) return oneSidedValue;
-
-  const interval = fragment.match(
-    /(?:reference|range|референс(?:ный)?(?:\s+диапазон)?|диапазон|норма)\s*:?\s*[+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)\s*(?:—|–|-)\s*([+-]?(?:\d+(?:[.,]\d+)?|[.,]\d+))/iu,
-  );
-  return numericSourceValue(interval?.[1]);
-}
-
-function sourceProvesAboveRange(
-  result: DocumentIntelligenceStructuredResult,
-  fact: StrictLabExtractionFact | undefined,
-): boolean {
-  const evidence = fact?.source.fragment ?? result.source.fragment;
-  if (sourceMarksAboveRange(result.source.fragment) || sourceMarksAboveRange(evidence)) return true;
-
-  const value = numericSourceValue(result.value);
-  const upper = printedUpperRange(evidence) ?? printedUpperRange(result.source.fragment);
-  return value !== null && upper !== null && value > upper;
+/**
+ * Veylta decides range membership itself, from the bounds the model transcribed out of the
+ * document. The model's own status is never taken on trust: a claim it cannot support is
+ * downgraded rather than accepted, and a run is never failed over one status.
+ */
+function computedAboveRange(fact: StrictLabExtractionFact | undefined): boolean | null {
+  const range = fact?.referenceRange;
+  if (range === undefined || range === null) return null;
+  if (range.laboratoryOutOfRange === true) return true;
+  const value = numericSourceValue(fact?.sourceValue);
+  const upper = numericSourceValue(range.sourceHigh);
+  if (value === null || upper === null) return null;
+  return value > upper;
 }
 
 function parseFact(
@@ -766,14 +747,13 @@ function parseOutput(
           result.source.fragment.includes(fact.source.fragment)),
     );
     if (matchingFacts.length > 1) invalidOutput("duplicate_binding");
-    const aboveRange = sourceProvesAboveRange(result, matchingFacts[0]);
-    if (result.status === "above_range" && !aboveRange) {
-      invalidOutput("unproven_above_range");
-    }
+    const aboveRange = computedAboveRange(matchingFacts[0]);
     const normalizedResult =
-      aboveRange && result.status !== "above_range"
+      aboveRange === true
         ? ({ ...result, status: "above_range" } as const)
-        : result;
+        : result.status === "above_range"
+          ? ({ ...result, status: "unknown" } as const)
+          : result;
     const sameKeyFact = facts.find((fact) => fact.factKey === result.resultKey);
     if (sameKeyFact !== undefined && !matchingFacts.includes(sameKeyFact))
       invalidOutput("duplicate_binding");
