@@ -150,9 +150,12 @@ real-data readiness claim.
   synthetic deployments. Controlled reads take a bounded, checksum-verified
   snapshot (the current synthetic-document cap is 5 MiB) before returning bytes.
 - Provider-neutral `DocumentIntelligenceProvider` boundary with a Codex CLI
-  implementation. Local bounded PDF/OCR transport produces page evidence;
+  implementation. A PDF text layer travels as text; a scanned PDF or a direct
+  PNG/JPEG travels as bounded page images that Codex transcribes itself.
   Codex classifies the document and returns a closed, source-bound schema.
-  Results are rejected unless every fact cites an exact source fragment.
+  Results are rejected unless every fact cites an exact source fragment of the
+  page text — the text layer, or the model's own transcription for an image.
+  No local OCR engine is installed.
 - `document-agent/v2` stores named append-only Russian conversations and exact
   Codex model/runtime provenance in SQLite, while processing runs stay
   explicitly ephemeral. The official MCP SDK exposes one short-lived,
@@ -225,11 +228,12 @@ MIME/signature, size, and SHA-256 checks, and
 keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
 reported only inside the same family; it creates another logical document but
 not another blob. Source download is authorized again and returned as a safe
-attachment. The worker polls the same SQLite file and uses PDF.js plus bounded
-local OCR to produce page evidence. For an
-image-only PDF it renders at most three bounded pages; direct PNG/JPEG uses the
-same local English OCR model after a header pixel-cap check. After explicit UI
-disclosure, page content is sent to the locally authenticated Codex CLI. Codex
+attachment. The worker polls the same SQLite file and uses PDF.js to read the
+text layer. For an image-only PDF it renders at most three bounded pages to PNG;
+a direct PNG/JPEG passes a header and pixel-cap check and is used as one page
+image. After explicit UI disclosure, page text — or the page images — is sent
+to the locally authenticated Codex CLI, which transcribes any image page before
+extracting from it. Codex
 classifies and distributes documents into archive sections, while a strict
 post-validator rejects invented or unbound facts. Extracted facts are proposals
 for review, never confirmed medical observations by themselves. A user

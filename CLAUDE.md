@@ -84,11 +84,13 @@ pnpm test:e2e e2e/document-review.spec.ts
   `.tsx`. See `document-agent-workspace.ts`, `profile-dashboard.ts`, `account-access.ts`.
 - `scripts/run-e2e.mjs` puts a **fake `codex` executable** on `PATH` for the whole e2e run.
   Changing the CLI invocation shape (flags, schema, output file) means updating that stub.
+  For `--image` it "transcribes" one fixed synthetic report per attached page, as does
+  `apps/api/test/synthetic-intelligence.ts` — neither reads pixels; tests exercise plumbing.
 - Some e2e specs stub the API with `page.route`. A stub that drifts from the real contract
   is worse than no stub — update it in the same change as the contract.
-- Known flaky under a full-suite run and failing on `main` too: `document-agent.spec.ts:27`
-  and `document-review.spec.ts:178`. Both pass in isolation. Check `main` before blaming
-  your change.
+- Known flaky under a full-suite run: `document-review.spec.ts:178` (fails every full run,
+  passes alone) and `document-agent.spec.ts:27` (a last-write-wins race in the spec's own
+  mock; passes alone). Check `main` before blaming your change.
 
 # Architecture
 
@@ -100,9 +102,6 @@ opens `BEGIN IMMEDIATE`. No ORM.
 migration MUST bump it, or `/readyz` reports OK against a database missing the newest
 tables and the failure surfaces as a request-time 500 instead. Every migration needs a
 working `.down.sql` because CI rolls back and re-applies.
-
-> Known drift: the constant is `0023_document_lifecycle` while `0024_document_agent_threads`
-> is newest. A database left at 0023 passes `/readyz`, then 500s on conversation creation.
 
 **Versioned contracts.** `packages/contracts/src/index.ts` exports one `*_CONTRACT_VERSION`
 per public boundary. Read the file — do not trust a version quoted elsewhere, including
@@ -119,9 +118,13 @@ never proof of access.
 **Codex boundary.** All model access goes through `codex/codex-cli-executor.ts`, which
 shells out to the local `codex` CLI, strips `OPENAI_*` from the child environment, bounds
 input/output bytes, and kills on timeout. Veylta never reads, copies, or persists Codex
-credentials. The per-document agent registers a short-lived loopback MCP endpoint whose
-only tool re-authorizes the server-derived scope and returns bounded projections — never
-storage keys, paths, or file bytes.
+credentials. **There is no local OCR.** A PDF text layer travels as text; a scanned PDF or a
+direct PNG/JPEG travels as bounded page images (`processing/document-images.ts`) attached with
+`--image`, and the model must transcribe each page first. Every fragment is bound to that
+transcription exactly as to a text layer; the page is stored with
+`extraction_method = codex_vision`. A run sends text or images, never both. The per-document
+agent registers a short-lived loopback MCP endpoint whose only tool re-authorizes the
+server-derived scope and returns bounded projections — never storage keys, paths, or file bytes.
 
 **Document workspace: two different "threads."** «Диалоги» are user-created
 `document_agent_conversations`; «Запуски Codex» are `processing_jobs`. Both arrive in one
@@ -136,6 +139,15 @@ response cannot appear under the wrong run's heading.
 runtime port for api and worker. Uploads stream through SHA-256; controlled reads take a
 bounded checksum-verified snapshot before returning bytes. Keys derive from trusted IDs +
 checksum, never user filenames.
+
+**Settings serves two audiences.** Server administration (Codex, storage, accounts) is
+admin-only; family profiles and access («Профили и доступ») are for any family owner and never
+call `/v1/settings`. `canOpenSettings` gates the tab; a link from a profile carries
+`?profile=` so management opens on that person. Profile management is not on the documents tab.
+
+**One hero.** `components/page-hero.tsx` is the shell for both the document detail page and
+the documents archive; the two wrappers stay thin. On those tabs the profile heading steps
+aside, so the tab-level `padding-top` is removed for `.profile-shell--documents` too.
 
 **Web ↔ API.** The browser never calls port 4301; `next.config.ts` rewrites
 `/health-api/:path*` to `API_INTERNAL_URL`. Session state is an opaque token in an HttpOnly

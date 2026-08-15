@@ -94,13 +94,14 @@ profile. Server-side authorization evaluates that grant on every read; it never
 implies upload, extraction review, retry, invitations, or audit-log access. This
 is not a production identity or full consent system.
 
-The first vertical slice uses a deterministic, versioned parser for one
-synthetic report grammar. PDF reads the text layer first and, only when that layer is
-missing, applies bounded local English OCR to rendered PDF pages. Direct PNG/JPEG
-checks the encoded header and pixels before the same local OCR and strict grammar
-check. It does not invoke an external OCR provider or
-an LLM. The optional S3 adapter is a storage boundary, not document egress to
-an OCR/LLM provider; it remains disabled unless explicitly configured.
+PDF reads the text layer first. When that layer is missing, the worker renders at
+most three bounded pages to PNG; a direct PNG/JPEG passes a header and pixel-cap
+check and becomes one page image. Image pages are attached to the locally
+authenticated Codex CLI, which must transcribe each page before extracting from
+it; every fragment is then bound to that transcription exactly as it is bound to
+a text layer, and the stored page records `codex_vision` as its method. No local
+OCR engine runs on the household machine. The optional S3 adapter is a storage
+boundary, not document egress; it remains disabled unless explicitly configured.
 
 ## System context
 
@@ -114,8 +115,8 @@ flowchart LR
   J --> O
   O --> L["Persistent local filesystem (default)"]
   O -. "explicit adapter" .-> S["S3-compatible storage (optional)"]
-  J --> Q["Local bounded synthetic PDF/image OCR"]
-  J -. "future, owner opt-in" .-> X["External OCR providers"]
+  J --> Q["PDF text layer, or bounded page images"]
+  J -. "acknowledged analysis" .-> X["Local Codex CLI (reads text or images)"]
 ```
 
 The browser never accesses the database or a storage path directly. The API
@@ -435,8 +436,6 @@ job identifiers, filenames, text, values, and stack traces.
 ## Evolution boundaries
 
 - Add an S3 adapter without changing domain code or HTTP semantics.
-- Add OCR behind a versioned provider contract only after document security
-  checks and explicit owner egress configuration.
 - Add LLM providers behind independent adapters; route all inputs/outputs through
   deterministic pre/post safety rules and strict versioned schemas.
 - Add FHIR R4 mapping at import/export edges. The internal model remains compact
