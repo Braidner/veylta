@@ -2434,19 +2434,6 @@ h3 {
   border-bottom: 1px solid var(--color-line);
 }
 
-.profile-overview__section--review {
-  padding: 22px 24px;
-  margin: 24px 0 4px;
-  background: oklch(0.985 0.012 80);
-  border: 1px solid oklch(0.9 0.035 80);
-  border-radius: 14px;
-}
-
-.profile-overview__section--review.profile-overview__section--quiet {
-  background: var(--color-surface);
-  border-color: var(--color-line);
-}
-
 .profile-overview__section-heading,
 .profile-overview__row {
   display: flex;
@@ -2475,17 +2462,6 @@ h3 {
   place-items: center;
   font-size: 0.8125rem;
   font-weight: 750;
-}
-
-.profile-overview__section--review .profile-overview__count {
-  color: var(--color-warning);
-  background: var(--color-canvas);
-  border-color: oklch(0.84 0.07 75);
-}
-
-.profile-overview__section--quiet .profile-overview__count {
-  color: var(--color-muted);
-  border-color: var(--color-line);
 }
 
 .profile-overview__list {
@@ -2550,23 +2526,20 @@ h3 {
   font-size: 0.9375rem;
 }
 
-.document-archive-row__identity,
-.review-queue-row__identity {
+.document-archive-row__identity {
   display: flex;
   min-width: 0;
   gap: 12px;
   align-items: center;
 }
 
-.document-archive-row__identity > div,
-.review-queue-row__identity > div {
+.document-archive-row__identity > div {
   display: grid;
   min-width: 0;
   gap: 4px;
 }
 
-.document-archive-row__icon,
-.review-queue-row__mark {
+.document-archive-row__icon {
   display: grid;
   flex: 0 0 auto;
   width: 34px;
@@ -2575,13 +2548,6 @@ h3 {
   background: var(--color-surface);
   border-radius: 9px;
   place-items: center;
-}
-
-.review-queue-row__mark {
-  color: var(--color-warning);
-  background: var(--color-canvas);
-  border: 1px solid oklch(0.87 0.06 75);
-  font-weight: 800;
 }
 
 .document-archive-row__actions {
@@ -2626,13 +2592,6 @@ h3 {
 
 .document-archive-row__open:hover .document-archive-row__arrow {
   transform: translateX(2px);
-}
-
-.review-queue-row__action {
-  flex: 0 0 auto;
-  gap: 8px;
-  min-height: 38px;
-  white-space: nowrap;
 }
 
 .profile-overview__row span,
@@ -5452,7 +5411,6 @@ body:has(.upload-dialog[open]) {
     text-align: left;
   }
 
-  .review-queue-row__action,
   .document-review__bulk .button {
     align-self: flex-start;
   }
@@ -7926,35 +7884,11 @@ body:has(.upload-dialog[open]) {
   }
 }
 
-/* `.profile-overview__row > div` turns every child div into a grid, which stacked the review
-   mark above its filename. The identity block is a flex row and says so at higher specificity. */
-.profile-overview__row > .review-queue-row__identity,
+/* `.profile-overview__row > div` turns every child div into a grid,
 .profile-overview__row > .document-archive-row__identity {
   display: flex;
   gap: 12px;
   align-items: center;
-}
-
-/* Same `> div` grid override applies to the actions block; declare it as a flex row too. */
-.profile-overview__row > .review-queue-row__actions {
-  display: flex;
-  flex: 0 0 auto;
-  gap: 8px;
-  align-items: center;
-  justify-content: flex-end;
-}
-
-/* Two verbs of equal weight; the check icon already says which one decides. */
-.review-queue-row__actions .review-queue-row__action {
-  gap: 8px;
-  min-height: 38px;
-  color: var(--color-primary);
-  background: oklch(0.96 0.02 260);
-  border: 1px solid transparent;
-}
-
-.review-queue-row__actions .review-queue-row__action:hover:not(:disabled) {
-  border-color: oklch(0.78 0.07 260);
 }
 
 .document-archive-row__restart {
@@ -8000,13 +7934,6 @@ body:has(.upload-dialog[open]) {
 
 [data-testid="documents-hero"] h1 {
   font-size: clamp(2.25rem, 4vw, 3.5rem);
-}
-
-@media (max-width: 900px) {
-  .profile-overview__row > .review-queue-row__actions {
-    flex-wrap: wrap;
-    justify-content: flex-start;
-  }
 }
 
 @media (prefers-reduced-motion: reduce) {
