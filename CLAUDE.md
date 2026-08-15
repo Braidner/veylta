@@ -126,8 +126,11 @@ storage keys, paths, or file bytes.
 **Document workspace: two different "threads."** «Диалоги» are user-created
 `document_agent_conversations`; «Запуски Codex» are `processing_jobs`. Both arrive in one
 `DocumentAgentWorkspaceResponse`, **newest run first**, and run titles («Первичный анализ»,
-«Повторный анализ N») are derived positionally, not stored. Selecting a run pins
-`GET …/processing?runId=`; without it the journal follows the newest run.
+«Повторный анализ N») are derived positionally, not stored. The rail selects what the main
+panel shows: a run id pins `GET …/processing?runId=` and renders that run's journal there;
+null returns the panel to the conversation. There is no standalone journal section — the
+panel renders a journal only while `activityRunId` matches the pinned run, so a slower
+response cannot appear under the wrong run's heading.
 
 **Object storage** is behind `ObjectStorage/v1`. `storage-controller.ts` is the only
 runtime port for api and worker. Uploads stream through SHA-256; controlled reads take a

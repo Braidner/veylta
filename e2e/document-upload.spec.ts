@@ -55,7 +55,8 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   await expect(
     page.getByRole("heading", { name: "Черновые значения ждут проверки" }),
   ).toBeVisible();
-  const activity = page.getByRole("region", { name: "Ход обработки" });
+  await page.getByRole("button", { name: /Первичный анализ/ }).click();
+  const activity = page.getByRole("region", { name: "Первичный анализ" });
   await expect(activity.getByText("Документ поставлен в очередь")).toBeVisible();
   await expect(activity.getByText("Codex разбирает данные документа")).toBeVisible();
   await expect(activity.getByText("Результат сохранён для проверки")).toBeVisible();
@@ -66,9 +67,10 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
     page.getByRole("heading", { level: 1, name: "Синтетические лабораторные результаты" }),
   ).toBeVisible();
   await expect(page.getByText(filename, { exact: false }).first()).toBeVisible();
+  await page.getByRole("button", { name: /Первичный анализ/ }).click();
   await expect(
     page
-      .getByRole("region", { name: "Ход обработки" })
+      .getByRole("region", { name: "Первичный анализ" })
       .getByText("Результат сохранён для проверки"),
   ).toBeVisible();
 
@@ -177,6 +179,7 @@ test("a restart command reuses its idempotency key after a transient browser fai
           contractVersion: "document/v6",
           documentId,
           processing,
+          activityRunId: "3f2c9a41-5c0b-4a1e-8f7d-2b6c9d0e1a34",
           activity:
             restartAttempts >= 2
               ? [{ code: "queued", attempt: 0, occurredAt: "2026-08-12T12:00:01.000Z" }]

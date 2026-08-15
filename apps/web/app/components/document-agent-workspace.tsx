@@ -1,6 +1,11 @@
 "use client";
 
-import type { DocumentAgentMessage, DocumentAgentWorkspaceResponse } from "@veylta/contracts";
+import type {
+  DocumentAgentMessage,
+  DocumentAgentRunSummary,
+  DocumentAgentWorkspaceResponse,
+  DocumentProcessingActivityEvent,
+} from "@veylta/contracts";
 import {
   Bot,
   CheckCircle2,
@@ -14,10 +19,10 @@ import {
 } from "lucide-react";
 import { type FormEvent, type RefObject, useId, useMemo, useState } from "react";
 import {
-  activeDocumentAgentRunId,
   documentAgentConversationPreview,
   documentAgentRunPresentation,
 } from "../document-agent-workspace";
+import { processingActivityCopy } from "../document-processing-activity";
 
 interface DocumentAgentWorkspaceProps {
   readonly workspace: DocumentAgentWorkspaceResponse | null;
@@ -32,9 +37,12 @@ interface DocumentAgentWorkspaceProps {
   readonly sendError: string | null;
   readonly createError: string | null;
   readonly selectedRunId: string | null;
+  readonly activityRunId: string | null;
+  readonly activity: readonly DocumentProcessingActivityEvent[];
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly onMessageChange: (message: string) => void;
-  readonly onSelectRun: (runId: string) => void;
+  /** null closes the journal and returns the panel to the conversation. */
+  readonly onSelectRun: (runId: string | null) => void;
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onCreateConversation: (title: string) => Promise<boolean>;
   readonly onSend: (event: FormEvent<HTMLFormElement>) => void;
@@ -53,6 +61,8 @@ export function DocumentAgentWorkspace({
   sendError,
   createError,
   selectedRunId,
+  activityRunId,
+  activity,
   composerRef,
   onMessageChange,
   onSelectRun,
@@ -71,7 +81,7 @@ export function DocumentAgentWorkspace({
       ) ?? null,
     [workspace],
   );
-  const activeRunId = activeDocumentAgentRunId(workspace?.runs ?? [], selectedRunId);
+  const selectedRun = workspace?.runs.find((run) => run.id === selectedRunId) ?? null;
 
   async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -190,7 +200,10 @@ export function DocumentAgentWorkspace({
                     className={`document-agent-workspace__thread${selected ? " is-selected" : ""}`}
                     key={conversation.id}
                     aria-current={selected ? "page" : undefined}
-                    onClick={() => onSelectConversation(conversation.id)}
+                    onClick={() => {
+                      onSelectRun(null);
+                      onSelectConversation(conversation.id);
+                    }}
                     disabled={isSwitching}
                   >
                     <span className="document-agent-workspace__thread-title">
@@ -214,7 +227,6 @@ export function DocumentAgentWorkspace({
                 <strong>Запуски Codex</strong>
                 <span>{workspace?.runs.length ?? 0}</span>
               </div>
-              <a href="#processing-activity-title">Вся активность</a>
             </div>
             {workspace?.runs.length === 0 && !isLoading ? (
               <p className="document-agent-workspace__rail-empty">
@@ -224,7 +236,7 @@ export function DocumentAgentWorkspace({
             <ol>
               {workspace?.runs.map((run) => {
                 const presentation = documentAgentRunPresentation(run);
-                const selected = run.id === activeRunId;
+                const selected = run.id === selectedRunId;
                 return (
                   <li key={run.id}>
                     <button
@@ -255,106 +267,201 @@ export function DocumentAgentWorkspace({
           </div>
         </aside>
 
-        <div className="document-agent-workspace__chat">
-          <header className="document-agent-workspace__chat-heading">
-            <div>
-              <span>
-                {selectedConversation === null ? "Рабочая область" : "Диалог по документу"}
-              </span>
-              <h4>{selectedConversation?.title ?? "Выберите или создайте диалог"}</h4>
-            </div>
-            {selectedConversation !== null ? (
-              <span>{formatMessageCount(selectedConversation.messageCount)}</span>
-            ) : null}
-          </header>
+        {selectedRun !== null ? (
+          <DocumentAgentRunJournal
+            run={selectedRun}
+            activity={activityRunId === selectedRun.id ? activity : null}
+            onClose={() => onSelectRun(null)}
+          />
+        ) : (
+          <div className="document-agent-workspace__chat">
+            <header className="document-agent-workspace__chat-heading">
+              <div>
+                <span>
+                  {selectedConversation === null ? "Рабочая область" : "Диалог по документу"}
+                </span>
+                <h4>{selectedConversation?.title ?? "Выберите или создайте диалог"}</h4>
+              </div>
+              {selectedConversation !== null ? (
+                <span>{formatMessageCount(selectedConversation.messageCount)}</span>
+              ) : null}
+            </header>
 
-          <div className="document-agent-workspace__privacy-note">
-            <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
-            <p>
-              <strong>Только контекст этого документа.</strong> Исходный файл остаётся в Veylta;
-              Codex ничего не подтверждает и не меняет автоматически.
-            </p>
-          </div>
-
-          <div
-            className="document-agent-workspace__conversation"
-            aria-live="polite"
-            aria-busy={isLoading || isSwitching || pendingMessage !== null}
-          >
-            {isLoading || isSwitching ? <ConversationLoading /> : null}
-            {loadError ? (
-              <ConversationEmpty
-                title="Диалоги пока не открылись"
-                copy="Документ не изменён. Обновите страницу и попробуйте снова."
-              />
-            ) : null}
-            {!isLoading && !loadError && workspace?.selectedConversationId === null ? (
-              <ConversationEmpty
-                title="Начните с отдельной темы"
-                copy="Создайте диалог слева — например, для разбора результатов или проверки даты исследования."
-              />
-            ) : null}
-            {!isLoading && !loadError && selectedConversation !== null && messages.length === 0 ? (
-              <ConversationEmpty
-                title="Задайте первый конкретный вопрос"
-                copy="Например: «Каких полей не хватает?» или «Проверь ещё раз дату биоматериала»."
-              />
-            ) : null}
-            {!isSwitching
-              ? messages.map((item) => <AgentMessage key={item.id} message={item} />)
-              : null}
-            {pendingMessage !== null ? (
-              <>
-                <article className="document-agent-workspace__message is-user is-pending">
-                  <MessageMeta name="Вы" label="Отправляется" />
-                  <p>{pendingMessage}</p>
-                </article>
-                <div className="document-agent-workspace__waiting" role="status">
-                  <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
-                  <span>Codex проверяет структуру ответа…</span>
-                </div>
-              </>
-            ) : null}
-          </div>
-
-          <form className="document-agent-workspace__composer" onSubmit={onSend}>
-            <label htmlFor="document-agent-message">Сообщение для Codex</label>
-            <div className="document-agent-workspace__composer-row">
-              <textarea
-                ref={composerRef}
-                id="document-agent-message"
-                value={message}
-                maxLength={2_000}
-                rows={3}
-                placeholder={
-                  selectedConversation === null
-                    ? "Сначала создайте диалог"
-                    : "Например: проверь ещё раз лабораторию и дату биоматериала"
-                }
-                onChange={(event) => onMessageChange(event.target.value)}
-                disabled={!canSend}
-              />
-              <button
-                className="button button--primary document-agent-workspace__send"
-                type="submit"
-                disabled={!canSend || message.trim().length === 0}
-              >
-                <span>Отправить</span>
-                <Send size={17} strokeWidth={2} aria-hidden="true" />
-              </button>
-            </div>
-            <div className="document-agent-workspace__composer-meta">
-              <span>{message.length} / 2000</span>
-              <span>Диалог сохраняется в Veylta; запуск обработки — нет.</span>
-            </div>
-            {sendError !== null ? (
-              <p className="form-error" role="alert">
-                {sendError}
+            <div className="document-agent-workspace__privacy-note">
+              <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
+              <p>
+                <strong>Только контекст этого документа.</strong> Исходный файл остаётся в Veylta;
+                Codex ничего не подтверждает и не меняет автоматически.
               </p>
-            ) : null}
-          </form>
-        </div>
+            </div>
+
+            <div
+              className="document-agent-workspace__conversation"
+              aria-live="polite"
+              aria-busy={isLoading || isSwitching || pendingMessage !== null}
+            >
+              {isLoading || isSwitching ? <ConversationLoading /> : null}
+              {loadError ? (
+                <ConversationEmpty
+                  title="Диалоги пока не открылись"
+                  copy="Документ не изменён. Обновите страницу и попробуйте снова."
+                />
+              ) : null}
+              {!isLoading && !loadError && workspace?.selectedConversationId === null ? (
+                <ConversationEmpty
+                  title="Начните с отдельной темы"
+                  copy="Создайте диалог слева — например, для разбора результатов или проверки даты исследования."
+                />
+              ) : null}
+              {!isLoading &&
+              !loadError &&
+              selectedConversation !== null &&
+              messages.length === 0 ? (
+                <ConversationEmpty
+                  title="Задайте первый конкретный вопрос"
+                  copy="Например: «Каких полей не хватает?» или «Проверь ещё раз дату биоматериала»."
+                />
+              ) : null}
+              {!isSwitching
+                ? messages.map((item) => <AgentMessage key={item.id} message={item} />)
+                : null}
+              {pendingMessage !== null ? (
+                <>
+                  <article className="document-agent-workspace__message is-user is-pending">
+                    <MessageMeta name="Вы" label="Отправляется" />
+                    <p>{pendingMessage}</p>
+                  </article>
+                  <div className="document-agent-workspace__waiting" role="status">
+                    <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
+                    <span>Codex проверяет структуру ответа…</span>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            <form className="document-agent-workspace__composer" onSubmit={onSend}>
+              <label htmlFor="document-agent-message">Сообщение для Codex</label>
+              <div className="document-agent-workspace__composer-row">
+                <textarea
+                  ref={composerRef}
+                  id="document-agent-message"
+                  value={message}
+                  maxLength={2_000}
+                  rows={3}
+                  placeholder={
+                    selectedConversation === null
+                      ? "Сначала создайте диалог"
+                      : "Например: проверь ещё раз лабораторию и дату биоматериала"
+                  }
+                  onChange={(event) => onMessageChange(event.target.value)}
+                  disabled={!canSend}
+                />
+                <button
+                  className="button button--primary document-agent-workspace__send"
+                  type="submit"
+                  disabled={!canSend || message.trim().length === 0}
+                >
+                  <span>Отправить</span>
+                  <Send size={17} strokeWidth={2} aria-hidden="true" />
+                </button>
+              </div>
+              <div className="document-agent-workspace__composer-meta">
+                <span>{message.length} / 2000</span>
+                <span>Диалог сохраняется в Veylta; запуск обработки — нет.</span>
+              </div>
+              {sendError !== null ? (
+                <p className="form-error" role="alert">
+                  {sendError}
+                </p>
+              ) : null}
+            </form>
+          </div>
+        )}
       </div>
+    </section>
+  );
+}
+
+/**
+ * The journal of one run. `activity` is null while the pinned run and the fetched journal
+ * disagree, so a slower response can never render under the wrong run's heading.
+ */
+function DocumentAgentRunJournal({
+  run,
+  activity,
+  onClose,
+}: {
+  readonly run: DocumentAgentRunSummary;
+  readonly activity: readonly DocumentProcessingActivityEvent[] | null;
+  readonly onClose: () => void;
+}) {
+  const presentation = documentAgentRunPresentation(run);
+  const live = presentation.tone === "active" || presentation.tone === "pending";
+  return (
+    <section className="document-agent-workspace__chat" aria-labelledby="document-agent-run-title">
+      <header className="document-agent-workspace__chat-heading">
+        <div>
+          <span>Запуск Codex</span>
+          <h4 id="document-agent-run-title">{run.title}</h4>
+        </div>
+        <button
+          className="document-agent-workspace__icon-button"
+          type="button"
+          aria-label="Вернуться к диалогу"
+          onClick={onClose}
+        >
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="document-agent-workspace__run-summary">
+        <span className={`processing-activity__live${live ? "" : " is-idle"}`}>
+          <span aria-hidden="true" />
+          {live ? "Обновляется" : "Журнал сохранён"}
+        </span>
+        <span>{presentation.label}</span>
+        {run.provenance !== null ? <small>{run.provenance.modelId}</small> : null}
+      </div>
+
+      <div className="document-agent-workspace__conversation" aria-busy={activity === null}>
+        {activity === null ? (
+          <ConversationLoading />
+        ) : activity.length === 0 ? (
+          <ConversationEmpty
+            title="Журнал этого запуска пуст"
+            copy="Запуск прошёл до того, как Veylta начала сохранять события обработки. Исходник и его результаты не изменились."
+          />
+        ) : (
+          <ol className="processing-activity__list">
+            {activity.map((event, index) => {
+              const copy = processingActivityCopy(event);
+              const current = live && index === activity.length - 1;
+              return (
+                <li
+                  className={
+                    current ? "processing-activity__event is-current" : "processing-activity__event"
+                  }
+                  key={`${event.occurredAt}:${event.code}:${event.attempt}`}
+                >
+                  <span className="processing-activity__node" aria-hidden="true" />
+                  <div>
+                    <div className="processing-activity__event-heading">
+                      <strong>{copy.heading}</strong>
+                      <time dateTime={event.occurredAt}>{formatAgentTime(event.occurredAt)}</time>
+                    </div>
+                    <p>{copy.detail}</p>
+                    {event.attempt > 1 ? <small>Попытка {event.attempt}</small> : null}
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        )}
+      </div>
+
+      <p className="processing-activity__boundary">
+        Журнал не показывает скрытые рассуждения, текст документа или служебный вывод Codex.
+      </p>
     </section>
   );
 }

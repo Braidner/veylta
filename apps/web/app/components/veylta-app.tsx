@@ -13,7 +13,6 @@ import type {
   CodexReasoningEffort,
   CodexRuntimeActionResponse,
   CodexServiceTier,
-  DocumentAgentRunSummary,
   DocumentAgentWorkspaceResponse,
   DocumentDeleteResponse,
   DocumentDetail,
@@ -5963,121 +5962,6 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
   }
 }
 
-interface ProcessingActivityCopy {
-  heading: string;
-  detail: string;
-}
-
-function processingActivityCopy(event: DocumentProcessingActivityEvent): ProcessingActivityCopy {
-  switch (event.code) {
-    case "queued":
-      return {
-        heading: "Документ поставлен в очередь",
-        detail: "Локальный worker принял задачу на обработку.",
-      };
-    case "security_check_started":
-      return {
-        heading: "Проверяем исходник",
-        detail: "Сверяем доступ, размер и контрольную сумму сохранённого файла.",
-      };
-    case "text_extraction_started":
-      return {
-        heading: "Извлекаем текст",
-        detail: "Текстовый слой или изображение подготавливается локально.",
-      };
-    case "document_classification_started":
-      return {
-        heading: "Определяем тип документа",
-        detail: "Codex выбирает раздел архива и понятное русское название.",
-      };
-    case "codex_analysis_started":
-      return {
-        heading: "Codex разбирает данные документа",
-        detail: "Модель формирует структурированный JSON со ссылками на фрагменты источника.",
-      };
-    case "result_validation_started":
-      return {
-        heading: "Проверяем ответ Codex",
-        detail: "Сервер проверяет структуру, типы и точные ссылки на источник.",
-      };
-    case "result_saved":
-      return {
-        heading: "Результат сохранён для проверки",
-        detail: "Черновые данные записаны отдельно от неизменяемого исходника.",
-      };
-    case "retry_scheduled":
-      return {
-        heading: "Назначена повторная попытка",
-        detail: "Предыдущая попытка завершилась безопасно; исходник не изменён.",
-      };
-    case "failed":
-      return {
-        heading: "Обработка остановлена",
-        detail: "Результат не принят. Исходник и предыдущая история сохранены.",
-      };
-  }
-}
-
-function DocumentProcessingActivity({
-  activity,
-  active,
-  runTitle,
-}: {
-  activity: readonly DocumentProcessingActivityEvent[];
-  active: boolean;
-  runTitle: string | null;
-}) {
-  return (
-    <section className="processing-activity" aria-labelledby="processing-activity-title">
-      <div className="processing-activity__heading">
-        <div>
-          <p className="context-line">
-            {runTitle === null ? "Реальные события сервера" : `Реальные события: ${runTitle}`}
-          </p>
-          <h3 id="processing-activity-title">Ход обработки</h3>
-        </div>
-        <span
-          className={active ? "processing-activity__live" : "processing-activity__live is-idle"}
-        >
-          <span aria-hidden="true" />
-          {active ? "Обновляется" : "Журнал сохранён"}
-        </span>
-      </div>
-      {activity.length === 0 ? (
-        <p className="processing-activity__empty">Ждём первое подтверждённое событие worker.</p>
-      ) : (
-        <ol className="processing-activity__list" aria-live="polite">
-          {activity.map((event, index) => {
-            const copy = processingActivityCopy(event);
-            const current = active && index === activity.length - 1;
-            return (
-              <li
-                className={
-                  current ? "processing-activity__event is-current" : "processing-activity__event"
-                }
-                key={`${event.occurredAt}:${event.code}:${event.attempt}`}
-              >
-                <span className="processing-activity__node" aria-hidden="true" />
-                <div>
-                  <div className="processing-activity__event-heading">
-                    <strong>{copy.heading}</strong>
-                    <time dateTime={event.occurredAt}>{formatTime(event.occurredAt)}</time>
-                  </div>
-                  <p>{copy.detail}</p>
-                  {event.attempt > 1 ? <small>Попытка {event.attempt}</small> : null}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-      <p className="processing-activity__boundary">
-        Журнал не показывает скрытые рассуждения, текст документа или служебный вывод Codex.
-      </p>
-    </section>
-  );
-}
-
 function DocumentProcessingPanel({
   familyId,
   profileId,
@@ -6100,9 +5984,6 @@ function DocumentProcessingPanel({
   });
   const selectedRunId = pinnedRun.documentId === savedDocument.id ? pinnedRun.runId : null;
   const [activityRunId, setActivityRunId] = useState<string | null>(null);
-  const [runs, setRuns] = useState<readonly DocumentAgentRunSummary[]>([]);
-  /** Runs arrive newest-first, so the live run is the head of the list. */
-  const latestRunId = runs[0]?.id ?? activityRunId;
 
   const refreshProcessing = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -6127,7 +6008,7 @@ function DocumentProcessingPanel({
   );
 
   const selectRun = useCallback(
-    (runId: string) => setPinnedRun({ documentId: savedDocument.id, runId }),
+    (runId: string | null) => setPinnedRun({ documentId: savedDocument.id, runId }),
     [savedDocument.id],
   );
 
@@ -6189,12 +6070,6 @@ function DocumentProcessingPanel({
         </div>
       </section>
 
-      <DocumentProcessingActivity
-        activity={activity}
-        active={isProcessingActive(processing) && activityRunId === latestRunId}
-        runTitle={runs.find((run) => run.id === activityRunId)?.title ?? null}
-      />
-
       {canWriteProfile ? (
         <DocumentAgentPanel
           familyId={familyId}
@@ -6209,8 +6084,9 @@ function DocumentProcessingPanel({
           }
           suggestedMessage={suggestedAgentMessage}
           selectedRunId={selectedRunId}
+          activityRunId={activityRunId}
+          activity={activity}
           onSelectRun={selectRun}
-          onRunsChange={setRuns}
         />
       ) : null}
     </div>
@@ -6241,8 +6117,9 @@ function DocumentAgentPanel({
   workspaceRefreshKey,
   suggestedMessage,
   selectedRunId,
+  activityRunId,
+  activity,
   onSelectRun,
-  onRunsChange,
 }: {
   familyId: string;
   profileId: string;
@@ -6252,8 +6129,9 @@ function DocumentAgentPanel({
   workspaceRefreshKey: string;
   suggestedMessage: { id: string; prompt: string } | null;
   selectedRunId: string | null;
-  onSelectRun: (runId: string) => void;
-  onRunsChange: (runs: readonly DocumentAgentRunSummary[]) => void;
+  activityRunId: string | null;
+  activity: readonly DocumentProcessingActivityEvent[];
+  onSelectRun: (runId: string | null) => void;
 }) {
   const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
   const [isSwitching, setIsSwitching] = useState(false);
@@ -6320,10 +6198,6 @@ function DocumentAgentPanel({
       state.kind === "ready" ? (state.workspace.selectedConversationId ?? undefined) : undefined;
     void loadWorkspace(conversationId);
   }, [loadWorkspace, state, workspaceRefreshKey]);
-
-  useEffect(() => {
-    if (state.kind === "ready") onRunsChange(state.workspace.runs);
-  }, [onRunsChange, state]);
 
   useEffect(() => {
     if (suggestedMessage === null) return;
@@ -6437,6 +6311,8 @@ function DocumentAgentPanel({
       sendError={sendError}
       createError={createError}
       selectedRunId={selectedRunId}
+      activityRunId={activityRunId}
+      activity={activity}
       composerRef={composerRef}
       onMessageChange={setMessage}
       onSelectRun={onSelectRun}
@@ -7413,13 +7289,5 @@ function formatDate(value: string): string {
   return new Intl.DateTimeFormat("ru-RU", {
     dateStyle: "long",
     timeStyle: "short",
-  }).format(new Date(value));
-}
-
-function formatTime(value: string): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
   }).format(new Date(value));
 }

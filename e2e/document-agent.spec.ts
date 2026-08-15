@@ -270,11 +270,20 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
       .getByText("Не хватает даты биоматериала. Лаборатория и код показателя уже указаны."),
   ).toBeVisible();
 
-  const journal = page.getByRole("region", { name: "Ход обработки" });
-  await expect(journal.getByText("Реальные события: Повторный анализ 1")).toBeVisible();
   await reloadedAgent.getByRole("button", { name: /Первичный анализ/ }).click();
-  await expect(journal.getByText("Реальные события: Первичный анализ")).toBeVisible();
+  const journal = page.getByRole("region", { name: "Первичный анализ" });
+  await expect(journal.getByText("Документ поставлен в очередь")).toBeVisible();
+  await expect(journal.getByText("Журнал сохранён")).toBeVisible();
+
   await reloadedAgent.getByRole("button", { name: /Повторный анализ 1/ }).click();
-  await expect(journal.getByText("Реальные события: Повторный анализ 1")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Повторный анализ 1" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Первичный анализ" })).toHaveCount(0);
+
+  await reloadedAgent.getByRole("button", { name: "Вернуться к диалогу" }).click();
   await expect(reloadedAgent.getByRole("heading", { name: "Проверка дат" })).toBeVisible();
+  await expect(
+    reloadedAgent
+      .locator(".document-agent-workspace__message.is-assistant p")
+      .getByText("Не хватает даты биоматериала. Лаборатория и код показателя уже указаны."),
+  ).toBeVisible();
 });

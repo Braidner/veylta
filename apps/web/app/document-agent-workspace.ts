@@ -17,19 +17,6 @@ export function documentAgentConversationPreview(
   return `${preview.slice(0, Math.max(1, maxLength - 1)).trimEnd()}…`;
 }
 
-/**
- * Runs arrive newest-first, and the server defaults an unselected journal to the newest
- * run. Mirroring that here keeps the highlighted run and the rendered journal in step,
- * including when a restart prepends a run the selection has never seen.
- */
-export function activeDocumentAgentRunId(
-  runs: readonly DocumentAgentRunSummary[],
-  selectedRunId: string | null,
-): string | null {
-  if (selectedRunId !== null && runs.some((run) => run.id === selectedRunId)) return selectedRunId;
-  return runs[0]?.id ?? null;
-}
-
 export function documentAgentRunPresentation(
   run: DocumentAgentRunSummary,
 ): DocumentAgentRunPresentation {
