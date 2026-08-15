@@ -13,6 +13,7 @@ import type {
   CodexReasoningEffort,
   CodexRuntimeActionResponse,
   CodexServiceTier,
+  DocumentAgentRunSummary,
   DocumentAgentWorkspaceResponse,
   DocumentDeleteResponse,
   DocumentDetail,
@@ -201,8 +202,14 @@ function documentPath(familyId: string, profileId: string, documentId: string): 
   return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }
 
-function documentProcessingPath(familyId: string, profileId: string, documentId: string): string {
-  return `/v1${documentPath(familyId, profileId, documentId)}/processing`;
+function documentProcessingPath(
+  familyId: string,
+  profileId: string,
+  documentId: string,
+  runId: string | null = null,
+): string {
+  const base = `/v1${documentPath(familyId, profileId, documentId)}/processing`;
+  return runId === null ? base : `${base}?runId=${encodeURIComponent(runId)}`;
 }
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
@@ -6014,15 +6021,19 @@ function processingActivityCopy(event: DocumentProcessingActivityEvent): Process
 function DocumentProcessingActivity({
   activity,
   active,
+  runTitle,
 }: {
   activity: readonly DocumentProcessingActivityEvent[];
   active: boolean;
+  runTitle: string | null;
 }) {
   return (
     <section className="processing-activity" aria-labelledby="processing-activity-title">
       <div className="processing-activity__heading">
         <div>
-          <p className="context-line">Реальные события сервера</p>
+          <p className="context-line">
+            {runTitle === null ? "Реальные события сервера" : `Реальные события: ${runTitle}`}
+          </p>
           <h3 id="processing-activity-title">Ход обработки</h3>
         </div>
         <span
@@ -6079,12 +6090,25 @@ function DocumentProcessingPanel({
   const [processing, setProcessing] = useState<DocumentProcessingStatus>(savedDocument.processing);
   const [activity, setActivity] = useState<readonly DocumentProcessingActivityEvent[]>([]);
   const [refreshFailed, setRefreshFailed] = useState(false);
+  /**
+   * A pin belongs to the document it was made on, so switching documents drops it without
+   * an effect. A null run id follows the newest run; a status refresh never clears the pin.
+   */
+  const [pinnedRun, setPinnedRun] = useState<{ documentId: string; runId: string | null }>({
+    documentId: savedDocument.id,
+    runId: null,
+  });
+  const selectedRunId = pinnedRun.documentId === savedDocument.id ? pinnedRun.runId : null;
+  const [activityRunId, setActivityRunId] = useState<string | null>(null);
+  const [runs, setRuns] = useState<readonly DocumentAgentRunSummary[]>([]);
+  /** Runs arrive newest-first, so the live run is the head of the list. */
+  const latestRunId = runs[0]?.id ?? activityRunId;
 
   const refreshProcessing = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
       try {
         const response = await apiRequest<DocumentProcessingResponse>(
-          documentProcessingPath(familyId, profileId, savedDocument.id),
+          documentProcessingPath(familyId, profileId, savedDocument.id, selectedRunId),
           signal === undefined ? undefined : { signal },
         );
         if (signal?.aborted) return;
@@ -6094,11 +6118,17 @@ function DocumentProcessingPanel({
         );
         onProcessingChange?.(response.processing);
         setActivity(response.activity);
+        setActivityRunId(response.activityRunId);
       } catch {
         if (!signal?.aborted) setRefreshFailed(true);
       }
     },
-    [familyId, onProcessingChange, profileId, savedDocument.id],
+    [familyId, onProcessingChange, profileId, savedDocument.id, selectedRunId],
+  );
+
+  const selectRun = useCallback(
+    (runId: string) => setPinnedRun({ documentId: savedDocument.id, runId }),
+    [savedDocument.id],
   );
 
   useEffect(() => {
@@ -6159,7 +6189,11 @@ function DocumentProcessingPanel({
         </div>
       </section>
 
-      <DocumentProcessingActivity activity={activity} active={isProcessingActive(processing)} />
+      <DocumentProcessingActivity
+        activity={activity}
+        active={isProcessingActive(processing) && activityRunId === latestRunId}
+        runTitle={runs.find((run) => run.id === activityRunId)?.title ?? null}
+      />
 
       {canWriteProfile ? (
         <DocumentAgentPanel
@@ -6174,6 +6208,9 @@ function DocumentProcessingPanel({
               : `${processing.state}:${processing.updatedAt}`
           }
           suggestedMessage={suggestedAgentMessage}
+          selectedRunId={selectedRunId}
+          onSelectRun={selectRun}
+          onRunsChange={setRuns}
         />
       ) : null}
     </div>
@@ -6203,6 +6240,9 @@ function DocumentAgentPanel({
   documentUploadedAt,
   workspaceRefreshKey,
   suggestedMessage,
+  selectedRunId,
+  onSelectRun,
+  onRunsChange,
 }: {
   familyId: string;
   profileId: string;
@@ -6211,6 +6251,9 @@ function DocumentAgentPanel({
   documentUploadedAt: string;
   workspaceRefreshKey: string;
   suggestedMessage: { id: string; prompt: string } | null;
+  selectedRunId: string | null;
+  onSelectRun: (runId: string) => void;
+  onRunsChange: (runs: readonly DocumentAgentRunSummary[]) => void;
 }) {
   const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
   const [isSwitching, setIsSwitching] = useState(false);
@@ -6220,12 +6263,25 @@ function DocumentAgentPanel({
   const [createError, setCreateError] = useState<string | null>(null);
   const attemptRef = useRef<DocumentAgentAttempt | null>(null);
   const conversationAttemptRef = useRef<DocumentAgentConversationAttempt | null>(null);
+  const workspaceRequestRef = useRef(0);
   const loadedWorkspaceRefreshKey = useRef(workspaceRefreshKey);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endpoint = documentAgentPath(familyId, profileId, documentId);
 
+  /**
+   * Workspace reads race: a mount load, a refresh-key reload, and an explicit selection can
+   * all be in flight at once. Only the newest request may write state, or a slow earlier
+   * response silently reverts the conversation the user just opened.
+   */
+  const claimWorkspaceRequest = useCallback((): (() => boolean) => {
+    const ticket = workspaceRequestRef.current + 1;
+    workspaceRequestRef.current = ticket;
+    return () => ticket === workspaceRequestRef.current;
+  }, []);
+
   const loadWorkspace = useCallback(
     async (conversationId?: string, signal?: AbortSignal): Promise<void> => {
+      const isCurrent = claimWorkspaceRequest();
       try {
         const query =
           conversationId === undefined
@@ -6235,12 +6291,12 @@ function DocumentAgentPanel({
           `${endpoint}${query}`,
           signal === undefined ? undefined : { signal },
         );
-        if (!signal?.aborted) setState({ kind: "ready", workspace: response });
+        if (!signal?.aborted && isCurrent()) setState({ kind: "ready", workspace: response });
       } catch {
-        if (!signal?.aborted) setState({ kind: "error" });
+        if (!signal?.aborted && isCurrent()) setState({ kind: "error" });
       }
     },
-    [endpoint],
+    [claimWorkspaceRequest, endpoint],
   );
 
   useEffect(() => {
@@ -6264,6 +6320,10 @@ function DocumentAgentPanel({
       state.kind === "ready" ? (state.workspace.selectedConversationId ?? undefined) : undefined;
     void loadWorkspace(conversationId);
   }, [loadWorkspace, state, workspaceRefreshKey]);
+
+  useEffect(() => {
+    if (state.kind === "ready") onRunsChange(state.workspace.runs);
+  }, [onRunsChange, state]);
 
   useEffect(() => {
     if (suggestedMessage === null) return;
@@ -6292,6 +6352,7 @@ function DocumentAgentPanel({
       previousAttempt?.title === title ? previousAttempt : { key: crypto.randomUUID(), title };
     conversationAttemptRef.current = attempt;
     setCreateError(null);
+    const isCurrent = claimWorkspaceRequest();
     try {
       const response = await apiRequest<DocumentAgentWorkspaceResponse>(
         `${endpoint}/conversations`,
@@ -6301,7 +6362,7 @@ function DocumentAgentPanel({
           body: JSON.stringify({ title }),
         },
       );
-      setState({ kind: "ready", workspace: response });
+      if (isCurrent()) setState({ kind: "ready", workspace: response });
       setMessage("");
       conversationAttemptRef.current = null;
       return true;
@@ -6337,6 +6398,7 @@ function DocumentAgentPanel({
     attemptRef.current = attempt;
     setPendingMessage(normalized);
     setSendError(null);
+    const isCurrent = claimWorkspaceRequest();
     try {
       const response = await apiRequest<DocumentAgentWorkspaceResponse>(
         `${endpoint}/conversations/${encodeURIComponent(state.workspace.selectedConversationId)}/messages`,
@@ -6346,7 +6408,7 @@ function DocumentAgentPanel({
           body: JSON.stringify({ message: normalized }),
         },
       );
-      setState({ kind: "ready", workspace: response });
+      if (isCurrent()) setState({ kind: "ready", workspace: response });
       setMessage("");
       attemptRef.current = null;
     } catch (error) {
@@ -6374,8 +6436,10 @@ function DocumentAgentPanel({
       pendingMessage={pendingMessage}
       sendError={sendError}
       createError={createError}
+      selectedRunId={selectedRunId}
       composerRef={composerRef}
       onMessageChange={setMessage}
+      onSelectRun={onSelectRun}
       onSelectConversation={(conversationId) => void handleSelectConversation(conversationId)}
       onCreateConversation={handleCreateConversation}
       onSend={(event) => void handleSend(event)}

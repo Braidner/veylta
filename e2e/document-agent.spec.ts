@@ -48,26 +48,32 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
   ];
 
   await page.route(
-    /\/health-api\/.*\/documents\/[^/]+\/processing(?:\/restart)?$/,
+    /\/health-api\/.*\/documents\/[^/]+\/processing(?:\/restart)?(?:\?.*)?$/,
     async (route) => {
       const request = route.request();
-      const documentId = new URL(request.url()).pathname.match(/\/documents\/([^/]+)/)?.[1];
+      const url = new URL(request.url());
+      const documentId = url.pathname.match(/\/documents\/([^/]+)/)?.[1];
       if (documentId === undefined) {
         await route.continue();
         return;
       }
       if (request.method() === "GET") {
+        const activityRunId = url.searchParams.get("runId") ?? runs[0]?.id ?? null;
         await route.fulfill({
           contentType: "application/json",
           body: JSON.stringify({
-            contractVersion: "document/v5",
+            contractVersion: "document/v6",
             documentId,
             processing: {
               state: "completed",
               updatedAt: "2026-08-14T16:00:00.000Z",
               factCount: 0,
             },
-            activity: [],
+            activityRunId,
+            activity:
+              activityRunId === null
+                ? []
+                : [{ code: "queued", attempt: 0, occurredAt: "2026-08-14T15:59:42.000Z" }],
           }),
         });
         return;
@@ -90,7 +96,7 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
         status: 202,
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v5",
+          contractVersion: "document/v6",
           documentId,
           processing: { state: "queued", updatedAt: "2026-08-14T16:11:00.000Z" },
         }),
@@ -263,4 +269,12 @@ test("a document keeps separate Russian Codex conversations and shows ephemeral 
       .locator(".document-agent-workspace__message.is-assistant p")
       .getByText("Не хватает даты биоматериала. Лаборатория и код показателя уже указаны."),
   ).toBeVisible();
+
+  const journal = page.getByRole("region", { name: "Ход обработки" });
+  await expect(journal.getByText("Реальные события: Повторный анализ 1")).toBeVisible();
+  await reloadedAgent.getByRole("button", { name: /Первичный анализ/ }).click();
+  await expect(journal.getByText("Реальные события: Первичный анализ")).toBeVisible();
+  await reloadedAgent.getByRole("button", { name: /Повторный анализ 1/ }).click();
+  await expect(journal.getByText("Реальные события: Повторный анализ 1")).toBeVisible();
+  await expect(reloadedAgent.getByRole("heading", { name: "Проверка дат" })).toBeVisible();
 });

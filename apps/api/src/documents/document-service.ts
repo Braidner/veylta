@@ -114,6 +114,11 @@ export interface ObservationHistoryQuery {
   cursor?: string;
 }
 
+export interface DocumentProcessingQuery {
+  /** Absent selects the newest run, so an unopened journal still shows live work. */
+  runId?: string;
+}
+
 export interface HealthSummaryQuery {
   version?: string;
 }
@@ -188,6 +193,7 @@ export interface DocumentService {
   getProcessing(
     actor: SessionActor,
     scope: { familyId: string; profileId: string; documentId: string },
+    query: DocumentProcessingQuery,
     correlationId: string,
   ): Promise<DocumentProcessingResponse>;
   getFacts(
@@ -1815,23 +1821,45 @@ async function processingForDocument(
 
 const processingEventCodes = new Set<string>(DOCUMENT_PROCESSING_EVENT_CODES);
 
-async function processingActivityForDocument(
+/**
+ * Resolves the run whose journal is requested. An explicit selector is re-authorized
+ * against the document's own runs, so a foreign run id is indistinguishable from an
+ * unknown one.
+ */
+async function activityRunForDocument(
   client: Queryable,
   row: DocumentRow,
+  requestedRunId: string | undefined,
+): Promise<string | null> {
+  const runs = await client.query<{ id: string }>(
+    requestedRunId === undefined
+      ? `SELECT id FROM processing_jobs
+          WHERE family_id = $1 AND document_version_id = $2
+          ORDER BY created_at DESC, id DESC
+          LIMIT 1`
+      : `SELECT id FROM processing_jobs
+          WHERE family_id = $1 AND document_version_id = $2 AND id = $3`,
+    requestedRunId === undefined
+      ? [row.family_id, row.document_version_id]
+      : [row.family_id, row.document_version_id, requestedRunId.toLowerCase()],
+  );
+  const runId = runs.rows[0]?.id ?? null;
+  if (runId === null && requestedRunId !== undefined) throw new ResourceNotFoundError();
+  return runId;
+}
+
+async function processingActivityForRun(
+  client: Queryable,
+  row: DocumentRow,
+  runId: string | null,
 ): Promise<readonly DocumentProcessingActivityEvent[]> {
+  if (runId === null) return [];
   const events = await client.query<ProcessingEventRow>(
     `SELECT e.code, e.attempt, e.occurred_at
        FROM processing_job_events e
-      WHERE e.family_id = $1
-        AND e.processing_job_id = (
-          SELECT id
-            FROM processing_jobs
-           WHERE family_id = $1 AND document_version_id = $2
-           ORDER BY created_at DESC, id DESC
-           LIMIT 1
-        )
+      WHERE e.family_id = $1 AND e.processing_job_id = $2
       ORDER BY e.sequence`,
-    [row.family_id, row.document_version_id],
+    [row.family_id, runId],
   );
   return events.rows.map((event) => {
     const attempt = asCount(event.attempt, "processing activity attempt");
@@ -3303,12 +3331,13 @@ export function createDocumentService(
       });
     },
 
-    async getProcessing(actor, requestedScope, correlationId) {
+    async getProcessing(actor, requestedScope, query, correlationId) {
       const scope = canonicalDocumentScope(requestedScope);
       return database.transaction(async (client) => {
         const row = await documentRow(client, actor, scope);
         const processing = await processingForDocument(client, row);
-        const activity = await processingActivityForDocument(client, row);
+        const activityRunId = await activityRunForDocument(client, row, query.runId);
+        const activity = await processingActivityForRun(client, row, activityRunId);
         await audit(client, {
           familyId: scope.familyId,
           actorUserId: actor.userId,
@@ -3321,6 +3350,7 @@ export function createDocumentService(
           contractVersion: DOCUMENT_CONTRACT_VERSION,
           documentId: row.id,
           processing,
+          activityRunId,
           activity,
         };
       });

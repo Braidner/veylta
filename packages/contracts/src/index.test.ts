@@ -78,7 +78,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
   assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v2");
-  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v5");
+  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v6");
   assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v2");
   assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
   assert.equal(DOCUMENT_LIFECYCLE_CONTRACT_VERSION, "document-lifecycle/v1");
@@ -652,6 +652,7 @@ test("document processing exposes only supported observable states and sanitized
     contractVersion: DOCUMENT_CONTRACT_VERSION,
     documentId: "10000000-0000-4000-8000-000000000001",
     processing: failed,
+    activityRunId: "3f2c9a41-5c0b-4a1e-8f7d-2b6c9d0e1a34",
     activity: [
       {
         code: "queued",

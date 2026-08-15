@@ -7167,7 +7167,8 @@ body:has(.upload-dialog[open]) {
   overflow-y: auto;
 }
 
-.document-agent-workspace__thread {
+.document-agent-workspace__thread,
+.document-agent-workspace__run {
   width: 100%;
   padding: 10px;
   color: var(--color-ink);
@@ -7181,11 +7182,13 @@ body:has(.upload-dialog[open]) {
     border-color 140ms ease;
 }
 
-.document-agent-workspace__thread:hover:not(:disabled) {
+.document-agent-workspace__thread:hover:not(:disabled),
+.document-agent-workspace__run:hover:not(:disabled) {
   background: var(--color-canvas);
 }
 
-.document-agent-workspace__thread.is-selected {
+.document-agent-workspace__thread.is-selected,
+.document-agent-workspace__run.is-selected {
   background: oklch(0.95 0.025 260);
   border-color: oklch(0.86 0.055 260);
 }
@@ -7236,11 +7239,10 @@ body:has(.upload-dialog[open]) {
   list-style: none;
 }
 
-.document-agent-workspace__runs li {
+.document-agent-workspace__run {
   display: flex;
   gap: 10px;
   align-items: center;
-  padding: 8px 6px;
 }
 
 .document-agent-workspace__run-mark {

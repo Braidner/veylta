@@ -635,6 +635,7 @@ export function createDocumentAgentService(
         documents.getProcessing(
           capability.actor,
           capability.scope,
+          {},
           `${capability.correlationId}:processing`,
         ),
         documents.getFacts(capability.actor, capability.scope, `${capability.correlationId}:facts`),

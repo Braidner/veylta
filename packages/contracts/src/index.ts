@@ -4,7 +4,7 @@ export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v2" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
-export const DOCUMENT_CONTRACT_VERSION = "document/v5" as const;
+export const DOCUMENT_CONTRACT_VERSION = "document/v6" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
 export const DOCUMENT_LIFECYCLE_CONTRACT_VERSION = "document-lifecycle/v1" as const;
@@ -744,6 +744,8 @@ export interface DocumentProcessingResponse {
   readonly contractVersion: typeof DOCUMENT_CONTRACT_VERSION;
   readonly documentId: string;
   readonly processing: DocumentProcessingStatus;
+  /** The run whose journal `activity` holds; null only while the document has no run. */
+  readonly activityRunId: string | null;
   readonly activity: readonly DocumentProcessingActivityEvent[];
 }
 
@@ -815,6 +817,7 @@ export interface DocumentAgentWorkspaceResponse {
   readonly selectedConversationId: string | null;
   readonly conversations: readonly DocumentAgentConversationSummary[];
   readonly messages: readonly DocumentAgentMessage[];
+  /** Newest run first; `DocumentProcessingResponse` defaults its journal to that run. */
   readonly runs: readonly DocumentAgentRunSummary[];
 }
 

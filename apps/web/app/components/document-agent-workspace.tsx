@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { type FormEvent, type RefObject, useId, useMemo, useState } from "react";
 import {
+  activeDocumentAgentRunId,
   documentAgentConversationPreview,
   documentAgentRunPresentation,
 } from "../document-agent-workspace";
@@ -30,8 +31,10 @@ interface DocumentAgentWorkspaceProps {
   readonly pendingMessage: string | null;
   readonly sendError: string | null;
   readonly createError: string | null;
+  readonly selectedRunId: string | null;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly onMessageChange: (message: string) => void;
+  readonly onSelectRun: (runId: string) => void;
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onCreateConversation: (title: string) => Promise<boolean>;
   readonly onSend: (event: FormEvent<HTMLFormElement>) => void;
@@ -49,8 +52,10 @@ export function DocumentAgentWorkspace({
   pendingMessage,
   sendError,
   createError,
+  selectedRunId,
   composerRef,
   onMessageChange,
+  onSelectRun,
   onSelectConversation,
   onCreateConversation,
   onSend,
@@ -66,6 +71,7 @@ export function DocumentAgentWorkspace({
       ) ?? null,
     [workspace],
   );
+  const activeRunId = activeDocumentAgentRunId(workspace?.runs ?? [], selectedRunId);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -218,22 +224,30 @@ export function DocumentAgentWorkspace({
             <ol>
               {workspace?.runs.map((run) => {
                 const presentation = documentAgentRunPresentation(run);
+                const selected = run.id === activeRunId;
                 return (
                   <li key={run.id}>
-                    <span
-                      className={`document-agent-workspace__run-mark is-${presentation.tone}`}
-                      aria-hidden="true"
+                    <button
+                      type="button"
+                      className={`document-agent-workspace__run${selected ? " is-selected" : ""}`}
+                      aria-current={selected ? "true" : undefined}
+                      onClick={() => onSelectRun(run.id)}
                     >
-                      {presentation.tone === "complete" ? (
-                        <CheckCircle2 size={16} />
-                      ) : (
-                        <Clock3 size={16} />
-                      )}
-                    </span>
-                    <div>
-                      <strong>{run.title}</strong>
-                      <span>{presentation.label}</span>
-                    </div>
+                      <span
+                        className={`document-agent-workspace__run-mark is-${presentation.tone}`}
+                        aria-hidden="true"
+                      >
+                        {presentation.tone === "complete" ? (
+                          <CheckCircle2 size={16} />
+                        ) : (
+                          <Clock3 size={16} />
+                        )}
+                      </span>
+                      <div>
+                        <strong>{run.title}</strong>
+                        <span>{presentation.label}</span>
+                      </div>
+                    </button>
                   </li>
                 );
               })}

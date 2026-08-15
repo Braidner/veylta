@@ -764,6 +764,102 @@ test("terminal processing retry requires a trusted idempotent command and is rep
   });
 });
 
+test("an explicit run selector opens that exact run journal and refuses a foreign run", async () => {
+  await withTestContext(async ({ app, database, storageRoot }) => {
+    const owner = await registerOwner(app, "Run journal");
+    const source = await readFile(fixtureUrl);
+    const documentId = (await upload(app, owner, source, "run-journal-first")).json().document
+      .id as string;
+    assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
+
+    const restarted = await app.inject({
+      method: "POST",
+      url: `${documentUrl(owner, documentId)}/processing/restart`,
+      headers: {
+        cookie: owner.cookie,
+        origin: webOrigin,
+        "idempotency-key": "run-journal-restart".padEnd(16, "_"),
+      },
+    });
+    assert.equal(restarted.statusCode, 202);
+    assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
+
+    const otherDocumentId = (
+      await upload(
+        app,
+        owner,
+        createSyntheticLabImage(
+          [
+            "VEYLTA SYNTHETIC LAB REPORT v1",
+            "SYNTHETIC TEST DATA - NOT FOR MEDICAL USE",
+            "FACT|synthetic-analyte-a",
+            "NAME|SYNTHETIC ANALYTE A",
+            "VALUE|7.0",
+            "UNIT|synthetic-unit",
+            "RANGE|synthetic reference",
+            "CONFIDENCE|0.60",
+            "ISSUES|AMBIGUOUS_UNIT",
+            "END",
+          ],
+          "png",
+        ),
+        "run-journal-second",
+        { contentType: "image/png", filename: "synthetic-lab-report.png" },
+      )
+    ).json().document.id as string;
+    assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
+
+    const runIds = async (id: string): Promise<string[]> =>
+      (
+        await database.query<{ id: string }>(
+          `SELECT j.id
+             FROM processing_jobs j
+             JOIN document_versions v ON v.family_id = j.family_id AND v.id = j.document_version_id
+            WHERE v.document_id = $1
+            ORDER BY j.created_at ASC, j.id ASC`,
+          [id],
+        )
+      ).rows.map((row) => row.id);
+    const eventCount = async (runId: string): Promise<number> =>
+      Number(
+        (
+          await database.query<{ count: number }>(
+            "SELECT count(*) AS count FROM processing_job_events WHERE processing_job_id = $1",
+            [runId],
+          )
+        ).rows[0]?.count,
+      );
+    const openJournal = (runId?: string): Promise<LightMyRequestResponse> =>
+      app.inject({
+        method: "GET",
+        url: `${documentUrl(owner, documentId)}/processing${runId === undefined ? "" : `?runId=${runId}`}`,
+        headers: { cookie: owner.cookie },
+      });
+
+    const [firstRunId, secondRunId] = await runIds(documentId);
+    assert.ok(firstRunId !== undefined && secondRunId !== undefined);
+
+    const latest = await openJournal();
+    assert.equal(latest.statusCode, 200);
+    assert.equal(latest.json().contractVersion, DOCUMENT_CONTRACT_VERSION);
+    assert.equal(latest.json().activityRunId, secondRunId);
+    assert.equal(latest.json().activity.length, await eventCount(secondRunId));
+
+    const older = await openJournal(firstRunId);
+    assert.equal(older.statusCode, 200);
+    assert.equal(older.json().activityRunId, firstRunId);
+    assert.ok(older.json().activity.length > 0);
+    assert.equal(older.json().activity.length, await eventCount(firstRunId));
+    assert.deepEqual(older.json().processing, latest.json().processing);
+
+    const [foreignRunId] = await runIds(otherDocumentId);
+    assert.ok(foreignRunId !== undefined);
+    assert.equal((await openJournal(foreignRunId)).statusCode, 404);
+    assert.equal((await openJournal(randomUUID())).statusCode, 404);
+    assert.equal((await openJournal("not-a-uuid")).statusCode, 400);
+  });
+});
+
 test("a trusted restart creates a fresh immutable analysis run without replacing prior results", async () => {
   await withTestContext(async ({ app, database, storageRoot }) => {
     const owner = await registerOwner(app, "Restart analysis");

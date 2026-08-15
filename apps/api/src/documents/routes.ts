@@ -15,6 +15,7 @@ import {
   sendDomainError,
 } from "../http/route-helpers.js";
 import {
+  type DocumentProcessingQuery,
   type DocumentSearchQuery,
   type DocumentService,
   type HealthSummaryComparisonQuery,
@@ -114,6 +115,14 @@ const documentSearchQuerySchema = {
       pattern: "^(?=.*\\S)[^\\u0000-\\u001F\\u007F]+$",
     },
     limit: { type: "string", pattern: "^(?:[1-9]|[1-4][0-9]|50)$" },
+  },
+} as const;
+
+const processingQuerySchema = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    runId: canonicalUuidSchema,
   },
 } as const;
 
@@ -630,15 +639,15 @@ export function registerDocumentRoutes(
       },
     );
 
-    scope.get<{ Params: DocumentParams }>(
+    scope.get<{ Params: DocumentParams; Querystring: DocumentProcessingQuery }>(
       "/v1/families/:familyId/profiles/:profileId/documents/:documentId/processing",
-      { schema: { params: documentParamsSchema } },
+      { schema: { params: documentParamsSchema, querystring: processingQuerySchema } },
       async (request, reply) => {
         privateResponse(reply);
         const actor = await requireActor(familyService, request, reply);
         if (actor === null) return;
         try {
-          reply.send(await service.getProcessing(actor, request.params, request.id));
+          reply.send(await service.getProcessing(actor, request.params, request.query, request.id));
         } catch (error) {
           if (!sendDocumentError(error, request, reply)) throw error;
         }

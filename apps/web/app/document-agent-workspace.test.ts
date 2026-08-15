@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { DocumentAgentConversationSummary, DocumentAgentRunSummary } from "@veylta/contracts";
 import {
+  activeDocumentAgentRunId,
   documentAgentConversationPreview,
   documentAgentRunPresentation,
 } from "./document-agent-workspace.js";
@@ -52,4 +53,26 @@ test("run presentation keeps processing state and ephemeral storage explicit", (
     label: "Выполняется · временный",
     tone: "active",
   });
+});
+
+test("the active run falls back to the newest run unless an existing run is selected", () => {
+  const run = (id: string): DocumentAgentRunSummary => ({
+    id,
+    title: "Повторный анализ",
+    state: "completed",
+    attemptCount: 1,
+    createdAt: "2026-08-15T10:00:00.000Z",
+    completedAt: "2026-08-15T10:00:18.000Z",
+    ephemeral: true,
+    provenance: null,
+  });
+  const oldest = "00000000-0000-4000-8000-000000000001";
+  const newest = "00000000-0000-4000-8000-000000000002";
+  // The workspace contract lists runs newest-first.
+  const runs = [run(newest), run(oldest)];
+
+  assert.equal(activeDocumentAgentRunId(runs, oldest), oldest);
+  assert.equal(activeDocumentAgentRunId(runs, null), newest);
+  assert.equal(activeDocumentAgentRunId(runs, "00000000-0000-4000-8000-00000000000f"), newest);
+  assert.equal(activeDocumentAgentRunId([], oldest), null);
 });
