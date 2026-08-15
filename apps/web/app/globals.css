@@ -1477,23 +1477,6 @@ h3 {
   padding: 0 0 32px;
 }
 
-/* The hero spans the viewport; everything after it keeps the archive inset. */
-.profile-overview--documents > .document-library__toolbar,
-.profile-overview--documents > .profile-overview__sections,
-.profile-overview--documents > .profile-overview__loading,
-.profile-overview--documents > .profile-overview__empty {
-  margin-inline: 32px;
-}
-
-@media (max-width: 900px) {
-  .profile-overview--documents > .document-library__toolbar,
-  .profile-overview--documents > .profile-overview__sections,
-  .profile-overview--documents > .profile-overview__loading,
-  .profile-overview--documents > .profile-overview__empty {
-    margin-inline: 20px;
-  }
-}
-
 .profile-dashboard {
   display: grid;
   grid-template:
@@ -6254,7 +6237,8 @@ body:has(.upload-dialog[open]) {
   margin: 0;
 }
 
-.profile-shell--document-detail {
+.profile-shell--document-detail,
+.profile-shell--documents {
   padding-top: 0;
 }
 
@@ -7921,6 +7905,112 @@ body:has(.upload-dialog[open]) {
 
 @media (prefers-reduced-motion: reduce) {
   .page-hero__search {
+    transition: none;
+  }
+}
+
+/* The hero spans the viewport; everything after it keeps the archive inset. */
+.profile-overview--documents > .document-library__toolbar,
+.profile-overview--documents > .profile-overview__sections,
+.profile-overview--documents > .profile-overview__loading,
+.profile-overview--documents > .profile-overview__empty {
+  margin-inline: 32px;
+}
+
+@media (max-width: 900px) {
+  .profile-overview--documents > .document-library__toolbar,
+  .profile-overview--documents > .profile-overview__sections,
+  .profile-overview--documents > .profile-overview__loading,
+  .profile-overview--documents > .profile-overview__empty {
+    margin-inline: 20px;
+  }
+}
+
+/* `.profile-overview__row > div` turns every child div into a grid, which stacked the review
+   mark above its filename. The identity block is a flex row and says so at higher specificity. */
+.profile-overview__row > .review-queue-row__identity,
+.profile-overview__row > .document-archive-row__identity {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+/* Same `> div` grid override applies to the actions block; declare it as a flex row too. */
+.profile-overview__row > .review-queue-row__actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Two verbs of equal weight; the check icon already says which one decides. */
+.review-queue-row__actions .review-queue-row__action {
+  gap: 8px;
+  min-height: 38px;
+  color: var(--color-primary);
+  background: oklch(0.96 0.02 260);
+  border: 1px solid transparent;
+}
+
+.review-queue-row__actions .review-queue-row__action:hover:not(:disabled) {
+  border-color: oklch(0.78 0.07 260);
+}
+
+.document-archive-row__restart {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 10px;
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid var(--color-line);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    border-color 140ms ease,
+    background-color 140ms ease;
+}
+
+.document-archive-row__restart:hover:not(:disabled) {
+  color: var(--color-primary);
+  border-color: oklch(0.78 0.07 260);
+  background: oklch(0.97 0.02 260);
+}
+
+.document-archive-row__restart:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.document-archive-row__actions .document-archive-row__restart {
+  justify-self: end;
+}
+
+/* The archive hero holds a title, a lede and a search — it sizes to content. Only the
+   document hero, which ends in a summary, keeps the tall minimum. */
+[data-testid="documents-hero"] {
+  min-height: 0;
+  padding-block: clamp(28px, 3.2vw, 44px);
+}
+
+[data-testid="documents-hero"] h1 {
+  font-size: clamp(2.25rem, 4vw, 3.5rem);
+}
+
+@media (max-width: 900px) {
+  .profile-overview__row > .review-queue-row__actions {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-archive-row__restart {
     transition: none;
   }
 }

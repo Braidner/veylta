@@ -51,7 +51,9 @@ import type {
   ProfileConsentGrantCreateResponse,
   ProfileConsentGrantListResponse,
   ProfileCreateResponse,
+  ProfileOverviewDocument,
   ProfileOverviewResponse,
+  ProfileOverviewReviewDocument,
   ProfileRestoreResponse,
   SessionFamily,
   SessionResponse,
@@ -72,6 +74,7 @@ import {
   History,
   House,
   LogOut,
+  RefreshCw,
   Search,
   Settings,
   ShieldCheck,
@@ -3039,10 +3042,15 @@ function DocumentArchiveList({
   documents,
   familyId,
   profileId,
+  onRestart,
+  restartingDocumentId,
 }: {
   documents: ProfileOverviewResponse["recentDocuments"];
   familyId: string;
   profileId: string;
+  /** Absent for read-only viewers; a restart is a write on the profile. */
+  onRestart?: (document: ProfileOverviewDocument) => void;
+  restartingDocumentId?: string | null;
 }) {
   const groups = [
     {
@@ -3092,6 +3100,20 @@ function DocumentArchiveList({
                   <span className={`document-status document-status--${document.processing.state}`}>
                     {profileOverviewProcessingCopy(document.processing)}
                   </span>
+                  {onRestart !== undefined && isRestartable(document) ? (
+                    <button
+                      className="document-archive-row__restart"
+                      type="button"
+                      disabled={restartingDocumentId !== undefined && restartingDocumentId !== null}
+                      onClick={() => onRestart(document)}
+                      aria-label={`Перезапустить разбор ${document.intelligence?.title ?? document.originalFilename}`}
+                    >
+                      <RefreshCw size={15} aria-hidden="true" />
+                      <span>
+                        {restartingDocumentId === document.id ? "Запускаем…" : "Перезапустить"}
+                      </span>
+                    </button>
+                  ) : null}
                   <Link
                     className="document-archive-row__open"
                     href={documentPath(familyId, profileId, document.id)}
@@ -3134,23 +3156,24 @@ function ProfileOverviewPanel({
 
   type ArchiveAction =
     | { kind: "idle" }
-    | { kind: "confirming"; completed: number; total: number }
-    | { kind: "restarting" }
+    | { kind: "confirming"; completed: number; total: number; documentId: string | null }
+    | { kind: "restarting"; documentId: string | null }
     | { kind: "error"; copy: string };
   const [archiveAction, setArchiveAction] = useState<ArchiveAction>({ kind: "idle" });
 
   /**
    * Confirms only the values the review workspace would also confirm in bulk. Each decision
    * is a separate idempotent command, so a failure part-way leaves the rest untouched and
-   * says exactly how far it got.
+   * says exactly how far it got. One document or the whole queue: same code path.
    */
-  async function confirmArchiveQueue(overview: ProfileOverviewResponse): Promise<void> {
-    const queue = overview.reviewQueue.documents.filter(
-      (document) => bulkConfirmableCount(document) > 0,
-    );
+  async function confirmDocuments(
+    documents: readonly ProfileOverviewReviewDocument[],
+  ): Promise<void> {
+    const queue = documents.filter((document) => bulkConfirmableCount(document) > 0);
     if (queue.length === 0) return;
+    const single = queue.length === 1 ? (queue[0]?.id ?? null) : null;
 
-    setArchiveAction({ kind: "confirming", completed: 0, total: 0 });
+    setArchiveAction({ kind: "confirming", completed: 0, total: 0, documentId: single });
     let completed = 0;
     let total = 0;
     try {
@@ -3160,7 +3183,7 @@ function ProfileOverviewPanel({
         );
         const confirmable = response.items.filter(canBulkConfirmFact);
         total += confirmable.length;
-        setArchiveAction({ kind: "confirming", completed, total });
+        setArchiveAction({ kind: "confirming", completed, total, documentId: single });
         for (const fact of confirmable) {
           await apiRequest<FactReviewResponse>(
             `${documentFactsPath(familyId, profileId, document.id)}/${encodeURIComponent(fact.id)}/review`,
@@ -3171,7 +3194,7 @@ function ProfileOverviewPanel({
             },
           );
           completed += 1;
-          setArchiveAction({ kind: "confirming", completed, total });
+          setArchiveAction({ kind: "confirming", completed, total, documentId: single });
         }
       }
       setArchiveAction({ kind: "idle" });
@@ -3188,15 +3211,14 @@ function ProfileOverviewPanel({
     }
   }
 
-  async function restartFailedDocuments(overview: ProfileOverviewResponse): Promise<void> {
-    const failed = overview.recentDocuments.filter(
-      (document) => document.processing.state === "failed" && isRestartable(document),
-    );
-    if (failed.length === 0) return;
+  async function restartDocuments(documents: readonly ProfileOverviewDocument[]): Promise<void> {
+    const targets = documents.filter(isRestartable);
+    if (targets.length === 0) return;
+    const single = targets.length === 1 ? (targets[0]?.id ?? null) : null;
 
-    setArchiveAction({ kind: "restarting" });
+    setArchiveAction({ kind: "restarting", documentId: single });
     try {
-      for (const document of failed) {
+      for (const document of targets) {
         await apiRequest<DocumentProcessingRestartResponse>(
           `${documentProcessingPath(familyId, profileId, document.id)}/restart`,
           { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } },
@@ -3364,7 +3386,7 @@ function ProfileOverviewPanel({
               summary={buildDocumentsArchiveHero(state.overview)}
               bulkConfirmPending={archiveAction.kind === "confirming"}
               bulkConfirmProgress={
-                archiveAction.kind === "confirming"
+                archiveAction.kind === "confirming" && archiveAction.documentId === null
                   ? `Подтверждаем ${archiveAction.completed} из ${archiveAction.total}…`
                   : null
               }
@@ -3376,8 +3398,14 @@ function ProfileOverviewPanel({
                 setSearchQuery(query);
               }}
               onUpload={onUpload}
-              onConfirmAll={() => void confirmArchiveQueue(state.overview)}
-              onRestartFailed={() => void restartFailedDocuments(state.overview)}
+              onConfirmAll={() => void confirmDocuments(state.overview.reviewQueue.documents)}
+              onRestartFailed={() =>
+                void restartDocuments(
+                  state.overview.recentDocuments.filter(
+                    (document) => document.processing.state === "failed",
+                  ),
+                )
+              }
             />
             <div className="document-library__toolbar">
               <div className="document-library__tools">
@@ -3454,20 +3482,37 @@ function ProfileOverviewPanel({
                           <div>
                             <strong>{document.originalFilename}</strong>
                             <span>
-                              {factCountCopy(document.pendingFactCount)} ждут решения
+                              {factCountCopy(document.pendingFactCount)}{" "}
+                              {document.pendingFactCount === 1 ? "ждёт" : "ждут"} решения
                               {document.needsAttentionFactCount > 0
-                                ? ` · ${factCountCopy(document.needsAttentionFactCount)} требуют дополнительного внимания`
+                                ? ` · ${factCountCopy(document.needsAttentionFactCount)} ${document.needsAttentionFactCount === 1 ? "требует" : "требуют"} отдельной проверки`
                                 : ""}
                             </span>
                           </div>
                         </div>
-                        <Link
-                          className="button button--secondary review-queue-row__action"
-                          href={documentPath(familyId, profileId, document.id)}
-                        >
-                          Открыть проверку
-                          <ArrowRight size={16} aria-hidden="true" />
-                        </Link>
+                        <div className="review-queue-row__actions">
+                          {canWriteProfile && bulkConfirmableCount(document) > 0 ? (
+                            <button
+                              className="button review-queue-row__action"
+                              type="button"
+                              disabled={archiveAction.kind === "confirming"}
+                              onClick={() => void confirmDocuments([document])}
+                            >
+                              <CheckCheck size={16} aria-hidden="true" />
+                              {archiveAction.kind === "confirming" &&
+                              archiveAction.documentId === document.id
+                                ? `Подтверждаем ${archiveAction.completed} из ${archiveAction.total}…`
+                                : `Подтвердить без замечаний ${bulkConfirmableCount(document)}`}
+                            </button>
+                          ) : null}
+                          <Link
+                            className="button button--secondary review-queue-row__action"
+                            href={documentPath(familyId, profileId, document.id)}
+                          >
+                            Открыть проверку
+                            <ArrowRight size={16} aria-hidden="true" />
+                          </Link>
+                        </div>
                       </li>
                     ))}
                   </ol>
@@ -3554,6 +3599,14 @@ function ProfileOverviewPanel({
                     documents={state.overview.recentDocuments}
                     familyId={familyId}
                     profileId={profileId}
+                    {...(canWriteProfile
+                      ? {
+                          onRestart: (document: ProfileOverviewDocument) =>
+                            void restartDocuments([document]),
+                          restartingDocumentId:
+                            archiveAction.kind === "restarting" ? archiveAction.documentId : null,
+                        }
+                      : {})}
                   />
                 ) : null}
                 {searchState.kind === "ready" && searchState.documents.length > 0 ? (
