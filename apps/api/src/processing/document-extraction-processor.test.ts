@@ -13,7 +13,7 @@ import {
   createDocumentExtractionProcessor,
   type DocumentExtractionJobCoordinator,
 } from "./document-extraction-processor.js";
-import { PdfOcrExtractionError } from "./pdf-ocr-extractor.js";
+import { DocumentImageError } from "./document-images.js";
 import { PdfTextExtractionError, type PdfTextExtractionOptions } from "./pdf-text-extractor.js";
 import type {
   LeasedProcessingJob,
@@ -245,8 +245,8 @@ test("maps a missing text layer to a sanitized retry outcome", async () => {
     extractText: async () => {
       throw new PdfTextExtractionError("TEXT_LAYER_MISSING");
     },
-    extractScannedPdf: async () => {
-      throw new PdfOcrExtractionError("OCR_FAILED");
+    renderPdfImages: async () => {
+      throw new DocumentImageError("IMAGE_LIMIT_EXCEEDED");
     },
   });
 
@@ -265,9 +265,10 @@ test("maps a missing text layer to a sanitized retry outcome", async () => {
   assert.equal(JSON.stringify(result).includes("TEXT_LAYER_MISSING"), false);
 });
 
-test("uses the local scanned-PDF fallback only for a missing text layer", async () => {
+test("a PDF without a text layer reaches the provider as page images", async () => {
   const harness = coordinatorHarness();
-  let fallbackCalls = 0;
+  let renderCalls = 0;
+  let receivedImages = 0;
   const processor = createDocumentExtractionProcessor({
     database: new SourceDatabase(),
     storage: storageFor(),
@@ -276,10 +277,38 @@ test("uses the local scanned-PDF fallback only for a missing text layer", async 
     extractText: async () => {
       throw new PdfTextExtractionError("TEXT_LAYER_MISSING");
     },
-    extractScannedPdf: async (bytes) => {
-      fallbackCalls += 1;
+    renderPdfImages: async (bytes) => {
+      renderCalls += 1;
       assert.deepEqual(Buffer.from(bytes), pdfBytes);
-      return [syntheticPage()];
+      return [{ pageNumber: 1, contentType: "image/png", bytes: Buffer.from("png") }];
+    },
+    intelligence: {
+      async analyze(input) {
+        receivedImages = input.images?.length ?? 0;
+        assert.equal(input.pages.length, 0);
+        const page = { ...syntheticPage(), textSha256: "a".repeat(64) };
+        return {
+          pages: [page],
+          extraction: {
+            schemaVersion: "lab-extraction/v1",
+            extractorVersion: "codex-document-intelligence/v2",
+            items: [],
+          },
+          intelligence: {
+            contractVersion: "document-intelligence/v2",
+            provider: "codex",
+            modelId: "gpt-5.4-mini",
+            runtimeVersion: "codex-cli/test",
+            category: "other",
+            title: "Синтетический документ",
+            shortSummary: "Синтетический документ без лабораторных результатов.",
+            detailedSummary: "Источник содержит только синтетические данные.",
+            structuredResults: [],
+            documentDate: null,
+            confidence: 0.9,
+          },
+        };
+      },
     },
   });
 
@@ -290,11 +319,12 @@ test("uses the local scanned-PDF fallback only for a missing text layer", async 
   });
 
   assert.equal(result.status, "completed");
-  assert.equal(fallbackCalls, 1);
+  assert.equal(renderCalls, 1);
+  assert.equal(receivedImages, 1);
   assert.equal(harness.failures.length, 0);
 });
 
-test("does not invoke scanned-PDF OCR after another text-extraction failure", async () => {
+test("does not render page images after another text-extraction failure", async () => {
   const harness = coordinatorHarness();
   let fallbackCalls = 0;
   const processor = createDocumentExtractionProcessor({
@@ -305,9 +335,9 @@ test("does not invoke scanned-PDF OCR after another text-extraction failure", as
     extractText: async () => {
       throw new PdfTextExtractionError("PDF_LIMIT_EXCEEDED");
     },
-    extractScannedPdf: async () => {
+    renderPdfImages: async () => {
       fallbackCalls += 1;
-      return [syntheticPage()];
+      return [{ pageNumber: 1, contentType: "image/png", bytes: Buffer.from("png") }];
     },
   });
 

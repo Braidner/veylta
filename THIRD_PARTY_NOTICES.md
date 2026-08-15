@@ -17,11 +17,8 @@ dataset.
 
 - `@playwright/test` 1.62.1 — Apache-2.0.
 - `pdfjs-dist` 6.2.108 — Apache-2.0; used only for local bounded PDF text-layer
-  extraction and bounded rendered-page input for local synthetic-PDF OCR.
-- `tesseract.js` 7.0.0 and `tesseract.js-core` 7.0.0 — Apache-2.0; used only in
-  the API/worker for bounded local recognition of image-only synthetic PDFs.
-  The application supplies the package's fixed local model path and no provider
-  URL; its install script is disabled by pnpm policy.
+  extraction and for rendering the bounded page images of a PDF without a text
+  layer before they are handed to the locally authenticated Codex CLI.
 - `typescript` 5.9.3 — Apache-2.0.
 - `@biomejs/biome` 2.5.8 and its platform CLI packages — MIT OR Apache-2.0.
 - `@aws-sdk/client-s3` 3.1098.0 and its modular AWS SDK v3 dependencies —
@@ -29,10 +26,10 @@ dataset.
   `ObjectStorage/v1` adapter. It is not bundled into the browser and introduces
   no provider credentials, bucket, or medical fixture into the repository.
 
-`@tesseract.js-data/eng` 1.0.0 is MIT-licensed English trained data used by the
-local OCR worker. `@napi-rs/canvas` 1.0.5 is MIT-licensed and renders the
-bounded local page image. Both remain server/worker-only package dependencies;
-the repository does not copy their model or native-binary contents.
+`@napi-rs/canvas` 1.0.5 is MIT-licensed and renders the bounded page images
+above; it remains a server/worker-only package dependency and the repository does
+not copy its native-binary contents. No local OCR engine or trained model is
+installed: text recognition for image sources happens inside Codex.
 
 Their complete license and NOTICE material is retained in the installed package
 distribution. No third-party source is copied into the Veylta codebase.

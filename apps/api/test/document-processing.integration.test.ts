@@ -152,10 +152,11 @@ async function upload(
 async function processOneDocument(
   database: Database,
   storageRoot: string,
+  options: { visionTranscription?: string } = {},
 ): Promise<
   Awaited<ReturnType<ReturnType<typeof createDocumentExtractionProcessor>["processNext"]>>
 > {
-  const intelligence = createSyntheticIntelligence();
+  const intelligence = createSyntheticIntelligence(options);
   const processor = createDocumentExtractionProcessor({
     database,
     storage: createLocalObjectStorage(storageRoot),
@@ -304,7 +305,7 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
   });
 });
 
-test("a synthetic image-only PDF uses local OCR and persists its OCR provenance", async () => {
+test("a synthetic image-only PDF is rendered to page images that Codex transcribes", async () => {
   await withTestContext(async ({ app, database, storageRoot }) => {
     const owner = await registerOwner(app, "Scanned processing");
     const uploaded = await upload(
@@ -348,11 +349,9 @@ test("a synthetic image-only PDF uses local OCR and persists its OCR provenance"
         WHERE v.family_id = $1 AND v.document_id = $2`,
       [owner.body.family.id, documentId],
     );
+    // The page text is the model's own transcription, and provenance says so.
     assert.deepEqual(provenance.rows, [
-      {
-        extraction_method: "local_synthetic_ocr",
-        extraction_version: "pdfjs-dist/6.2.108+tesseract.js/7.0.0+eng/1.0.0",
-      },
+      { extraction_method: "codex_vision", extraction_version: "gpt-5.4-mini+codex-cli/test" },
     ]);
   });
 });
@@ -361,7 +360,7 @@ for (const [format, contentType, filename] of [
   ["png", "image/png", "synthetic-lab-report.png"],
   ["jpeg", "image/jpeg", "synthetic-lab-report.jpg"],
 ] as const) {
-  test(`a direct synthetic ${format} uses local OCR with immutable image provenance`, async () => {
+  test(`a direct synthetic ${format} reaches Codex as one page image with immutable provenance`, async () => {
     await withTestContext(async ({ app, database, storageRoot }) => {
       const owner = await registerOwner(app, `Direct ${format}`);
       const uploaded = await upload(
@@ -417,10 +416,7 @@ for (const [format, contentType, filename] of [
         [owner.body.family.id, documentId],
       );
       assert.deepEqual(provenance.rows, [
-        {
-          extraction_method: "local_synthetic_image_ocr",
-          extraction_version: "napi-rs-canvas/1.0.5+tesseract.js/7.0.0+eng/1.0.0",
-        },
+        { extraction_method: "codex_vision", extraction_version: "gpt-5.4-mini+codex-cli/test" },
       ]);
     });
   });
@@ -438,7 +434,10 @@ test("Codex classifies an image-only PDF outside the lab grammar without inventi
     assert.equal(uploaded.statusCode, 202);
     const documentId = uploaded.json().document.id as string;
 
-    const processed = await processOneDocument(database, storageRoot);
+    // The model transcribes a page that is not a lab report; nothing must be invented.
+    const processed = await processOneDocument(database, storageRoot, {
+      visionTranscription: "UNSUPPORTED EXAMPLE\nTHIS IS NOT A VEYLTA SYNTHETIC REPORT",
+    });
     assert.equal(processed.status, "completed");
     assert.equal("factCount" in processed ? processed.factCount : undefined, 0);
     const facts = await database.query<{ count: number }>(

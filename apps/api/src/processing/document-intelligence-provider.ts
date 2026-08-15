@@ -1,4 +1,5 @@
 import type { DocumentIntelligenceResult, SyntheticDocumentContentType } from "@veylta/contracts";
+import type { DocumentPageImage } from "./document-images.js";
 import type {
   ExtractedPageText,
   ParsedDocumentPage,
@@ -7,7 +8,13 @@ import type {
 
 export interface DocumentIntelligenceInput {
   readonly contentType: SyntheticDocumentContentType;
+  /** Text-layer pages. Empty when the source reaches the model as images instead. */
   readonly pages: readonly ExtractedPageText[];
+  /**
+   * Bounded page images for a source without a text layer. The model transcribes them and
+   * every fragment is bound to that transcription, so provenance still names a page.
+   */
+  readonly images?: readonly DocumentPageImage[];
 }
 
 export interface DocumentIntelligenceOutput {

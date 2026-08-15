@@ -14,13 +14,14 @@ import {
   ObjectStorageValidationError,
 } from "../storage/object-storage.js";
 import { CodexDocumentIntelligenceError } from "./codex-document-intelligence-provider.js";
-import type { DocumentIntelligenceProvider } from "./document-intelligence-provider.js";
 import {
+  checkedDirectImage,
   type DirectImageContentType,
-  extractImageTextWithLocalSyntheticOcr,
-  ImageOcrExtractionError,
-} from "./image-ocr-extractor.js";
-import { extractPdfTextWithLocalSyntheticOcr, PdfOcrExtractionError } from "./pdf-ocr-extractor.js";
+  DocumentImageError,
+  type DocumentPageImage,
+  renderPdfPagesToImages,
+} from "./document-images.js";
+import type { DocumentIntelligenceProvider } from "./document-intelligence-provider.js";
 import {
   extractPdfTextLayer,
   PdfTextExtractionError,
@@ -59,11 +60,13 @@ export interface DocumentExtractionProcessorDependencies {
     bytes: Uint8Array,
     options?: PdfTextExtractionOptions,
   ) => Promise<ExtractedPageText[]>;
-  extractScannedPdf?: (bytes: Uint8Array) => Promise<ExtractedPageText[]>;
-  extractImage?: (
+  /** Renders a PDF without a text layer into bounded page images for the model. */
+  renderPdfImages?: (bytes: Uint8Array) => Promise<DocumentPageImage[]>;
+  /** Validates a direct PNG/JPEG upload and returns it as one page image for the model. */
+  checkImage?: (
     bytes: Uint8Array,
     contentType: DirectImageContentType,
-  ) => Promise<ExtractedPageText[]>;
+  ) => Promise<DocumentPageImage>;
   parse?: (pages: readonly ExtractedPageText[]) => ParsedLabExtraction;
   intelligence?: DocumentIntelligenceProvider;
   now?: () => Date;
@@ -243,17 +246,8 @@ function failureCode(error: unknown): ProcessingErrorCode {
       return "EXTRACTION_FAILED";
     }
   }
-  if (error instanceof PdfOcrExtractionError) {
-    if (error.code === "INVALID_PDF") return "INVALID_DOCUMENT";
-    if (error.code === "PDF_LIMIT_EXCEEDED" || error.code === "OCR_FAILED") {
-      return "EXTRACTION_FAILED";
-    }
-  }
-  if (error instanceof ImageOcrExtractionError) {
-    if (error.code === "INVALID_IMAGE") return "INVALID_DOCUMENT";
-    if (error.code === "IMAGE_LIMIT_EXCEEDED" || error.code === "OCR_FAILED") {
-      return "EXTRACTION_FAILED";
-    }
+  if (error instanceof DocumentImageError) {
+    return error.code === "INVALID_DOCUMENT" ? "INVALID_DOCUMENT" : "EXTRACTION_FAILED";
   }
   if (error instanceof SyntheticLabParseError) {
     return "VALIDATION_FAILED";
@@ -303,8 +297,8 @@ export function createDocumentExtractionProcessor(
   const jobs =
     dependencies.jobs ?? createProcessingJobService(transactionalDatabase(dependencies.database));
   const extractText = dependencies.extractText ?? extractPdfTextLayer;
-  const extractScannedPdf = dependencies.extractScannedPdf ?? extractPdfTextWithLocalSyntheticOcr;
-  const extractImage = dependencies.extractImage ?? extractImageTextWithLocalSyntheticOcr;
+  const renderPdfImages = dependencies.renderPdfImages ?? renderPdfPagesToImages;
+  const checkImage = dependencies.checkImage ?? checkedDirectImage;
   const parse = dependencies.parse ?? parseSyntheticLabPages;
   const intelligence = dependencies.intelligence;
   const now = dependencies.now ?? (() => new Date());
@@ -322,7 +316,10 @@ export function createDocumentExtractionProcessor(
         const source = await sourceForClaim(dependencies.database, claim);
         const bytes = await loadDocumentBytes(dependencies.storage, source);
         await advance(jobs, claim, "text_extraction", now);
-        let pages: ExtractedPageText[];
+        // A text layer travels as text; anything else travels as bounded page images that
+        // Codex reads and transcribes itself. Local OCR is gone: one reader, one provenance.
+        let pages: ExtractedPageText[] = [];
+        let images: DocumentPageImage[] = [];
         if (source.contentType === "application/pdf") {
           try {
             pages = await extractText(bytes, { maxPdfBytes: source.byteSize });
@@ -330,10 +327,10 @@ export function createDocumentExtractionProcessor(
             if (!(error instanceof PdfTextExtractionError) || error.code !== "TEXT_LAYER_MISSING") {
               throw error;
             }
-            pages = await extractScannedPdf(bytes);
+            images = await renderPdfImages(bytes);
           }
         } else {
-          pages = await extractImage(bytes, source.contentType);
+          images = [await checkImage(bytes, source.contentType)];
         }
         await advance(jobs, claim, "document_classification", now);
         await advance(jobs, claim, "structured_extraction", now);
@@ -341,11 +338,17 @@ export function createDocumentExtractionProcessor(
           intelligence === undefined
             ? (() => {
                 // Compatibility seam for isolated deterministic fixtures. The runtime worker
-                // always supplies the Codex provider.
+                // always supplies the Codex provider, and image sources need one.
+                if (images.length > 0)
+                  throw new SyntheticLabParseError("UNSUPPORTED_SYNTHETIC_FORMAT");
                 requireSyntheticLabFixture(pages);
                 return parse(pages);
               })()
-            : await intelligence.analyze({ contentType: source.contentType, pages });
+            : await intelligence.analyze({
+                contentType: source.contentType,
+                pages,
+                ...(images.length === 0 ? {} : { images }),
+              });
         await advance(jobs, claim, "validation", now);
         const completion = await jobs.completeExtraction(claim, output, validNow(now));
         return completedResult(claim, completion);

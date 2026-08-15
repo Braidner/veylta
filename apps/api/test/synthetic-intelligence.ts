@@ -5,22 +5,57 @@ import {
 } from "@veylta/contracts";
 import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../src/processing/codex-document-intelligence-provider.js";
 import type { DocumentIntelligenceProvider } from "../src/processing/document-intelligence-provider.js";
-import { parseSyntheticLabPages } from "../src/processing/synthetic-lab-parser.js";
+import {
+  parseSyntheticLabPages,
+  SYNTHETIC_LAB_FIXTURE_DISCLAIMER,
+  SYNTHETIC_LAB_FIXTURE_HEADER,
+} from "../src/processing/synthetic-lab-parser.js";
 
 /**
  * A deterministic stand-in for Codex: it transcribes the synthetic grammar already printed
  * on the page, so integration tests exercise the real processing path without a model.
  */
-export function createSyntheticIntelligence(): DocumentIntelligenceProvider {
+/**
+ * What the double "reads" from any attached page image. A real model transcribes the picture;
+ * a test double cannot, so every image source yields this one synthetic line, and tests assert
+ * the plumbing around it: page provenance, fact binding, run journal.
+ */
+export const SYNTHETIC_VISION_TRANSCRIPTION = [
+  SYNTHETIC_LAB_FIXTURE_HEADER,
+  SYNTHETIC_LAB_FIXTURE_DISCLAIMER,
+  "FACT|synthetic-analyte-a",
+  "NAME|SYNTHETIC ANALYTE A",
+  "VALUE|7.0",
+  "UNIT|synthetic-unit",
+  "RANGE|synthetic reference",
+  "CONFIDENCE|0.60",
+  "ISSUES|AMBIGUOUS_UNIT",
+  "END",
+].join("\n");
+
+export function createSyntheticIntelligence(
+  options: { visionTranscription?: string } = {},
+): DocumentIntelligenceProvider {
+  const visionTranscription = options.visionTranscription ?? SYNTHETIC_VISION_TRANSCRIPTION;
   return {
     async analyze(input) {
-      const pages = input.pages.map((page) => ({
+      // Image sources: stand in for the model's own transcription of each attached page.
+      const textPages =
+        input.images !== undefined && input.images.length > 0
+          ? input.images.map((image) => ({
+              pageNumber: image.pageNumber,
+              text: visionTranscription,
+              extractionMethod: "codex_vision",
+              extractionVersion: "gpt-5.4-mini+codex-cli/test",
+            }))
+          : input.pages;
+      const pages = textPages.map((page) => ({
         ...page,
         textSha256: createHash("sha256").update(page.text, "utf8").digest("hex"),
       }));
       let items: ReturnType<typeof parseSyntheticLabPages>["extraction"]["items"] = [];
       try {
-        items = parseSyntheticLabPages(input.pages).extraction.items;
+        items = parseSyntheticLabPages(textPages).extraction.items;
       } catch {
         // This deterministic double simulates Codex classifying a non-lab document with no facts.
       }

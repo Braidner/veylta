@@ -76,8 +76,27 @@ if (args[0] === "--version") {
     let prompt = "";
     for await (const chunk of process.stdin) prompt += chunk;
     const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\\n") + 1));
+    // Attached page images: the stub cannot read pixels, so it "transcribes" one fixed
+    // synthetic report per attached page, exactly as the API-side test double does.
+    const attached = args.reduce((count, arg) => count + (arg === "--image" ? 1 : 0), 0);
+    const transcription = [
+      "VEYLTA SYNTHETIC LAB REPORT v1",
+      "SYNTHETIC TEST DATA \\u2014 NOT FOR MEDICAL USE",
+      "FACT|synthetic-analyte-a",
+      "NAME|SYNTHETIC ANALYTE A",
+      "VALUE|7.0",
+      "UNIT|synthetic-unit",
+      "RANGE|synthetic reference",
+      "CONFIDENCE|0.60",
+      "ISSUES|AMBIGUOUS_UNIT",
+      "END",
+    ].join("\\n");
+    const pages =
+      attached > 0
+        ? Array.from({ length: attached }, (_, index) => ({ pageNumber: index + 1, text: transcription }))
+        : payload.pages;
     const facts = [];
-    for (const page of payload.pages) {
+    for (const page of pages) {
       const lines = page.text.replaceAll("\\r\\n", "\\n").split("\\n");
       for (let index = 0; index <= lines.length - 8; index += 1) {
         const block = lines.slice(index, index + 8);
@@ -125,6 +144,7 @@ if (args[0] === "--version") {
       source: fact.source
     }));
     await writeFile(args[marker + 1], JSON.stringify({
+      ...(attached > 0 ? { pages: pages.map(({ pageNumber, text }) => ({ pageNumber, text })) } : {}),
       classification: {
         category: facts.length > 0 ? "laboratory" : "other",
         title: facts.length > 0 ? "Синтетические лабораторные результаты" : "Синтетический документ",
