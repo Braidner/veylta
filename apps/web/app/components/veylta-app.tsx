@@ -192,6 +192,16 @@ function profilePath(familyId: string, profileId: string): string {
 }
 
 const profileTabs = ["overview", "documents", "history", "plan"] as const;
+
+/**
+ * Settings holds two unrelated things: server administration (admin only) and family
+ * profiles and access (any family owner). Either grants entry; the sections gate themselves.
+ */
+function canOpenSettings(session: SessionResponse): boolean {
+  return (
+    session.user.role === "admin" || session.families.some((family) => family.role === "owner")
+  );
+}
 type ProfileTab = (typeof profileTabs)[number];
 type WorkspaceTab = ProfileTab | "settings";
 
@@ -343,6 +353,8 @@ interface VeyltaAppProps {
   requestedProfileId?: string;
   requestedDocumentId?: string;
   requestedTab?: string | undefined;
+  /** The profile settings should manage first; set when settings is opened from a profile. */
+  requestedSettingsProfileId?: string | undefined;
   requestedCanonicalCode?: string | undefined;
   requestedSettings?: boolean;
 }
@@ -354,6 +366,7 @@ export function VeyltaApp({
   requestedTab,
   requestedCanonicalCode,
   requestedSettings = false,
+  requestedSettingsProfileId,
 }: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
@@ -654,11 +667,15 @@ export function VeyltaApp({
               <ClipboardList size={17} aria-hidden="true" />
               План
             </Link>
-            {session?.user.role === "admin" ? (
+            {session !== undefined && canOpenSettings(session) ? (
               <Link
                 id="workspace-tab-settings"
                 className={`workspace-primary-nav__item ${activeTab === "settings" ? "workspace-primary-nav__item--active" : ""}`}
-                href="/settings"
+                href={
+                  navigationProfile === undefined
+                    ? "/settings"
+                    : `/settings?profile=${encodeURIComponent(navigationProfile.id)}`
+                }
                 role="tab"
                 aria-selected={activeTab === "settings"}
                 aria-controls="workspace-panel-settings"
@@ -726,7 +743,23 @@ export function VeyltaApp({
           <LoadingScreen copy="Возвращаем к началу…" />
         ) : null}
         {session !== undefined && requestedSettings ? (
-          <HomeSettingsScreen session={session} onSessionRefresh={refreshSession} />
+          <HomeSettingsScreen
+            session={session}
+            onSessionRefresh={refreshSession}
+            initialProfileId={requestedSettingsProfileId}
+            profileManagement={{
+              addProfileOpen,
+              action,
+              error: actionError,
+              onAddProfileToggle: () => {
+                setActionError(null);
+                setAddProfileOpen((open) => !open);
+              },
+              onAddProfile: handleAddProfile,
+              onProfileArchived: refreshSessionAfterProfileArchive,
+              onProfileRestored: refreshSessionAfterProfileRestore,
+            }}
+          />
         ) : null}
         {session !== undefined &&
         !requestedSettings &&
@@ -754,20 +787,11 @@ export function VeyltaApp({
             requestedDocumentId={requestedDocumentId}
             activeTab={activeTab === "settings" ? "overview" : activeTab}
             requestedCanonicalCode={requestedCanonicalCode}
-            addProfileOpen={addProfileOpen}
-            action={action}
             error={actionError}
             onProfileChange={(familyId, profileId) => {
               setActionError(null);
               router.push(profilePath(familyId, profileId));
             }}
-            onAddProfileToggle={() => {
-              setActionError(null);
-              setAddProfileOpen((open) => !open);
-            }}
-            onAddProfile={handleAddProfile}
-            onProfileArchived={refreshSessionAfterProfileArchive}
-            onProfileRestored={refreshSessionAfterProfileRestore}
           />
         ) : null}
       </main>
@@ -775,12 +799,29 @@ export function VeyltaApp({
   );
 }
 
+interface ProfileManagementProps {
+  addProfileOpen: boolean;
+  action: "setup" | "login" | "add-profile" | "logout" | null;
+  error: string | null;
+  onAddProfileToggle: () => void;
+  onAddProfile: (event: FormEvent<HTMLFormElement>, family: SessionFamily) => void;
+  onProfileArchived: () => Promise<void>;
+  onProfileRestored: () => Promise<void>;
+}
+
 interface HomeSettingsScreenProps {
   session: SessionResponse;
   onSessionRefresh: () => Promise<void>;
+  initialProfileId?: string | undefined;
+  profileManagement: ProfileManagementProps;
 }
 
-function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenProps) {
+function HomeSettingsScreen({
+  session,
+  onSessionRefresh,
+  initialProfileId,
+  profileManagement,
+}: HomeSettingsScreenProps) {
   const settingsLoadGeneration = useRef(0);
   const [settings, setSettings] = useState<HomeSettingsResponse | null>(null);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "denied" | "error">("loading");
@@ -814,8 +855,9 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    // Only an administrator may read server settings; a family owner never asks.
+    if (session.user.role === "admin") void load();
+  }, [load, session.user.role]);
 
   async function createAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -947,10 +989,37 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
     }
   }
 
-  if (loadState === "loading") return <LoadingScreen copy="Проверяем домашний сервер…" />;
-  if (loadState === "denied" || session.user.role !== "admin") {
-    return <MissingSettingsScreen />;
+  const isAdmin = session.user.role === "admin";
+  if (!isAdmin) {
+    if (!canOpenSettings(session)) return <MissingSettingsScreen />;
+    return (
+      <section
+        id="workspace-panel-settings"
+        className="settings-shell workspace-tab-panel workspace-tab-panel--settings"
+        role="tabpanel"
+        aria-labelledby="workspace-tab-settings settings-title"
+        aria-label="Настройки"
+      >
+        <div className="settings-heading">
+          <div>
+            <p className="context-line">Семья</p>
+            <h1 id="settings-title">Настройки</h1>
+            <p className="lede">
+              Профили семьи, архив и доступ участников. Серверные настройки — Codex, хранилище,
+              учётные записи — доступны только администратору.
+            </p>
+          </div>
+        </div>
+        <ProfileManagementSettings
+          session={session}
+          initialProfileId={initialProfileId}
+          {...profileManagement}
+        />
+      </section>
+    );
   }
+  if (loadState === "loading") return <LoadingScreen copy="Проверяем домашний сервер…" />;
+  if (loadState === "denied") return <MissingSettingsScreen />;
   if (loadState === "error" || settings === null) {
     return <ErrorScreen onRetry={() => void load()} />;
   }
@@ -1314,6 +1383,12 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
         </section>
       </div>
 
+      <ProfileManagementSettings
+        session={session}
+        initialProfileId={initialProfileId}
+        {...profileManagement}
+      />
+
       <section className="account-settings" aria-labelledby="account-settings-title">
         <div className="settings-section-heading account-settings__heading">
           <div>
@@ -1427,6 +1502,79 @@ function HomeSettingsScreen({ session, onSessionRefresh }: HomeSettingsScreenPro
           </form>
         </div>
       </section>
+    </section>
+  );
+}
+
+/**
+ * Family profiles and access are administration, not documents, so they live in settings.
+ * The rail is reused as-is; only the profile it acts on is chosen here.
+ */
+function ProfileManagementSettings({
+  session,
+  initialProfileId,
+  addProfileOpen,
+  action,
+  error,
+  onAddProfileToggle,
+  onAddProfile,
+  onProfileArchived,
+  onProfileRestored,
+}: { session: SessionResponse; initialProfileId?: string | undefined } & ProfileManagementProps) {
+  const profiles = session.families.flatMap((family) =>
+    family.profiles.map((profile) => ({ family, profile })),
+  );
+  // Opened from a profile, settings manages that profile first; otherwise the first one.
+  const [selectedProfileId, setSelectedProfileId] = useState<string | null>(
+    profiles.find((entry) => entry.profile.id === initialProfileId)?.profile.id ??
+      profiles[0]?.profile.id ??
+      null,
+  );
+  const selected =
+    profiles.find((entry) => entry.profile.id === selectedProfileId) ?? profiles[0] ?? null;
+  if (selected === null || selected.family.role !== "owner") return null;
+
+  return (
+    <section
+      className="profile-settings"
+      aria-labelledby="profile-settings-title"
+      data-testid="profile-settings"
+    >
+      <div className="settings-section-heading">
+        <div>
+          <p className="section-label">Семья</p>
+          <h2 id="profile-settings-title">Профили и доступ</h2>
+        </div>
+        {profiles.length > 1 ? (
+          <label className="profile-switcher">
+            <span className="visually-hidden">Профиль для управления</span>
+            <select
+              aria-label="Профиль для управления"
+              value={selected.profile.id}
+              onChange={(event) => setSelectedProfileId(event.target.value)}
+            >
+              {profiles.map((entry) => (
+                <option key={entry.profile.id} value={entry.profile.id}>
+                  {entry.profile.displayName}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
+      </div>
+      <ProfileManagementRail
+        key={selected.profile.id}
+        family={selected.family}
+        profile={selected.profile}
+        ownerCanAddProfile
+        addProfileOpen={addProfileOpen}
+        action={action}
+        error={error}
+        onAddProfileToggle={onAddProfileToggle}
+        onAddProfile={onAddProfile}
+        onProfileArchived={onProfileArchived}
+        onProfileRestored={onProfileRestored}
+      />
     </section>
   );
 }
@@ -1675,14 +1823,8 @@ interface ProfileWorkspaceProps {
   requestedDocumentId: string | undefined;
   activeTab: ProfileTab;
   requestedCanonicalCode?: string | undefined;
-  addProfileOpen: boolean;
-  action: "setup" | "login" | "add-profile" | "logout" | null;
   error: string | null;
   onProfileChange: (familyId: string, profileId: string) => void;
-  onAddProfileToggle: () => void;
-  onAddProfile: (event: FormEvent<HTMLFormElement>, family: SessionFamily) => void;
-  onProfileArchived: () => Promise<void>;
-  onProfileRestored: () => Promise<void>;
 }
 
 function ProfileWorkspace({
@@ -1692,18 +1834,11 @@ function ProfileWorkspace({
   requestedDocumentId,
   activeTab,
   requestedCanonicalCode,
-  addProfileOpen,
-  action,
   error,
   onProfileChange,
-  onAddProfileToggle,
-  onAddProfile,
-  onProfileArchived,
-  onProfileRestored,
 }: ProfileWorkspaceProps) {
   const router = useRouter();
   const profiles = session.families.flatMap((sessionFamily) => sessionFamily.profiles);
-  const ownerCanAddProfile = family.role === "owner";
   const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -1983,7 +2118,7 @@ function ProfileWorkspace({
         </div>
       ) : null}
 
-      {error !== null && !addProfileOpen ? (
+      {error !== null ? (
         <p className="form-error workspace-error" role="alert">
           {error}
         </p>
@@ -2014,11 +2149,7 @@ function ProfileWorkspace({
           <ProfileOverviewPanel
             key={`overview:${family.id}:${profile.id}`}
             familyId={family.id}
-            familyName={family.displayName}
             profileId={profile.id}
-            profileName={profile.displayName}
-            profiles={profiles}
-            onProfileChange={onProfileChange}
             canWriteProfile={canWriteProfile}
             view="dashboard"
             onUpload={openUploadDialog}
@@ -2039,32 +2170,11 @@ function ProfileWorkspace({
             <ProfileOverviewPanel
               key={`documents:${family.id}:${profile.id}`}
               familyId={family.id}
-              familyName={family.displayName}
               profileId={profile.id}
-              profileName={profile.displayName}
-              profiles={profiles}
-              onProfileChange={onProfileChange}
               canWriteProfile={canWriteProfile}
               view="documents"
               onUpload={openUploadDialog}
             />
-            {ownerCanAddProfile || family.role === "owner" ? (
-              <details className="profile-management-drawer">
-                <summary>Управление профилем и доступом</summary>
-                <ProfileManagementRail
-                  family={family}
-                  profile={profile}
-                  ownerCanAddProfile={ownerCanAddProfile}
-                  addProfileOpen={addProfileOpen}
-                  action={action}
-                  error={error}
-                  onAddProfileToggle={onAddProfileToggle}
-                  onAddProfile={onAddProfile}
-                  onProfileArchived={onProfileArchived}
-                  onProfileRestored={onProfileRestored}
-                />
-              </details>
-            ) : null}
           </div>
         </div>
       ) : null}
@@ -3006,24 +3116,16 @@ function DocumentArchiveList({
 
 function ProfileOverviewPanel({
   familyId,
-  familyName,
   profileId,
-  profileName,
-  profiles,
   canWriteProfile,
   view,
   onUpload,
-  onProfileChange,
 }: {
   familyId: string;
-  familyName: string;
   profileId: string;
-  profileName: string;
-  profiles: readonly PatientProfileSummary[];
   canWriteProfile: boolean;
   view: "dashboard" | "documents";
   onUpload: () => void;
-  onProfileChange: (familyId: string, profileId: string) => void;
 }) {
   const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
   const [searchQuery, setSearchQuery] = useState("");
@@ -3214,11 +3316,6 @@ function ProfileOverviewPanel({
 
       {state.kind !== "ready" && view === "documents" ? (
         <DocumentsHero
-          familyName={familyName}
-          profileName={profileName}
-          profileId={profileId}
-          profiles={profiles}
-          onProfileChange={onProfileChange}
           canWrite={canWriteProfile}
           summary={null}
           bulkConfirmPending={false}
@@ -3263,11 +3360,6 @@ function ProfileOverviewPanel({
         ) : (
           <>
             <DocumentsHero
-              familyName={familyName}
-              profileName={profileName}
-              profileId={profileId}
-              profiles={profiles}
-              onProfileChange={onProfileChange}
               canWrite={canWriteProfile}
               summary={buildDocumentsArchiveHero(state.overview)}
               bulkConfirmPending={archiveAction.kind === "confirming"}

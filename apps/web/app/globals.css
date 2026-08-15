@@ -1445,6 +1445,15 @@ h3 {
   border-radius: 16px;
 }
 
+/* The hero bleeds to the viewport, so this tab drops the card chrome that clipped it. */
+.documents-workspace {
+  overflow: visible;
+  margin-top: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+}
+
 .document-inbox {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(280px, 0.62fr);
@@ -1468,7 +1477,7 @@ h3 {
   padding: 0 0 32px;
 }
 
-/* The hero spans the workspace card; everything after it keeps the archive inset. */
+/* The hero spans the viewport; everything after it keeps the archive inset. */
 .profile-overview--documents > .document-library__toolbar,
 .profile-overview--documents > .profile-overview__sections,
 .profile-overview--documents > .profile-overview__loading,
@@ -6344,7 +6353,8 @@ body:has(.upload-dialog[open]) {
   grid-area: actions;
   flex-wrap: wrap;
   min-width: 0;
-  gap: 8px;
+  gap: 10px;
+  align-items: center;
   justify-content: flex-end;
   padding: 0;
   margin: 0;
@@ -6352,9 +6362,13 @@ body:has(.upload-dialog[open]) {
 }
 
 .page-hero__action {
+  display: inline-flex;
   gap: 8px;
-  min-height: 40px;
-  padding-inline: 12px;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  padding-block: 0;
+  padding-inline: 18px;
   color: white;
   white-space: nowrap;
   background: oklch(0.25 0.08 275 / 22%);

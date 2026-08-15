@@ -32,7 +32,8 @@ test("first launch creates the administrator, opens their profile, and later log
   await expect(page.getByText("Администратор системы")).toBeVisible();
 
   await page.getByRole("tab", { name: "Настройки" }).click();
-  await expect(page).toHaveURL("/settings");
+  // Opened from a profile, settings carries that profile so family management starts on it.
+  await expect(page).toHaveURL(/\/settings(?:\?profile=[0-9a-f-]{36})?$/);
   await expect(page.getByRole("heading", { level: 1, name: "Настройки сервера" })).toBeVisible();
   await expect(page.locator(".workspace-bar--profile")).toBeVisible();
   await expect(page.getByRole("tab", { name: "Настройки" })).toHaveAttribute(

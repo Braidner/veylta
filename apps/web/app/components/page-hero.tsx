@@ -1,8 +1,8 @@
 import type { ReactNode } from "react";
 
 interface PageHeroProps {
-  /** Kicker above the title. Both surfaces use it to keep the active person explicit. */
-  readonly contextLine: ReactNode;
+  /** Optional kicker above the title. */
+  readonly contextLine?: ReactNode;
   readonly titleId: string;
   readonly title: string;
   readonly meta?: ReactNode;
@@ -36,7 +36,7 @@ export function PageHero({
   return (
     <header className="page-hero" data-testid={testId}>
       <div className="page-hero__identity">
-        <p className="context-line">{contextLine}</p>
+        {contextLine === undefined ? null : <p className="context-line">{contextLine}</p>}
         <h1 id={titleId}>{title}</h1>
         {meta === undefined ? null : <p className="page-hero__meta">{meta}</p>}
         {search === undefined ? null : <div className="page-hero__search-slot">{search}</div>}

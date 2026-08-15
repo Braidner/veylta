@@ -28,7 +28,7 @@ async function registerDemoFamily(page: Page) {
   await expect(signals.getByText("Ждёт проверки", { exact: true })).toBeVisible();
   await expect(signals.getByText("Отмечено источником", { exact: true })).toBeVisible();
   await expect(signals.getByText("Подтверждено", { exact: true })).toBeVisible();
-  await openProfileManagement(page);
+  await openDocumentsTab(page);
   const archive = page.getByRole("region", { name: "Архив документов" });
   await expect(archive.getByText("Ничего не ожидает проверки.")).toBeVisible();
   await expect(archive.getByText("Исходников пока нет.")).toBeVisible();
@@ -39,13 +39,16 @@ async function registerDemoFamily(page: Page) {
   return names;
 }
 
+/** Family profiles and access are administration, so they live under «Настройки». */
 async function openProfileManagement(page: Page): Promise<void> {
+  await page.getByRole("tab", { name: "Настройки" }).click();
+  await expect(page.getByRole("tabpanel", { name: "Настройки" })).toBeVisible();
+  await expect(page.getByTestId("profile-settings")).toBeVisible();
+}
+
+async function openDocumentsTab(page: Page): Promise<void> {
   await page.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page.getByRole("tabpanel", { name: "Документы" })).toBeVisible();
-  const drawer = page.locator("summary").filter({ hasText: "Управление профилем и доступом" });
-  if ((await drawer.count()) > 0) {
-    await drawer.click();
-  }
 }
 
 test("a synthetic family session survives reload and keeps the active profile in the URL", async ({
@@ -127,6 +130,8 @@ test("an owner archives and restores a profile without deleting it", async ({ pa
   await restoredArchive.getByRole("button", { name: `Восстановить ${names.profile}` }).click();
   await expect(restoredArchive.getByText("Архивных профилей пока нет.")).toBeVisible();
 
+  // Restore stays in settings; the active-profile switcher lives on the profile pages.
+  await page.getByRole("tab", { name: "Обзор", exact: true }).click();
   await page.getByLabel("Активный профиль").selectOption({ label: names.profile });
   await expect(page).toHaveURL(ownerProfileUrl);
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
@@ -203,7 +208,7 @@ test("an owner grants and revokes read-only access to a profile for an invited a
     await expect(
       adultPage.locator(".profile-heading__access").getByText("Только чтение", { exact: true }),
     ).toBeVisible();
-    await openProfileManagement(adultPage);
+    await openDocumentsTab(adultPage);
     await expect(
       adultPage.getByRole("heading", { level: 2, name: "Доступ выдан владельцем профиля" }),
     ).toBeVisible();
