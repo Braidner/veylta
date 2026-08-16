@@ -1,338 +1,252 @@
-# Veylta
+<p align="center">
+  <img src="apps/web/public/icons/veylta-icon.svg" width="96" alt="Veylta">
+</p>
 
-Veylta is an open-source, family-first medical record for keeping source
-documents, reviewing extracted laboratory facts, and following confirmed
-measurements over time.
+<h1 align="center">Veylta</h1>
 
-The coined name evokes a protective *veil*: private by default, with every
-derived claim still traceable to its source. It is pronounced “VAYL-ta”.
+<p align="center">
+  A local-first, family-scoped medical record.<br>
+  Your documents stay on your machine, an AI extracts the numbers with a source citation for each,
+  and nothing becomes a fact until you confirm it.
+</p>
 
-The product helps a family understand its own health history and prepare for a
-conversation with a clinician. It does **not** diagnose disease, prescribe or
-change treatment, or replace a clinician or an electronic health record.
+<p align="center">
+  <a href="https://github.com/Braidner/veylta/actions/workflows/ci.yml"><img src="https://github.com/Braidner/veylta/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2859ED.svg" alt="MIT license"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A5%2022.16-339933?logo=node.js&logoColor=white" alt="Node ≥ 22.16">
+  <img src="https://img.shields.io/badge/pnpm-10.4-F69220?logo=pnpm&logoColor=white" alt="pnpm 10.4">
+  <img src="https://img.shields.io/badge/local--first-no%20cloud-7457EE" alt="local-first, no cloud">
+  <img src="https://img.shields.io/badge/UI-%D1%80%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-1473F3" alt="Russian UI">
+</p>
 
-## Product direction: a home health-care PWA
+<p align="center">
+  <a href="#why-veylta">Why</a> ·
+  <a href="#features">Features</a> ·
+  <a href="#how-it-works">How it works</a> ·
+  <a href="#quick-start">Quick start</a> ·
+  <a href="#configuration">Configuration</a> ·
+  <a href="#development">Development</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#safety-and-data-policy">Safety</a> ·
+  <a href="#license">License</a>
+</p>
 
-Veylta is an installable PWA served by one home installation, in the same
-operational style as BraidnerAssist. Fastify and the worker own a local SQLite
-database and a configurable document-storage directory. There is no Veylta
-cloud control plane and no serverless custody model: accounts, access grants,
-medical metadata, audit events, and jobs stay on the household server.
+<p align="center">
+  <img src="docs/media/document.png" alt="A document in Veylta: the summary hero, the extracted values and the source fragment beside the selected value" width="900">
+</p>
 
-On an empty installation the only available product action creates the first
-administrator, their home workspace, and their linked health profile in one
-transaction. Later sign-in uses a local username and password. The target
-settings surface manages Codex connection status, the live local model catalog,
-reasoning/Fast execution profile, subscription limit windows, document-storage location,
-local administrator/user accounts, and per-profile access.
+> **Veylta** (“VAYL-ta”) is a coined name that evokes a protective *veil*: private by default, with
+> every derived claim still traceable to its source. It helps a family understand its own health
+> history and prepare for a conversation with a clinician. It does **not** diagnose, prescribe,
+> change treatment, or replace a clinician or an electronic health record.
 
-The Codex integration follows Hermes' proven local-runtime pattern:
-Veylta checks and starts a locally installed `codex app-server` daemon, while
-bounded document-intelligence and proposal jobs run through `codex exec --ephemeral` using the same
-ChatGPT subscription session owned by `codex login`. Veylta never reads, copies,
-or persists Codex OAuth tokens or API keys, and refuses proposals unless Codex
-confirms ChatGPT authentication. See
-[ADR 0007](docs/adr/0007-home-server-pwa-and-codex-runtime.md).
+## Why Veylta
 
-Document detail also supports up to 20 named, persistent Russian Codex
-conversations bound to that document. Each turn resumes its conversation's
-local Codex thread and receives a fresh loopback-only MCP capability for the
-exact authorized document. The same workspace lists real processing jobs
-separately as ephemeral Codex runs, so a background analysis is never presented
-as saved dialogue. The first tool surface is
-read-only: Codex can inspect current metadata, processing state, and
-source-bound facts, but cannot access SQLite/filesystem directly or confirm a
-medical fact for the user. No LangGraph or frontend chat framework is needed.
-The same document surface shows an append-only processing journal per run. It renders
-only real server transitions and never imitates token streaming. For a failed run it also
-shows the owner the diagnostic record of that attempt: the bounded request Veylta sent, the
-raw answer Codex returned, and the closed reason code that refused it. That record is
-reachable only through the same profile authorization as the document itself, and it is
-never copied into an audit event, worker log, or metric — those remain payload-free.
+Health records end up scattered across lab portals, PDFs in mail and photos of printouts. Tools
+that promise to “analyse” them usually mean *upload to our cloud and trust the score*. Veylta takes
+the opposite stance:
 
-## Project status
+- **Local-first.** One household machine: Fastify + a worker on SQLite, a local object root, a
+  Next.js PWA on your LAN. No Veylta cloud, no telemetry, no account with anyone.
+- **Source-first.** Originals are immutable and checksummed. Every extracted value cites the page
+  and the exact printed line it came from — you can always open the source next to the number.
+- **Human in the loop.** The model *proposes*; a person confirms, corrects or rejects each value.
+  Only a confirmed value becomes an observation, and the raw extraction is never edited.
+- **Explainable, never diagnostic.** No health score, no risk, no trend verdicts. Range membership
+  is computed from the printed reference range; summaries and comparisons list evidence only.
+- **Bounded AI.** Extraction runs through the locally authenticated [Codex CLI](https://github.com/openai/codex)
+  with a closed JSON schema, tools disabled and every answer verified item by item. Veylta never
+  reads, copies or stores the Codex credentials.
 
-The repository contains the source-first synthetic record path and is now
-moving it behind the home-server account model. The completed first-run path
-creates exactly one local administrator, one owner-scoped home workspace,
-adult/dependent profiles, immutable synthetic PDF/PNG/JPEG records, review-ready
-extracted facts, and explicit review decisions in persistent local storage.
-The full first slice remains deliberately narrow:
+## Features
 
-1. create a family and a patient profile;
-2. batch-upload up to twenty fully synthetic PDF, PNG, or JPEG documents;
-3. persist the immutable original and calculate its SHA-256 while streaming;
-4. reuse the existing active logical document for an identical SHA-256 in the
-   same profile while keeping family-scoped physical deduplication private;
-5. let Codex produce, in one bounded call, a Russian short summary, Russian
-   detailed summary, source-provenanced generic results (including genetic and
-   categorical findings), and compatible quantitative laboratory facts;
-6. explicitly confirm, correct, or reject those facts; a confirmation or
-   correction creates a source-linked observation without changing the raw
-   extraction (Task 6, delivered);
-7. show confirmed observations as indicator history with provenance back to
-   the document and page (Task 7, delivered);
-8. compare compatible, confirmed synthetic indicators by exact code and source
-   unit, with an accessible chart and no clinical assessment (Task 9,
-   delivered).
-9. let the family owner inspect a paginated, payload-free activity log; it
-   exposes only action, result, time, actor, and resource selector (Task 12,
-   delivered).
-10. open a compact profile overview of bounded recent source documents, pending
-    explicit reviews, and confirmed values, without a health score, diagnosis,
-    or recommendation (Task 17, delivered).
-11. download a local TAR snapshot of at most five latest synthetic source files
-    plus their checksummed manifest, only as the owner/self profile actor (Task 18,
-    delivered).
-12. verify a downloaded local synthetic snapshot offline, before any manual
-    handling of its contents (Task 19, delivered).
-13. open a versioned, evidence-backed profile summary assembled only after
-    explicit fact review; it labels missing context and offers only source
-    preparation or pending-review actions, never diagnosis, triage, or treatment
-    advice (Task 20, delivered).
-14. browse any earlier immutable version of that evidence-backed summary, with
-    its original source set and no derived "change" claim (Task 21, delivered).
-15. explicitly inspect which confirmed source records entered or did not enter
-    two saved summary versions, without turning that difference into a health
-    assessment (Task 22, delivered).
-16. reversibly archive a non-last profile as the family owner, immediately
-    hiding its sources from active navigation and worker claims without deleting
-    originals, extracted facts, observations, or storage objects; the owner can
-    restore it later (Task 24, delivered).
-17. keep one profile-scoped household care plan for analyses, clinicians,
-    nutrition, activity, and reminders. A person-authored item is visibly a
-    decision, not a source-derived recommendation. After a separate disclosure,
-    Codex may select bounded drafts from the latest confirmed summary; every
-    draft is provenance-locked and remains `proposed` until a person decides
-    (Tasks 33a/33b, delivered).
-18. follow real document-processing stages after reload and hold named,
-    independent Russian Codex dialogues scoped to that exact authorized
-    document. The UI separates those saved dialogues from ephemeral analysis
-    runs and waits for a complete validated response instead of simulating a
-    token stream (Tasks 37/38, delivered; multi-dialogue workspace extended).
-19. search locally across the latest summaries and structured results, download
-    verified original bytes under the original display filename, and
-    idempotently remove a document from every active read without claiming
-    physical backup erasure (Tasks 39/40, delivered).
+- **Batch upload** of PDF, PNG and JPEG (up to 20 files × 5 MiB): streaming SHA-256, signature and
+  MIME checks, immutable originals, private per-family deduplication.
+- **Extraction that shows its work.** A PDF text layer travels as text; scans and photos travel as
+  bounded page images that Codex transcribes first. Every fact and summary result binds to a page
+  fragment; unbound items are dropped, an incomplete laboratory answer is refused and retried, and
+  every refusal names the exact rule it broke — visible in the run journal together with the raw
+  request and answer.
+- **Review workspace.** One selected value in context: the source fragment, the printed range,
+  proposed fields, and only the applicable decisions. Bulk-confirm covers only values without
+  warnings; every accepted item is still its own immutable decision.
+- **Analyte catalog and history.** ~95 common blood-count, chemistry, hormone and coagulation
+  analytes with canonical units and Russian/Latin spellings travel with every request, so codes come
+  from a closed list; confirmed values chart per analyte with provenance back to the page.
+- **Per-document Codex dialogues.** Up to 20 named Russian conversations per document over a
+  short-lived, read-only loopback MCP tool that re-authorises the document scope on every call.
+- **Family and access.** An owner, adults with their own profiles, caregivers with a single
+  revocable per-profile grant; reversible profile archiving that deletes nothing.
+- **Evidence over time.** Versioned, evidence-backed health summaries; a household care plan whose
+  Codex drafts stay `proposed` until a person decides; a payload-free audit log; a checksummed
+  evidence bundle you can verify offline.
+- **Installable PWA** served from the home machine, usable from any device on the LAN.
 
-Cloud OCR, clinically validated recommendations, FHIR
-exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
-The old loopback demo registration remains test-only. In that synthetic test path, an owner can issue a one-time invitation
-to an adult or caregiver. An adult receives only a personal linked profile;
-a caregiver receives no profile at all until the owner explicitly grants the
-single, revocable `profile.read` capability for one profile. The grant never
-transfers upload, review, invitation, or family-audit powers. This is not
-production identity or consent management. The optional S3-compatible storage
-adapter is implemented only for synthetic operator testing and is not a
-real-data readiness claim.
+<p align="center">
+  <img src="docs/media/review.png" alt="The review workspace: extracted values on the left, the selected value with its source fragment, printed range and the confirm / correct / reject decisions on the right" width="900">
+</p>
 
-## Product principles
+## How it works
 
-- Family-first access with explicit per-profile grants.
-- Privacy-first processing with explicit disclosure before document content is
-  sent through the household's Codex subscription.
-- Source-first, immutable originals and complete provenance.
-- Explicit human review before any extracted fact becomes a medical observation.
-- Explainable outputs; no opaque health score.
-- Portable data and provider-independent storage, OCR, and LLM boundaries.
-- Synthetic fixtures only. Never commit real medical documents or secrets.
+```mermaid
+flowchart LR
+  U[Upload<br/>PDF · PNG · JPEG] --> S[(Immutable original<br/>SHA-256)]
+  S --> W[Worker]
+  W -->|text layer or<br/>page images| C[codex exec<br/>local CLI · closed schema · no tools]
+  C --> V{Verify per item<br/>fragment on the page?<br/>keys · units · completeness}
+  V -->|kept| R[Human review<br/>confirm · correct · reject]
+  V -->|refused, with reason| J[Run journal]
+  R --> O[(Observations<br/>with provenance)]
+  O --> H[Indicator history<br/>summaries · care plan]
+```
 
-## Current executable architecture
+1. **Upload.** The API streams the file through SHA-256 and signature checks and stores the
+   immutable original under a key derived from trusted IDs and the checksum — never the filename.
+2. **Extract.** The worker claims a job, sends the text layer *or* bounded page images (never both)
+   plus the household analyte catalog to `codex exec` with a closed output schema.
+3. **Verify.** Each proposed result and fact is checked on its own: the cited fragment must occur on
+   the named page (widened to the complete printed line), keys and units are reconciled, a
+   model-proposed normalization survives only if it repeats the printed number, and a laboratory
+   answer whose facts miss most of its own measurements is refused as `incomplete_facts`.
+4. **Review.** A person confirms, corrects or rejects. Confirmations create observations in the same
+   transaction; rejections create none; the raw fact is never mutated.
+5. **Follow.** Confirmed observations feed indicator history, versioned summaries and the care plan
+   — always as evidence with links back to the source, never as an assessment.
 
-- TypeScript monorepo without an orchestration framework.
-- Next.js web application.
-- Fastify API and worker process.
-- Embedded SQLite through Node.js `node:sqlite` as the authoritative household
-  store for accounts, access, domain state, audit events,
-  explicit migrations, and—beginning with Task 5—durable idempotent jobs.
-- Versioned `ObjectStorage/v1` contract, backed by a persistent local filesystem
-  directory by default and an explicit S3-compatible encrypted adapter for
-  synthetic deployments. Controlled reads take a bounded, checksum-verified
-  snapshot (the current synthetic-document cap is 5 MiB) before returning bytes.
-- Provider-neutral `DocumentIntelligenceProvider` boundary with a Codex CLI
-  implementation. A PDF text layer travels as text; a scanned PDF or a direct
-  PNG/JPEG travels as bounded page images that Codex transcribes itself.
-  Codex classifies the document and returns a closed, source-bound schema.
-  Results are rejected unless every fact cites an exact source fragment of the
-  page text — the text layer, or the model's own transcription for an image.
-  Verification is per item: an unbound fact or summary result is dropped and
-  the verified rest is kept; a laboratory answer whose facts miss most of its
-  own numeric measurements is refused as incomplete so the retry asks again.
-  A model-proposed normalization is kept only when it repeats the printed
-  number under a canonical unit spelling — Veylta performs no unit conversions.
-  No local OCR engine is installed.
-- A seeded analyte catalog (~95 common blood-count, chemistry, hormone and
-  coagulation analytes with a canonical unit and Russian/Latin printed
-  spellings) travels with every request as `knownAnalytes`, so codes are
-  proposed from a closed list; the same aliases map stored facts
-  deterministically by normalized name + unit, and Cyrillic and Latin unit
-  spellings («г/л», `g/L`) share one key. Codes are household identifiers,
-  not a clinical vocabulary.
-- `document-agent/v2` stores named append-only Russian conversations and exact
-  Codex model/runtime provenance in SQLite, while processing runs stay
-  explicitly ephemeral. The official MCP SDK exposes one short-lived,
-  document-scoped read-only context tool to the local Codex CLI.
-- `document/v5` exposes an ordered payload-free timeline for the latest job
-  and immutable review summaries with the deciding account and decision time;
-  the web UI polls and renders only persisted queue/stage/result events.
-- The document workspace keeps one selected result in context: it shows the
-  exact page/fragment beside that result, clear missing-field disclosure, and
-  only the applicable human actions (confirm, correct, or reject). Bulk
-  confirmation includes only facts with no extraction warnings; `needs_review`
-  facts always require an individual source check. Every accepted bulk item is
-  still stored as its own explicit immutable decision.
-- Versioned `home-care-plan/v1` read/write boundary backed by tenant-aware
-  SQLite constraints. User actions are replay-safe and retained; a future
-  Codex proposal must name its immutable summary, rule version, source when
-  applicable, and missing context before the UI can show it.
+## Quick start
 
-See [product](docs/product.md), [architecture](docs/architecture.md),
-[threat model](docs/threat-model.md), [API](docs/api.md), [ER model](docs/er-model.md),
-[slice plan](docs/slices.md), and the
-[first-slice acceptance evidence](docs/first-slice-acceptance.md).
+**Prerequisites**
 
-## Local development
+| Requirement | Notes |
+| --- | --- |
+| Node.js ≥ 22.16 | uses the built-in `node:sqlite` — no database server, no containers |
+| pnpm 10.4 | `corepack enable` installs the pinned version |
+| [Codex CLI](https://github.com/openai/codex), signed in | `codex login` once; Veylta only shells out to it locally |
+| Chromium for Playwright | `pnpm exec playwright install chromium` — e2e only |
 
-Node.js 22.16+ is required. No database server or container runtime is needed.
-Start the current runnable foundation from the repository root:
+**Run**
 
-```sh
+```bash
 corepack enable
 pnpm install --frozen-lockfile
 pnpm db:migrate
 pnpm dev
 ```
 
-The web app listens on port `4300` on every network interface and is available
-locally at <http://127.0.0.1:4300>. The API remains at
-<http://127.0.0.1:4301>, and worker health remains at
-<http://127.0.0.1:4302>. `pnpm dev` starts all three application processes.
-Browser origins are denied unless they appear exactly in `WEB_ORIGINS`; to use
-the app from the local network, copy `.env.example` to `.env`, replace its
-example LAN address with the server's current address, and open
-`http://<server-lan-address>:4300`. Structured state remains in
-`.local/veylta.sqlite` and document bytes remain below `.local/storage`
-across process restarts. The SQLite connection enables foreign keys, a bounded
-busy timeout, and WAL mode. Defaults match `.env.example`; copy it to `.env`
-only when a local override is needed.
+Open <http://127.0.0.1:4300>. On an empty installation the first visit creates the only
+administrator, their home workspace and their linked profile in one transaction; later visits show
+the local sign-in. The API listens on `127.0.0.1:4301`, worker health on `127.0.0.1:4302`; both stay
+bound to loopback. State lives in `.local/veylta.sqlite`, document bytes under `.local/storage`.
 
-Install Chromium once before the browser test, then run the complete scaffold
-checks:
+To use Veylta from other devices on the LAN, copy `.env.example` to `.env`, list the machine's
+address in `WEB_ORIGINS` (exact origins, no subnets or wildcards) and open
+`http://<server-lan-address>:4300`.
 
-```sh
-pnpm exec playwright install chromium
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm test:integration
-pnpm build
-pnpm test:e2e
-pnpm license:check
-```
+## Configuration
 
-`pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
-On first launch, <http://127.0.0.1:4300> creates the only bootstrap administrator
-and signs them into their linked profile. Later visits show the local sign-in
-screen. The active profile stays explicit in both the route and heading. The
-batch dialog accepts up to twenty synthetic PDF, PNG, or JPEG files of 5 MiB
-each and streams each through matching
-MIME/signature, size, and SHA-256 checks, and
-keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is
-reported only inside the same family; it creates another logical document but
-not another blob. Source download is authorized again and returned as a safe
-attachment. The worker polls the same SQLite file and uses PDF.js to read the
-text layer. For an image-only PDF it renders at most three bounded pages to PNG;
-a direct PNG/JPEG passes a header and pixel-cap check and is used as one page
-image. After explicit UI disclosure, page text — or the page images — is sent
-to the locally authenticated Codex CLI, which transcribes any image page before
-extracting from it. Codex
-classifies and distributes documents into archive sections, while a strict
-post-validator rejects invented or unbound facts. Extracted facts are proposals
-for review, never confirmed medical observations by themselves. A user
-confirmation or correction creates one immutable review decision and confirmed
-observation in the same transaction; a rejection creates no observation. The
-raw extracted fact is never edited. The profile page then lists confirmed
-observations source-first, with their document-specific provenance and an
-authorized link back to the immutable original. Its separate compatible-
-indicator view keeps exact source units apart and can show the arithmetic
-difference between the latest two numeric sources; it never assigns a
-reference-range meaning, clinical trend, or recommendation.
+Defaults match [`.env.example`](.env.example); copy it to `.env` only for local overrides.
 
-The profile landing view is an authorized `profile-overview/v1` read: it shows
-at most fifty recent immutable sources, three pending-review sources, and three
-explicitly confirmed values with links back to the original document. It is an
-operational overview, never a clinical summary, and its successful read is
-payload-free audited. Its owner/self-only `synthetic-evidence-bundle/v1` download
-is a bounded TAR snapshot of five latest synthetic sources and their checksummed
-manifest, never a backup, restore format, or production portability claim. The
-separate `synthetic-profile-export/v1` download contains every current source and
-confirmed observation for one profile when the profile has at most ten sources;
-it fails closed rather than omitting older data. It is a local synthetic export,
-not a restore or production backup. Account setup asks for no email and stores a
-versioned scrypt password hash. The opaque session token exists only in an
-HttpOnly cookie; SQLite stores its SHA-256 digest. Demo registration is disabled
-by default and enabled only by the E2E runner for legacy synthetic scenarios.
-The web proxy can accept trusted LAN clients, while the API, worker health
-endpoint, and document-agent MCP transport remain bound to loopback.
-`DEMO_REGISTRATION_ENABLED=true` is rejected when either the API or any trusted
-web origin is non-loopback, and state-changing requests require an exact match
-in the configured `WEB_ORIGINS` allowlist.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `WEB_ORIGINS` | `http://127.0.0.1:4300,…` | Exact browser origins allowed to call the API. State-changing requests require a match. |
+| `DATABASE_PATH` | `.local/veylta.sqlite` | The one SQLite file all three processes share (WAL, foreign keys, busy timeout). |
+| `OBJECT_STORAGE_ROOT` | `.local/storage` | Local object root for immutable originals. An S3-compatible driver exists for synthetic operator testing only. |
+| `MAX_DOCUMENT_BYTES` | `5242880` | Per-file upload cap. |
+| `CODEX_MODEL` / `CODEX_REASONING_EFFORT` | `gpt-5.6-sol` / `medium` | Model and effort for dialogues; the settings page can pick a separate model and effort for document analysis. |
+| `CODEX_DOCUMENT_TIMEOUT_MS` | `600000` | One extraction run; the job lease (`PROCESSING_LEASE_DURATION_MS`) is a little longer. |
+| `CODEX_DOCUMENT_AGENT_TIMEOUT_MS` | `120000` | One dialogue turn. |
+| `SESSION_TTL_SECONDS` / `SESSION_COOKIE_SECURE` | `2592000` / `false` | Opaque session token in an HttpOnly cookie; SQLite stores only its SHA-256 digest. |
+| `DEMO_REGISTRATION_ENABLED` | `false` | Legacy synthetic registration for the e2e runner; refused when any origin is non-loopback. |
 
-An owner can also use the explicit `profile-archive/v1` workflow to hide a
-non-last active profile. Archiving changes only the profile's reversible access
-state: it removes the profile and every direct document read from active
-authorization, and pending worker jobs are not claimed until the owner restores
-the profile. It does not delete or rewrite immutable sources, raw facts,
-confirmed observations, audit events, or storage objects. This narrow local
-feature is not account deletion, retention management, backup, disaster
-recovery, or production restoration.
+## Development
 
-Once every fact in an extraction run has its explicit final decision, the
-profile can also open `health-summary/v1`. It is an immutable, bounded snapshot
-of confirmed observations with re-authorized links back to their source. It
-marks evidence new since the prior snapshot and missing context, but does not
-infer a condition, risk, red flag, trend, or treatment. Its only deterministic
-next actions are to prepare sources for a clinician or complete another pending
-review. `health-summary-history/v1` lists those immutable versions newest-first;
-selecting one reopens its exact stored source set. It never compares versions or
-derives a clinical or non-clinical health conclusion from their difference.
-When two versions are selected for an explicit source-set comparison, Veylta
-lists only confirmed source records newly included or no longer included. It
-does not compute an improvement, decline, trend, diagnosis, or recommendation.
-
-An artifact can be checked without extracting it to disk:
+The full check sequence, in CI order:
 
 ```bash
-pnpm --filter @veylta/api verify:evidence-bundle ./veylta-synthetic-evidence.tar
-# The same command also recognizes veylta-synthetic-profile.tar.
+pnpm license:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && pnpm test:e2e
 ```
 
-The verifier accepts only the local `synthetic-evidence-bundle/v1` and
-`synthetic-profile-export/v1` USTAR shapes, generated document paths, supported
-source signatures, and matching SHA-256/size metadata. It proves structural
-consistency of the captured local archive, not its origin, clinical correctness,
-or a production export guarantee. It prints counts only; it never calls the API,
-writes archive entries, or logs profile names, filenames, values, or source bytes.
+Useful single commands:
 
-Local username/password sign-in and first-administrator bootstrap are delivered;
-password recovery, passkeys, remote exposure, and hardened multi-device session
-management are not. Integration tests create isolated temporary SQLite databases;
-they do not reset the default development file. The upload path is also
-limited to PDF signature, MIME, size, immutable-storage, and authorization
-controls. The checked-in fixture, tests, and supported deterministic parser are
-synthetic-only; the demo is not a technical detector for real medical content.
-Do not upload real medical data until all production gates in the threat model
-are complete and independently reviewed.
+```bash
+pnpm --filter @veylta/api exec tsx --test src/processing/analyte-mapping.test.ts   # one unit test
+pnpm --filter @veylta/api exec tsx --test --test-concurrency=1 test/document-upload.integration.test.ts
+pnpm test:e2e e2e/document-review.spec.ts                                          # one e2e spec
+pnpm db:rollback                                                                    # reverse the newest migration
+README_SCREENSHOTS=1 pnpm test:e2e e2e/readme-screenshots.spec.ts                   # regenerate docs/media
+```
+
+Repository layout:
+
+```
+apps/api            Fastify API + worker: node:sqlite, migrations, Codex boundary
+  src/processing/codex-intelligence   the extraction provider, one module per responsibility
+  src/prompts                          every prompt, one file per prompt
+apps/web            Next.js PWA (Russian UI) — pure logic lives in *.ts beside the components
+packages/contracts  versioned contracts shared by api, web and tests
+db/migrations       numbered up/down SQL, applied by pnpm db:migrate
+e2e                 Playwright specs; scripts/run-e2e.mjs puts a fake `codex` on PATH
+docs                product, architecture, threat model, ADRs, delivered scope
+```
+
+Conventions worth knowing before a first change — the rest is in [`CLAUDE.md`](CLAUDE.md):
+
+- **TDD**, and every fixed bug leaves a test behind. `node:test` for units, temp-SQLite integration
+  tests under `apps/api/test`, Playwright for the browser.
+- **250 lines per source file.** `pnpm lint` enforces it; legacy files are listed in
+  [`config/file-length-baseline.json`](config/file-length-baseline.json) and may only shrink.
+- **Layering** `routes → service → storage`, services built by `create*Service(dependencies)`
+  factories, versioned contracts in one place, `.js` extensions on relative imports.
+- **Synthetic data only** — in fixtures, tests, screenshots and logs. Never commit real medical
+  documents or secrets.
+
+## Architecture
+
+Three processes, one SQLite file: the web app never talks to the API port directly (Next.js
+rewrites `/health-api/*`), the API owns writes through serialised `BEGIN IMMEDIATE` transactions,
+and the worker polls the same file for durable, idempotent, leased jobs. Object storage sits behind
+a versioned `ObjectStorage/v1` contract; the model sits behind a provider-neutral
+`DocumentIntelligenceProvider` whose Codex implementation is the only path to a model. Public
+boundaries carry explicit versions (`document/v7`, `document-agent/v2`, `home-settings/v4`, …).
+
+Read more:
+
+| | |
+| --- | --- |
+| [Architecture](docs/architecture.md) | processes, storage, contracts, the Codex boundary |
+| [Threat model](docs/threat-model.md) | trust boundaries and the production gates that are still open |
+| [API](docs/api.md) · [ER model](docs/er-model.md) | routes and tables |
+| [Product](docs/product.md) · [PRODUCT.md](PRODUCT.md) · [DESIGN.md](DESIGN.md) | positioning, register, tokens |
+| [ADRs](docs/adr) | decisions, including the home-server PWA and the Codex runtime |
+| [Delivered scope](docs/status.md) | every delivered slice and the operational detail of the current build |
 
 ## Safety and data policy
 
-Only synthetic medical data belongs in source control, fixtures, screenshots,
-logs, telemetry, and public tests. Local development is not production-ready
-for real medical data. Do not claim compliance with medical, privacy, or legal
-standards without a separate audit.
+Veylta is a **local prototype for synthetic data**. Only synthetic medical data belongs in source
+control, fixtures, screenshots, logs and public tests, and local development is not production-ready
+for real medical records: password recovery, remote exposure, hardened multi-device sessions and
+production backup/restore are not delivered, and no compliance with medical, privacy or legal
+standards is claimed without a separate audit. Do not upload real medical data until every
+production gate in the [threat model](docs/threat-model.md) is complete and independently reviewed.
+
+What holds regardless of that status:
+
+- Codex runs locally, sandboxed read-only, with tools disabled and bounded input/output; Veylta
+  never reads, copies or persists its credentials.
+- Audit events are payload-free — actor, tenant, action, resource selector, result, time. The run
+  journal is the only surface that shows an owner their own document content and the model's raw
+  answer, and it is reachable only through the same profile authorisation as the document.
+- Cross-tenant and unauthorised resources return 404, never 403: IDs are selectors, not proof of
+  access.
+
+## Contributing
+
+Issues and pull requests are welcome. A change is ready when the sequence under
+[Development](#development) is green — CI runs exactly that — and when it follows the conventions in
+[`CLAUDE.md`](CLAUDE.md). New dependencies must satisfy [`config/license-policy.json`](config/license-policy.json)
+and be recorded in [`THIRD_PARTY_NOTICES.md`](THIRD_PARTY_NOTICES.md); `pnpm license:check` enforces it.
 
 ## License
 
-Veylta's original code and documentation are licensed under the
-[MIT License](LICENSE). Dependency and integration rules are defined in
-[docs/license-policy.md](docs/license-policy.md).
+Veylta's original code and documentation are licensed under the [MIT License](LICENSE).
+Dependency and integration rules are defined in [docs/license-policy.md](docs/license-policy.md).
