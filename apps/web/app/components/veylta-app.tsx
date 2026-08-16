@@ -100,6 +100,7 @@ import {
   useState,
 } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
+import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
   type ArchiveRow,
   archiveRows,
@@ -108,6 +109,7 @@ import {
   isRestartable,
   restartTargets,
 } from "../documents-archive";
+import { WorkspaceRequests } from "../workspace-requests";
 import { DocumentAgentWorkspace } from "./document-agent-workspace";
 import { DocumentHero } from "./document-hero";
 import { DocumentsHero } from "./documents-hero";
@@ -5819,10 +5821,7 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
   const intelligence = savedDocument.intelligence;
   const results = intelligence?.structuredResults ?? [];
   const processing = savedDocument.processing;
-  const terminalFactCount =
-    processing.state === "awaiting_review" || processing.state === "completed"
-      ? processing.factCount
-      : 0;
+  const terminalFactCount = isReviewAvailable(processing) ? processing.factCount : 0;
   const resultAvailability = documentResultAvailabilityCopy(results.length, terminalFactCount);
   const canRestart =
     canWriteProfile &&
@@ -5884,11 +5883,7 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
           intelligence?.shortSummary ??
           "Короткое саммари появится здесь после завершения нового разбора документа."
         }
-        resultAvailability={
-          processing.state === "awaiting_review" || processing.state === "completed"
-            ? resultAvailability
-            : null
-        }
+        resultAvailability={isReviewAvailable(processing) ? resultAvailability : null}
         downloadHref={contentUrl}
         canRestart={canRestart}
         restartPending={restartPending}
@@ -6087,17 +6082,6 @@ interface ProcessingPresentation {
   integrityLabel: string;
   mark: "—" | "…" | "!" | "✓";
   tone: "idle" | "active" | "attention" | "complete" | "failed";
-}
-
-function isProcessingActive(status: DocumentProcessingStatus): boolean {
-  return (
-    status.state === "queued" ||
-    status.state === "security_check" ||
-    status.state === "text_extraction" ||
-    status.state === "document_classification" ||
-    status.state === "structured_extraction" ||
-    status.state === "validation"
-  );
 }
 
 function processingStatusesEqual(
@@ -6454,25 +6438,20 @@ function DocumentAgentPanel({
   const [createError, setCreateError] = useState<string | null>(null);
   const attemptRef = useRef<DocumentAgentAttempt | null>(null);
   const conversationAttemptRef = useRef<DocumentAgentConversationAttempt | null>(null);
-  const workspaceRequestRef = useRef(0);
+  const workspaceRequests = useRef(new WorkspaceRequests());
+  /**
+   * The conversation the user means to see, updated synchronously on a selection or a
+   * mutation. A background reload asks for this — never for the selection in `state`, which
+   * may still be the previous one while a read is in flight.
+   */
+  const intendedConversation = useRef<string | null>(null);
   const loadedWorkspaceRefreshKey = useRef(workspaceRefreshKey);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const endpoint = documentAgentPath(familyId, profileId, documentId);
 
-  /**
-   * Workspace reads race: a mount load, a refresh-key reload, and an explicit selection can
-   * all be in flight at once. Only the newest request may write state, or a slow earlier
-   * response silently reverts the conversation the user just opened.
-   */
-  const claimWorkspaceRequest = useCallback((): (() => boolean) => {
-    const ticket = workspaceRequestRef.current + 1;
-    workspaceRequestRef.current = ticket;
-    return () => ticket === workspaceRequestRef.current;
-  }, []);
-
   const loadWorkspace = useCallback(
     async (conversationId?: string, signal?: AbortSignal): Promise<void> => {
-      const isCurrent = claimWorkspaceRequest();
+      const isCurrent = workspaceRequests.current.claim();
       try {
         const query =
           conversationId === undefined
@@ -6482,12 +6461,14 @@ function DocumentAgentPanel({
           `${endpoint}${query}`,
           signal === undefined ? undefined : { signal },
         );
-        if (!signal?.aborted && isCurrent()) setState({ kind: "ready", workspace: response });
+        if (signal?.aborted || !isCurrent()) return;
+        intendedConversation.current = response.selectedConversationId;
+        setState({ kind: "ready", workspace: response });
       } catch {
         if (!signal?.aborted && isCurrent()) setState({ kind: "error" });
       }
     },
-    [claimWorkspaceRequest, endpoint],
+    [endpoint],
   );
 
   useEffect(() => {
@@ -6500,17 +6481,25 @@ function DocumentAgentPanel({
     setIsSwitching(false);
     attemptRef.current = null;
     conversationAttemptRef.current = null;
+    intendedConversation.current = null;
     void loadWorkspace(undefined, controller.signal);
     return () => controller.abort();
   }, [loadWorkspace]);
 
+  // A processing update reloads the workspace, but never over a mutation in flight: the reload
+  // would carry the selection from before the mutation and revert what the user just did. A
+  // deferred reload runs when the mutation settles, with the selection the mutation returned.
   useEffect(() => {
     if (loadedWorkspaceRefreshKey.current === workspaceRefreshKey) return;
     loadedWorkspaceRefreshKey.current = workspaceRefreshKey;
-    const conversationId =
-      state.kind === "ready" ? (state.workspace.selectedConversationId ?? undefined) : undefined;
-    void loadWorkspace(conversationId);
-  }, [loadWorkspace, state, workspaceRefreshKey]);
+    if (!workspaceRequests.current.requestRefresh()) return;
+    void loadWorkspace(intendedConversation.current ?? undefined);
+  }, [loadWorkspace, workspaceRefreshKey]);
+
+  const settleMutation = useCallback(() => {
+    const { refreshDeferred } = workspaceRequests.current.endMutation();
+    if (refreshDeferred) void loadWorkspace(intendedConversation.current ?? undefined);
+  }, [loadWorkspace]);
 
   useEffect(() => {
     if (suggestedMessage === null) return;
@@ -6529,6 +6518,7 @@ function DocumentAgentPanel({
     setIsSwitching(true);
     setSendError(null);
     setMessage("");
+    intendedConversation.current = conversationId;
     await loadWorkspace(conversationId);
     setIsSwitching(false);
   }
@@ -6539,7 +6529,7 @@ function DocumentAgentPanel({
       previousAttempt?.title === title ? previousAttempt : { key: crypto.randomUUID(), title };
     conversationAttemptRef.current = attempt;
     setCreateError(null);
-    const isCurrent = claimWorkspaceRequest();
+    const isCurrent = workspaceRequests.current.beginMutation();
     try {
       const response = await apiRequest<DocumentAgentWorkspaceResponse>(
         `${endpoint}/conversations`,
@@ -6549,6 +6539,7 @@ function DocumentAgentPanel({
           body: JSON.stringify({ title }),
         },
       );
+      intendedConversation.current = response.selectedConversationId;
       if (isCurrent()) setState({ kind: "ready", workspace: response });
       setMessage("");
       conversationAttemptRef.current = null;
@@ -6561,6 +6552,8 @@ function DocumentAgentPanel({
           : "Не удалось создать диалог. Проверьте соединение и повторите.",
       );
       return false;
+    } finally {
+      settleMutation();
     }
   }
 
@@ -6585,7 +6578,7 @@ function DocumentAgentPanel({
     attemptRef.current = attempt;
     setPendingMessage(normalized);
     setSendError(null);
-    const isCurrent = claimWorkspaceRequest();
+    const isCurrent = workspaceRequests.current.beginMutation();
     try {
       const response = await apiRequest<DocumentAgentWorkspaceResponse>(
         `${endpoint}/conversations/${encodeURIComponent(state.workspace.selectedConversationId)}/messages`,
@@ -6595,6 +6588,7 @@ function DocumentAgentPanel({
           body: JSON.stringify({ message: normalized }),
         },
       );
+      intendedConversation.current = response.selectedConversationId;
       if (isCurrent()) setState({ kind: "ready", workspace: response });
       setMessage("");
       attemptRef.current = null;
@@ -6607,6 +6601,7 @@ function DocumentAgentPanel({
       );
     } finally {
       setPendingMessage(null);
+      settleMutation();
     }
   }
 
@@ -6840,10 +6835,11 @@ function DocumentReviewPanel({
     [documentId, familyId, profileId],
   );
 
+  // Keyed on review availability, not on every processing state: awaiting_review → completed is
+  // the reviewer's own last decision, and must not throw away the selection and notice.
+  const reviewAvailable = isReviewAvailable(processing);
   useEffect(() => {
     const controller = new AbortController();
-    const reviewAvailable =
-      processing.state === "awaiting_review" || processing.state === "completed";
     setFacts({ kind: "loading" });
     setPendingFactId(null);
     setReviewError(null);
@@ -6860,7 +6856,7 @@ function DocumentReviewPanel({
     return () => {
       controller.abort();
     };
-  }, [loadFacts, processing.state]);
+  }, [loadFacts, reviewAvailable]);
 
   async function persistDecision(fact: ReviewFact, command: ReviewCommand): Promise<void> {
     const fingerprint = JSON.stringify(command);
@@ -7110,8 +7106,7 @@ function DocumentReviewPanel({
           </div>
         ) : null}
 
-        {facts.kind === "loading" &&
-        (processing.state === "awaiting_review" || processing.state === "completed") ? (
+        {facts.kind === "loading" && reviewAvailable ? (
           <div className="review-skeleton" aria-live="polite">
             <div className="skeleton skeleton--review-row" aria-hidden="true" />
             <p>Загружаем значения и их источники…</p>

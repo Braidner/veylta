@@ -1,4 +1,36 @@
-import type { DocumentProcessingActivityEvent, ProcessingRejectionReason } from "@veylta/contracts";
+import type {
+  DocumentProcessingActivityEvent,
+  DocumentProcessingStatus,
+  ProcessingRejectionReason,
+} from "@veylta/contracts";
+
+/**
+ * Review is possible once a run has produced facts and stays possible after the last decision:
+ * `awaiting_review` and `completed` are one phase for the reviewer, so a panel keyed on this must
+ * not reset between them.
+ */
+export type ReviewableProcessingStatus = Extract<
+  DocumentProcessingStatus,
+  { state: "awaiting_review" | "completed" }
+>;
+
+/** A run is still moving through the worker: the UI keeps polling while this holds. */
+export function isProcessingActive(status: DocumentProcessingStatus): boolean {
+  return (
+    status.state === "queued" ||
+    status.state === "security_check" ||
+    status.state === "text_extraction" ||
+    status.state === "document_classification" ||
+    status.state === "structured_extraction" ||
+    status.state === "validation"
+  );
+}
+
+export function isReviewAvailable(
+  processing: DocumentProcessingStatus,
+): processing is ReviewableProcessingStatus {
+  return processing.state === "awaiting_review" || processing.state === "completed";
+}
 
 export interface ProcessingActivityCopy {
   heading: string;
