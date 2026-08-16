@@ -6,7 +6,10 @@ import { createSyntheticFamily } from "./synthetic-family";
 // The review workspace as the specs address it: a fresh family with one processed synthetic
 // report, and locators for the parts a reviewer works with.
 
-const syntheticLabFixture = new URL("../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
+const syntheticLabFixture = new URL(
+  "../../fixtures/veylta-synthetic-lab-report.pdf",
+  import.meta.url,
+);
 const syntheticLabBytes = await readFile(syntheticLabFixture);
 
 export function syntheticNames() {
