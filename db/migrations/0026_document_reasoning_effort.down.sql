@@ -1,0 +1,1 @@
+ALTER TABLE codex_preferences DROP COLUMN document_reasoning_effort;

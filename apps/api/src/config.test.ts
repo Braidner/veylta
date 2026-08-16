@@ -138,6 +138,7 @@ test("Codex execution has one explicit default profile and bounded timeouts", ()
     {
       CODEX_MODEL: undefined,
       CODEX_REASONING_EFFORT: undefined,
+      CODEX_DOCUMENT_REASONING_EFFORT: undefined,
       CODEX_SERVICE_TIER: undefined,
       CODEX_CARE_PLAN_TIMEOUT_MS: undefined,
       CODEX_DOCUMENT_TIMEOUT_MS: undefined,
@@ -148,6 +149,8 @@ test("Codex execution has one explicit default profile and bounded timeouts", ()
       assert.deepEqual(config.codexDefaultPreference, {
         modelId: "gpt-5.6-sol",
         reasoningEffort: "medium",
+        // Extraction defaults lower than dialogue: it is transcription under a strict schema.
+        documentReasoningEffort: "low",
         serviceTier: "standard",
       });
       assert.equal(config.codexCarePlanTimeoutMs, 120_000);

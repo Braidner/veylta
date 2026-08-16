@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:http";
 import { type HealthStatus, HTTP_API_VERSION } from "@veylta/contracts";
+import { documentExecutionProfile } from "./codex/codex-execution-profile.js";
 import { loadConfig } from "./config.js";
 import { createDatabase } from "./database/pool.js";
 import { createCodexDocumentIntelligenceProvider } from "./processing/codex-document-intelligence-provider.js";
@@ -17,7 +18,7 @@ const processor = createDocumentExtractionProcessor({
   database,
   storage,
   intelligence: createCodexDocumentIntelligenceProvider({
-    resolveExecutionProfile: () => codexPreferences.get(),
+    resolveExecutionProfile: async () => documentExecutionProfile(await codexPreferences.get()),
     timeoutMs: config.codexDocumentTimeoutMs,
   }),
 });

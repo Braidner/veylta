@@ -109,6 +109,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
   const preferences = createCodexPreferencesStore(database, {
     modelId: "gpt-5.6-sol",
     reasoningEffort: "medium",
+    documentReasoningEffort: "medium",
     serviceTier: "standard",
   });
   registerHomeSettingsRoutes(
@@ -153,7 +154,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
         accounts: settingsBody.accounts.map(({ id: _id, ...account }) => account),
       },
       {
-        contractVersion: "home-settings/v2",
+        contractVersion: "home-settings/v3",
         codex: {
           installed: true,
           authenticated: true,
@@ -164,6 +165,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
           preference: {
             modelId: "gpt-5.6-sol",
             reasoningEffort: "medium",
+            documentReasoningEffort: "medium",
             serviceTier: "standard",
           },
           models,
@@ -375,6 +377,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
       payload: {
         modelId: "gpt-5.6-sol",
         reasoningEffort: "high",
+        documentReasoningEffort: "high",
         serviceTier: "fast",
       },
     });
@@ -384,12 +387,14 @@ test("administrator manages local accounts, Codex status, and verified storage r
       {
         modelId: "gpt-5.6-sol",
         reasoningEffort: "high",
+        documentReasoningEffort: "high",
         serviceTier: "fast",
       },
     );
     assert.deepEqual(await preferences.get(), {
       modelId: "gpt-5.6-sol",
       reasoningEffort: "high",
+      documentReasoningEffort: "high",
       serviceTier: "fast",
     });
 
@@ -408,7 +413,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
     );
     assert.equal(runtimeAudit.rowCount, 1);
     assert.deepEqual(JSON.parse(runtimeAudit.rows[0]?.metadata ?? "{}"), {
-      contractVersion: "home-settings/v2",
+      contractVersion: "home-settings/v3",
     });
   } finally {
     await app.close();

@@ -89,6 +89,7 @@ test("processing activity is append-only and prevents a lossy rollback", async (
         database.query("DELETE FROM processing_job_events WHERE processing_job_id = $1", [job.id]),
       /immutable/,
     );
+    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
     assert.equal(await migrateDown(database), "0025_run_diagnostics");
     assert.equal(await migrateDown(database), "0024_document_agent_threads");
     assert.equal(await migrateDown(database), "0023_document_lifecycle");
@@ -101,6 +102,7 @@ test("processing activity is append-only and prevents a lossy rollback", async (
       "0023_document_lifecycle",
       "0024_document_agent_threads",
       "0025_run_diagnostics",
+      "0026_document_reasoning_effort",
     ]);
     await assert.doesNotReject(() => database.check());
   } finally {

@@ -292,6 +292,7 @@ export function createHomeSettingsService(
       if (
         model === undefined ||
         !model.supportedReasoningEfforts.includes(input.reasoningEffort) ||
+        !model.supportedReasoningEfforts.includes(input.documentReasoningEffort) ||
         (input.serviceTier === "fast" && !model.supportsFastMode)
       ) {
         throw new CodexPreferenceUnsupportedError();
@@ -299,6 +300,7 @@ export function createHomeSettingsService(
       const preference: CodexExecutionPreference = {
         modelId: model.id,
         reasoningEffort: input.reasoningEffort,
+        documentReasoningEffort: input.documentReasoningEffort,
         serviceTier: input.serviceTier,
       };
       await database.transaction(async (client) => {

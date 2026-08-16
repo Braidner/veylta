@@ -845,9 +845,10 @@ function HomeSettingsScreen({
   const [draftPreference, setDraftPreference] = useState<CodexExecutionPreference>({
     modelId: "",
     reasoningEffort: "medium",
+    documentReasoningEffort: "low",
     serviceTier: "standard",
   });
-  const { modelId, reasoningEffort, serviceTier } = draftPreference;
+  const { modelId, reasoningEffort, documentReasoningEffort, serviceTier } = draftPreference;
 
   const load = useCallback(async () => {
     const generation = ++settingsLoadGeneration.current;
@@ -972,6 +973,9 @@ function HomeSettingsScreen({
     const preference = {
       modelId: String(form.get("modelId") ?? ""),
       reasoningEffort: String(form.get("reasoningEffort") ?? "") as CodexReasoningEffort,
+      documentReasoningEffort: String(
+        form.get("documentReasoningEffort") ?? "",
+      ) as CodexReasoningEffort,
       serviceTier: String(form.get("serviceTier") ?? "") as CodexServiceTier,
     };
     setPending("preference");
@@ -1125,7 +1129,8 @@ function HomeSettingsScreen({
                 <dt>Профиль</dt>
                 <dd>
                   {selectedModel?.displayName ?? settings.codex.preference.modelId} ·{" "}
-                  {reasoningLabels[settings.codex.preference.reasoningEffort]}
+                  {reasoningLabels[settings.codex.preference.reasoningEffort]} · разбор:{" "}
+                  {reasoningLabels[settings.codex.preference.documentReasoningEffort]}
                 </dd>
               </div>
             </dl>
@@ -1155,6 +1160,11 @@ function HomeSettingsScreen({
                         )
                           ? current.reasoningEffort
                           : nextModel.defaultReasoningEffort,
+                        documentReasoningEffort: nextModel.supportedReasoningEfforts.includes(
+                          current.documentReasoningEffort,
+                        )
+                          ? current.documentReasoningEffort
+                          : nextModel.defaultReasoningEffort,
                         serviceTier: nextModel.supportsFastMode ? current.serviceTier : "standard",
                       }));
                     }}
@@ -1168,7 +1178,7 @@ function HomeSettingsScreen({
                   </select>
                 </label>
                 <label className="field">
-                  <span>Уровень рассуждений</span>
+                  <span>Рассуждения в диалогах и плане</span>
                   <select
                     name="reasoningEffort"
                     value={reasoningEffort}
@@ -1187,6 +1197,31 @@ function HomeSettingsScreen({
                       </option>
                     ))}
                   </select>
+                </label>
+                <label className="field">
+                  <span>Рассуждения при разборе документов</span>
+                  <select
+                    name="documentReasoningEffort"
+                    value={documentReasoningEffort}
+                    disabled={pending !== null}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value as CodexReasoningEffort;
+                      setDraftPreference((current) => ({
+                        ...current,
+                        documentReasoningEffort: value,
+                      }));
+                    }}
+                  >
+                    {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                      <option key={effort} value={effort}>
+                        {reasoningLabels[effort]}
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    Разбор — это переписывание под строгую схему: коды берутся из каталога,
+                    диапазоны считает Veylta. Низкий уровень в несколько раз быстрее.
+                  </small>
                 </label>
               </div>
               <fieldset className="codex-speed">

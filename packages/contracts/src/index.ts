@@ -1,6 +1,6 @@
 export const HTTP_API_VERSION = "v1" as const;
 export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
-export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v2" as const;
+export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v3" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
@@ -399,7 +399,14 @@ export interface CodexRuntimeStatus {
 
 export interface CodexExecutionPreference {
   readonly modelId: string;
+  /** Effort for dialogues and care-plan proposals — work that benefits from reasoning. */
   readonly reasoningEffort: CodexReasoningEffort;
+  /**
+   * Effort for document analysis. Extraction is transcription under a strict schema, so it
+   * runs well at a lower effort and several times faster; kept separate so a household can
+   * tune the two independently.
+   */
+  readonly documentReasoningEffort: CodexReasoningEffort;
   readonly serviceTier: CodexServiceTier;
 }
 

@@ -9,6 +9,7 @@ test("Codex proposal generation uses a closed schema and no local tools", async 
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
         reasoningEffort: "medium",
+        documentReasoningEffort: "medium",
         serviceTier: "standard",
       }),
       timeoutMs: 10_000,
@@ -51,7 +52,12 @@ test("Codex proposal generation uses a closed schema and no local tools", async 
         },
       ],
     },
-    { modelId: "gpt-5.4-mini", reasoningEffort: "medium", serviceTier: "standard" },
+    {
+      modelId: "gpt-5.4-mini",
+      reasoningEffort: "medium",
+      documentReasoningEffort: "medium",
+      serviceTier: "standard",
+    },
   );
 
   assert.deepEqual(result, {
@@ -79,6 +85,7 @@ test("Codex proposal generation rejects duplicate lanes and unbound evidence", a
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
         reasoningEffort: "medium",
+        documentReasoningEffort: "medium",
         serviceTier: "standard",
       }),
       timeoutMs: 10_000,
@@ -106,7 +113,12 @@ test("Codex proposal generation rejects duplicate lanes and unbound evidence", a
         },
         evidence: [],
       },
-      { modelId: "gpt-5.4-mini", reasoningEffort: "medium", serviceTier: "standard" },
+      {
+        modelId: "gpt-5.4-mini",
+        reasoningEffort: "medium",
+        documentReasoningEffort: "medium",
+        serviceTier: "standard",
+      },
     ),
     /invalid/i,
   );

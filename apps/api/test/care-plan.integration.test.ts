@@ -334,6 +334,7 @@ test("an explicit Codex run stores bounded drafts once and never exposes source 
           return {
             modelId: "gpt-5.4-mini",
             reasoningEffort: "medium",
+            documentReasoningEffort: "medium",
             serviceTier: "standard",
           };
         },

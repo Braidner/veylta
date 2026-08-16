@@ -26,6 +26,7 @@ test("Codex document agent starts and resumes one Russian MCP-only thread", asyn
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.6-sol",
         reasoningEffort: "high",
+        documentReasoningEffort: "high",
         serviceTier: "fast",
       }),
       timeoutMs: 30_000,
@@ -72,6 +73,7 @@ test("Codex document agent rejects missing thread provenance and non-Russian emp
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.6-sol",
         reasoningEffort: "medium",
+        documentReasoningEffort: "medium",
         serviceTier: "standard",
       }),
       timeoutMs: 30_000,
