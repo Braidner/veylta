@@ -3,6 +3,7 @@ import type {
   ProfileOverviewResponse,
   ProfileOverviewReviewDocument,
 } from "@veylta/contracts";
+import { countCopy, pluralForm } from "./russian-plural";
 
 export interface DocumentsArchiveHero {
   readonly sourceCount: number;
@@ -57,24 +58,28 @@ const sourceForms = ["источник", "источника", "источник
 const valueForms = ["значение", "значения", "значений"] as const;
 const documentForms = ["документ", "документа", "документов"] as const;
 
-function pluralForm(count: number, forms: readonly [string, string, string] | readonly string[]) {
-  const mod10 = count % 10;
-  const mod100 = count % 100;
-  if (mod10 === 1 && mod100 !== 11) return forms[0];
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return forms[1];
-  return forms[2];
-}
-
 export function sourceCountCopy(count: number): string {
-  return `${count} ${pluralForm(count, sourceForms)}`;
+  return countCopy(count, sourceForms);
 }
 
 export function archiveValueCountCopy(count: number): string {
-  return `${count} ${pluralForm(count, valueForms)}`;
+  return countCopy(count, valueForms);
 }
 
 export function archiveDocumentCountCopy(count: number): string {
-  return `${count} ${pluralForm(count, documentForms)}`;
+  return countCopy(count, documentForms);
+}
+
+/** The verb after a bold count in the archive toolbar: «1 ждёт проверки», «2 ждут проверки». */
+export function awaitingReviewVerb(count: number): string {
+  return pluralForm(count, ["ждёт проверки", "ждут проверки", "ждут проверки"]);
+}
+
+/** The upload dialog's submit label follows the selection: nothing chosen yet, one, or several. */
+export function uploadButtonCopy(selectedCount: number): string {
+  return selectedCount === 0
+    ? "Загрузить документы"
+    : `Загрузить ${archiveDocumentCountCopy(selectedCount)}`;
 }
 
 export interface ArchiveRow {

@@ -542,6 +542,7 @@ h3 {
 
 .button {
   display: inline-flex;
+  gap: 8px;
   align-items: center;
   justify-content: center;
   min-height: 46px;
@@ -2533,8 +2534,12 @@ h3 {
 .profile-overview__empty,
 .profile-overview__loading {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   padding: 18px 0 2px;
+}
+
+.profile-overview__empty p {
+  max-width: 62ch;
 }
 
 .profile-overview__empty .button {
@@ -4717,13 +4722,40 @@ body:has(.upload-dialog[open]) {
   height: 38px;
 }
 
-@media (max-width: 1180px) {
-  .workspace-identity > span:last-child {
-    display: none;
+/* Between the widest desktops and the tablet layout the bar has less room than its five
+   sections need: the search folds to its icon first, then the nav items lose padding, and
+   below 1240px the search leaves the bar altogether. Nothing may overlap its neighbour. */
+@media (max-width: 1600px) {
+  .workspace-bar--profile {
+    grid-template-columns: 190px minmax(0, 1fr) auto auto;
   }
 
+  .workspace-bar--profile .workspace-search {
+    width: 46px;
+    padding-inline: 0;
+    justify-content: center;
+    justify-self: end;
+  }
+
+  .workspace-bar--profile .workspace-search span {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 1400px) {
   .workspace-primary-nav__item {
     padding-inline: 12px;
+  }
+}
+
+@media (max-width: 1240px) {
+  .workspace-identity > span:last-child {
+    display: none;
   }
 
   .workspace-bar--profile {
@@ -4763,8 +4795,9 @@ body:has(.upload-dialog[open]) {
 }
 
 @media (max-width: 820px) {
+  /* The bar keeps the same column as the framed shell below it, so both share one edge. */
   .workspace-bar {
-    width: calc(100% - 24px);
+    width: min(100% - 24px, 680px);
     min-height: 70px;
     padding: 0 16px;
     margin-top: 12px;
@@ -4972,7 +5005,7 @@ body:has(.upload-dialog[open]) {
   }
 
   .profile-overview--documents {
-    padding: 0 20px 24px;
+    padding: 0 0 24px;
   }
 
   .profile-management-drawer > summary {
@@ -5895,7 +5928,7 @@ body:has(.upload-dialog[open]) {
 
 .document-processing-dashboard {
   display: grid;
-  grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   align-items: start;
   margin-top: 14px;
@@ -6216,6 +6249,13 @@ body:has(.upload-dialog[open]) {
     color 180ms ease,
     background-color 180ms ease,
     border-color 180ms ease;
+}
+
+.page-hero__action:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 3px oklch(1 0 0 / 62%),
+    0 0 0 5px oklch(0.47 0.22 254 / 45%);
 }
 
 .page-hero__action:hover {
@@ -7724,6 +7764,7 @@ body:has(.upload-dialog[open]) {
 .page-hero__search:focus-within {
   background: oklch(1 0 0 / 18%);
   border-color: oklch(1 0 0 / 52%);
+  box-shadow: 0 0 0 3px oklch(1 0 0 / 40%);
 }
 
 .page-hero__search input {
@@ -7762,20 +7803,19 @@ body:has(.upload-dialog[open]) {
   }
 }
 
-/* The hero spans the viewport; everything after it keeps the archive inset. */
-.profile-overview--documents > .document-library__toolbar,
-.profile-overview--documents > .profile-overview__sections,
-.profile-overview--documents > .profile-overview__loading,
-.profile-overview--documents > .profile-overview__empty {
-  margin-inline: 32px;
+/* The archive body shares the hero's left edge — the shell padding is the only inset. Below
+   the desktop layout the shell is a framed card: the hero gives up its viewport bleed and fills
+   the frame instead, so hero and list keep one edge on every screen. */
+.profile-overview--documents .profile-overview__sections > .profile-overview__section:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
 }
 
-@media (max-width: 900px) {
-  .profile-overview--documents > .document-library__toolbar,
-  .profile-overview--documents > .profile-overview__sections,
-  .profile-overview--documents > .profile-overview__loading,
-  .profile-overview--documents > .profile-overview__empty {
-    margin-inline: 20px;
+@media (max-width: 820px) {
+  .page-hero {
+    width: auto;
+    margin-inline: -16px;
+    padding: 24px 16px;
   }
 }
 
@@ -8038,9 +8078,26 @@ body:has(.upload-dialog[open]) {
     grid-template-columns: minmax(0, 1fr);
   }
 
+  .archive-list__doc {
+    align-items: flex-start;
+  }
+
+  .archive-list__doc strong {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    white-space: normal;
+  }
+
   .archive-list__actions {
     flex-wrap: wrap;
     justify-content: flex-start;
+  }
+
+  .archive-list__actions > * {
+    flex: 1 1 calc(50% - 4px);
+    justify-content: center;
+    min-height: 44px;
   }
 }
 

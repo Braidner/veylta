@@ -103,12 +103,18 @@ import { adminSetupError, validateAdminSetup } from "../account-access";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
   type ArchiveRow,
+  archiveDocumentCountCopy,
   archiveRows,
+  archiveValueCountCopy,
+  awaitingReviewVerb,
   buildDocumentsArchiveHero,
   bulkConfirmableCount,
   isRestartable,
   restartTargets,
+  uploadButtonCopy,
 } from "../documents-archive";
+import { formatDate, formatSampleMoment } from "../format-moment";
+import { countCopy, pluralForm } from "../russian-plural";
 import { WorkspaceRequests } from "../workspace-requests";
 import { DocumentAgentWorkspace } from "./document-agent-workspace";
 import { DocumentHero } from "./document-hero";
@@ -335,6 +341,9 @@ export function documentResultMissingFields(result: {
 function indicatorsPath(familyId: string, profileId: string): string {
   return `/v1${profilePath(familyId, profileId)}/indicators`;
 }
+
+/** The settings page shows the journal a screen at a time; «Показать ещё» walks the cursor. */
+const auditLogPageSize = 20;
 
 function familyAuditLogPath(familyId: string): string {
   return `/v1/families/${encodeURIComponent(familyId)}/audit-events`;
@@ -2141,7 +2150,7 @@ function ProfileWorkspace({
           setUploadNotice(
             selectedUploads.length === 1
               ? "Этот файл уже есть в архиве — открываем существующий документ."
-              : `${reusedDocumentCount} ${russianPlural(reusedDocumentCount, "файл уже есть", "файла уже есть", "файлов уже есть")} в архиве. Новые документы добавлены отдельно.`,
+              : `${countCopy(reusedDocumentCount, ["файл уже есть", "файла уже есть", "файлов уже есть"])} в архиве. Новые документы добавлены отдельно.`,
           );
         }
         router.push(reusedDestination);
@@ -2958,7 +2967,7 @@ function FamilyAuditLogPanel({ familyId }: { familyId: string }) {
       setLoadMoreError(null);
       try {
         const response = await apiRequest<FamilyAuditLogResponse>(
-          familyAuditLogPath(familyId),
+          `${familyAuditLogPath(familyId)}?limit=${auditLogPageSize}`,
           signal === undefined ? undefined : { signal },
         );
         if (!signal?.aborted) {
@@ -2989,7 +2998,7 @@ function FamilyAuditLogPanel({ familyId }: { familyId: string }) {
     setLoadMoreError(null);
     try {
       const response = await apiRequest<FamilyAuditLogResponse>(
-        `${familyAuditLogPath(familyId)}?cursor=${encodeURIComponent(auditLog.nextCursor)}`,
+        `${familyAuditLogPath(familyId)}?limit=${auditLogPageSize}&cursor=${encodeURIComponent(auditLog.nextCursor)}`,
         { signal: controller.signal },
       );
       if (!controller.signal.aborted) {
@@ -3127,9 +3136,9 @@ function profileOverviewProcessingCopy(
     case "validation":
       return "Проверяем черновой результат";
     case "awaiting_review":
-      return `${factCountCopy(status.factCount)} ждут явной проверки`;
+      return `${archiveValueCountCopy(status.factCount)} ждут явной проверки`;
     case "completed":
-      return `${factCountCopy(status.factCount)} подтверждены пользователем`;
+      return `${archiveValueCountCopy(status.factCount)} подтверждены пользователем`;
     case "failed":
       return "Обработка не завершилась";
   }
@@ -3216,14 +3225,14 @@ function ArchiveRows({
                 {clean > 0 ? (
                   <li className="archive-list__chip archive-list__chip--clean">
                     <CheckCheck size={14} aria-hidden="true" />
-                    {factCountCopy(clean)} без замечаний
+                    {archiveValueCountCopy(clean)} без замечаний
                   </li>
                 ) : null}
                 {attention > 0 ? (
                   <li className="archive-list__chip archive-list__chip--attention">
                     <span aria-hidden="true">!</span>
-                    {factCountCopy(attention)} {attention === 1 ? "требует" : "требуют"} отдельной
-                    проверки
+                    {archiveValueCountCopy(attention)}{" "}
+                    {pluralForm(attention, ["требует", "требуют", "требуют"])} отдельной проверки
                   </li>
                 ) : null}
               </ul>
@@ -3543,7 +3552,7 @@ function ProfileOverviewPanel({
                   </span>
                   <span>
                     <strong>{state.overview.reviewQueue.documentCount}</strong>
-                    ждут проверки
+                    {awaitingReviewVerb(state.overview.reviewQueue.documentCount)}
                   </span>
                 </div>
                 {canWriteProfile ? (
@@ -3588,7 +3597,7 @@ function ProfileOverviewPanel({
                   <div>
                     <h3 id="overview-documents-title">
                       {searchState.kind === "ready"
-                        ? `${searchState.documents.length} ${russianPlural(searchState.documents.length, "документ", "документа", "документов")}`
+                        ? archiveDocumentCountCopy(searchState.documents.length)
                         : "Документы"}
                     </h3>
                     <p>
@@ -3601,7 +3610,9 @@ function ProfileOverviewPanel({
                     <dl className="archive-list__totals">
                       <div>
                         <dt>Ждут решения</dt>
-                        <dd>{factCountCopy(state.overview.reviewQueue.pendingFactCount)}</dd>
+                        <dd>
+                          {archiveValueCountCopy(state.overview.reviewQueue.pendingFactCount)}
+                        </dd>
                       </div>
                       <div>
                         <dt>Документов</dt>
@@ -3648,15 +3659,16 @@ function ProfileOverviewPanel({
                   </div>
                 ) : null}
                 {searchState.kind === "idle" && state.overview.recentDocuments.length === 0 ? (
-                  <div className="profile-overview__empty">
-                    <p>Исходников пока нет. Статус появится здесь после первой загрузки.</p>
+                  <div className="profile-overview__empty" role="status">
+                    <p>
+                      Исходников пока нет. Загрузите PDF, PNG или JPEG — до 20 файлов по 5 МБ за
+                      раз. Codex подготовит значения для вашей проверки, а оригиналы останутся
+                      неизменными.
+                    </p>
                     {canWriteProfile ? (
-                      <button
-                        className="text-link text-link--button"
-                        type="button"
-                        onClick={onUpload}
-                      >
-                        Добавить исходник
+                      <button className="button button--secondary" type="button" onClick={onUpload}>
+                        <FileUp size={16} aria-hidden="true" />
+                        Загрузить первый документ
                       </button>
                     ) : null}
                   </div>
@@ -4810,11 +4822,7 @@ function DocumentUploadDialog({
             type="submit"
             disabled={pending || selectedFiles.length === 0 || !codexConsent}
           >
-            {pending
-              ? "Передаём документы…"
-              : selectedFiles.length === 1
-                ? "Загрузить документ"
-                : `Загрузить ${selectedFiles.length} документа`}
+            {pending ? "Передаём документы…" : uploadButtonCopy(selectedFiles.length)}
           </button>
         </div>
         {pending ? (
@@ -6123,19 +6131,6 @@ function processingStatusesEqual(
   }
 }
 
-function russianPlural(value: number, singular: string, few: string, many: string): string {
-  const remainder = value % 100;
-  if (remainder >= 11 && remainder <= 14) return many;
-  const last = value % 10;
-  if (last === 1) return singular;
-  if (last >= 2 && last <= 4) return few;
-  return many;
-}
-
-function factCountCopy(value: number): string {
-  return `${value} ${russianPlural(value, "значение", "значения", "значений")}`;
-}
-
 function documentKindLabel(contentType: DocumentSummary["contentType"]): string {
   switch (contentType) {
     case "application/pdf":
@@ -6229,7 +6224,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "awaiting_review":
       return {
         heading: "Черновые значения ждут проверки",
-        copy: `Найдено ${factCountCopy(status.factCount)}; ${factCountCopy(status.needsReviewCount)} требуют дополнительного внимания. Ничего не подтверждено автоматически.`,
+        copy: `Найдено ${archiveValueCountCopy(status.factCount)}; ${archiveValueCountCopy(status.needsReviewCount)} ${pluralForm(status.needsReviewCount, ["требует", "требуют", "требуют"])} дополнительного внимания. Ничего не подтверждено автоматически.`,
         integrityLabel: "Ожидает проверки",
         mark: "!",
         tone: "attention",
@@ -6237,7 +6232,7 @@ function processingPresentation(status: DocumentProcessingStatus): ProcessingPre
     case "completed":
       return {
         heading: "Извлечение завершено",
-        copy: `Сохранено ${factCountCopy(status.factCount)} для последующей проверки вместе с источником. Ничего не интерпретировано автоматически.`,
+        copy: `Сохранено ${archiveValueCountCopy(status.factCount)} для последующей проверки вместе с источником. Ничего не интерпретировано автоматически.`,
         integrityLabel: "Завершено",
         mark: "✓",
         tone: "complete",
@@ -7059,9 +7054,10 @@ function DocumentReviewPanel({
           {pendingFacts.length > 0 ? (
             <div className="document-review-workspace__bulk">
               <span>
-                {factCountCopy(pendingFacts.length)} требуют решения
+                {archiveValueCountCopy(pendingFacts.length)}{" "}
+                {pluralForm(pendingFacts.length, ["требует", "требуют", "требуют"])} решения
                 {individualReviewCount > 0 ? (
-                  <small>{factCountCopy(individualReviewCount)} — только по одному</small>
+                  <small>{archiveValueCountCopy(individualReviewCount)} — только по одному</small>
                 ) : null}
               </span>
               {bulkConfirmableFacts.length > 0 ? (
@@ -7083,7 +7079,7 @@ function DocumentReviewPanel({
 
         {bulkReview.kind === "success" ? (
           <p className="document-review__bulk-notice" role="status">
-            Подтверждено {factCountCopy(bulkReview.total)}
+            Подтверждено {archiveValueCountCopy(bulkReview.total)}
           </p>
         ) : null}
         {bulkReview.kind === "error" ? (
@@ -7190,7 +7186,7 @@ function DocumentReviewPanel({
                     <span className="document-result-card__meta">
                       {[
                         fact?.proposedLaboratory ?? result?.lab,
-                        fact?.proposedSampledAt ?? result?.date,
+                        formatSampleMoment(fact?.proposedSampledAt ?? result?.date ?? ""),
                       ]
                         .filter(Boolean)
                         .join(" · ") || "Есть незаполненные поля"}
@@ -7382,7 +7378,15 @@ function DocumentReviewPanel({
                 </div>
                 <div>
                   <dt>Дата биоматериала</dt>
-                  <dd>{proposedValue(selectedFact.proposedSampledAt)}</dd>
+                  <dd>
+                    {selectedFact.proposedSampledAt === null ? (
+                      proposedValue(null)
+                    ) : (
+                      <time dateTime={selectedFact.proposedSampledAt}>
+                        {formatSampleMoment(selectedFact.proposedSampledAt)}
+                      </time>
+                    )}
+                  </dd>
                 </div>
                 <div>
                   <dt>Лаборатория</dt>
@@ -7604,11 +7608,4 @@ function DocumentIndicatorHistory({
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} Б`;
   return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(bytes / 1024)} КБ`;
-}
-
-function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    dateStyle: "long",
-    timeStyle: "short",
-  }).format(new Date(value));
 }

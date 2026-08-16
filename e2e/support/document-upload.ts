@@ -21,5 +21,6 @@ export async function uploadSyntheticDocument(
   await dialog
     .getByRole("checkbox", { name: /передать содержимое этих документов в Codex/i })
     .check();
-  await dialog.getByRole("button", { name: "Загрузить документ" }).click();
+  // The submit label counts the selection: «Загрузить 1 документ», «Загрузить 3 документа».
+  await dialog.getByRole("button", { name: /^Загрузить \d+ документ/ }).click();
 }

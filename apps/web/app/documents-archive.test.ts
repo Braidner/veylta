@@ -8,11 +8,13 @@ import type {
 import {
   archiveRows,
   archiveValueCountCopy,
+  awaitingReviewVerb,
   buildDocumentsArchiveHero,
   bulkConfirmableCount,
   isRestartable,
   restartTargets,
   sourceCountCopy,
+  uploadButtonCopy,
 } from "./documents-archive.js";
 
 function reviewDocument(
@@ -126,6 +128,13 @@ test("Russian counts agree with their nouns", () => {
   assert.equal(sourceCountCopy(11), "11 источников");
   assert.equal(archiveValueCountCopy(21), "21 значение");
   assert.equal(archiveValueCountCopy(42), "42 значения");
+  assert.equal(awaitingReviewVerb(1), "ждёт проверки");
+  assert.equal(awaitingReviewVerb(2), "ждут проверки");
+  assert.equal(awaitingReviewVerb(11), "ждут проверки");
+  assert.equal(uploadButtonCopy(0), "Загрузить документы");
+  assert.equal(uploadButtonCopy(1), "Загрузить 1 документ");
+  assert.equal(uploadButtonCopy(3), "Загрузить 3 документа");
+  assert.equal(uploadButtonCopy(20), "Загрузить 20 документов");
 });
 
 test("one list: sources awaiting a decision come first, each carrying its queue entry", () => {
