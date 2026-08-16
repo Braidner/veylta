@@ -20,6 +20,12 @@ Full check sequence, in CI order:
 pnpm license:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && pnpm test:e2e
 ```
 
+`pnpm lint` also runs `scripts/check-file-lines.mjs`: **no source file may exceed 250
+lines**. Files that were already larger are listed with their size in
+`config/file-length-baseline.json`; a listed file may only shrink and must leave the list once
+it fits (`pnpm lint:lines --write` lowers the baseline, never raises it or adds a file). Split
+a file rather than growing a legacy one.
+
 Single tests:
 
 ```bash
@@ -57,6 +63,11 @@ pnpm test:e2e e2e/document-review.spec.ts
 
 - KISS: no abstraction "just in case", no Interface+Impl pair without a second
   implementation. The simpler solution that does the same job wins.
+- One file, one responsibility, under 250 lines. A module that carries state gets a small
+  class (`SourceText`, `KeyRegistry`, `CodexAnswerParser`); stateless steps stay functions.
+- Every prompt lives in `apps/api/src/prompts/*.prompt.ts`, one file per prompt, exporting a
+  builder that takes typed input; the calling code holds no model-facing sentences. Tests pin
+  the phrases the parser or the UI depend on — change prompt and test together.
 - DRY: shared logic lives in one place. Branches that must behave alike (validate/save,
   live/replay, two input formats) go through common code, and a test pins that parity.
   A duplicate in a sibling module is a future defect.
@@ -88,9 +99,10 @@ pnpm test:e2e e2e/document-review.spec.ts
   `apps/api/test/synthetic-intelligence.ts` — neither reads pixels; tests exercise plumbing.
 - Some e2e specs stub the API with `page.route`. A stub that drifts from the real contract
   is worse than no stub — update it in the same change as the contract.
-- Known flaky under a full-suite run: `document-review.spec.ts:178` (fails every full run,
-  passes alone) and `document-agent.spec.ts:27` (a last-write-wins race in the spec's own
-  mock; passes alone). Check `main` before blaming your change.
+- The suite has no known flakes. A spec must never assert a calendar date the app writes at
+  run time (`e2e/support/decision-journal.ts` checks a decision time against the clock), and
+  workspace panels must not let a background reload override a selection or mutation in
+  flight (`apps/web/app/workspace-requests.ts`, `intendedConversation` in the agent panel).
 
 # Architecture
 
@@ -114,6 +126,19 @@ actor with `requireActor`; mutations also pass `requireTrustedOrigin` and mostly
 `DomainConflictError` / `DomainValidationError`; `sendDomainError` maps them to 404/409/422.
 Cross-tenant and unauthorized resources return **404**, never 403 — IDs are selectors,
 never proof of access.
+
+**Document intelligence provider** (`processing/codex-document-intelligence-provider.ts`) is
+a thin entry over `processing/codex-intelligence/`: `answer-schema.ts` (the closed JSON schema
+and the field lists the parsers reuse), `field-parsers.ts` (primitive readers that verify or
+refuse), `readings.ts` (numbers, repeated units, verified normalization, range membership),
+`source-text.ts` (`SourceText`: page lookup and fragment-to-line provenance),
+`document-pages.ts` (text layer in, transcription out), `answer-items.ts` (`KeyRegistry`,
+per-item `keptItems`), `structured-result-parser.ts` / `fact-parser.ts`,
+`result-binding.ts` (content binding, status settlement, completeness), `answer-parser.ts`
+(`CodexAnswerParser` assembling one verified output), `codex-run.ts` (one CLI invocation with
+its exchange), `exchange.ts`, `known-analytes.ts`, `constants.ts`, `errors.ts`. Tests sit
+beside them by theme (`provenance.test.ts`, `result-binding.test.ts`, …) over shared
+`test-support.ts` fixtures and exercise the public `analyze()`.
 
 **Codex boundary.** All model access goes through `codex/codex-cli-executor.ts`, which
 shells out to the local `codex` CLI, strips `OPENAI_*` from the child environment, bounds

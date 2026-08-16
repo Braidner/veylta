@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { SessionActor } from "../family/family-service.js";
+import { DOCUMENT_AGENT_MCP_INSTRUCTIONS } from "../prompts/document-agent.prompt.js";
 
 export interface DocumentAgentScope {
   readonly familyId: string;
@@ -75,8 +76,7 @@ export function createDocumentAgentMcpServer(
   const server = new McpServer(
     { name: "veylta-document-agent", version: "1.0.0" },
     {
-      instructions:
-        "Получайте текущий контекст только через get_document_context. Не подтверждайте факты и не ставьте диагнозы.",
+      instructions: DOCUMENT_AGENT_MCP_INSTRUCTIONS,
     },
   );
   server.registerTool(

@@ -6,6 +6,7 @@ import {
   type CodexExecutionProfileResolver,
   codexExecutionArguments,
 } from "../codex/codex-execution-profile.js";
+import { documentAgentInitialPrompt } from "../prompts/document-agent.prompt.js";
 
 const maximumOutputBytes = 64 * 1024;
 const capabilityEnvironmentName = "VEYLTA_DOCUMENT_AGENT_TOKEN";
@@ -44,20 +45,6 @@ const outputSchema = {
     message: { type: "string", minLength: 1, maxLength: 2_000 },
   },
 } as const;
-
-function initialPrompt(message: string): string {
-  return [
-    "Вы — документный помощник Veylta.",
-    "Отвечайте только на русском языке, кратко и предметно.",
-    "Перед ответом вызовите MCP-инструмент get_document_context и опирайтесь только на его данные.",
-    "Точный текст источника может оставаться на языке документа; ваши пояснения всегда на русском.",
-    "Не ставьте диагноз, не назначайте лечение и не подтверждайте извлечённые факты за пользователя.",
-    "Если данных не хватает, прямо перечислите, что нужно уточнить.",
-    "Не выдумывайте лабораторию, дату, код показателя или единицы измерения.",
-    "Пользователь пишет:",
-    message,
-  ].join("\n");
-}
 
 function threadFromEvents(stdout: string): string | null {
   for (const line of stdout.split("\n")) {
@@ -171,7 +158,7 @@ export function createCodexDocumentAgentRuntime(
             : ["exec", "resume", ...common, input.threadId, "-"];
         const result = await executor(
           arguments_,
-          input.threadId === null ? initialPrompt(input.message) : input.message,
+          input.threadId === null ? documentAgentInitialPrompt(input.message) : input.message,
           {
             cwd: directory,
             outputPath,
