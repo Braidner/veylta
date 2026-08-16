@@ -148,6 +148,7 @@ test("Codex execution has one explicit default profile and bounded timeouts", ()
       const config = loadConfig();
       assert.deepEqual(config.codexDefaultPreference, {
         modelId: "gpt-5.6-sol",
+        documentModelId: null,
         reasoningEffort: "medium",
         // Extraction defaults lower than dialogue: it is transcription under a strict schema.
         documentReasoningEffort: "low",

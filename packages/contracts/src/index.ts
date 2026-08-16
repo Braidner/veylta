@@ -1,6 +1,6 @@
 export const HTTP_API_VERSION = "v1" as const;
 export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
-export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v3" as const;
+export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v4" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
@@ -399,6 +399,11 @@ export interface CodexRuntimeStatus {
 
 export interface CodexExecutionPreference {
   readonly modelId: string;
+  /**
+   * Model for document analysis, or null for the same model as dialogues. A separate model
+   * has its own usage window in Codex, so extraction need not compete with conversations.
+   */
+  readonly documentModelId: string | null;
   /** Effort for dialogues and care-plan proposals — work that benefits from reasoning. */
   readonly reasoningEffort: CodexReasoningEffort;
   /**

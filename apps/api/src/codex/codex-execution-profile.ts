@@ -12,30 +12,37 @@ export type CodexExecutionProfileResolver = () => Promise<CodexExecutionPreferen
 
 export function requireCodexExecutionPreference(value: {
   modelId: string;
+  documentModelId?: string | null;
   reasoningEffort: string;
   documentReasoningEffort: string;
   serviceTier: string;
 }): CodexExecutionPreference {
+  const documentModelId = value.documentModelId ?? null;
   if (
     !modelPattern.test(value.modelId) ||
+    (documentModelId !== null && !modelPattern.test(documentModelId)) ||
     !reasoningEfforts.has(value.reasoningEffort) ||
     !reasoningEfforts.has(value.documentReasoningEffort) ||
     !serviceTiers.has(value.serviceTier)
   ) {
     throw new Error("Codex execution preference is invalid");
   }
-  return value as CodexExecutionPreference;
+  return { ...value, documentModelId } as CodexExecutionPreference;
 }
 
 /**
- * The profile a document-analysis run executes with: the same model and tier, but the
- * document effort in the seat the CLI reads. Dialogues and care-plan proposals use the
- * preference as-is.
+ * The profile a document-analysis run executes with: the document model (or the shared one)
+ * and the document effort in the seats the CLI reads. Dialogues and care-plan proposals use
+ * the preference as-is.
  */
 export function documentExecutionProfile(
   preference: CodexExecutionPreference,
 ): CodexExecutionPreference {
-  return { ...preference, reasoningEffort: preference.documentReasoningEffort };
+  return {
+    ...preference,
+    modelId: preference.documentModelId ?? preference.modelId,
+    reasoningEffort: preference.documentReasoningEffort,
+  };
 }
 
 export function codexExecutionArguments(profile: CodexExecutionPreference): readonly string[] {

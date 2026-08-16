@@ -44,6 +44,7 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -264,6 +265,7 @@ test("an above_range claim the source does not support is downgraded, not accept
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -326,6 +328,7 @@ test("Codex output fails closed when a shared result key contradicts the review 
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -399,6 +402,7 @@ test("Codex can sort a non-laboratory document without inventing facts", async (
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -437,6 +441,7 @@ test("Codex drops an impossible optional calendar date without losing sourced re
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -494,6 +499,7 @@ test("Codex provenance expands an exact context fragment to its complete source 
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -575,6 +581,7 @@ test("Codex keeps source-bound facts when another proposed fact fails validation
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -620,6 +627,7 @@ test("Codex output fails closed when provenance is not an exact page fragment", 
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -677,6 +685,7 @@ test("Codex output fails closed when a generic result is not bound to an exact s
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -731,6 +740,7 @@ test("Codex output fails closed when a generic result label is not in Russian", 
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -798,6 +808,7 @@ test("a refused Codex answer names the exact rule it broke", async () => {
       {
         resolveExecutionProfile: async () => ({
           modelId: "gpt-5.4-mini",
+          documentModelId: null,
           reasoningEffort: "medium",
           documentReasoningEffort: "medium",
           serviceTier: "standard",
@@ -850,6 +861,7 @@ test("range membership is computed from transcribed bounds, not from the fragmen
       {
         resolveExecutionProfile: async () => ({
           modelId: "gpt-5.4-mini",
+          documentModelId: null,
           reasoningEffort: "medium",
           documentReasoningEffort: "medium",
           serviceTier: "standard",
@@ -987,6 +999,7 @@ test("page images are attached to Codex and fragments bind to the returned trans
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -1062,6 +1075,7 @@ test("a vision answer whose fragment is not in its own transcription is refused"
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -1143,6 +1157,7 @@ test("the analyte catalog is sent to Codex and bounds proposedCanonicalCode", as
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",

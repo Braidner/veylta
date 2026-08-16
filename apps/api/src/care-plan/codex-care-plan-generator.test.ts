@@ -8,6 +8,7 @@ test("Codex proposal generation uses a closed schema and no local tools", async 
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -54,6 +55,7 @@ test("Codex proposal generation uses a closed schema and no local tools", async 
     },
     {
       modelId: "gpt-5.4-mini",
+      documentModelId: null,
       reasoningEffort: "medium",
       documentReasoningEffort: "medium",
       serviceTier: "standard",
@@ -84,6 +86,7 @@ test("Codex proposal generation rejects duplicate lanes and unbound evidence", a
     {
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",
@@ -115,6 +118,7 @@ test("Codex proposal generation rejects duplicate lanes and unbound evidence", a
       },
       {
         modelId: "gpt-5.4-mini",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",

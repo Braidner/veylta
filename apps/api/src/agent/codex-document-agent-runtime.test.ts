@@ -25,6 +25,7 @@ test("Codex document agent starts and resumes one Russian MCP-only thread", asyn
       mcpUrl: "http://127.0.0.1:4301/mcp/document-agent",
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.6-sol",
+        documentModelId: null,
         reasoningEffort: "high",
         documentReasoningEffort: "high",
         serviceTier: "fast",
@@ -72,6 +73,7 @@ test("Codex document agent rejects missing thread provenance and non-Russian emp
       mcpUrl: "http://127.0.0.1:4301/mcp/document-agent",
       resolveExecutionProfile: async () => ({
         modelId: "gpt-5.6-sol",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",

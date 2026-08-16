@@ -190,13 +190,30 @@ export function registerHomeSettingsRoutes(
         body: {
           type: "object",
           additionalProperties: false,
-          required: ["modelId", "reasoningEffort", "documentReasoningEffort", "serviceTier"],
+          required: [
+            "modelId",
+            "documentModelId",
+            "reasoningEffort",
+            "documentReasoningEffort",
+            "serviceTier",
+          ],
           properties: {
             modelId: {
               type: "string",
               minLength: 2,
               maxLength: 80,
               pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$",
+            },
+            documentModelId: {
+              anyOf: [
+                {
+                  type: "string",
+                  minLength: 2,
+                  maxLength: 80,
+                  pattern: "^[A-Za-z0-9][A-Za-z0-9._-]{1,79}$",
+                },
+                { type: "null" },
+              ],
             },
             reasoningEffort: { type: "string", enum: CODEX_REASONING_EFFORTS },
             documentReasoningEffort: { type: "string", enum: CODEX_REASONING_EFFORTS },

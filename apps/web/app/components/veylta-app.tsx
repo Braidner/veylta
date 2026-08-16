@@ -844,11 +844,13 @@ function HomeSettingsScreen({
   const [notice, setNotice] = useState<string | null>(null);
   const [draftPreference, setDraftPreference] = useState<CodexExecutionPreference>({
     modelId: "",
+    documentModelId: null,
     reasoningEffort: "medium",
     documentReasoningEffort: "low",
     serviceTier: "standard",
   });
-  const { modelId, reasoningEffort, documentReasoningEffort, serviceTier } = draftPreference;
+  const { modelId, documentModelId, reasoningEffort, documentReasoningEffort, serviceTier } =
+    draftPreference;
 
   const load = useCallback(async () => {
     const generation = ++settingsLoadGeneration.current;
@@ -976,6 +978,10 @@ function HomeSettingsScreen({
       documentReasoningEffort: String(
         form.get("documentReasoningEffort") ?? "",
       ) as CodexReasoningEffort,
+      documentModelId: (() => {
+        const value = String(form.get("documentModelId") ?? "");
+        return value === "" ? null : value;
+      })(),
       serviceTier: String(form.get("serviceTier") ?? "") as CodexServiceTier,
     };
     setPending("preference");
@@ -1049,6 +1055,10 @@ function HomeSettingsScreen({
     settings.codex.authenticated && settings.codex.authenticationMode === "chatgpt";
   const selectedModel =
     settings.codex.models.find((model) => model.id === modelId) ?? settings.codex.models[0];
+  const selectedDocumentModel =
+    documentModelId === null
+      ? selectedModel
+      : (settings.codex.models.find((model) => model.id === documentModelId) ?? selectedModel);
   const reasoningLabels: Record<CodexReasoningEffort, string> = {
     low: "Низкий",
     medium: "Средний",
@@ -1130,6 +1140,13 @@ function HomeSettingsScreen({
                 <dd>
                   {selectedModel?.displayName ?? settings.codex.preference.modelId} ·{" "}
                   {reasoningLabels[settings.codex.preference.reasoningEffort]} · разбор:{" "}
+                  {settings.codex.preference.documentModelId === null
+                    ? ""
+                    : `${
+                        settings.codex.models.find(
+                          (model) => model.id === settings.codex.preference.documentModelId,
+                        )?.displayName ?? settings.codex.preference.documentModelId
+                      } · `}
                   {reasoningLabels[settings.codex.preference.documentReasoningEffort]}
                 </dd>
               </div>
@@ -1153,20 +1170,32 @@ function HomeSettingsScreen({
                         (model) => model.id === event.currentTarget.value,
                       );
                       if (nextModel === undefined) return;
-                      setDraftPreference((current) => ({
-                        modelId: nextModel.id,
-                        reasoningEffort: nextModel.supportedReasoningEfforts.includes(
-                          current.reasoningEffort,
-                        )
-                          ? current.reasoningEffort
-                          : nextModel.defaultReasoningEffort,
-                        documentReasoningEffort: nextModel.supportedReasoningEfforts.includes(
-                          current.documentReasoningEffort,
-                        )
-                          ? current.documentReasoningEffort
-                          : nextModel.defaultReasoningEffort,
-                        serviceTier: nextModel.supportsFastMode ? current.serviceTier : "standard",
-                      }));
+                      setDraftPreference((current) => {
+                        // The document effort follows the document model, which may differ.
+                        const documentModel =
+                          current.documentModelId === null
+                            ? nextModel
+                            : (settings.codex.models.find(
+                                (model) => model.id === current.documentModelId,
+                              ) ?? nextModel);
+                        return {
+                          modelId: nextModel.id,
+                          documentModelId: current.documentModelId,
+                          reasoningEffort: nextModel.supportedReasoningEfforts.includes(
+                            current.reasoningEffort,
+                          )
+                            ? current.reasoningEffort
+                            : nextModel.defaultReasoningEffort,
+                          documentReasoningEffort: documentModel.supportedReasoningEfforts.includes(
+                            current.documentReasoningEffort,
+                          )
+                            ? current.documentReasoningEffort
+                            : "low",
+                          serviceTier: nextModel.supportsFastMode
+                            ? current.serviceTier
+                            : "standard",
+                        };
+                      });
                     }}
                   >
                     {settings.codex.models.map((model) => (
@@ -1199,6 +1228,41 @@ function HomeSettingsScreen({
                   </select>
                 </label>
                 <label className="field">
+                  <span>Модель для разбора документов</span>
+                  <select
+                    name="documentModelId"
+                    value={documentModelId ?? ""}
+                    disabled={pending !== null}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value;
+                      const nextModel =
+                        value === ""
+                          ? selectedModel
+                          : settings.codex.models.find((model) => model.id === value);
+                      setDraftPreference((current) => ({
+                        ...current,
+                        documentModelId: value === "" ? null : value,
+                        documentReasoningEffort: nextModel?.supportedReasoningEfforts.includes(
+                          current.documentReasoningEffort,
+                        )
+                          ? current.documentReasoningEffort
+                          : "low",
+                      }));
+                    }}
+                  >
+                    <option value="">Та же, что для диалогов</option>
+                    {settings.codex.models.map((model) => (
+                      <option key={model.id} value={model.id}>
+                        {model.displayName}
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    У отдельной модели — свой лимит использования: разбор не расходует квоту
+                    диалогов.
+                  </small>
+                </label>
+                <label className="field">
                   <span>Рассуждения при разборе документов</span>
                   <select
                     name="documentReasoningEffort"
@@ -1212,7 +1276,7 @@ function HomeSettingsScreen({
                       }));
                     }}
                   >
-                    {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                    {(selectedDocumentModel?.supportedReasoningEfforts ?? []).map((effort) => (
                       <option key={effort} value={effort}>
                         {reasoningLabels[effort]}
                       </option>

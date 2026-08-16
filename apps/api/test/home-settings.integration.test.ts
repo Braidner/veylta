@@ -108,6 +108,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
   });
   const preferences = createCodexPreferencesStore(database, {
     modelId: "gpt-5.6-sol",
+    documentModelId: null,
     reasoningEffort: "medium",
     documentReasoningEffort: "medium",
     serviceTier: "standard",
@@ -154,7 +155,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
         accounts: settingsBody.accounts.map(({ id: _id, ...account }) => account),
       },
       {
-        contractVersion: "home-settings/v3",
+        contractVersion: "home-settings/v4",
         codex: {
           installed: true,
           authenticated: true,
@@ -164,6 +165,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
           runtimeVersion: null,
           preference: {
             modelId: "gpt-5.6-sol",
+            documentModelId: null,
             reasoningEffort: "medium",
             documentReasoningEffort: "medium",
             serviceTier: "standard",
@@ -376,6 +378,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
       headers: { cookie: adminCookie, origin: webOrigin },
       payload: {
         modelId: "gpt-5.6-sol",
+        documentModelId: null,
         reasoningEffort: "high",
         documentReasoningEffort: "high",
         serviceTier: "fast",
@@ -386,6 +389,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
       (updatedPreference.json() as { codex: { preference: unknown } }).codex.preference,
       {
         modelId: "gpt-5.6-sol",
+        documentModelId: null,
         reasoningEffort: "high",
         documentReasoningEffort: "high",
         serviceTier: "fast",
@@ -393,6 +397,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
     );
     assert.deepEqual(await preferences.get(), {
       modelId: "gpt-5.6-sol",
+      documentModelId: null,
       reasoningEffort: "high",
       documentReasoningEffort: "high",
       serviceTier: "fast",
@@ -413,7 +418,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
     );
     assert.equal(runtimeAudit.rowCount, 1);
     assert.deepEqual(JSON.parse(runtimeAudit.rows[0]?.metadata ?? "{}"), {
-      contractVersion: "home-settings/v3",
+      contractVersion: "home-settings/v4",
     });
   } finally {
     await app.close();

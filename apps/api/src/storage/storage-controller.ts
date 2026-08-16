@@ -246,7 +246,7 @@ class RuntimeStorageController implements StorageController {
             randomUUID(),
             audit.actorUserId,
             audit.correlationId,
-            { contractVersion: "home-settings/v3" satisfies typeof HOME_SETTINGS_CONTRACT_VERSION },
+            { contractVersion: "home-settings/v4" satisfies typeof HOME_SETTINGS_CONTRACT_VERSION },
           ],
         );
         return status(await settingsRow(client));

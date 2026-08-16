@@ -103,6 +103,7 @@ function codexModel(): string {
 function codexDefaultPreference(): CodexExecutionPreference {
   return requireCodexExecutionPreference({
     modelId: codexModel(),
+    documentModelId: null,
     reasoningEffort: process.env.CODEX_REASONING_EFFORT ?? "medium",
     // Extraction is transcription under a strict schema; low effort is several times faster.
     documentReasoningEffort: process.env.CODEX_DOCUMENT_REASONING_EFFORT ?? "low",

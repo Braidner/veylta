@@ -333,6 +333,7 @@ test("an explicit Codex run stores bounded drafts once and never exposes source 
         async executionProfile() {
           return {
             modelId: "gpt-5.4-mini",
+            documentModelId: null,
             reasoningEffort: "medium",
             documentReasoningEffort: "medium",
             serviceTier: "standard",

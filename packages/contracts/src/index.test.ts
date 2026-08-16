@@ -77,7 +77,7 @@ import {
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
-  assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v3");
+  assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v4");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v7");
   assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v2");
   assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
@@ -175,6 +175,7 @@ test("home settings expose only Codex-advertised choices and bounded usage", () 
       runtimeVersion: "0.147.0",
       preference: {
         modelId: "gpt-5.6-sol",
+        documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
         serviceTier: "standard",

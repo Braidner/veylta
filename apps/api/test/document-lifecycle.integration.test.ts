@@ -152,7 +152,7 @@ test("lifecycle migration adds tombstones and immutable request journals and rol
   const database = createDatabase(join(root, "test.sqlite"));
   try {
     const applied = await migrateUp(database);
-    assert.equal(applied.at(-1), "0026_document_reasoning_effort");
+    assert.equal(applied.at(-1), "0027_document_model");
     const columns = await database.query<{ name: string }>("PRAGMA table_info(documents)");
     assert.equal(
       columns.rows.some(({ name }) => name === "deleted_at"),
@@ -162,6 +162,7 @@ test("lifecycle migration adds tombstones and immutable request journals and rol
       columns.rows.some(({ name }) => name === "deleted_by_user_id"),
       true,
     );
+    assert.equal(await migrateDown(database), "0027_document_model");
     assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
     assert.equal(await migrateDown(database), "0025_run_diagnostics");
     assert.equal(await migrateDown(database), "0024_document_agent_threads");

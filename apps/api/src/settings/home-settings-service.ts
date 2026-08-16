@@ -289,16 +289,23 @@ export function createHomeSettingsService(
       const runtime = await codex.status();
       if (runtime.models.length === 0) throw new CodexCatalogUnavailableError();
       const model = runtime.models.find((candidate) => candidate.id === input.modelId);
+      // The document model defaults to the dialogue model; each must support its own effort.
+      const documentModel =
+        input.documentModelId === null || input.documentModelId === input.modelId
+          ? model
+          : runtime.models.find((candidate) => candidate.id === input.documentModelId);
       if (
         model === undefined ||
+        documentModel === undefined ||
         !model.supportedReasoningEfforts.includes(input.reasoningEffort) ||
-        !model.supportedReasoningEfforts.includes(input.documentReasoningEffort) ||
+        !documentModel.supportedReasoningEfforts.includes(input.documentReasoningEffort) ||
         (input.serviceTier === "fast" && !model.supportsFastMode)
       ) {
         throw new CodexPreferenceUnsupportedError();
       }
       const preference: CodexExecutionPreference = {
         modelId: model.id,
+        documentModelId: documentModel.id === model.id ? null : documentModel.id,
         reasoningEffort: input.reasoningEffort,
         documentReasoningEffort: input.documentReasoningEffort,
         serviceTier: input.serviceTier,
