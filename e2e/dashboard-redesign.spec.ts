@@ -159,6 +159,11 @@ test("upload opens a keyboard-safe Codex batch dialog", async ({ page }) => {
   await expect(submit).toBeEnabled();
   await submit.click();
   await expect(page).toHaveURL(/\?tab=documents$/);
-  await expect(page.getByRole("heading", { name: "Анализы" })).toBeVisible({ timeout: 15_000 });
-  await expect(page.getByRole("link", { name: /^Открыть источник / })).toHaveCount(2);
+  // One list; freshly extracted sources await review, so their verb is «Открыть проверку».
+  await expect(page.getByRole("region", { name: "Документы", exact: true })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByRole("link", { name: /^Открыть (проверку|источник) / })).toHaveCount(2, {
+    timeout: 15_000,
+  });
 });

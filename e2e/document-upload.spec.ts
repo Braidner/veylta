@@ -82,11 +82,8 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   await page.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
   const overview = page.getByRole("region", { name: "Архив документов" });
-  await expect(
-    overview
-      .getByRole("region", { name: "Проверка исходников" })
-      .getByText(filename, { exact: true }),
-  ).toBeVisible();
+  // One list: the source awaiting a decision sits at the top with its two counts.
+  await expect(overview.getByRole("region", { name: "Документы", exact: true })).toBeVisible();
   // The queue names the two kinds of pending value, each beside the verb that handles it.
   await expect(overview.getByText("1 значение без замечаний")).toBeVisible();
   await expect(overview.getByText("1 значение требует отдельной проверки")).toBeVisible();
@@ -245,10 +242,10 @@ test("document archive searches summaries and deletion requires an explicit conf
   const search = archive.getByPlaceholder("Поиск по саммари и результатам");
   await search.fill("лабораторные результаты");
   await expect(archive.getByText(filename, { exact: true })).toBeVisible();
-  await expect(archive.locator(".document-archive-row__summary")).toBeVisible();
+  await expect(archive.locator(".archive-list__summary")).toBeVisible();
 
   await archive
-    .getByRole("link", { name: /Открыть источник/ })
+    .getByRole("link", { name: /Открыть (проверку|источник)/ })
     .last()
     .click();
   await page.getByRole("button", { name: "Удалить" }).click();

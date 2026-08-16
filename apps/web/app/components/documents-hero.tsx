@@ -80,7 +80,7 @@ export function DocumentsHero({
             </button>
           ) : null}
 
-          {canWrite && summary !== null && summary.failedDocumentCount > 0 ? (
+          {canWrite && summary !== null && summary.restartableCount > 0 ? (
             <button
               className="button page-hero__action"
               type="button"
@@ -90,7 +90,7 @@ export function DocumentsHero({
               <RefreshCw size={17} aria-hidden="true" />
               {restartAllPending
                 ? "Запускаем…"
-                : `Перезапустить разбор ${summary.failedDocumentCount}`}
+                : `Перезапустить разбор ${summary.restartableCount}`}
             </button>
           ) : null}
         </>

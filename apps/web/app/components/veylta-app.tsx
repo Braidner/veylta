@@ -60,7 +60,7 @@ import type {
   SetupStatusResponse,
   StorageRelocationResponse,
 } from "@veylta/contracts";
-import { DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { type DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import {
   ArrowRight,
   Bot,
@@ -97,9 +97,12 @@ import {
 } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
 import {
+  type ArchiveRow,
+  archiveRows,
   buildDocumentsArchiveHero,
   bulkConfirmableCount,
   isRestartable,
+  restartTargets,
 } from "../documents-archive";
 import { DocumentAgentWorkspace } from "./document-agent-workspace";
 import { DocumentHero } from "./document-hero";
@@ -3038,101 +3041,132 @@ const documentCategoryLabels: Record<(typeof DOCUMENT_CATEGORIES)[number], strin
   other: "Другое",
 };
 
-function DocumentArchiveList({
-  documents,
+type ArchiveActionState =
+  | { kind: "idle" }
+  | { kind: "confirming"; completed: number; total: number; documentId: string | null }
+  | { kind: "restarting"; documentId: string | null }
+  | { kind: "error"; copy: string };
+
+/**
+ * One row shape for every source. A row that still holds values awaiting a decision shows
+ * the two counts that map onto its two verbs; every other row shows its processing state.
+ */
+function ArchiveRows({
+  rows,
   familyId,
   profileId,
+  canWrite,
+  action,
+  onConfirm,
   onRestart,
-  restartingDocumentId,
 }: {
-  documents: ProfileOverviewResponse["recentDocuments"];
+  rows: readonly ArchiveRow[];
   familyId: string;
   profileId: string;
-  /** Absent for read-only viewers; a restart is a write on the profile. */
-  onRestart?: (document: ProfileOverviewDocument) => void;
-  restartingDocumentId?: string | null;
+  canWrite: boolean;
+  action: ArchiveActionState;
+  onConfirm: (entry: ProfileOverviewReviewDocument) => void;
+  onRestart: (document: ProfileOverviewDocument) => void;
 }) {
-  const groups = [
-    {
-      id: "processing",
-      label: "Codex распределяет",
-      documents: documents.filter((document) => document.intelligence === null),
-    },
-    ...DOCUMENT_CATEGORIES.map((category) => ({
-      id: category,
-      label: documentCategoryLabels[category],
-      documents: documents.filter((document) => document.intelligence?.category === category),
-    })),
-  ].filter((group) => group.documents.length > 0);
-
   return (
-    <div className="document-category-groups">
-      {groups.map((group) => (
-        <section
-          key={group.id}
-          className="document-category-group"
-          aria-labelledby={`group-${group.id}`}
-        >
-          <div className="document-category-group__heading">
-            <h4 id={`group-${group.id}`}>{group.label}</h4>
-            <span>{group.documents.length}</span>
-          </div>
-          <ol className="profile-overview__list">
-            {group.documents.map((document) => (
-              <li key={document.id} className="profile-overview__row">
-                <div className="document-archive-row__identity">
-                  <span className="document-archive-row__icon" aria-hidden="true">
-                    <Files size={17} />
-                  </span>
-                  <div>
-                    <strong>{document.intelligence?.title ?? document.originalFilename}</strong>
-                    <span>
-                      {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)}
-                    </span>
-                    {document.intelligence?.shortSummary ? (
-                      <p className="document-archive-row__summary">
-                        {document.intelligence.shortSummary}
-                      </p>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="document-archive-row__actions">
-                  <span className={`document-status document-status--${document.processing.state}`}>
-                    {profileOverviewProcessingCopy(document.processing)}
-                  </span>
-                  {onRestart !== undefined && isRestartable(document) ? (
-                    <button
-                      className="document-archive-row__restart"
-                      type="button"
-                      disabled={restartingDocumentId !== undefined && restartingDocumentId !== null}
-                      onClick={() => onRestart(document)}
-                      aria-label={`Перезапустить разбор ${document.intelligence?.title ?? document.originalFilename}`}
-                    >
-                      <RefreshCw size={15} aria-hidden="true" />
-                      <span>
-                        {restartingDocumentId === document.id ? "Запускаем…" : "Перезапустить"}
-                      </span>
-                    </button>
-                  ) : null}
-                  <Link
-                    className="document-archive-row__open"
-                    href={documentPath(familyId, profileId, document.id)}
-                    aria-label={`Открыть источник ${document.intelligence?.title ?? document.originalFilename}`}
-                  >
-                    <span>Открыть источник</span>
-                    <ArrowRight
-                      className="document-archive-row__arrow"
-                      size={17}
-                      aria-hidden="true"
-                    />
-                  </Link>
-                </div>
-              </li>
-            ))}
-          </ol>
-        </section>
-      ))}
-    </div>
+    <ol className="archive-list">
+      {rows.map(({ document, queue }) => {
+        const clean = queue === null ? 0 : bulkConfirmableCount(queue);
+        const attention = queue?.needsAttentionFactCount ?? 0;
+        const title = document.intelligence?.title ?? document.originalFilename;
+        const confirming = action.kind === "confirming" && action.documentId === document.id;
+        const restarting = action.kind === "restarting" && action.documentId === document.id;
+        return (
+          <li
+            key={document.id}
+            className={`archive-list__item${queue === null ? "" : " archive-list__item--pending"}`}
+          >
+            <div className="archive-list__doc">
+              <span className="archive-list__icon" aria-hidden="true">
+                <FileText size={18} strokeWidth={1.8} />
+              </span>
+              <div>
+                <strong>{title}</strong>
+                <span>
+                  {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)}
+                  {document.intelligence === null
+                    ? null
+                    : ` · ${documentCategoryLabels[document.intelligence.category]}`}
+                  {/* The upload's own name stays visible under a model-written title. */}
+                  {title === document.originalFilename ? null : (
+                    <>
+                      {" · "}
+                      <span className="archive-list__filename">{document.originalFilename}</span>
+                    </>
+                  )}
+                </span>
+                {document.intelligence?.shortSummary ? (
+                  <p className="archive-list__summary">{document.intelligence.shortSummary}</p>
+                ) : null}
+              </div>
+            </div>
+
+            {queue !== null ? (
+              <ul className="archive-list__chips" aria-label="Состав очереди">
+                {clean > 0 ? (
+                  <li className="archive-list__chip archive-list__chip--clean">
+                    <CheckCheck size={14} aria-hidden="true" />
+                    {factCountCopy(clean)} без замечаний
+                  </li>
+                ) : null}
+                {attention > 0 ? (
+                  <li className="archive-list__chip archive-list__chip--attention">
+                    <span aria-hidden="true">!</span>
+                    {factCountCopy(attention)} {attention === 1 ? "требует" : "требуют"} отдельной
+                    проверки
+                  </li>
+                ) : null}
+              </ul>
+            ) : (
+              <span className={`document-status document-status--${document.processing.state}`}>
+                {profileOverviewProcessingCopy(document.processing)}
+              </span>
+            )}
+
+            <div className="archive-list__actions">
+              {canWrite && queue !== null && clean > 0 ? (
+                <button
+                  className="button archive-list__action"
+                  type="button"
+                  disabled={action.kind === "confirming"}
+                  onClick={() => onConfirm(queue)}
+                >
+                  <CheckCheck size={16} aria-hidden="true" />
+                  {confirming && action.kind === "confirming"
+                    ? `Подтверждаем ${action.completed} из ${action.total}…`
+                    : `Подтвердить ${clean}`}
+                </button>
+              ) : null}
+              {canWrite && isRestartable(document) ? (
+                <button
+                  className="archive-list__restart"
+                  type="button"
+                  disabled={action.kind === "restarting"}
+                  onClick={() => onRestart(document)}
+                  aria-label={`Перезапустить разбор ${title}`}
+                >
+                  <RefreshCw size={15} aria-hidden="true" />
+                  <span>{restarting ? "Запускаем…" : "Перезапустить"}</span>
+                </button>
+              ) : null}
+              <Link
+                className="button button--secondary archive-list__action"
+                href={documentPath(familyId, profileId, document.id)}
+                aria-label={`${queue === null ? "Открыть источник" : "Открыть проверку"} ${title}`}
+              >
+                {queue === null ? "Открыть источник" : "Открыть проверку"}
+                <ArrowRight size={16} aria-hidden="true" />
+              </Link>
+            </div>
+          </li>
+        );
+      })}
+    </ol>
   );
 }
 
@@ -3154,12 +3188,7 @@ function ProfileOverviewPanel({
   const [searchState, setSearchState] = useState<DocumentSearchState>({ kind: "idle" });
   const [searchRevision, setSearchRevision] = useState(0);
 
-  type ArchiveAction =
-    | { kind: "idle" }
-    | { kind: "confirming"; completed: number; total: number; documentId: string | null }
-    | { kind: "restarting"; documentId: string | null }
-    | { kind: "error"; copy: string };
-  const [archiveAction, setArchiveAction] = useState<ArchiveAction>({ kind: "idle" });
+  const [archiveAction, setArchiveAction] = useState<ArchiveActionState>({ kind: "idle" });
 
   /**
    * Confirms only the values the review workspace would also confirm in bulk. Each decision
@@ -3399,13 +3428,7 @@ function ProfileOverviewPanel({
               }}
               onUpload={onUpload}
               onConfirmAll={() => void confirmDocuments(state.overview.reviewQueue.documents)}
-              onRestartFailed={() =>
-                void restartDocuments(
-                  state.overview.recentDocuments.filter(
-                    (document) => document.processing.state === "failed",
-                  ),
-                )
-              }
+              onRestartFailed={() => void restartDocuments(restartTargets(state.overview))}
             />
             <div className="document-library__toolbar">
               <div className="document-library__tools">
@@ -3452,19 +3475,25 @@ function ProfileOverviewPanel({
 
             <div className="profile-overview__sections">
               <section
-                className={`review-queue${state.overview.reviewQueue.documentCount === 0 ? " review-queue--empty" : ""}`}
-                aria-labelledby="overview-review-title"
+                className="profile-overview__section"
+                aria-labelledby="overview-documents-title"
+                aria-busy={searchState.kind === "loading"}
               >
-                <header className="review-queue__heading">
+                <header className="archive-list__heading">
                   <div>
-                    <h3 id="overview-review-title">Проверка исходников</h3>
+                    <h3 id="overview-documents-title">
+                      {searchState.kind === "ready"
+                        ? `${searchState.documents.length} ${russianPlural(searchState.documents.length, "документ", "документа", "документов")}`
+                        : "Документы"}
+                    </h3>
                     <p>
-                      Значения уже извлечены — каждое ждёт вашего решения. Без замечаний можно
-                      подтвердить сразу; с замечаниями открываются по одному.
+                      {searchState.kind === "idle"
+                        ? "Сначала — источники, которые ждут решения. Значения без замечаний можно подтвердить сразу; с замечаниями открываются по одному."
+                        : `Результаты поиска по запросу «${searchState.kind === "loading" ? searchState.query : searchState.kind === "ready" || searchState.kind === "error" ? searchState.query : ""}».`}
                     </p>
                   </div>
-                  {state.overview.reviewQueue.documentCount > 0 ? (
-                    <dl className="review-queue__totals">
+                  {searchState.kind === "idle" && state.overview.reviewQueue.documentCount > 0 ? (
+                    <dl className="archive-list__totals">
                       <div>
                         <dt>Ждут решения</dt>
                         <dd>{factCountCopy(state.overview.reviewQueue.pendingFactCount)}</dd>
@@ -3476,100 +3505,6 @@ function ProfileOverviewPanel({
                     </dl>
                   ) : null}
                 </header>
-                {state.overview.reviewQueue.documentCount === 0 ? (
-                  <p className="review-queue__done">
-                    <CheckCheck size={18} aria-hidden="true" />
-                    Ничего не ожидает проверки. Подтверждение всегда остаётся отдельным действием.
-                  </p>
-                ) : (
-                  <ol className="review-queue__list">
-                    {state.overview.reviewQueue.documents.map((document) => {
-                      const clean = bulkConfirmableCount(document);
-                      const attention = document.needsAttentionFactCount;
-                      return (
-                        <li key={document.id} className="review-queue__item">
-                          <div className="review-queue__doc">
-                            <span className="review-queue__icon" aria-hidden="true">
-                              <FileText size={18} strokeWidth={1.8} />
-                            </span>
-                            <div>
-                              <strong>{document.originalFilename}</strong>
-                              <span>
-                                {documentKindLabel(document.contentType)} ·{" "}
-                                {formatDate(document.uploadedAt)}
-                              </span>
-                            </div>
-                          </div>
-                          {/* Two explicit counts that map one-to-one onto the two verbs. */}
-                          <ul className="review-queue__chips" aria-label="Состав очереди">
-                            {clean > 0 ? (
-                              <li className="review-queue__chip review-queue__chip--clean">
-                                <CheckCheck size={14} aria-hidden="true" />
-                                {factCountCopy(clean)} без замечаний
-                              </li>
-                            ) : null}
-                            {attention > 0 ? (
-                              <li className="review-queue__chip review-queue__chip--attention">
-                                <span aria-hidden="true">!</span>
-                                {factCountCopy(attention)} {attention === 1 ? "требует" : "требуют"}{" "}
-                                отдельной проверки
-                              </li>
-                            ) : null}
-                          </ul>
-                          <div className="review-queue__actions">
-                            {canWriteProfile && clean > 0 ? (
-                              <button
-                                className="button review-queue__action"
-                                type="button"
-                                disabled={archiveAction.kind === "confirming"}
-                                onClick={() => void confirmDocuments([document])}
-                              >
-                                <CheckCheck size={16} aria-hidden="true" />
-                                {archiveAction.kind === "confirming" &&
-                                archiveAction.documentId === document.id
-                                  ? `Подтверждаем ${archiveAction.completed} из ${archiveAction.total}…`
-                                  : `Подтвердить ${clean}`}
-                              </button>
-                            ) : null}
-                            <Link
-                              className="button button--secondary review-queue__action"
-                              href={documentPath(familyId, profileId, document.id)}
-                            >
-                              Открыть проверку
-                              <ArrowRight size={16} aria-hidden="true" />
-                            </Link>
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ol>
-                )}
-                {state.overview.reviewQueue.documentCount >
-                state.overview.reviewQueue.documents.length ? (
-                  <p className="profile-overview__more">
-                    Показаны {state.overview.reviewQueue.documents.length} последних из{" "}
-                    {state.overview.reviewQueue.documentCount} документов в очереди.
-                  </p>
-                ) : null}
-              </section>
-
-              <section
-                className="profile-overview__section"
-                aria-labelledby="overview-documents-title"
-                aria-busy={searchState.kind === "loading"}
-              >
-                <div className="profile-overview__section-heading">
-                  <div>
-                    <p className="context-line">
-                      {searchState.kind === "idle" ? "Неизменяемые байты" : "Результаты поиска"}
-                    </p>
-                    <h3 id="overview-documents-title">
-                      {searchState.kind === "ready"
-                        ? `${searchState.documents.length} ${russianPlural(searchState.documents.length, "документ", "документа", "документов")}`
-                        : "Архив исходников"}
-                    </h3>
-                  </div>
-                </div>
                 {searchState.kind === "loading" ? (
                   <div className="document-search-state" role="status">
                     <span className="document-search-state__spinner" aria-hidden="true" />
@@ -3622,25 +3557,28 @@ function ProfileOverviewPanel({
                   </div>
                 ) : null}
                 {searchState.kind === "idle" && state.overview.recentDocuments.length > 0 ? (
-                  <DocumentArchiveList
-                    documents={state.overview.recentDocuments}
+                  <ArchiveRows
+                    rows={archiveRows(state.overview)}
                     familyId={familyId}
                     profileId={profileId}
-                    {...(canWriteProfile
-                      ? {
-                          onRestart: (document: ProfileOverviewDocument) =>
-                            void restartDocuments([document]),
-                          restartingDocumentId:
-                            archiveAction.kind === "restarting" ? archiveAction.documentId : null,
-                        }
-                      : {})}
+                    canWrite={canWriteProfile}
+                    action={archiveAction}
+                    onConfirm={(entry) => void confirmDocuments([entry])}
+                    onRestart={(document) => void restartDocuments([document])}
                   />
                 ) : null}
                 {searchState.kind === "ready" && searchState.documents.length > 0 ? (
-                  <DocumentArchiveList
-                    documents={searchState.documents}
+                  <ArchiveRows
+                    rows={archiveRows({
+                      ...state.overview,
+                      recentDocuments: searchState.documents,
+                    })}
                     familyId={familyId}
                     profileId={profileId}
+                    canWrite={canWriteProfile}
+                    action={archiveAction}
+                    onConfirm={(entry) => void confirmDocuments([entry])}
+                    onRestart={(document) => void restartDocuments([document])}
                   />
                 ) : null}
               </section>

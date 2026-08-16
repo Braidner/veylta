@@ -6,10 +6,12 @@ import type {
   ProfileOverviewReviewDocument,
 } from "@veylta/contracts";
 import {
+  archiveRows,
   archiveValueCountCopy,
   buildDocumentsArchiveHero,
   bulkConfirmableCount,
   isRestartable,
+  restartTargets,
   sourceCountCopy,
 } from "./documents-archive.js";
 
@@ -113,6 +115,7 @@ test("the archive hero totals the whole queue, not the visible rows", () => {
     pendingFactCount: 82,
     needsAttentionFactCount: 6,
     failedDocumentCount: 1,
+    restartableCount: 1,
     bulkConfirmableCount: 76,
   });
 });
@@ -123,4 +126,58 @@ test("Russian counts agree with their nouns", () => {
   assert.equal(sourceCountCopy(11), "11 источников");
   assert.equal(archiveValueCountCopy(21), "21 значение");
   assert.equal(archiveValueCountCopy(42), "42 значения");
+});
+
+test("one list: sources awaiting a decision come first, each carrying its queue entry", () => {
+  const waiting = {
+    ...overviewDocument({
+      state: "awaiting_review",
+      updatedAt: "2026-08-15T10:00:00.000Z",
+      factCount: 3,
+      needsReviewCount: 1,
+    }),
+    id: "00000000-0000-4000-8000-00000000000a",
+  };
+  const done = {
+    ...overviewDocument({
+      state: "completed",
+      updatedAt: "2026-08-15T09:00:00.000Z",
+      factCount: 2,
+    }),
+    id: "00000000-0000-4000-8000-00000000000b",
+  };
+  const failed = {
+    ...overviewDocument({
+      state: "failed",
+      updatedAt: "2026-08-15T08:00:00.000Z",
+      category: "agent_output_invalid",
+      retryAllowed: true,
+    }),
+    id: "00000000-0000-4000-8000-00000000000c",
+  };
+  const overview = {
+    // Newest first, as the API returns them; the waiting one is deliberately not first here.
+    recentDocuments: [done, waiting, failed],
+    reviewQueue: {
+      documentCount: 1,
+      pendingFactCount: 3,
+      needsAttentionFactCount: 1,
+      documents: [{ ...reviewDocument(3, 1), id: waiting.id }],
+    },
+  } as unknown as ProfileOverviewResponse;
+
+  const rows = archiveRows(overview);
+  assert.deepEqual(
+    rows.map((row) => [row.document.id, row.queue?.pendingFactCount ?? null]),
+    [
+      [waiting.id, 3],
+      [done.id, null],
+      [failed.id, null],
+    ],
+  );
+  // The hero restart targets what is waiting or failed — never what is fully reviewed.
+  assert.deepEqual(
+    restartTargets(overview).map((document) => document.id),
+    [waiting.id, failed.id],
+  );
 });

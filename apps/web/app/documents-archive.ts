@@ -10,6 +10,8 @@ export interface DocumentsArchiveHero {
   readonly pendingFactCount: number;
   readonly needsAttentionFactCount: number;
   readonly failedDocumentCount: number;
+  /** Sources the archive-wide restart would act on: waiting or failed. */
+  readonly restartableCount: number;
   /** Every value that may be confirmed without opening a source, across the whole queue. */
   readonly bulkConfirmableCount: number;
 }
@@ -43,6 +45,7 @@ export function buildDocumentsArchiveHero(overview: ProfileOverviewResponse): Do
     failedDocumentCount: recentDocuments.filter(
       (document) => document.processing.state === "failed",
     ).length,
+    restartableCount: restartTargets(overview).length,
     bulkConfirmableCount: reviewQueue.documents.reduce(
       (total, document) => total + bulkConfirmableCount(document),
       0,
@@ -72,4 +75,35 @@ export function archiveValueCountCopy(count: number): string {
 
 export function archiveDocumentCountCopy(count: number): string {
   return `${count} ${pluralForm(count, documentForms)}`;
+}
+
+export interface ArchiveRow {
+  readonly document: ProfileOverviewDocument;
+  /** Present while the source still has values awaiting a decision. */
+  readonly queue: ProfileOverviewReviewDocument | null;
+}
+
+/**
+ * One list for the archive: sources that still need a decision come first, everything else
+ * follows, each group newest first as the API already orders them. A separate "queue" section
+ * would only repeat rows the reader is about to scroll past.
+ */
+export function archiveRows(overview: ProfileOverviewResponse): readonly ArchiveRow[] {
+  const queue = new Map(overview.reviewQueue.documents.map((entry) => [entry.id, entry]));
+  const rows = overview.recentDocuments.map((document) => ({
+    document,
+    queue: queue.get(document.id) ?? null,
+  }));
+  return [...rows.filter((row) => row.queue !== null), ...rows.filter((row) => row.queue === null)];
+}
+
+/** What the archive-wide restart acts on: waiting or failed runs, never fully reviewed ones. */
+export function restartTargets(
+  overview: ProfileOverviewResponse,
+): readonly ProfileOverviewDocument[] {
+  return overview.recentDocuments.filter(
+    (document) =>
+      isRestartable(document) &&
+      (document.processing.state === "awaiting_review" || document.processing.state === "failed"),
+  );
 }

@@ -30,7 +30,6 @@ async function registerDemoFamily(page: Page) {
   await expect(signals.getByText("Подтверждено", { exact: true })).toBeVisible();
   await openDocumentsTab(page);
   const archive = page.getByRole("region", { name: "Архив документов" });
-  await expect(archive.getByText("Ничего не ожидает проверки.")).toBeVisible();
   await expect(archive.getByText("Исходников пока нет.")).toBeVisible();
   await expect(archive.getByText("Экспорт источников", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Обзор", exact: true }).click();
