@@ -74,6 +74,33 @@ test("maps one laboratory alias to a stable household code and comparable unit",
   );
 });
 
+test("the normalized value is derived from the printed value, never taken from the model", async () => {
+  const alias = {
+    canonical_code: "bilirubin.total",
+    canonical_unit: "µmol/L",
+    source_name_key: "билирубин общий (тв)",
+    source_unit_key: "umol/l",
+  };
+  // A model-proposed conversion that contradicts the printed number is not carried over.
+  const enriched = await enrichFactFromAnalyteMappings(mappingDatabase([alias]), {
+    ...bilirubinFact,
+    proposedNormalizedValue: "9.4",
+    proposedNormalizedUnit: "µmol/L",
+  });
+  assert.equal(enriched.proposedNormalizedValue, "9.9");
+  assert.equal(enriched.proposedNormalizedUnit, "µmol/L");
+
+  // An alias whose unit is not the canonical unit would need a real conversion, which Veylta
+  // does not perform: the code is applied, the normalization stays empty.
+  const converted = await enrichFactFromAnalyteMappings(
+    mappingDatabase([{ ...alias, canonical_unit: "mg/dL", source_unit_key: "umol/l" }]),
+    bilirubinFact,
+  );
+  assert.equal(converted.proposedCanonicalCode, "bilirubin.total");
+  assert.equal(converted.proposedNormalizedValue, null);
+  assert.equal(converted.proposedNormalizedUnit, null);
+});
+
 test("keeps an unknown analyte unresolved instead of inventing a mapping", async () => {
   const enriched = await enrichFactFromAnalyteMappings(mappingDatabase([]), bilirubinFact);
   assert.deepEqual(enriched, bilirubinFact);

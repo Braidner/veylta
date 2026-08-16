@@ -161,7 +161,18 @@ YOU MUST NOT relax these to make a feature easier.
   immutable; `confirm`/`correct` create an `Observation` in the same transaction, `reject`
   creates none.
 - Reject a Codex extraction unless every fact cites an exact source fragment with a page
-  number. Fail closed rather than accept an unbound fact.
+  number. Fail closed rather than accept an unbound fact. Verification is per item: an
+  unbound fact or summary result is dropped, the verified rest is kept, and only an answer
+  whose every item fails is refused. Bookkeeping slips (a repeated key, a unit repeated
+  inside the value, a fragment stitched from non-adjacent lines that still names one unique
+  value line) are normalised deterministically — never taken on trust, never fatal.
+- A model-proposed normalization survives only in the identity case (same number under a
+  canonical unit spelling); Veylta performs no unit conversions and never carries a model's
+  converted number into an observation. `resolveAnalyteMapping` derives the normalized value
+  from the printed one.
+- In a laboratory report the summary's numeric measurements are the facts: an answer whose
+  facts miss most of them is refused as `incomplete_facts` so the retry asks again, instead
+  of presenting a fraction of the document as the whole.
 - Audit events are payload-free: actor, tenant, action, resource selector, result, time.
   No filenames, medical values, fragments, or cursors. This holds without exception —
   `processing_job_exchanges` is never copied into an audit event.

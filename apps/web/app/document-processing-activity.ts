@@ -68,6 +68,8 @@ const rejectionReasons: Record<ProcessingRejectionReason, string> = {
   inconsistent_fields: "Поля ответа противоречат друг другу",
   unproven_above_range: "Codex пометил результат как выше нормы, но источник этого не подтверждает",
   duplicate_binding: "Один и тот же источник привязан к нескольким результатам",
+  incomplete_facts:
+    "Codex перечислил измерения в сводке, но не вынес большинство из них на проверку",
   response_too_large: "Ответ превысил допустимый размер",
   provider_unavailable: "Codex не ответил",
   input_invalid: "Veylta отказалась отправлять такой запрос",

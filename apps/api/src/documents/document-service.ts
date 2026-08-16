@@ -2329,7 +2329,6 @@ async function enrichStoredFactRow(client: DatabaseClient, row: FactRow): Promis
     sourceUnit: row.source_unit,
     sourceValue: row.source_value,
     proposedLaboratory: row.proposed_laboratory,
-    proposedNormalizedValue: row.proposed_normalized_value,
   });
   const canonicalCode = mapped?.canonicalCode ?? row.proposed_canonical_code;
   if (canonicalCode === null) return { ...row, canonical_display_name: null };
@@ -4631,7 +4630,6 @@ export function createDocumentService(
           sourceUnit: fact.source_unit,
           sourceValue: fact.source_value,
           proposedLaboratory: fact.proposed_laboratory,
-          proposedNormalizedValue: fact.proposed_normalized_value,
         });
         const canonicalCode = nullableBoundedString(
           mappedAnalyte?.canonicalCode ?? fact.proposed_canonical_code,

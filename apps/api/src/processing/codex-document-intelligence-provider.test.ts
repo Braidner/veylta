@@ -308,7 +308,31 @@ test("an above_range claim the source does not support is downgraded, not accept
             },
           },
         ],
-        facts: [],
+        facts: [
+          {
+            factKey: "synthetic-glucose",
+            sourceName: "Synthetic glucose",
+            sourceValue: "5.0",
+            sourceUnit: "synthetic-unit",
+            proposedCanonicalCode: null,
+            proposedNormalizedValue: null,
+            proposedNormalizedUnit: null,
+            proposedSampledAt: null,
+            proposedResultedAt: null,
+            proposedSpecimenType: null,
+            proposedLaboratory: null,
+            referenceRange: {
+              sourceText: "< 6.0 synthetic-unit",
+              sourceLow: null,
+              sourceHigh: "6.0",
+              sourceUnit: "synthetic-unit",
+              laboratoryOutOfRange: null,
+            },
+            confidence: 0.95,
+            validationIssues: [],
+            source: { pageNumber: 1, fragment: "Synthetic glucose: 5.0 synthetic-unit" },
+          },
+        ],
       },
       [],
     ),
@@ -622,6 +646,315 @@ test("Codex keeps source-bound facts when another proposed fact fails validation
   assert.equal(result.extraction.items[0]?.factKey, "synthetic-glucose");
 });
 
+const twoLinePages = [
+  {
+    pageNumber: 1,
+    text: [
+      "SYNTHETIC TEST DATA — NOT FOR MEDICAL USE",
+      "Synthetic glucose: 7.0 synthetic-unit",
+      "Synthetic lactate: 2.0 synthetic-unit",
+    ].join("\n"),
+    extractionMethod: "pdf_text_layer",
+    extractionVersion: "pdfjs-dist/6.2.108",
+  },
+] as const;
+
+function laboratoryAnswer(overrides: {
+  structuredResults?: readonly unknown[];
+  facts: readonly unknown[];
+}) {
+  return {
+    classification: {
+      category: "laboratory",
+      title: "Синтетический лабораторный отчёт",
+      shortSummary: "В документе указаны синтетические результаты.",
+      detailedSummary: "Документ содержит синтетические измерения без интерпретации.",
+      documentDate: null,
+      sampledAt: null,
+      resultedAt: null,
+      specimenType: null,
+      laboratory: null,
+      confidence: 0.96,
+    },
+    structuredResults: overrides.structuredResults ?? [],
+    facts: overrides.facts,
+  };
+}
+
+function measurementResult(resultKey: string, label: string, value: string, fragment: string) {
+  return {
+    resultKey,
+    type: "measurement",
+    label,
+    value,
+    unit: "synthetic-unit",
+    code: null,
+    lab: null,
+    specimen: null,
+    date: null,
+    status: "unknown",
+    confidence: 0.9,
+    source: { pageNumber: 1, fragment },
+  };
+}
+
+function measurementFact(factKey: string, sourceName: string, value: string, fragment: string) {
+  return {
+    factKey,
+    sourceName,
+    sourceValue: value,
+    sourceUnit: "synthetic-unit",
+    proposedCanonicalCode: null,
+    proposedNormalizedValue: null,
+    proposedNormalizedUnit: null,
+    proposedSampledAt: null,
+    proposedResultedAt: null,
+    proposedSpecimenType: null,
+    proposedLaboratory: null,
+    referenceRange: null,
+    confidence: 0.9,
+    validationIssues: [],
+    source: { pageNumber: 1, fragment },
+  };
+}
+
+function lowEffortProvider(answer: unknown) {
+  return createCodexDocumentIntelligenceProvider(
+    {
+      resolveExecutionProfile: async () => ({
+        modelId: "gpt-5.4-mini",
+        documentModelId: null,
+        reasoningEffort: "low",
+        documentReasoningEffort: "low",
+        serviceTier: "standard",
+      }),
+      timeoutMs: 120_000,
+    },
+    executorFor(answer, []),
+  );
+}
+
+/**
+ * Keys only bind results to facts inside one answer and seed stable fact IDs. A model that
+ * reuses a key for two different lines made a bookkeeping slip, not a provenance error: the
+ * second measurement is kept under a derived key rather than dropped or failing the run.
+ */
+test("a repeated key keeps both measurements instead of losing one or failing the run", async () => {
+  const glucose = "Synthetic glucose: 7.0 synthetic-unit";
+  const lactate = "Synthetic lactate: 2.0 synthetic-unit";
+  const output = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: [
+        measurementResult("synthetic", "Синтетическая глюкоза", "7.0", glucose),
+        measurementResult("synthetic", "Синтетический лактат", "2.0", lactate),
+      ],
+      facts: [
+        measurementFact("synthetic", "Synthetic glucose", "7.0", glucose),
+        measurementFact("synthetic", "Synthetic lactate", "2.0", lactate),
+      ],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+
+  assert.deepEqual(
+    output.extraction.items.map((fact) => [fact.factKey, fact.sourceValue]),
+    [
+      ["synthetic", "7.0"],
+      ["synthetic-2", "2.0"],
+    ],
+  );
+  assert.deepEqual(
+    output.intelligence.structuredResults.map((result) => [result.resultKey, result.value]),
+    [
+      ["synthetic", "7.0"],
+      ["synthetic-2", "2.0"],
+    ],
+  );
+
+  // A result filed under another fact's key still binds by content: value, unit and line agree
+  // with exactly one fact, so it takes that fact's key rather than failing the run.
+  const misfiled = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: [
+        measurementResult("lactate", "Синтетическая глюкоза", "7.0", glucose),
+        measurementResult("lactate", "Синтетический лактат", "2.0", lactate),
+      ],
+      facts: [
+        measurementFact("glucose", "Synthetic glucose", "7.0", glucose),
+        measurementFact("lactate", "Synthetic lactate", "2.0", lactate),
+      ],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+  assert.deepEqual(
+    misfiled.intelligence.structuredResults.map((result) => result.resultKey),
+    ["glucose", "lactate"],
+  );
+});
+
+/**
+ * Keys are numbered independently in the two lists by some models, so a result's key naming a
+ * fact that reads a different line is misalignment, not a contradiction: the result stays
+ * unbound under a key of its own. Two readings of the same line that disagree still fail.
+ */
+test("a result whose key names an unrelated fact stays unbound instead of failing the run", async () => {
+  const glucose = "Synthetic glucose: 7.0 synthetic-unit";
+  const lactate = "Synthetic lactate: 2.0 synthetic-unit";
+  const output = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: [measurementResult("glucose", "Синтетический лактат", "2.0", lactate)],
+      facts: [measurementFact("glucose", "Synthetic glucose", "7.0", glucose)],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+
+  assert.deepEqual(
+    output.intelligence.structuredResults.map((result) => [result.resultKey, result.value]),
+    [["glucose-2", "2.0"]],
+  );
+  assert.deepEqual(
+    output.extraction.items.map((fact) => [fact.factKey, fact.sourceValue]),
+    [["glucose", "7.0"]],
+  );
+});
+
+/**
+ * A fragment stitched from printed but non-adjacent lines — a table header above a row, say —
+ * still names its source line: the one line among them that carries the value and occurs
+ * exactly once on the page. A composite that leaves the value line ambiguous is refused.
+ */
+test("a fragment stitched from non-adjacent lines resolves to the single line carrying the value", async () => {
+  const header = "SYNTHETIC TEST DATA — NOT FOR MEDICAL USE";
+  const lactate = "Synthetic lactate: 2.0 synthetic-unit";
+  const stitched = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: [
+        measurementResult("lactate", "Синтетический лактат", "2.0", `${header}\n${lactate}`),
+      ],
+      facts: [measurementFact("lactate", "Synthetic lactate", "2.0", `${header}\n${lactate}`)],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+  assert.equal(stitched.extraction.items[0]?.source.fragment, lactate);
+  assert.equal(stitched.intelligence.structuredResults[0]?.source.fragment, lactate);
+  assert.equal(stitched.intelligence.structuredResults[0]?.resultKey, "lactate");
+
+  await assert.rejects(
+    () =>
+      lowEffortProvider(
+        laboratoryAnswer({
+          facts: [
+            measurementFact("value", "Synthetic value", "7", `${header}\n${lactate}\n${lactate}`),
+          ],
+        }),
+      ).analyze({ contentType: "application/pdf", pages: twoLinePages }),
+    (error: unknown) =>
+      error instanceof CodexDocumentIntelligenceError && error.reason === "fragment_not_on_page",
+  );
+});
+
+/**
+ * A summary that lists numeric measurements the facts list never picked up is an incomplete
+ * extraction, not a finished one: accepting it would put a fraction of the document in front
+ * of the reviewer as if it were everything. Refusing lets the ordinary retry ask again.
+ */
+test("an answer whose facts miss most of its own numeric measurements is refused as incomplete", async () => {
+  const glucose = "Synthetic glucose: 7.0 synthetic-unit";
+  const lactate = "Synthetic lactate: 2.0 synthetic-unit";
+  const results = [
+    measurementResult("glucose", "Синтетическая глюкоза", "7.0", glucose),
+    measurementResult("lactate", "Синтетический лактат", "2.0", lactate),
+  ];
+
+  await assert.rejects(
+    () =>
+      lowEffortProvider(laboratoryAnswer({ structuredResults: results, facts: [] })).analyze({
+        contentType: "application/pdf",
+        pages: twoLinePages,
+      }),
+    (error: unknown) =>
+      error instanceof CodexDocumentIntelligenceError && error.reason === "incomplete_facts",
+  );
+
+  // Half of the measurements reviewed is still a usable answer; the reviewer sees the rest in
+  // the summary and can restart. Only a summary that mostly outruns the facts is refused.
+  const partial = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: results,
+      facts: [measurementFact("glucose", "Synthetic glucose", "7.0", glucose)],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+  assert.equal(partial.extraction.items.length, 1);
+
+  // Outside a laboratory report a measurement is not a laboratory fact — a clinical note with
+  // pressures or anthropometrics legitimately has zero facts.
+  const answer = laboratoryAnswer({ structuredResults: results, facts: [] });
+  const clinical = await lowEffortProvider({
+    ...answer,
+    classification: { ...answer.classification, category: "other" },
+  }).analyze({ contentType: "application/pdf", pages: twoLinePages });
+  assert.equal(clinical.intelligence.structuredResults.length, 2);
+});
+
+/**
+ * A proposed normalization Veylta cannot check is a unit conversion on the model's word alone.
+ * Only the identity case — the printed number under a canonical spelling of the unit — is
+ * verifiable; anything else is dropped while the fact keeps what the source printed.
+ */
+test("an unverifiable normalized value is dropped while the fact is kept", async () => {
+  const glucose = "Synthetic glucose: 7.0 synthetic-unit";
+  const lactate = "Synthetic lactate: 2.0 synthetic-unit";
+  const output = await lowEffortProvider(
+    laboratoryAnswer({
+      facts: [
+        {
+          ...measurementFact("glucose", "Synthetic glucose", "7.0", glucose),
+          proposedNormalizedValue: "7.00",
+          proposedNormalizedUnit: "synthetic-unit/L",
+        },
+        {
+          ...measurementFact("lactate", "Synthetic lactate", "2.0", lactate),
+          proposedNormalizedValue: "2.4",
+          proposedNormalizedUnit: "synthetic-unit/L",
+        },
+        // Half a proposal — a value with no unit — is no proposal; the measurement itself stands.
+        {
+          ...measurementFact("half", "Synthetic lactate", "2.0", lactate),
+          proposedNormalizedValue: "2.0",
+          proposedNormalizedUnit: null,
+        },
+      ],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+
+  assert.deepEqual(
+    output.extraction.items.map((fact) => [
+      fact.factKey,
+      fact.proposedNormalizedValue,
+      fact.proposedNormalizedUnit,
+    ]),
+    [
+      ["glucose", "7.00", "synthetic-unit/L"],
+      ["lactate", null, null],
+      ["half", null, null],
+    ],
+  );
+});
+
+/**
+ * A summary line that prints the number without a unit is the same measurement as the fact on
+ * that line; only a different number is a contradiction.
+ */
+test("a summary result without a unit still binds to the fact on the same line", async () => {
+  const glucose = "Synthetic glucose: 7.0 synthetic-unit";
+  const output = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: [
+        { ...measurementResult("glucose", "Синтетическая глюкоза", "7.0", glucose), unit: null },
+      ],
+      facts: [measurementFact("glucose", "Synthetic glucose", "7.0", glucose)],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+  assert.equal(output.intelligence.structuredResults[0]?.resultKey, "glucose");
+  assert.equal(output.extraction.items.length, 1);
+});
+
 test("Codex output fails closed when provenance is not an exact page fragment", async () => {
   const provider = createCodexDocumentIntelligenceProvider(
     {
@@ -731,8 +1064,36 @@ test("Codex output fails closed when a generic result is not bound to an exact s
   await assert.rejects(
     () => provider.analyze({ contentType: "application/pdf", pages }),
     (error: unknown) =>
-      error instanceof CodexDocumentIntelligenceError && error.code === "OUTPUT_INVALID",
+      error instanceof CodexDocumentIntelligenceError &&
+      error.code === "OUTPUT_INVALID" &&
+      error.reason === "fragment_not_on_page",
   );
+});
+
+/**
+ * One invented line among verified results is dropped exactly like an invented fact: nothing
+ * unbound ever surfaces, and the verified rest of the answer is not thrown away with it.
+ */
+test("an unbound generic result is dropped while the verified results and facts are kept", async () => {
+  const glucose = "Synthetic glucose: 7.0 synthetic-unit";
+  const output = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: [
+        measurementResult("glucose", "Синтетическая глюкоза", "7.0", glucose),
+        {
+          ...measurementResult("invented", "Синтетическая находка", "1.0", "No such line here"),
+          type: "finding",
+        },
+      ],
+      facts: [measurementFact("glucose", "Synthetic glucose", "7.0", glucose)],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+
+  assert.deepEqual(
+    output.intelligence.structuredResults.map((result) => result.resultKey),
+    ["glucose"],
+  );
+  assert.equal(output.extraction.items.length, 1);
 });
 
 test("Codex output fails closed when a generic result label is not in Russian", async () => {
@@ -986,6 +1347,123 @@ test("range membership is computed from transcribed bounds, not from the fragmen
     ),
     { status: "above_range" },
   );
+});
+
+/**
+ * Smaller models tend to repeat the unit inside the value ("7.0 synthetic-unit" next to
+ * sourceUnit "synthetic-unit"). The unit is a separate required field, so the repetition is
+ * redundant: it is trimmed deterministically, the value stays comparable with the structured
+ * result that carries the bare number, and range membership can still be computed.
+ */
+test("a value that repeats its own unit is trimmed and still binds to its structured result", async () => {
+  const analyzeValue = async (sourceValue: string, sourceUnit: string, resultValue: string) => {
+    const provider = createCodexDocumentIntelligenceProvider(
+      {
+        resolveExecutionProfile: async () => ({
+          modelId: "gpt-5.4-mini",
+          documentModelId: null,
+          reasoningEffort: "low",
+          documentReasoningEffort: "low",
+          serviceTier: "standard",
+        }),
+        timeoutMs: 120_000,
+      },
+      executorFor(
+        {
+          classification: {
+            category: "laboratory",
+            title: "Синтетический лабораторный отчёт",
+            shortSummary: "В документе указан один синтетический результат.",
+            detailedSummary: "Документ содержит синтетическое измерение и исходный диапазон.",
+            documentDate: null,
+            sampledAt: null,
+            resultedAt: null,
+            specimenType: null,
+            laboratory: null,
+            confidence: 0.9,
+          },
+          structuredResults: [
+            {
+              resultKey: "res1",
+              type: "measurement",
+              label: "Синтетическая глюкоза",
+              value: resultValue,
+              unit: sourceUnit,
+              code: null,
+              lab: null,
+              specimen: null,
+              date: null,
+              status: "unknown",
+              confidence: 0.9,
+              source: { pageNumber: 1, fragment: "Synthetic glucose: 7.0 synthetic-unit" },
+            },
+          ],
+          facts: [
+            {
+              factKey: "res1",
+              sourceName: "Synthetic glucose",
+              sourceValue,
+              sourceUnit,
+              proposedCanonicalCode: null,
+              proposedNormalizedValue: null,
+              proposedNormalizedUnit: null,
+              proposedSampledAt: null,
+              proposedResultedAt: null,
+              proposedSpecimenType: null,
+              proposedLaboratory: null,
+              referenceRange: {
+                sourceText: "< 6.0 synthetic-unit",
+                sourceLow: null,
+                sourceHigh: "6.0",
+                sourceUnit: "synthetic-unit",
+                laboratoryOutOfRange: null,
+              },
+              confidence: 0.9,
+              validationIssues: [],
+              source: { pageNumber: 1, fragment: "Synthetic glucose: 7.0 synthetic-unit" },
+            },
+          ],
+        },
+        [],
+      ),
+    );
+    const output = await provider.analyze({ contentType: "application/pdf", pages });
+    const fact = output.extraction.items[0];
+    const result = output.intelligence.structuredResults[0];
+    if (fact === undefined || result === undefined) throw new Error("Expected one bound fact");
+    return {
+      value: fact.sourceValue,
+      unit: fact.sourceUnit,
+      resultValue: result.value,
+      status: result.status,
+    };
+  };
+
+  // Unit repeated after a space, and glued on for symbol units: both trimmed, both above range.
+  assert.deepEqual(await analyzeValue("7.0 synthetic-unit", "synthetic-unit", "7.0"), {
+    value: "7.0",
+    unit: "synthetic-unit",
+    resultValue: "7.0",
+    status: "above_range",
+  });
+  assert.deepEqual(await analyzeValue("7.0%", "%", "7.0"), {
+    value: "7.0",
+    unit: "%",
+    resultValue: "7.0",
+    status: "above_range",
+  });
+  // The structured result may repeat the unit as well; both sides trim to the same value.
+  assert.deepEqual(
+    await analyzeValue("7.0 synthetic-unit", "synthetic-unit", "7.0 synthetic-unit"),
+    { value: "7.0", unit: "synthetic-unit", resultValue: "7.0", status: "above_range" },
+  );
+  // A value that merely ends in the unit's letters is not a repetition and stays verbatim.
+  assert.deepEqual(await analyzeValue("7.0", "synthetic-unit", "7.0"), {
+    value: "7.0",
+    unit: "synthetic-unit",
+    resultValue: "7.0",
+    status: "above_range",
+  });
 });
 
 /**

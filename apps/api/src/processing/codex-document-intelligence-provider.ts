@@ -471,17 +471,49 @@ function boundedSourceFragment(value: unknown): string {
   return normalized;
 }
 
-function completeSourceLines(pageText: string, requestedFragment: string): string {
+/** The fragment's single exact occurrence on the page; null when it is absent or repeated. */
+function uniqueSpan(page: string, fragment: string): { start: number; end: number } | null {
+  const first = page.indexOf(fragment);
+  if (first < 0 || page.indexOf(fragment, first + fragment.length) >= 0) return null;
+  return { start: first, end: first + fragment.length };
+}
+
+/**
+ * A multi-line fragment whose lines are all printed but not adjacent — a table header stitched
+ * to a row, say — still names the source line: the one line among them that carries the value
+ * and occurs exactly once on the page. Anything less specific is refused.
+ */
+function valueLineSpan(
+  page: string,
+  fragment: string,
+  value: string | null,
+): { start: number; end: number } | null {
+  if (value === null || !fragment.includes("\n")) return null;
+  const spans = fragment
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.includes(value))
+    .map((line) => uniqueSpan(page, line))
+    .filter((span) => span !== null);
+  return spans.length === 1 ? (spans[0] ?? null) : null;
+}
+
+/**
+ * Provenance is the page's own text: the requested fragment is located on the page and widened
+ * to the complete printed line(s), so what is stored can be found verbatim in the source.
+ */
+function completeSourceLines(
+  pageText: string,
+  requestedFragment: string,
+  value: string | null = null,
+): string {
   const normalizedPage = pageText.replaceAll("\r\n", "\n");
-  const firstMatch = normalizedPage.indexOf(requestedFragment);
-  if (
-    firstMatch < 0 ||
-    normalizedPage.indexOf(requestedFragment, firstMatch + requestedFragment.length) >= 0
-  ) {
-    invalidOutput("fragment_not_on_page");
-  }
-  const lineStart = normalizedPage.lastIndexOf("\n", firstMatch - 1) + 1;
-  const followingLineBreak = normalizedPage.indexOf("\n", firstMatch + requestedFragment.length);
+  const span =
+    uniqueSpan(normalizedPage, requestedFragment) ??
+    valueLineSpan(normalizedPage, requestedFragment, value);
+  if (span === null) invalidOutput("fragment_not_on_page");
+  const lineStart = normalizedPage.lastIndexOf("\n", span.start - 1) + 1;
+  const followingLineBreak = normalizedPage.indexOf("\n", span.end);
   const lineEnd = followingLineBreak < 0 ? normalizedPage.length : followingLineBreak;
   return boundedSourceFragment(normalizedPage.slice(lineStart, lineEnd).trim());
 }
@@ -557,6 +589,81 @@ function parseReferenceRange(value: unknown): StrictLabExtractionFact["reference
   };
 }
 
+/**
+ * Some models repeat the unit inside the value ("13,34 пмоль/л" next to a unit of "пмоль/л").
+ * The unit is a separate required field, so the repetition carries no information: it is
+ * trimmed off, and only it — the printed value is otherwise left verbatim. A unit that begins
+ * with a letter or digit is trimmed only across a whitespace boundary, so a value that merely
+ * ends in the unit's characters is never shortened.
+ */
+function valueWithoutRepeatedUnit(value: string, unit: string | null): string {
+  if (unit === null || value.length <= unit.length || !value.endsWith(unit)) return value;
+  const remainder = value.slice(0, -unit.length);
+  const boundary = remainder.at(-1) ?? "";
+  if (/^[\p{L}\p{N}]/u.test(unit) && !/\s/.test(boundary)) return value;
+  const trimmed = remainder.trimEnd();
+  return trimmed.length === 0 ? value : trimmed;
+}
+
+/**
+ * Each proposed result or fact is verified on its own: one that breaks a rule is dropped so
+ * that nothing unbound ever surfaces, while the verified rest of the answer is kept. An answer
+ * whose every item fails is refused outright, naming the last rule it broke — that is a
+ * broken answer, not a slip.
+ */
+function keptItems<Item>(
+  proposals: readonly unknown[],
+  parse: (proposal: unknown) => Item,
+): Item[] {
+  const kept: Item[] = [];
+  let lastRejection: CodexDocumentIntelligenceError | null = null;
+  for (const proposal of proposals) {
+    try {
+      kept.push(parse(proposal));
+    } catch (error) {
+      if (!(error instanceof CodexDocumentIntelligenceError) || error.code !== "OUTPUT_INVALID") {
+        throw error;
+      }
+      lastRejection = error;
+    }
+  }
+  if (lastRejection !== null && kept.length === 0) throw lastRejection;
+  return kept;
+}
+
+/**
+ * Keys only bind results to facts inside one answer and seed stable fact IDs. A repeated key is
+ * a bookkeeping slip, not a provenance error, so the later holder gets a derived key
+ * (`key-2`, `key-3`, …) instead of the run failing or a measurement being dropped. Bounded to
+ * the same length as any key.
+ */
+function uniqueKey(key: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(key)) return key;
+  for (let ordinal = 2; ; ordinal += 1) {
+    const suffix = `-${ordinal}`;
+    const candidate = `${key.slice(0, 100 - suffix.length)}${suffix}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+}
+
+/**
+ * A proposed normalization is a claim Veylta can check only in the identity case: the printed
+ * number under a canonical spelling of the unit. A value that differs numerically from the
+ * printed one would be a unit conversion on the model's word alone, so the pair is dropped and
+ * the fact keeps only what the source printed. Half a proposal — value or unit alone — is no
+ * proposal at all.
+ */
+function verifiedNormalization(
+  sourceValue: string,
+  value: string | null,
+  unit: string | null,
+): { value: string | null; unit: string | null } {
+  if (value === null || unit === null) return { value: null, unit: null };
+  const printed = numericSourceValue(sourceValue);
+  const proposed = numericSourceValue(value);
+  return printed !== null && printed === proposed ? { value, unit } : { value: null, unit: null };
+}
+
 function parseStructuredResult(
   value: unknown,
   pages: ReadonlyMap<number, ParsedDocumentPage>,
@@ -594,16 +701,21 @@ function parseStructuredResult(
   ) {
     invalidOutput("schema_shape");
   }
-  const resultValue = optionalBoundedString(result.value, 500);
   const unit = optionalBoundedString(result.unit, 100);
-  if (unit !== null && resultValue === null) invalidOutput("inconsistent_fields");
+  const proposedValue = optionalBoundedString(result.value, 500);
+  if (unit !== null && proposedValue === null) invalidOutput("inconsistent_fields");
+  const resultValue = proposedValue === null ? null : valueWithoutRepeatedUnit(proposedValue, unit);
   const source = object(result.source);
   exactKeys(source, ["pageNumber", "fragment"]);
   if (!Number.isSafeInteger(source.pageNumber)) invalidOutput("schema_shape");
   const pageNumber = source.pageNumber as number;
   const page = pages.get(pageNumber);
   if (page === undefined) invalidOutput("unknown_page");
-  const fragment = completeSourceLines(page.text, boundedSourceFragment(source.fragment));
+  const fragment = completeSourceLines(
+    page.text,
+    boundedSourceFragment(source.fragment),
+    resultValue,
+  );
   return {
     resultKey,
     type: result.type as DocumentIntelligenceStructuredResult["type"],
@@ -675,8 +787,6 @@ function parseFact(
   if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(factKey)) invalidOutput("invalid_key");
   const normalizedValue = optionalBoundedString(fact.proposedNormalizedValue, 100);
   const normalizedUnit = optionalBoundedString(fact.proposedNormalizedUnit, 100);
-  if ((normalizedValue === null) !== (normalizedUnit === null))
-    invalidOutput("inconsistent_fields");
   const sampledAt = canonicalTimestamp(fact.proposedSampledAt) ?? documentMetadata.sampledAt;
   const resultedAt = canonicalTimestamp(fact.proposedResultedAt) ?? documentMetadata.resultedAt;
   if (sampledAt !== null && resultedAt !== null && sampledAt > resultedAt)
@@ -695,15 +805,18 @@ function parseFact(
   const requestedFragment = boundedSourceFragment(source.fragment);
   const page = pages.get(pageNumber);
   if (page === undefined) invalidOutput("unknown_page");
-  const fragment = completeSourceLines(page.text, requestedFragment);
+  const sourceUnit = boundedString(fact.sourceUnit, 100);
+  const sourceValue = valueWithoutRepeatedUnit(boundedString(fact.sourceValue, 100), sourceUnit);
+  const fragment = completeSourceLines(page.text, requestedFragment, sourceValue);
+  const normalization = verifiedNormalization(sourceValue, normalizedValue, normalizedUnit);
   return {
     factKey,
     sourceName: boundedString(fact.sourceName, 200),
-    sourceValue: boundedString(fact.sourceValue, 100),
-    sourceUnit: boundedString(fact.sourceUnit, 100),
+    sourceValue,
+    sourceUnit,
     proposedCanonicalCode: optionalBoundedString(fact.proposedCanonicalCode, 100),
-    proposedNormalizedValue: normalizedValue,
-    proposedNormalizedUnit: normalizedUnit,
+    proposedNormalizedValue: normalization.value,
+    proposedNormalizedUnit: normalization.unit,
     proposedSampledAt: sampledAt,
     proposedResultedAt: resultedAt,
     proposedSpecimenType:
@@ -732,12 +845,12 @@ function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocument
     "Omit patient names, addresses, phone numbers, email addresses, policy or order identifiers, and other administrative personal data from title, summaries, and structured results. Keep an identifier only when it is the explicit medical result code requested by the schema.",
     "Extract generic structuredResults with Russian labels for explicit measurements, genetic variants, findings, procedures, medications, diagnoses, or other stated results. A diagnosis result means only a diagnosis literally stated by the source, never model inference.",
     "For each result, copy explicit code, laboratory, specimen, and date when present. Use above_range only when the document explicitly marks a value high or when the printed numeric value exceeds the printed explicit source range; never compare against outside medical knowledge. Set every other status only from an explicit source statement; otherwise use unknown.",
-    "Also extract explicit quantitative laboratory measurements into facts for the existing human review pipeline. Do not diagnose, treat, prescribe, triage, recommend, or infer missing values.",
+    "Also extract explicit quantitative laboratory measurements into facts for the existing human review pipeline. facts is the complete list of the document's quantitative laboratory measurements, not a selection: every such measurement listed in structuredResults must also appear in facts, whether or not it is in knownAnalytes. Do not diagnose, treat, prescribe, triage, recommend, or infer missing values.",
     "Extract explicit document-level metadata once: laboratory, specimen type, sample time, and result time. These defaults apply to every fact unless that fact has different explicit metadata.",
     "Return proposed dates only as canonical UTC timestamps. For an explicit date without a time, use 00:00:00.000Z. Use null instead of an empty string for every missing optional field.",
-    "Give every fact a unique factKey. When one quantitative laboratory measurement appears in both structuredResults and facts, use exactly the same resultKey and factKey. Return a normalized value and normalized unit together or return both as null. A sample time must not be later than the result time. validationIssues must not contain duplicates.",
+    "Give every fact a unique factKey. When one quantitative laboratory measurement appears in both structuredResults and facts, use exactly the same resultKey and factKey, and the same value string in both places. sourceValue and a measurement's value hold only the printed number or comparison such as < 5,0 — never the unit; the printed unit goes into sourceUnit and unit. Return a normalized value and normalized unit together or return both as null. A sample time must not be later than the result time. validationIssues must not contain duplicates.",
     "validationIssues describes doubts about the printed reading itself, one code per doubt: LOW_CONFIDENCE when the digits or name are hard to read; AMBIGUOUS_UNIT when the unit could mean more than one thing; MISSING_UNIT when no unit is printed; INVALID_VALUE when the printed value is not a usable number; INVALID_DATE when a date is malformed or impossible; INVALID_REFERENCE_RANGE when the printed range cannot be read. Leave validationIssues empty for a clearly printed measurement. A measurement that is absent from knownAnalytes is NOT an issue and NOT unsupported: set proposedCanonicalCode to null and keep validationIssues empty. Use UNSUPPORTED_ANALYTE only for a line that is not a quantitative laboratory measurement at all.",
-    "Every structured result and fact source.fragment must copy the minimal exact complete source line or contiguous lines from the specified page text; never return only a detached value and avoid unrelated personal data.",
+    "Every structured result and fact source.fragment must copy the minimal exact complete source line, or lines that are printed adjacent to each other, from the specified page text; never prepend a header or title line from elsewhere on the page, never return only a detached value, and avoid unrelated personal data.",
     "Return zero facts for documents without explicit quantitative laboratory measurements. Return only the requested JSON shape.",
     ...(catalog.length > 0
       ? [
@@ -855,14 +968,13 @@ function parseOutput(
     invalidOutput("schema_shape");
   }
   const pageMap = new Map(pages.map((page) => [page.pageNumber, page]));
-  const structuredResults: DocumentIntelligenceStructuredResult[] = [];
   const resultKeys = new Set<string>();
-  for (const proposedResult of root.structuredResults) {
+  const structuredResults = keptItems(root.structuredResults, (proposedResult) => {
     const result = parseStructuredResult(proposedResult, pageMap);
-    if (resultKeys.has(result.resultKey)) invalidOutput("inconsistent_fields");
-    resultKeys.add(result.resultKey);
-    structuredResults.push(result);
-  }
+    const resultKey = uniqueKey(result.resultKey, resultKeys);
+    resultKeys.add(resultKey);
+    return resultKey === result.resultKey ? result : { ...result, resultKey };
+  });
   const documentMetadata = {
     laboratory: optionalBoundedString(classification.laboratory, 200),
     resultedAt: canonicalTimestamp(classification.resultedAt),
@@ -876,63 +988,81 @@ function parseOutput(
   ) {
     invalidOutput("invalid_timestamp");
   }
-  const facts: StrictLabExtractionFact[] = [];
   const factKeys = new Set<string>();
-  for (const proposedFact of root.facts) {
-    try {
-      const parsedFact = parseFact(proposedFact, pageMap, documentMetadata);
-      // The schema pins the code to the catalog; should one slip through, the measurement is
-      // still real — keep it and drop only the unknown link, so the reviewer maps it by hand.
-      const fact =
-        knownCodes !== null &&
-        parsedFact.proposedCanonicalCode !== null &&
-        !knownCodes.has(parsedFact.proposedCanonicalCode)
-          ? {
-              ...parsedFact,
-              proposedCanonicalCode: null,
-              proposedNormalizedValue: null,
-              proposedNormalizedUnit: null,
-            }
-          : parsedFact;
-      if (factKeys.has(fact.factKey)) continue;
-      factKeys.add(fact.factKey);
-      facts.push(fact);
-    } catch (error) {
-      if (!(error instanceof CodexDocumentIntelligenceError) || error.code !== "OUTPUT_INVALID") {
-        throw error;
-      }
-    }
-  }
-  if (root.facts.length > 0 && facts.length === 0) invalidOutput("inconsistent_fields");
+  const facts = keptItems(root.facts, (proposedFact) => {
+    const parsedFact = parseFact(proposedFact, pageMap, documentMetadata);
+    // The schema pins the code to the catalog; should one slip through, the measurement is
+    // still real — keep it and drop only the unknown link, so the reviewer maps it by hand.
+    const codedFact =
+      knownCodes !== null &&
+      parsedFact.proposedCanonicalCode !== null &&
+      !knownCodes.has(parsedFact.proposedCanonicalCode)
+        ? {
+            ...parsedFact,
+            proposedCanonicalCode: null,
+            proposedNormalizedValue: null,
+            proposedNormalizedUnit: null,
+          }
+        : parsedFact;
+    const factKey = uniqueKey(codedFact.factKey, factKeys);
+    factKeys.add(factKey);
+    return factKey === codedFact.factKey ? codedFact : { ...codedFact, factKey };
+  });
   const linkedResultKeys = new Set<string>();
   const linkedStructuredResults = structuredResults.map((result) => {
     const matchingFacts = facts.filter(
       (fact) =>
         result.type === "measurement" &&
         result.value === fact.sourceValue &&
-        (result.unit ?? "") === fact.sourceUnit &&
+        (result.unit === null || result.unit === fact.sourceUnit) &&
         result.source.pageNumber === fact.source.pageNumber &&
         (fact.source.fragment.includes(result.source.fragment) ||
           result.source.fragment.includes(fact.source.fragment)),
     );
     if (matchingFacts.length > 1) invalidOutput("duplicate_binding");
-    const aboveRange = computedAboveRange(matchingFacts[0]);
+    const boundFact = matchingFacts[0];
+    // Content binds a result to its fact; the model's key only matters when nothing matches.
+    // Then a key naming a fact that reads the same line with another value is a contradiction;
+    // one naming a fact on a different line is misaligned numbering, and the result stays
+    // unbound under a key of its own.
+    const sameKeyFact = facts.find((fact) => fact.factKey === result.resultKey);
+    if (
+      boundFact === undefined &&
+      sameKeyFact !== undefined &&
+      sameKeyFact.source.pageNumber === result.source.pageNumber &&
+      (sameKeyFact.source.fragment.includes(result.source.fragment) ||
+        result.source.fragment.includes(sameKeyFact.source.fragment))
+    ) {
+      invalidOutput("duplicate_binding");
+    }
+    const aboveRange = computedAboveRange(boundFact);
     const normalizedResult =
       aboveRange === true
         ? ({ ...result, status: "above_range" } as const)
         : result.status === "above_range"
           ? ({ ...result, status: "unknown" } as const)
           : result;
-    const sameKeyFact = facts.find((fact) => fact.factKey === result.resultKey);
-    if (sameKeyFact !== undefined && !matchingFacts.includes(sameKeyFact))
-      invalidOutput("duplicate_binding");
-    const resultKey = matchingFacts[0]?.factKey ?? result.resultKey;
+    const resultKey =
+      boundFact?.factKey ??
+      uniqueKey(result.resultKey, new Set([...factKeys, ...linkedResultKeys]));
     if (linkedResultKeys.has(resultKey)) invalidOutput("duplicate_binding");
     linkedResultKeys.add(resultKey);
     return resultKey === normalizedResult.resultKey
       ? normalizedResult
       : { ...normalizedResult, resultKey };
   });
+  // In a laboratory report the summary's numeric measurements are the facts. A summary that
+  // mostly outruns the facts is an incomplete extraction; refusing it lets the retry ask again
+  // instead of presenting a fraction of the document as the whole.
+  const unboundMeasurements = linkedStructuredResults.filter(
+    (result) =>
+      result.type === "measurement" &&
+      numericSourceValue(result.value) !== null &&
+      !factKeys.has(result.resultKey),
+  ).length;
+  if (classification.category === "laboratory" && unboundMeasurements > facts.length) {
+    invalidOutput("incomplete_facts");
+  }
   return {
     pages,
     extraction: {

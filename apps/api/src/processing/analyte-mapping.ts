@@ -15,7 +15,6 @@ export interface AnalyteMappingInput {
   readonly sourceUnit: string;
   readonly sourceValue: string;
   readonly proposedLaboratory: string | null;
-  readonly proposedNormalizedValue: string | null;
 }
 
 export interface ResolvedAnalyteMapping {
@@ -82,7 +81,13 @@ export async function resolveAnalyteMapping(
   if (mapping.source_name_key !== nameKey || mapping.source_unit_key !== unitKey) {
     throw new Error("Analyte mapping lookup returned an inconsistent alias");
   }
-  const normalizedValue = input.proposedNormalizedValue ?? normalizedDecimal(input.sourceValue);
+  // The normalized value is always the printed number, and only when the alias unit is the
+  // canonical unit under another spelling. Veylta performs no unit conversions, so an alias
+  // whose unit differs from the canonical one applies the code and leaves the value alone.
+  const normalizedValue =
+    normalizeAnalyteUnit(mapping.canonical_unit) === mapping.source_unit_key
+      ? normalizedDecimal(input.sourceValue)
+      : null;
   return {
     canonicalCode: mapping.canonical_code,
     displayName: mapping.display_name,

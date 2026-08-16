@@ -250,6 +250,7 @@ export const PROCESSING_REJECTION_REASONS = [
   "inconsistent_fields",
   "unproven_above_range",
   "duplicate_binding",
+  "incomplete_facts",
   "response_too_large",
   "provider_unavailable",
   "input_invalid",

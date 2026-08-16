@@ -155,6 +155,11 @@ real-data readiness claim.
   Codex classifies the document and returns a closed, source-bound schema.
   Results are rejected unless every fact cites an exact source fragment of the
   page text — the text layer, or the model's own transcription for an image.
+  Verification is per item: an unbound fact or summary result is dropped and
+  the verified rest is kept; a laboratory answer whose facts miss most of its
+  own numeric measurements is refused as incomplete so the retry asks again.
+  A model-proposed normalization is kept only when it repeats the printed
+  number under a canonical unit spelling — Veylta performs no unit conversions.
   No local OCR engine is installed.
 - `document-agent/v2` stores named append-only Russian conversations and exact
   Codex model/runtime provenance in SQLite, while processing runs stay
