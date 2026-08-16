@@ -6,6 +6,8 @@ export interface CodexExecutorFiles {
   schemaPath: string;
   /** Per-invocation secrets are passed only through the child environment, never CLI arguments. */
   environment?: Readonly<Record<string, string>>;
+  /** Kills the child on abort so a stopping worker never leaves an orphaned model process. */
+  abortSignal?: AbortSignal;
   writeOutput(value: string): Promise<void>;
 }
 
@@ -32,6 +34,7 @@ async function runProcess(
     maximumInputBytes: number;
     maximumOutputBytes: number;
     environment?: Readonly<Record<string, string>>;
+    abortSignal?: AbortSignal;
   },
 ): Promise<{ stdout: string; stderr: string }> {
   if (Buffer.byteLength(input, "utf8") > options.maximumInputBytes) {
@@ -56,12 +59,19 @@ async function runProcess(
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      options.abortSignal?.removeEventListener("abort", onAbort);
       operation();
     };
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
       finish(() => reject(new Error("Codex execution timed out")));
     }, options.timeoutMs);
+    const onAbort = () => {
+      child.kill("SIGKILL");
+      finish(() => reject(new Error("Codex execution aborted")));
+    };
+    if (options.abortSignal?.aborted) onAbort();
+    options.abortSignal?.addEventListener("abort", onAbort, { once: true });
     child.once("error", (error) => finish(() => reject(error)));
     child.stdin.once("error", (error) => finish(() => reject(error)));
     child.stdout.on("data", (chunk: Buffer) => {
@@ -112,6 +122,7 @@ export function createCodexCliExecutor(options: {
     const result = await runProcess("codex", arguments_, input, {
       ...options,
       ...(files.environment === undefined ? {} : { environment: files.environment }),
+      ...(files.abortSignal === undefined ? {} : { abortSignal: files.abortSignal }),
     });
     return { ...result, runtimeVersion };
   };

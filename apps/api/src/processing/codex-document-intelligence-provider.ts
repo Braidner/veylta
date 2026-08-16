@@ -1038,9 +1038,11 @@ export function createCodexDocumentIntelligenceProvider(
             cwd: directory,
             outputPath,
             schemaPath,
+            ...(input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal }),
             writeOutput: (value) => writeFile(outputPath, value, { encoding: "utf8", mode: 0o600 }),
           });
-        } catch {
+        } catch (error) {
+          if (input.abortSignal?.aborted) throw error;
           throw withExchange(
             new CodexDocumentIntelligenceError("PROVIDER_UNAVAILABLE"),
             exchangeOf(request, "", profile.modelId, null, pages.length + images.length, startedAt),

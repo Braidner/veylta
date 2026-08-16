@@ -20,6 +20,8 @@ export interface DocumentIntelligenceInput {
    * measurement to a code the family already uses; a code outside it is refused.
    */
   readonly analyteCatalog?: readonly AnalyteCatalogEntry[];
+  /** Set by the worker on shutdown; a live model call is killed and the run is handed back. */
+  readonly abortSignal?: AbortSignal;
 }
 
 export interface AnalyteCatalogEntry {

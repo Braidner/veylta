@@ -107,7 +107,10 @@ test("processing worker timings have safe defaults and reject non-positive value
     },
     () => {
       const config = loadConfig();
-      assert.equal(config.processingLeaseDurationMs, 360_000);
+      // A real 30 KB panel at high reasoning effort ran past five minutes; ten is the ceiling
+      // and the lease must outlive it so a slow answer is never a stale lease.
+      assert.equal(config.codexDocumentTimeoutMs, 600_000);
+      assert.equal(config.processingLeaseDurationMs, 660_000);
       assert.equal(config.processingPollIntervalMs, 500);
       assert.equal(config.processingRetryDelayMs, 1_000);
     },
@@ -148,7 +151,7 @@ test("Codex execution has one explicit default profile and bounded timeouts", ()
         serviceTier: "standard",
       });
       assert.equal(config.codexCarePlanTimeoutMs, 120_000);
-      assert.equal(config.codexDocumentTimeoutMs, 300_000);
+      assert.equal(config.codexDocumentTimeoutMs, 600_000);
       assert.equal(config.codexDocumentAgentTimeoutMs, 120_000);
     },
   );

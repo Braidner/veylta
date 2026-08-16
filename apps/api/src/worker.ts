@@ -48,6 +48,9 @@ function logProcessingResult(result: Awaited<ReturnType<typeof processor.process
   );
 }
 
+/** Aborted on shutdown so an in-flight run is handed back instead of idling as a stale lease. */
+const shutdownController = new AbortController();
+
 async function processAvailableDocument(): Promise<void> {
   try {
     logProcessingResult(
@@ -55,6 +58,7 @@ async function processAvailableDocument(): Promise<void> {
         workerId,
         leaseDurationMs: config.processingLeaseDurationMs,
         retryDelayMs: config.processingRetryDelayMs,
+        abortSignal: shutdownController.signal,
       }),
     );
   } catch (error) {
@@ -109,6 +113,8 @@ async function shutdown(signal: string): Promise<void> {
   clearInterval(readinessTimer);
   clearInterval(processingTimer);
   console.log(JSON.stringify({ service: "worker", signal, status: "stopping" }));
+  // Do not wait out a model call that may take minutes: kill it and release the lease now.
+  shutdownController.abort();
   await activeProcessing;
   await new Promise<void>((resolve) => server.close(() => resolve()));
   await database.close();

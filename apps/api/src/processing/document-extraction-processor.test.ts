@@ -139,6 +139,7 @@ function syntheticPage(): ExtractedPageText {
 }
 
 interface CoordinatorHarness {
+  released: string[];
   coordinator: DocumentExtractionJobCoordinator;
   failures: ProcessingErrorCode[];
   outputs: ProcessingExtractionOutput[];
@@ -149,12 +150,17 @@ function coordinatorHarness(): CoordinatorHarness {
   const failures: ProcessingErrorCode[] = [];
   const outputs: ProcessingExtractionOutput[] = [];
   const stages: ProcessingStage[] = [];
+  const released: string[] = [];
   const leased = claim();
   return {
     failures,
     outputs,
     stages,
+    released,
     coordinator: {
+      async releaseLease(claim) {
+        released.push(claim.id);
+      },
       async claimNext() {
         return leased;
       },
@@ -384,3 +390,39 @@ test("rejects a storage body larger than immutable database metadata", async () 
 });
 
 void (storageKey satisfies ObjectStorageKey);
+
+/**
+ * A worker stopped mid-run (deploy, dev reload) must hand the job back untouched: the lease
+ * is released at once and the attempt is not consumed. Otherwise every restart costs the
+ * document one of its three tries while its lease idles for minutes.
+ */
+test("an interrupted run releases its lease without consuming the attempt", async () => {
+  const harness = coordinatorHarness();
+  const controller = new AbortController();
+  const processor = createDocumentExtractionProcessor({
+    database: new SourceDatabase(),
+    storage: storageFor(),
+    jobs: harness.coordinator,
+    now: () => now,
+    extractText: async () => [syntheticPage()],
+    intelligence: {
+      async analyze(input) {
+        // The model call is what a shutdown interrupts; abort while it is in flight.
+        controller.abort();
+        input.abortSignal?.throwIfAborted();
+        throw new Error("unreachable");
+      },
+    },
+  });
+
+  const result = await processor.processNext({
+    workerId: "worker-a",
+    leaseDurationMs: 60_000,
+    retryDelayMs: 1_000,
+    abortSignal: controller.signal,
+  });
+
+  assert.deepEqual(result, { status: "interrupted", jobId: jobId });
+  assert.deepEqual(harness.released, [jobId]);
+  assert.deepEqual(harness.failures, []);
+});

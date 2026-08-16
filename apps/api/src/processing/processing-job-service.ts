@@ -120,6 +120,11 @@ export interface ProcessingJobService {
       exchange?: DocumentIntelligenceExchange;
     },
   ): Promise<ProcessingJob>;
+  /**
+   * Hands an in-flight job back to the queue without consuming its attempt. Used when the
+   * worker itself is stopping: the interruption is ours, not the document's.
+   */
+  releaseLease(claim: LeasedProcessingJob, now: Date): Promise<void>;
   getJob(scope: { familyId: string; jobId: string }): Promise<ProcessingJob | null>;
 }
 
@@ -1503,6 +1508,24 @@ export function createProcessingJobService(
           output.extraction.items.length,
           "completed",
           extractorVersion,
+        );
+      });
+    },
+
+    async releaseLease(claim, now) {
+      assertDate(now, "now");
+      const nowText = now.toISOString();
+      await database.transaction(async (client) => {
+        // Only our own live lease is released; a stale or reassigned lease is left alone.
+        await client.query(
+          `UPDATE processing_jobs
+              SET state = 'pending', current_stage = NULL,
+                  lease_owner = NULL, lease_expires_at = NULL,
+                  attempt_count = CASE WHEN attempt_count > 0 THEN attempt_count - 1 ELSE 0 END,
+                  available_at = $1, updated_at = $1
+            WHERE id = $2 AND family_id = $3 AND state = 'leased'
+              AND lease_owner = $4 AND lease_expires_at > $1`,
+          [nowText, claim.id, claim.familyId, claim.leaseOwner],
         );
       });
     },

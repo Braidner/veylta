@@ -50,7 +50,7 @@ import {
 
 export type DocumentExtractionJobCoordinator = Pick<
   ProcessingJobService,
-  "advanceStage" | "claimNext" | "completeExtraction" | "recordFailure"
+  "advanceStage" | "claimNext" | "completeExtraction" | "recordFailure" | "releaseLease"
 >;
 
 export interface DocumentExtractionProcessorDependencies {
@@ -77,6 +77,8 @@ export interface ProcessNextDocumentExtractionInput {
   workerId: string;
   leaseDurationMs: number;
   retryDelayMs: number;
+  /** Aborted when the worker is stopping; the run is handed back, not failed. */
+  abortSignal?: AbortSignal;
 }
 
 export type ProcessNextDocumentExtractionResult =
@@ -93,7 +95,8 @@ export type ProcessNextDocumentExtractionResult =
       jobId: string;
       errorCode: ProcessingErrorCode;
     }
-  | { status: "stale"; jobId: string };
+  | { status: "stale"; jobId: string }
+  | { status: "interrupted"; jobId: string };
 
 export interface DocumentExtractionProcessor {
   processNext(
@@ -350,6 +353,7 @@ export function createDocumentExtractionProcessor(
                 pages,
                 ...(images.length === 0 ? {} : { images }),
                 analyteCatalog: await loadAnalyteCatalogForPrompt(dependencies.database),
+                ...(input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal }),
               });
         await advance(jobs, claim, "validation", now);
         const completion = await jobs.completeExtraction(claim, output, validNow(now));
@@ -357,6 +361,11 @@ export function createDocumentExtractionProcessor(
       } catch (error) {
         if (error instanceof StaleProcessingLeaseError) {
           return { status: "stale", jobId: claim.id };
+        }
+        if (input.abortSignal?.aborted) {
+          // The worker is stopping, not the document failing: give the job straight back.
+          await jobs.releaseLease(claim, validNow(now));
+          return { status: "interrupted", jobId: claim.id };
         }
         const errorCode = failureCode(error);
         const diagnostics =
