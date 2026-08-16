@@ -41,6 +41,47 @@ test("normalizes common laboratory spelling without losing the source value", ()
   assert.equal(normalizeAnalyteUnit("µmol/L"), "umol/l");
 });
 
+/**
+ * A Russian unit spelling and its Latin canonical form are one unit: the key must not depend
+ * on the alphabet, or "г/л" and "g/L" would never be recognised as the same unit.
+ */
+test("a unit key is the same whether the unit is printed in Cyrillic or Latin", () => {
+  const same = (cyrillic: string, latin: string, key: string) => {
+    assert.equal(normalizeAnalyteUnit(cyrillic), key);
+    assert.equal(normalizeAnalyteUnit(latin), key);
+  };
+  same("г/л", "g/L", "g/l");
+  same("мг/л", "mg/L", "mg/l");
+  same("мкг/л", "µg/L", "ug/l");
+  same("нг/мл", "ng/mL", "ng/ml");
+  same("пг/мл", "pg/mL", "pg/ml");
+  same("пг", "pg", "pg");
+  same("фл", "fL", "fl");
+  same("ммоль/л", "mmol/L", "mmol/l");
+  same("нмоль/л", "nmol/L", "nmol/l");
+  same("пмоль/л", "pmol/L", "pmol/l");
+  same("Ед/л", "U/L", "u/l");
+  same("Е/л", "U/L", "u/l");
+  same("МЕ/мл", "IU/mL", "iu/ml");
+  same("мМЕ/л", "mIU/L", "miu/l");
+  same("мкМЕ/мл", "µIU/mL", "uiu/ml");
+  same("мЕд/л", "mU/L", "mu/l");
+  same("мм/час", "mm/h", "mm/h");
+  same("мм/ч", "mm/h", "mm/h");
+  same("сек", "s", "s");
+  same("%", "%", "%");
+  // Powers of ten come printed as 10^9, 10*9, ×10⁹ or, out of a PDF text layer, "10 9 /л".
+  same("10 9 /л", "10^9/L", "109/l");
+  same("×10⁹/л", "10*9/L", "109/l");
+  same("х10¹²/л", "10^12/L", "1012/l");
+  same("тыс/мкл", "10^3/µL", "103/ul");
+  same("млн/мкл", "10^6/µL", "106/ul");
+  same("мэкв/л", "mEq/L", "meq/l");
+  // Existing keys stay stable.
+  assert.equal(normalizeAnalyteUnit("synthetic-unit"), "synthetic-unit");
+  assert.equal(normalizeAnalyteUnit("мкмоль/л"), "umol/l");
+});
+
 test("maps one laboratory alias to a stable household code and comparable unit", async () => {
   const enriched = await enrichFactFromAnalyteMappings(
     mappingDatabase([

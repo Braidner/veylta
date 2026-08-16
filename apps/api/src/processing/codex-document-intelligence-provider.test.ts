@@ -955,6 +955,34 @@ test("a summary result without a unit still binds to the fact on the same line",
   assert.equal(output.extraction.items.length, 1);
 });
 
+/**
+ * With the catalog in the prompt a model tends to write the summary unit in the catalog's
+ * Latin spelling while the fact keeps the printed Cyrillic one, and may write the number with
+ * a dot in one place and a comma in the other. Same line, same unit, same number: one reading.
+ */
+test("a result binds to its fact across unit spelling and decimal separator", async () => {
+  const line = "Синтетическая глюкоза 5,82 ммоль/л";
+  const cyrillicPages = [{ ...twoLinePages[0], text: `${twoLinePages[0].text}\n${line}` }];
+  const output = await lowEffortProvider(
+    laboratoryAnswer({
+      structuredResults: [
+        {
+          ...measurementResult("glucose", "Синтетическая глюкоза", "5.82", line),
+          unit: "mmol/L",
+        },
+      ],
+      facts: [
+        {
+          ...measurementFact("glucose", "Синтетическая глюкоза", "5,82", line),
+          sourceUnit: "ммоль/л",
+        },
+      ],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: cyrillicPages });
+  assert.equal(output.intelligence.structuredResults[0]?.resultKey, "glucose");
+  assert.equal(output.extraction.items[0]?.sourceValue, "5,82");
+});
+
 test("Codex output fails closed when provenance is not an exact page fragment", async () => {
   const provider = createCodexDocumentIntelligenceProvider(
     {

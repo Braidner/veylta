@@ -32,17 +32,62 @@ export function normalizeAnalyteName(value: string): string {
   return compact(value).toLocaleLowerCase("ru-RU").replaceAll("ё", "е");
 }
 
+/**
+ * Russian unit atoms and their Latin spellings, applied longest first so that "ммоль" is read
+ * before "мм" and "мед" before "ме". This is transliteration of a printed spelling, never a
+ * conversion: every pair names the same unit at the same magnitude.
+ */
+const cyrillicUnitAtoms: ReadonlyArray<readonly [string, string]> = (
+  [
+    ["мкмоль", "umol"],
+    ["ммоль", "mmol"],
+    ["нмоль", "nmol"],
+    ["пмоль", "pmol"],
+    ["фмоль", "fmol"],
+    ["моль", "mol"],
+    ["мкме", "uiu"],
+    ["мме", "miu"],
+    ["кме", "kiu"],
+    ["ме", "iu"],
+    ["мкед", "uu"],
+    ["мед", "mu"],
+    ["ед", "u"],
+    ["мкг", "ug"],
+    ["мг", "mg"],
+    ["нг", "ng"],
+    ["пг", "pg"],
+    ["кг", "kg"],
+    ["г", "g"],
+    ["мкл", "ul"],
+    ["мл", "ml"],
+    ["дл", "dl"],
+    ["фл", "fl"],
+    ["литр", "l"],
+    ["л", "l"],
+    ["млн", "106"],
+    ["тыс", "103"],
+    ["час", "h"],
+    ["ч", "h"],
+    ["мин", "min"],
+    ["сек", "s"],
+    ["с", "s"],
+    ["мм", "mm"],
+    ["мэкв", "meq"],
+    ["экв", "eq"],
+    ["е", "u"],
+  ] as const
+).toSorted((left, right) => right[0].length - left[0].length);
+
 export function normalizeAnalyteUnit(value: string): string {
-  return compact(value)
+  let unit = compact(value)
     .toLocaleLowerCase("ru-RU")
     .replaceAll(" ", "")
     .replaceAll("μ", "u")
-    .replaceAll("µ", "u")
-    .replaceAll("мкмоль", "umol")
-    .replaceAll("ммоль", "mmol")
-    .replaceAll("моль", "mol")
-    .replaceAll("литр", "l")
-    .replaceAll("л", "l");
+    .replaceAll("µ", "u");
+  for (const [cyrillic, latin] of cyrillicUnitAtoms) unit = unit.replaceAll(cyrillic, latin);
+  // Powers of ten come printed as 10^9, 10*9, ×10⁹ (NFKC already lowered the superscript) or,
+  // out of a PDF text layer, "10 9 /л": one spelling for all of them.
+  return unit.replace(/[×xх*]?10[\^*eе]?(\d{1,2})/g, "10$1");
 }
 
 function normalizedDecimal(value: string): string | null {

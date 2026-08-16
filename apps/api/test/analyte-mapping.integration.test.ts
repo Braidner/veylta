@@ -47,6 +47,8 @@ test("the local analyte catalog maps equivalent laboratory labels without mutati
       },
     );
 
+    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
+
     assert.equal(await migrateDown(database), "0027_document_model");
     assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
     assert.equal(await migrateDown(database), "0025_run_diagnostics");
@@ -71,6 +73,7 @@ test("the local analyte catalog maps equivalent laboratory labels without mutati
       "0025_run_diagnostics",
       "0026_document_reasoning_effort",
       "0027_document_model",
+      "0028_analyte_catalog_common",
     ]);
   } finally {
     await database.close();

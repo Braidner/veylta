@@ -18,6 +18,7 @@ import {
   type CodexExecutionProfileResolver,
   codexExecutionArguments,
 } from "../codex/codex-execution-profile.js";
+import { normalizeAnalyteUnit } from "./analyte-mapping.js";
 import type { DocumentPageImage } from "./document-images.js";
 import type {
   AnalyteCatalogEntry,
@@ -740,6 +741,13 @@ function numericSourceValue(value: string | null | undefined): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+/** The same printed number, whether written "5,82" or "5.82"; non-numeric readings must match verbatim. */
+function sameReading(left: string, right: string): boolean {
+  if (left === right) return true;
+  const leftNumber = numericSourceValue(left);
+  return leftNumber !== null && leftNumber === numericSourceValue(right);
+}
+
 /**
  * Veylta decides range membership itself, from the bounds the model transcribed out of the
  * document. The model's own status is never taken on trust: a claim it cannot support is
@@ -854,7 +862,7 @@ function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocument
     "Return zero facts for documents without explicit quantitative laboratory measurements. Return only the requested JSON shape.",
     ...(catalog.length > 0
       ? [
-          "knownAnalytes below is the household's confirmed catalog. When a fact is one of these analytes, set proposedCanonicalCode to that exact code and proposedNormalizedUnit to its unit; otherwise set proposedCanonicalCode to null. Never invent a code.",
+          "knownAnalytes below is the household's confirmed catalog. When a fact is one of these analytes, set proposedCanonicalCode to that exact code; otherwise set proposedCanonicalCode to null. Never invent a code. When the printed unit is the catalog unit under another spelling, set proposedNormalizedValue to the same printed number and proposedNormalizedUnit to the catalog unit; when the printed unit is a different unit, leave both null — never convert a value.",
         ]
       : []),
     JSON.stringify({
@@ -1013,8 +1021,10 @@ function parseOutput(
     const matchingFacts = facts.filter(
       (fact) =>
         result.type === "measurement" &&
-        result.value === fact.sourceValue &&
-        (result.unit === null || result.unit === fact.sourceUnit) &&
+        result.value !== null &&
+        sameReading(result.value, fact.sourceValue) &&
+        (result.unit === null ||
+          normalizeAnalyteUnit(result.unit) === normalizeAnalyteUnit(fact.sourceUnit)) &&
         result.source.pageNumber === fact.source.pageNumber &&
         (fact.source.fragment.includes(result.source.fragment) ||
           result.source.fragment.includes(fact.source.fragment)),

@@ -126,6 +126,19 @@ transcription exactly as to a text layer; the page is stored with
 agent registers a short-lived loopback MCP endpoint whose only tool re-authorizes the
 server-derived scope and returns bounded projections — never storage keys, paths, or file bytes.
 
+**Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
+household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the
+printed spellings (`source_name_key`, `source_unit_key`). Every request carries the catalog
+as `knownAnalytes` and the schema pins `proposedCanonicalCode` to its codes; at read and
+confirm time `resolveAnalyteMapping` maps by exact normalized name + unit. Alias keys are
+whatever `normalizeAnalyteName` / `normalizeAnalyteUnit` produce — `normalizeAnalyteUnit`
+transliterates Cyrillic unit atoms («г/л» → `g/l`, «мМЕ/л» → `miu/l`) and folds the
+power-of-ten spellings («10 9 /л», `×10⁹/L`, `10^9/L` → `109/l`), so a printed and a
+canonical spelling of one unit share a key. Adding an alias means writing the key the
+normalizer would produce; `test/analyte-catalog.integration.test.ts` fails otherwise. Codes
+are household identifiers, not a clinical vocabulary; unitless analytes (INR, atherogenic
+index) are not seeded yet.
+
 **Document workspace: two different "threads."** «Диалоги» are user-created
 `document_agent_conversations`; «Запуски Codex» are `processing_jobs`. Both arrive in one
 `DocumentAgentWorkspaceResponse`, **newest run first**, and run titles («Первичный анализ»,

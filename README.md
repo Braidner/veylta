@@ -161,6 +161,13 @@ real-data readiness claim.
   A model-proposed normalization is kept only when it repeats the printed
   number under a canonical unit spelling — Veylta performs no unit conversions.
   No local OCR engine is installed.
+- A seeded analyte catalog (~95 common blood-count, chemistry, hormone and
+  coagulation analytes with a canonical unit and Russian/Latin printed
+  spellings) travels with every request as `knownAnalytes`, so codes are
+  proposed from a closed list; the same aliases map stored facts
+  deterministically by normalized name + unit, and Cyrillic and Latin unit
+  spellings («г/л», `g/L`) share one key. Codes are household identifiers,
+  not a clinical vocabulary.
 - `document-agent/v2` stores named append-only Russian conversations and exact
   Codex model/runtime provenance in SQLite, while processing runs stay
   explicitly ephemeral. The official MCP SDK exposes one short-lived,
