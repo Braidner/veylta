@@ -60,7 +60,11 @@ import type {
   SetupStatusResponse,
   StorageRelocationResponse,
 } from "@veylta/contracts";
-import { type DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import {
+  type DOCUMENT_CATEGORIES,
+  MAX_SYNTHETIC_DOCUMENT_BYTES,
+  REVIEW_BLOCKING_VALIDATION_ISSUES,
+} from "@veylta/contracts";
 import {
   ArrowRight,
   Bot,
@@ -6565,11 +6569,17 @@ function isPendingReview(status: ReviewFactStatus): boolean {
   return status === "extracted" || status === "needs_review";
 }
 
+const reviewBlockingIssues: ReadonlySet<string> = new Set(REVIEW_BLOCKING_VALIDATION_ISSUES);
+
+/** Mirrors the API's review-status rule: only a doubtful reading needs a hand on it. */
 export function canBulkConfirmFact(fact: {
   readonly reviewStatus: ExtractedFactReviewStatus;
   readonly validationIssues: readonly string[];
 }): boolean {
-  return fact.reviewStatus === "extracted" && fact.validationIssues.length === 0;
+  return (
+    fact.reviewStatus === "extracted" &&
+    !fact.validationIssues.some((issue) => reviewBlockingIssues.has(issue))
+  );
 }
 
 export function documentResultAvailabilityCopy(

@@ -159,3 +159,20 @@ test("rejects empty and unexpectedly large parser inputs", () => {
       error instanceof SyntheticLabParseError && error.code === "INVALID_EXTRACTION_OUTPUT",
   );
 });
+
+/**
+ * A measurement the household has no code for yet is a mapping gap, not a doubtful reading.
+ * It must not be routed to an individual review on that ground alone.
+ */
+test("an unmapped analyte with a confident reading is not sent to individual review", () => {
+  const page = syntheticPage({
+    text: syntheticPage()
+      .text.replace("CONFIDENCE|0.60", "CONFIDENCE|0.99")
+      .replace("ISSUES|AMBIGUOUS_UNIT", "ISSUES|UNSUPPORTED_ANALYTE"),
+  });
+
+  const [fact] = parseSyntheticLabPages([page]).extraction.items;
+
+  assert.deepEqual(fact?.validationIssues, ["UNSUPPORTED_ANALYTE"]);
+  assert.equal(fact === undefined ? undefined : reviewStatusForFact(fact), "extracted");
+});

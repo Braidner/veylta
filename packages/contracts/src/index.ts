@@ -276,6 +276,21 @@ export const LAB_FACT_VALIDATION_ISSUES = [
   "UNSUPPORTED_ANALYTE",
 ] as const;
 
+/**
+ * Issues that make a reading doubtful and therefore route the fact to an individual review.
+ * UNSUPPORTED_ANALYTE is deliberately absent: the household simply has no code for that
+ * measurement yet, which is a catalog gap, not a reason to distrust the printed value.
+ * Both the API (review status) and the web (bulk confirm) read this one list.
+ */
+export const REVIEW_BLOCKING_VALIDATION_ISSUES = [
+  "LOW_CONFIDENCE",
+  "AMBIGUOUS_UNIT",
+  "MISSING_UNIT",
+  "INVALID_VALUE",
+  "INVALID_DATE",
+  "INVALID_REFERENCE_RANGE",
+] as const;
+
 export const FACT_REVIEW_DECISIONS = ["confirm", "correct", "reject"] as const;
 export const FACT_REVIEW_OUTCOMES = ["confirmed", "corrected", "rejected"] as const;
 export const HEALTH_SUMMARY_RECOMMENDATION_CODES = [

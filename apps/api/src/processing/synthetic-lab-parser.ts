@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
-import { LAB_EXTRACTION_SCHEMA_VERSION, SYNTHETIC_INDICATOR_CATALOG } from "@veylta/contracts";
+import {
+  LAB_EXTRACTION_SCHEMA_VERSION,
+  REVIEW_BLOCKING_VALIDATION_ISSUES,
+  SYNTHETIC_INDICATOR_CATALOG,
+} from "@veylta/contracts";
 
 export const SYNTHETIC_LAB_PARSER_VERSION = "synthetic-lab-text/v1" as const;
 export const SYNTHETIC_LAB_FIXTURE_HEADER = "VEYLTA SYNTHETIC LAB REPORT v1" as const;
@@ -220,8 +224,11 @@ function parseFact(block: readonly string[], pageNumber: number): StrictLabExtra
   };
 }
 
+const reviewBlockingIssues: ReadonlySet<string> = new Set(REVIEW_BLOCKING_VALIDATION_ISSUES);
+
 export function reviewStatusForFact(fact: StrictLabExtractionFact): ExtractedFactReviewStatus {
-  return fact.confidence < reviewConfidenceThreshold || fact.validationIssues.length > 0
+  return fact.confidence < reviewConfidenceThreshold ||
+    fact.validationIssues.some((issue) => reviewBlockingIssues.has(issue))
     ? "needs_review"
     : "extracted";
 }
