@@ -62,6 +62,8 @@ class SourceDatabase implements DatabaseClient {
     sql: string,
     values: readonly unknown[] = [],
   ): Promise<QueryResult<Row>> {
+    // The worker also reads the analyte catalog before every model call; empty here.
+    if (/FROM analyte_catalog/.test(sql)) return { rows: [], rowCount: 0 };
     assert.match(sql, /FROM document_versions/);
     assert.deepEqual(values, [familyId, documentVersionId]);
     const rows = [

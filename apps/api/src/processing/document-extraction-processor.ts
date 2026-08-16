@@ -13,6 +13,7 @@ import {
   ObjectStorageSecurityError,
   ObjectStorageValidationError,
 } from "../storage/object-storage.js";
+import { loadAnalyteCatalogForPrompt } from "./analyte-mapping.js";
 import { CodexDocumentIntelligenceError } from "./codex-document-intelligence-provider.js";
 import {
   checkedDirectImage,
@@ -348,6 +349,7 @@ export function createDocumentExtractionProcessor(
                 contentType: source.contentType,
                 pages,
                 ...(images.length === 0 ? {} : { images }),
+                analyteCatalog: await loadAnalyteCatalogForPrompt(dependencies.database),
               });
         await advance(jobs, claim, "validation", now);
         const completion = await jobs.completeExtraction(claim, output, validNow(now));

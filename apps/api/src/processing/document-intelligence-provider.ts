@@ -15,6 +15,18 @@ export interface DocumentIntelligenceInput {
    * every fragment is bound to that transcription, so provenance still names a page.
    */
   readonly images?: readonly DocumentPageImage[];
+  /**
+   * The household's analyte catalog. It travels with every request so the model links a
+   * measurement to a code the family already uses; a code outside it is refused.
+   */
+  readonly analyteCatalog?: readonly AnalyteCatalogEntry[];
+}
+
+export interface AnalyteCatalogEntry {
+  readonly code: string;
+  readonly displayName: string;
+  readonly unit: string;
+  readonly aliases: readonly string[];
 }
 
 export interface DocumentIntelligenceOutput {

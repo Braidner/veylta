@@ -20,6 +20,7 @@ import {
 } from "../codex/codex-execution-profile.js";
 import type { DocumentPageImage } from "./document-images.js";
 import type {
+  AnalyteCatalogEntry,
   DocumentIntelligenceExchange,
   DocumentIntelligenceInput,
   DocumentIntelligenceProvider,
@@ -331,6 +332,51 @@ const visionOutputSchema = {
 } as const;
 
 export const CODEX_VISION_EXTRACTION_METHOD = "codex_vision" as const;
+
+/** Bounded so a large catalog cannot blow the prompt or the schema. */
+const maximumCatalogEntries = 400;
+const maximumCatalogAliases = 6;
+
+function boundedCatalog(entries: readonly AnalyteCatalogEntry[]): AnalyteCatalogEntry[] {
+  return entries.slice(0, maximumCatalogEntries).map((entry) => ({
+    code: entry.code,
+    displayName: entry.displayName.slice(0, 200),
+    unit: entry.unit.slice(0, 100),
+    aliases: entry.aliases.slice(0, maximumCatalogAliases).map((alias) => alias.slice(0, 200)),
+  }));
+}
+
+/**
+ * With a catalog, proposedCanonicalCode is an enum of its codes plus null: the model cannot
+ * invent a code at all. Without one the field stays a free bounded string.
+ */
+function schemaFor(
+  base: typeof outputSchema | typeof visionOutputSchema,
+  catalog: readonly AnalyteCatalogEntry[],
+) {
+  if (catalog.length === 0) return base;
+  const codes = catalog.map((entry) => entry.code);
+  return {
+    ...base,
+    properties: {
+      ...base.properties,
+      facts: {
+        ...base.properties.facts,
+        items: {
+          ...base.properties.facts.items,
+          properties: {
+            ...base.properties.facts.items.properties,
+            proposedCanonicalCode: {
+              enum: [...codes, null],
+              description:
+                "One of the household's known analyte codes when this measurement is that analyte, otherwise null. Never invent a code.",
+            },
+          },
+        },
+      },
+    },
+  };
+}
 
 function invalidOutput(reason: ProcessingRejectionReason = "schema_shape"): never {
   throw new CodexDocumentIntelligenceError("OUTPUT_INVALID", reason);
@@ -673,6 +719,7 @@ function parseFact(
 
 function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocumentPage[]): string {
   const images = input.images ?? [];
+  const catalog = boundedCatalog(input.analyteCatalog ?? []);
   return [
     "You are Veylta's bounded document classification and extraction provider.",
     ...(images.length > 0
@@ -691,6 +738,11 @@ function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocument
     "Give every fact a unique factKey. When one quantitative laboratory measurement appears in both structuredResults and facts, use exactly the same resultKey and factKey. Return a normalized value and normalized unit together or return both as null. A sample time must not be later than the result time. validationIssues must not contain duplicates.",
     "Every structured result and fact source.fragment must copy the minimal exact complete source line or contiguous lines from the specified page text; never return only a detached value and avoid unrelated personal data.",
     "Return zero facts for documents without explicit quantitative laboratory measurements. Return only the requested JSON shape.",
+    ...(catalog.length > 0
+      ? [
+          "knownAnalytes below is the household's confirmed catalog. When a fact is one of these analytes, set proposedCanonicalCode to that exact code and proposedNormalizedUnit to its unit; otherwise set proposedCanonicalCode to null. Never invent a code.",
+        ]
+      : []),
     JSON.stringify({
       contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
       contentType: input.contentType,
@@ -698,6 +750,7 @@ function prompt(input: DocumentIntelligenceInput, pages: readonly ParsedDocument
       ...(images.length === 0
         ? {}
         : { attachedPages: images.map((image) => ({ pageNumber: image.pageNumber })) }),
+      ...(catalog.length === 0 ? {} : { knownAnalytes: catalog }),
     }),
   ].join("\n");
 }
@@ -756,6 +809,7 @@ function parseOutput(
   modelId: string,
   runtimeVersion: string,
   images: readonly DocumentPageImage[] = [],
+  knownCodes: ReadonlySet<string> | null = null,
 ): DocumentIntelligenceV2Output {
   let parsed: unknown;
   try {
@@ -825,7 +879,20 @@ function parseOutput(
   const factKeys = new Set<string>();
   for (const proposedFact of root.facts) {
     try {
-      const fact = parseFact(proposedFact, pageMap, documentMetadata);
+      const parsedFact = parseFact(proposedFact, pageMap, documentMetadata);
+      // The schema pins the code to the catalog; should one slip through, the measurement is
+      // still real — keep it and drop only the unknown link, so the reviewer maps it by hand.
+      const fact =
+        knownCodes !== null &&
+        parsedFact.proposedCanonicalCode !== null &&
+        !knownCodes.has(parsedFact.proposedCanonicalCode)
+          ? {
+              ...parsedFact,
+              proposedCanonicalCode: null,
+              proposedNormalizedValue: null,
+              proposedNormalizedUnit: null,
+            }
+          : parsedFact;
       if (factKeys.has(fact.factKey)) continue;
       factKeys.add(fact.factKey);
       facts.push(fact);
@@ -914,13 +981,11 @@ export function createCodexDocumentIntelligenceProvider(
       const directory = await mkdtemp(join(tmpdir(), "veylta-codex-document-"));
       const schemaPath = join(directory, "output.schema.json");
       const outputPath = join(directory, "output.json");
+      const catalog = boundedCatalog(input.analyteCatalog ?? []);
       await writeFile(
         schemaPath,
-        JSON.stringify(images.length > 0 ? visionOutputSchema : outputSchema),
-        {
-          encoding: "utf8",
-          mode: 0o600,
-        },
+        JSON.stringify(schemaFor(images.length > 0 ? visionOutputSchema : outputSchema, catalog)),
+        { encoding: "utf8", mode: 0o600 },
       );
       const imageArguments: string[] = [];
       for (const image of images) {
@@ -992,7 +1057,14 @@ export function createCodexDocumentIntelligenceProvider(
         try {
           if (Buffer.byteLength(output, "utf8") > maximumOutputBytes)
             invalidOutput("response_too_large");
-          const parsed = parseOutput(output, pages, profile.modelId, result.runtimeVersion, images);
+          const parsed = parseOutput(
+            output,
+            pages,
+            profile.modelId,
+            result.runtimeVersion,
+            images,
+            catalog.length === 0 ? null : new Set(catalog.map((entry) => entry.code)),
+          );
           return { ...parsed, exchange };
         } catch (error) {
           throw withExchange(error, exchange);

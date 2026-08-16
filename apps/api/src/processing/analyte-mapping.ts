@@ -1,4 +1,5 @@
 import type { DatabaseClient } from "../database/pool.js";
+import type { AnalyteCatalogEntry } from "./document-intelligence-provider.js";
 import type { StrictLabExtractionFact } from "./synthetic-lab-parser.js";
 
 interface AnalyteMappingRow {
@@ -103,4 +104,38 @@ export async function enrichFactFromAnalyteMappings(
     proposedNormalizedValue: mapping.normalizedValue,
     proposedNormalizedUnit: mapping.normalizedUnit,
   };
+}
+
+const aliasSeparator = " | ";
+
+/**
+ * The catalog as the model sees it: every known code with its display name, unit and the
+ * confirmed source spellings, so a request always carries the family's own vocabulary.
+ * Bounded; the provider trims further before it reaches the prompt.
+ */
+export async function loadAnalyteCatalogForPrompt(
+  database: DatabaseClient,
+): Promise<readonly AnalyteCatalogEntry[]> {
+  const rows = await database.query<{
+    canonical_code: string;
+    display_name: string;
+    canonical_unit: string;
+    aliases: string | null;
+  }>(
+    `SELECT c.canonical_code, c.display_name, c.canonical_unit,
+            (SELECT group_concat(a.source_name_key, $1)
+               FROM analyte_aliases a
+              WHERE a.canonical_code = c.canonical_code AND a.status = 'confirmed') AS aliases
+       FROM analyte_catalog c
+      ORDER BY c.canonical_code
+      LIMIT 400`,
+    [aliasSeparator],
+  );
+  return rows.rows.map((row) => ({
+    code: row.canonical_code,
+    displayName: row.display_name,
+    unit: row.canonical_unit,
+    aliases:
+      row.aliases === null ? [] : [...new Set(row.aliases.split(aliasSeparator))].slice(0, 6),
+  }));
 }
