@@ -1,72 +1,137 @@
 "use client";
 
-import type { AssistantInvitation, AssistantSpecialty } from "@veylta/contracts";
-import { Send, Users, X } from "lucide-react";
-import type { FormEvent, RefObject } from "react";
-import { invitationCopy, specialtyLabel } from "../assistant";
-import type { EvidenceIndex } from "./assistant-blocks";
+import type { AssistantEvidenceItem, AssistantInvitation } from "@veylta/contracts";
+import { Send, Stethoscope, Users } from "lucide-react";
+import type { FormEvent, ReactNode, RefObject } from "react";
+import { invitationCopy, invitationSummary, specialtyLabel } from "../assistant";
+import type { Recipient } from "../use-assistant-composer";
 
 interface AssistantComposerProps {
   readonly message: string;
-  readonly addressee: AssistantSpecialty | null;
+  readonly recipient: Recipient;
   readonly canSend: boolean;
   readonly canConvene: boolean;
   readonly consiliumPending: boolean;
   readonly panel: readonly AssistantInvitation[];
-  readonly evidence: EvidenceIndex;
+  readonly evidence: ReadonlyMap<string, AssistantEvidenceItem>;
   readonly hasConversation: boolean;
   readonly sendError: string | null;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly onMessageChange: (message: string) => void;
-  readonly onAddresseeChange: (addressee: AssistantSpecialty | null) => void;
+  readonly onRecipientChange: (recipient: Recipient) => void;
   readonly onSend: (event: FormEvent<HTMLFormElement>) => void;
-  readonly onConvene: () => void;
+}
+
+/** «Сообщение ИИ-врачу», «Вопрос специалисту: гематолог», «Вопрос консилиуму» — the field's name. */
+export function composerLabel(recipient: Recipient): string {
+  if (recipient === null) return "Сообщение ИИ-врачу";
+  if (recipient === "consilium") return "Вопрос консилиуму";
+  return `Вопрос специалисту: ${specialtyLabel[recipient]}`;
+}
+
+function RecipientChip({
+  active,
+  disabled,
+  title,
+  onClick,
+  children,
+}: {
+  readonly active: boolean;
+  readonly disabled: boolean;
+  readonly title?: string;
+  readonly onClick: () => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <li>
+      <button
+        type="button"
+        className={`assistant-chip${active ? " is-active" : ""}`}
+        aria-pressed={active}
+        title={title}
+        onClick={onClick}
+        disabled={disabled}
+      >
+        {children}
+      </button>
+    </li>
+  );
 }
 
 /**
- * The composer: a message to the therapist, or — through a chip — to one persona of the
- * консилиум; and «Собрать консилиум», which convenes the panel the evidence names (the typed
- * text, if any, becomes the question every specialist and the synthesis answer).
+ * «Кому + что»: one row of recipients — the therapist, each specialist the evidence names (with
+ * how many of the person's values put them there), the whole консилиум — then the field. The
+ * primary button follows the recipient: a message, or «Собрать консилиум», where the typed text
+ * becomes the question every specialist and the synthesis answer.
  */
 export function AssistantComposer(props: AssistantComposerProps) {
-  const { panel, addressee } = props;
+  const { panel, recipient, evidence } = props;
+  const chosen = recipient === null || recipient === "consilium" ? null : recipient;
+  const invitation = chosen === null ? null : panel.find((item) => item.specialty === chosen);
+  const consilium = recipient === "consilium";
+  const submitDisabled = consilium
+    ? !props.canConvene
+    : !props.canSend || props.message.trim().length === 0;
+  const hint =
+    recipient === null
+      ? "Читает все подтверждённые значения и ваш профиль; каждый вывод — рекомендация для разговора с врачом."
+      : consilium
+        ? panel.length === 0
+          ? "Среди подтверждённых значений нет профильных показателей — созывать некого."
+          : `Пригласим: ${panel.map((item) => specialtyLabel[item.specialty]).join(", ")} — каждый читает те же значения, ИИ-врач сводит мнения.`
+        : invitation === undefined || invitation === null
+          ? `${specialtyLabel[recipient]} · по вашему запросу`
+          : `${specialtyLabel[recipient]} · ${invitationSummary(invitation, evidence)}`;
   return (
-    <form className="document-agent-workspace__composer assistant-composer" onSubmit={props.onSend}>
-      {panel.length > 0 && props.hasConversation ? (
-        <div className="assistant-composer__panel" data-testid="assistant-consilium-panel">
-          <span className="assistant-composer__panel-title">
-            <Users size={15} aria-hidden="true" />
-            Консилиум по вашим данным:
-          </span>
-          <ul className="assistant-composer__chips" aria-label="Спросить специалиста">
-            {panel.map((invitation) => {
-              const active = addressee === invitation.specialty;
-              return (
-                <li key={invitation.specialty}>
-                  <button
-                    type="button"
-                    className={`assistant-chip${active ? " is-active" : ""}`}
-                    aria-pressed={active}
-                    title={invitationCopy(invitation, props.evidence)}
-                    onClick={() => props.onAddresseeChange(active ? null : invitation.specialty)}
-                    disabled={!props.canSend}
-                  >
-                    {active ? "Спрашиваем: " : "Спросить: "}
-                    {specialtyLabel[invitation.specialty]}
-                    <small> · {invitationCopy(invitation, props.evidence)}</small>
-                  </button>
-                </li>
-              );
-            })}
+    <form className="assistant-composer" onSubmit={props.onSend}>
+      {props.hasConversation ? (
+        <div className="assistant-composer__to" data-testid="assistant-consilium-panel">
+          <span className="assistant-composer__to-label">Кому</span>
+          <ul className="assistant-composer__chips" aria-label="Кому адресован вопрос">
+            <RecipientChip
+              active={recipient === null}
+              disabled={!props.canSend}
+              onClick={() => props.onRecipientChange(null)}
+            >
+              <Stethoscope size={14} aria-hidden="true" />
+              ИИ-врач
+            </RecipientChip>
+            {panel.map((item) => (
+              <RecipientChip
+                key={item.specialty}
+                active={recipient === item.specialty}
+                disabled={!props.canSend}
+                title={invitationCopy(item, evidence)}
+                onClick={() =>
+                  props.onRecipientChange(recipient === item.specialty ? null : item.specialty)
+                }
+              >
+                {specialtyLabel[item.specialty]}
+                <b>{new Set(item.observationIds).size}</b>
+              </RecipientChip>
+            ))}
+            <RecipientChip
+              active={consilium}
+              disabled={!props.canSend || panel.length === 0}
+              title={
+                panel.length === 0
+                  ? "Среди подтверждённых значений нет профильных показателей"
+                  : `Пригласим: ${panel.map((item) => specialtyLabel[item.specialty]).join(", ")}`
+              }
+              onClick={() => props.onRecipientChange(consilium ? null : "consilium")}
+            >
+              <Users size={14} aria-hidden="true" />
+              Консилиум
+              {panel.length > 0 ? <b>{panel.length}</b> : null}
+            </RecipientChip>
           </ul>
+          <p className="assistant-composer__hint">{hint}</p>
         </div>
       ) : null}
-      <label htmlFor="assistant-message">
-        {addressee === null
-          ? "Сообщение ИИ-врачу"
-          : `Вопрос специалисту: ${specialtyLabel[addressee]}`}
+      <label htmlFor="assistant-message" className="visually-hidden">
+        {composerLabel(recipient)}
       </label>
-      <div className="document-agent-workspace__composer-row">
+      <div className="assistant-composer__field">
         <textarea
           ref={props.composerRef}
           id="assistant-message"
@@ -75,53 +140,37 @@ export function AssistantComposer(props: AssistantComposerProps) {
           rows={3}
           placeholder={
             !props.hasConversation
-              ? "Сначала создайте диалог"
-              : addressee === null
-                ? "Например: что означают мои последние анализы?"
-                : `Например: что вы как ${specialtyLabel[addressee]} видите в этих значениях?`
+              ? "Сначала выберите или создайте диалог"
+              : consilium
+                ? "Вопрос консилиуму — или оставьте пустым, каждый ответит по своим данным"
+                : recipient === null
+                  ? "Например: что означают мои последние анализы?"
+                  : `Например: что вы как ${specialtyLabel[recipient]} видите в этих значениях?`
           }
           onChange={(event) => props.onMessageChange(event.target.value)}
           disabled={!props.canSend}
         />
         <button
-          className="button button--primary document-agent-workspace__send"
+          className="button button--primary assistant-composer__send"
           type="submit"
-          disabled={!props.canSend || props.message.trim().length === 0}
+          disabled={submitDisabled}
         >
-          <span>Отправить</span>
-          <Send size={17} strokeWidth={2} aria-hidden="true" />
+          {consilium ? (
+            <>
+              <Users size={16} aria-hidden="true" />
+              {props.consiliumPending ? "Консилиум работает…" : "Собрать консилиум"}
+            </>
+          ) : (
+            <>
+              Отправить
+              <Send size={16} strokeWidth={2} aria-hidden="true" />
+            </>
+          )}
         </button>
       </div>
-      <div className="document-agent-workspace__composer-meta assistant-composer__meta">
+      <div className="assistant-composer__meta">
         <span>{props.message.length} / 2000</span>
-        {addressee !== null ? (
-          <button
-            type="button"
-            className="assistant-composer__clear"
-            onClick={() => props.onAddresseeChange(null)}
-          >
-            <X size={13} aria-hidden="true" />
-            Снова к ИИ-врачу
-          </button>
-        ) : (
-          <span>Каждый вывод — рекомендация для подтверждения у врача.</span>
-        )}
-        {props.hasConversation ? (
-          <button
-            type="button"
-            className="button button--secondary assistant-composer__convene"
-            onClick={props.onConvene}
-            disabled={!props.canConvene}
-            title={
-              panel.length === 0
-                ? "Среди подтверждённых значений нет профильных показателей"
-                : `Пригласим: ${panel.map((item) => specialtyLabel[item.specialty]).join(", ")}`
-            }
-          >
-            <Users size={16} aria-hidden="true" />
-            {props.consiliumPending ? "Консилиум работает…" : "Собрать консилиум"}
-          </button>
-        ) : null}
+        <span>Ответ проверяет второй независимый запуск; ничего не уходит без вашей отправки.</span>
       </div>
       {props.sendError !== null ? (
         <p className="form-error" role="alert">

@@ -123,7 +123,7 @@ test("the dossier reads confirmed values against their references and sends the 
   await page.getByRole("link", { name: "Собрать консилиум по досье" }).click();
   await expect(assistant.getByRole("button", { name: /Досье · Консилиум/ })).toHaveCount(1);
   await page.getByTestId("assistant-egress-gate").getByRole("button").click();
-  await expect(assistant.getByLabel("Сообщение ИИ-врачу")).toHaveValue(
+  await expect(assistant.getByLabel("Вопрос консилиуму")).toHaveValue(
     /^Что в моём досье требует внимания в первую очередь и насколько срочно\? Вне референса: ТТГ 9\.9 мМЕ\/л/,
   );
   await expect(assistant.getByRole("button", { name: "Собрать консилиум" })).toBeEnabled();

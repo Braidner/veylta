@@ -4,12 +4,14 @@ import {
   ASSISTANT_REJECTION_REASONS,
   ASSISTANT_SPECIALTIES,
   ASSISTANT_URGENCY_TIERS,
+  type AssistantEvidenceItem,
 } from "@veylta/contracts";
 import { ApiError } from "./api-client";
 import {
   assistantSendErrorCopy,
   egressDisclosure,
   invitationCopy,
+  invitationSummary,
   referralItem,
   referralsOf,
   refusalCopy,
@@ -127,6 +129,21 @@ test("the panel explains each invitation by the printed names in that specialist
   assert.equal(
     invitationCopy({ specialty: "cardiologist", observationIds: [] }, evidence),
     "по вашему запросу",
+  );
+  // The composer names a few and counts the rest, so a specialist with forty analytes stays a chip.
+  const many = new Map(
+    ["Ферритин", "Гемоглобин (Hb)", "Лейкоциты", "Тромбоциты", "Эритроциты"].map((name, index) => [
+      `h${index}`,
+      { ...(evidence.get("o1") as AssistantEvidenceItem), observationId: `h${index}`, name },
+    ]),
+  );
+  assert.equal(
+    invitationSummary({ specialty: "hematologist", observationIds: [...many.keys(), "h0"] }, many),
+    "в данных: Ферритин, Гемоглобин (Hb), Лейкоциты и ещё 2",
+  );
+  assert.equal(
+    invitationSummary({ specialty: "hematologist", observationIds: ["h0", "h1"] }, many),
+    "в данных: Ферритин, Гемоглобин (Hb)",
   );
   assert.equal(speakerLabel(null), "ИИ-врач");
   assert.equal(speakerLabel("endocrinologist"), "ИИ-эндокринолог");

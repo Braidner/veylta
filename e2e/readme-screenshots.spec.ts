@@ -67,7 +67,8 @@ test("capture the README screenshots", async ({ page }) => {
   await assistant.getByLabel("Сообщение ИИ-врачу").fill("Что значат мои последние анализы?");
   await assistant.getByRole("button", { name: "Отправить" }).click();
   await expect(page.getByTestId("assistant-answer")).toBeVisible({ timeout: 60_000 });
-  await assistant.scrollIntoViewIfNeeded();
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.evaluate(() => window.scrollTo(0, 0));
   await screenshot(page, "assistant.png");
 });
 
@@ -99,11 +100,20 @@ test("capture the консилиум screenshot", async ({ page }) => {
   await assistant.getByLabel("Название диалога").fill("Консилиум по анализам");
   await assistant.getByRole("button", { name: "Создать", exact: true }).click();
   await page.getByTestId("assistant-egress-gate").getByRole("button").click();
-  await assistant.getByLabel("Сообщение ИИ-врачу").fill("Что вы думаете все вместе?");
+  await page
+    .getByTestId("assistant-consilium-panel")
+    .getByRole("button", { name: /Консилиум/ })
+    .click();
+  await assistant.getByLabel("Вопрос консилиуму").fill("Что вы думаете все вместе?");
   await assistant.getByRole("button", { name: "Собрать консилиум" }).click();
   const synthesis = page.getByTestId("assistant-answer").filter({ hasText: "синтез консилиума" });
   await expect(synthesis).toBeVisible({ timeout: 60_000 });
-  await synthesis.getByTestId("assistant-consilium").scrollIntoViewIfNeeded();
-  await page.evaluate(() => window.scrollBy(0, -80));
+  // The synthesis with the opinions under it, above the composer held at the bottom.
+  await page.setViewportSize({ width: 1440, height: 1200 });
+  await page.evaluate(() => {
+    const answer = [...document.querySelectorAll('[data-testid="assistant-answer"]')].at(-1);
+    if (answer !== undefined)
+      window.scrollTo(0, answer.getBoundingClientRect().top + window.scrollY - 100);
+  });
   await screenshot(page, "consilium.png");
 });

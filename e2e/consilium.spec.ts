@@ -29,15 +29,19 @@ test("the консилиум convenes the specialties the evidence names and kee
   await assistant.getByRole("button", { name: "Создать", exact: true }).click();
   await page.getByTestId("assistant-egress-gate").getByRole("button").click();
 
+  // «Кому»: the therapist, the specialists the evidence names, the whole консилиум.
   const panel = page.getByTestId("assistant-consilium-panel");
-  await expect(panel).toContainText("Консилиум по вашим данным");
+  await expect(panel).toContainText("Кому");
   const endocrinologistChip = panel.getByRole("button", { name: /эндокринолог/ });
-  await expect(endocrinologistChip).toContainText("в данных: ТТГ");
-  await expect(panel.getByRole("button", { name: /гематолог/ })).toContainText(
+  await expect(endocrinologistChip).toHaveAttribute("title", "в данных: ТТГ");
+  await expect(panel.getByRole("button", { name: /гематолог/ })).toHaveAttribute(
+    "title",
     "в данных: Гемоглобин",
   );
 
-  await assistant.getByLabel("Сообщение ИИ-врачу").fill("Что вы думаете все вместе?");
+  await panel.getByRole("button", { name: /Консилиум/ }).click();
+  await expect(panel).toContainText("Пригласим: эндокринолог, гематолог");
+  await assistant.getByLabel("Вопрос консилиуму").fill("Что вы думаете все вместе?");
   await assistant.getByRole("button", { name: "Собрать консилиум" }).click();
   await expect(
     assistant.getByRole("status").filter({ hasText: "Консилиум работает" }),
@@ -61,6 +65,7 @@ test("the консилиум convenes the specialties the evidence names and kee
   await expect(consilium).toContainText("эндокринолог, гематолог");
 
   await endocrinologistChip.click();
+  await expect(panel).toContainText("эндокринолог · в данных: ТТГ");
   await expect(assistant.getByLabel("Вопрос специалисту: эндокринолог")).toBeVisible();
   await assistant.getByLabel("Вопрос специалисту: эндокринолог").fill("А ваше мнение отдельно?");
   await assistant.getByRole("button", { name: "Отправить" }).click();

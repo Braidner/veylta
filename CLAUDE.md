@@ -187,9 +187,15 @@ off), `answer-parser.ts` verifies every block against the evidence, `answer-chec
 independent refuting exec and applies its verdicts, and
 every model failure becomes a refusal with a closed `ASSISTANT_REJECTION_REASONS` code plus its
 raw exchange in `assistant_exchanges` (owner-only journal, never audit). Web: pure copy tables in
-`app/assistant.ts`, `assistant-workspace.tsx` (data) → `assistant-panel.tsx` (shell) →
-`assistant-answer.tsx`/`assistant-blocks.tsx` (typed blocks, source links, referral → care-plan
-`clinician` item through the plan's own `PUT items/:id`). Browser routes live in `app/paths.ts`.
+`app/assistant.ts`, `assistant-workspace.tsx` (data) → `assistant-panel.tsx` (shell: a one-line
+`assistant-header.tsx` instead of a hero, `assistant-rail.tsx`, the stream, and the composer held
+at the bottom of the viewport) → `assistant-answer.tsx`/`assistant-blocks.tsx` (typed blocks as
+sections with a kind kicker, source links, referral → care-plan `clinician` item through the plan's
+own `PUT items/:id`), `assistant-consilium.tsx`, `assistant-messages.tsx`. `assistant-composer.tsx`
+is «кому + что»: one row of recipients — ИИ-врач, each specialist the evidence names with the count
+of values that put them there (`invitationSummary`), the консилиум — and the primary button follows
+the recipient («Отправить» / «Собрать консилиум»; `use-assistant-composer.ts` `Recipient`). Browser
+routes live in `app/paths.ts`.
 A conversation may carry a `purpose` (`dossier:<specialty>` | `dossier:consilium`, migration
 0033, one per profile and purpose): `POST conversations` with a purpose finds the existing one
 before creating (200, not 201), so the dossier's questions to one doctor stay in one place —

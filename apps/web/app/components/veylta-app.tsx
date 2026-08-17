@@ -125,7 +125,7 @@ import {
 } from "../paths";
 import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
-import { AssistantHero } from "./assistant-hero";
+import { AssistantHeader } from "./assistant-header";
 import { AssistantWorkspace } from "./assistant-workspace";
 import { DocumentAgentPanel } from "./document-agent-panel";
 import { DocumentHero } from "./document-hero";
@@ -2380,7 +2380,7 @@ function ProfileWorkspace({
           aria-labelledby="workspace-tab-overview"
           aria-label="ИИ-врач · второе мнение"
         >
-          <AssistantHero familyId={family.id} profileId={profile.id} />
+          <AssistantHeader familyId={family.id} profileId={profile.id} />
           <AssistantWorkspace
             key={`assistant:${family.id}:${profile.id}`}
             familyId={family.id}

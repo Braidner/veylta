@@ -6,8 +6,18 @@ import type {
   AssistantEvidenceItem,
   AssistantEvidenceRef,
 } from "@veylta/contracts";
-import { ExternalLink } from "lucide-react";
 import {
+  BookOpen,
+  CircleAlert,
+  CircleHelp,
+  ExternalLink,
+  Lightbulb,
+  type LucideIcon,
+  ScanSearch,
+  Stethoscope,
+} from "lucide-react";
+import {
+  blockKindLabel,
   checkerVerdictLabel,
   confidenceLabel,
   contraindicationCopy,
@@ -19,6 +29,26 @@ import { documentPath } from "../paths";
 
 export type ReferralBlock = Extract<AssistantBlock, { kind: "hypothesis" | "treatment_option" }>;
 export type EvidenceIndex = ReadonlyMap<string, AssistantEvidenceItem>;
+
+const blockIcon: Record<AssistantBlock["kind"], LucideIcon> = {
+  interpretation: ScanSearch,
+  hypothesis: Lightbulb,
+  treatment_option: Stethoscope,
+  question: CircleHelp,
+  general: BookOpen,
+  missing: CircleAlert,
+};
+
+/** The block's kind as a kicker — an icon and the fixed label, the same for every answer. */
+export function BlockKind({ kind }: { readonly kind: AssistantBlock["kind"] }) {
+  const Icon = blockIcon[kind];
+  return (
+    <span className="assistant-block__kind">
+      <Icon size={14} aria-hidden="true" />
+      {blockKindLabel[kind]}
+    </span>
+  );
+}
 
 interface SourceContext {
   readonly familyId: string;
@@ -135,6 +165,7 @@ export function SourceRefs({
   if (refs.length === 0) return null;
   return (
     <ul className="assistant-refs" aria-label="Источники">
+      <li className="assistant-refs__label">Источники</li>
       {refs.map((ref) => {
         const item = evidence.get(ref.observationId);
         if (item === undefined) {

@@ -1,18 +1,13 @@
 "use client";
 
 import type { AssistantEvidenceRef, AssistantExchange, AssistantMessage } from "@veylta/contracts";
-import { AlertTriangle, ClipboardCheck, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Bot, ClipboardCheck, ShieldCheck, Users } from "lucide-react";
 import { useState } from "react";
-import {
-  blockKindLabel,
-  refusalCopy,
-  speakerLabel,
-  specialtyLabel,
-  urgencyCopy,
-} from "../assistant";
+import { refusalCopy, speakerLabel, specialtyLabel, urgencyCopy } from "../assistant";
 import { formatDate } from "../format-moment";
 import {
   BlockBody,
+  BlockKind,
   CheckerNote,
   type EvidenceIndex,
   ReferralAction,
@@ -63,6 +58,9 @@ export function AssistantAnswer({
       data-speaker={message.speaker ?? "therapist"}
     >
       <header className="assistant-answer__meta">
+        <span className="assistant-answer__mark" aria-hidden="true">
+          {message.consilium === null ? <Bot size={15} /> : <Users size={15} />}
+        </span>
         <strong>
           {speakerLabel(message.speaker)}
           {message.consilium === null ? "" : " · синтез консилиума"}
@@ -89,23 +87,25 @@ export function AssistantAnswer({
               const key = `${message.id}:${index}`;
               return (
                 <li key={key} className={`assistant-block assistant-block--${block.kind}`}>
-                  <span className="assistant-block__kind">{blockKindLabel[block.kind]}</span>
-                  <BlockBody
-                    block={block}
-                    familyId={familyId}
-                    profileId={profileId}
-                    evidence={evidence}
-                  />
-                  <CheckerNote verdict={verdicts.get(index)} />
-                  {(block.kind === "hypothesis" || block.kind === "treatment_option") &&
-                  canWrite ? (
-                    <ReferralAction
+                  <BlockKind kind={block.kind} />
+                  <div className="assistant-block__body">
+                    <BlockBody
                       block={block}
-                      accepted={acceptedReferrals.has(key)}
-                      pending={pendingReferral === key}
-                      onAccept={() => onAcceptReferral(key, block)}
+                      familyId={familyId}
+                      profileId={profileId}
+                      evidence={evidence}
                     />
-                  ) : null}
+                    <CheckerNote verdict={verdicts.get(index)} />
+                    {(block.kind === "hypothesis" || block.kind === "treatment_option") &&
+                    canWrite ? (
+                      <ReferralAction
+                        block={block}
+                        accepted={acceptedReferrals.has(key)}
+                        pending={pendingReferral === key}
+                        onAccept={() => onAcceptReferral(key, block)}
+                      />
+                    ) : null}
+                  </div>
                 </li>
               );
             })}

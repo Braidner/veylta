@@ -1,19 +1,17 @@
 "use client";
 
-import type {
-  AssistantMessage,
-  AssistantSpecialty,
-  AssistantWorkspaceResponse,
-} from "@veylta/contracts";
-import { Bot, ShieldAlert } from "lucide-react";
+import type { AssistantMessage, AssistantWorkspaceResponse } from "@veylta/contracts";
+import { ContactRound, ShieldAlert } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
 import { assistantTitle, specialtyLabel } from "../assistant";
 import { profileTabPath } from "../paths";
 import { countCopy } from "../russian-plural";
+import type { Recipient } from "../use-assistant-composer";
 import { AssistantAnswer } from "./assistant-answer";
 import type { EvidenceIndex, ReferralBlock } from "./assistant-blocks";
 import { AssistantComposer } from "./assistant-composer";
 import { EgressGate } from "./assistant-gate";
+import { Openers, UserMessage, Waiting } from "./assistant-messages";
 import { AssistantRail } from "./assistant-rail";
 
 interface AssistantPanelProps {
@@ -25,7 +23,7 @@ interface AssistantPanelProps {
   readonly isSwitching: boolean;
   readonly loadError: boolean;
   readonly message: string;
-  readonly addressee: AssistantSpecialty | null;
+  readonly recipient: Recipient;
   readonly pendingMessage: string | null;
   readonly consiliumPending: boolean;
   readonly sendError: string | null;
@@ -36,16 +34,15 @@ interface AssistantPanelProps {
   readonly referralError: string | null;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly onMessageChange: (message: string) => void;
-  readonly onAddresseeChange: (addressee: AssistantSpecialty | null) => void;
+  readonly onRecipientChange: (recipient: Recipient) => void;
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onCreateConversation: (title: string) => Promise<boolean>;
   readonly onAcknowledge: () => void;
   readonly onAcceptReferral: (key: string, block: ReferralBlock) => void;
   readonly onSend: (event: FormEvent<HTMLFormElement>) => void;
-  readonly onConvene: () => void;
 }
 
-/** The physician workspace: a rail of conversations, the egress gate, typed answers, a composer. */
+/** The physician workspace: a rail of conversations, the stream with the egress gate, a composer. */
 export function AssistantPanel(props: AssistantPanelProps) {
   const { workspace, familyId, profileId } = props;
   const selected =
@@ -60,14 +57,22 @@ export function AssistantPanel(props: AssistantPanelProps) {
     props.pendingMessage === null &&
     !props.consiliumPending;
   const canConvene = canSend && (workspace?.consiliumPanel.length ?? 0) > 0;
+  const empty =
+    !props.isSwitching &&
+    selected !== null &&
+    selected.acknowledged &&
+    workspace !== null &&
+    workspace.messages.length === 0 &&
+    props.pendingMessage === null &&
+    !props.consiliumPending;
 
   return (
     <section
-      className="document-agent-workspace assistant-workspace"
+      className="assistant-workspace"
       aria-label={assistantTitle}
       data-testid="assistant-workspace"
     >
-      <div className="document-agent-workspace__shell assistant-workspace__shell">
+      <div className="assistant-shell">
         <AssistantRail
           workspace={workspace}
           canWrite={canWrite}
@@ -77,15 +82,19 @@ export function AssistantPanel(props: AssistantPanelProps) {
           onSelectConversation={props.onSelectConversation}
           onCreateConversation={props.onCreateConversation}
         />
-
-        <div className="document-agent-workspace__chat">
-          <header className="document-agent-workspace__chat-heading">
+        <div className="assistant-chat">
+          <header className="assistant-chat__head">
             <div>
-              <span>{selected === null ? "Рабочая область" : "Диалог с ИИ-врачом"}</span>
-              <h4>{selected?.title ?? "Выберите или создайте диалог"}</h4>
+              {selected?.purpose !== null && selected?.purpose !== undefined ? (
+                <span className="assistant-chat__purpose">
+                  <ContactRound size={13} aria-hidden="true" />
+                  из досье
+                </span>
+              ) : null}
+              <h2>{selected?.title ?? "Выберите или создайте диалог"}</h2>
             </div>
             {workspace !== null ? (
-              <span>
+              <span className="assistant-chat__evidence">
                 {countCopy(workspace.evidenceCount, [
                   "подтверждённое значение",
                   "подтверждённых значения",
@@ -101,19 +110,26 @@ export function AssistantPanel(props: AssistantPanelProps) {
               <p>
                 <strong>Интерпретации не будет:</strong> в медицинском профиле нет пола или года
                 рождения.{" "}
-                <a href={profileTabPath(familyId, profileId, "dossier")}>Заполнить профиль</a>
+                <a href={profileTabPath(familyId, profileId, "dossier")}>Заполнить досье</a>
               </p>
             </div>
           ) : null}
 
           <div
-            className="document-agent-workspace__conversation"
+            className="assistant-chat__stream"
             aria-live="polite"
             aria-busy={props.isLoading || props.isSwitching || props.pendingMessage !== null}
           >
             {props.loadError ? (
-              <p className="document-agent-workspace__empty">
+              <p className="assistant-chat__empty">
                 Диалоги пока не открылись. Обновите страницу и попробуйте снова.
+              </p>
+            ) : null}
+            {!props.isLoading && selected === null && !props.loadError ? (
+              <p className="assistant-chat__empty">
+                {canWrite
+                  ? "Выберите диалог слева или создайте новый — например, «Разбор анализов за август». Из досье сюда ведут вопросы к нужному специалисту."
+                  : "Диалогов пока нет."}
               </p>
             ) : null}
             {gateOpen && workspace !== null ? (
@@ -124,6 +140,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
                 onAcknowledge={props.onAcknowledge}
               />
             ) : null}
+            {empty && canWrite ? <Openers onPick={props.onMessageChange} /> : null}
             {!props.isSwitching && selected !== null && selected.acknowledged
               ? workspace?.messages.map((item) => (
                   <ConversationItem key={item.id} item={item} panel={props} />
@@ -131,30 +148,23 @@ export function AssistantPanel(props: AssistantPanelProps) {
               : null}
             {props.pendingMessage !== null ? (
               <>
-                <article className="document-agent-workspace__message is-user is-pending">
-                  {props.addressee !== null ? (
-                    <small>Вопрос: {specialtyLabel[props.addressee]}</small>
-                  ) : null}
-                  <p>{props.pendingMessage}</p>
-                </article>
-                <div className="document-agent-workspace__waiting" role="status">
-                  <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
-                  <span>
-                    {props.addressee === null
-                      ? "ИИ-врач отвечает, затем второй запуск проверяет ответ…"
-                      : `Отвечает специалист (${specialtyLabel[props.addressee]}), затем проверка…`}
-                  </span>
-                </div>
+                <UserMessage
+                  text={props.pendingMessage}
+                  addressee={props.recipient === "consilium" ? null : props.recipient}
+                  pending
+                />
+                <Waiting>
+                  {props.recipient === null || props.recipient === "consilium"
+                    ? "ИИ-врач отвечает, затем второй запуск проверяет ответ…"
+                    : `Отвечает специалист (${specialtyLabel[props.recipient]}), затем проверка…`}
+                </Waiting>
               </>
             ) : null}
             {props.consiliumPending ? (
-              <div className="document-agent-workspace__waiting" role="status">
-                <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
-                <span>
-                  Консилиум работает: каждый специалист читает данные, затем ИИ-врач сводит мнения и
-                  второй запуск проверяет синтез…
-                </span>
-              </div>
+              <Waiting>
+                Консилиум работает: каждый специалист читает данные, затем ИИ-врач сводит мнения и
+                второй запуск проверяет синтез…
+              </Waiting>
             ) : null}
             {props.referralError !== null ? (
               <p className="form-error" role="alert">
@@ -163,22 +173,23 @@ export function AssistantPanel(props: AssistantPanelProps) {
             ) : null}
           </div>
 
-          <AssistantComposer
-            message={props.message}
-            addressee={props.addressee}
-            canSend={canSend}
-            canConvene={canConvene}
-            consiliumPending={props.consiliumPending}
-            panel={workspace?.consiliumPanel ?? []}
-            evidence={props.evidence}
-            hasConversation={selected !== null}
-            sendError={props.sendError}
-            composerRef={props.composerRef}
-            onMessageChange={props.onMessageChange}
-            onAddresseeChange={props.onAddresseeChange}
-            onSend={props.onSend}
-            onConvene={props.onConvene}
-          />
+          <div className="assistant-chat__composer">
+            <AssistantComposer
+              message={props.message}
+              recipient={props.recipient}
+              canSend={canSend}
+              canConvene={canConvene}
+              consiliumPending={props.consiliumPending}
+              panel={workspace?.consiliumPanel ?? []}
+              evidence={props.evidence}
+              hasConversation={selected !== null}
+              sendError={props.sendError}
+              composerRef={props.composerRef}
+              onMessageChange={props.onMessageChange}
+              onRecipientChange={props.onRecipientChange}
+              onSend={props.onSend}
+            />
+          </div>
         </div>
       </div>
     </section>
@@ -192,14 +203,7 @@ function ConversationItem({
   readonly item: AssistantMessage;
   readonly panel: AssistantPanelProps;
 }) {
-  if (item.role === "user") {
-    return (
-      <article className="document-agent-workspace__message is-user">
-        {item.addressee !== null ? <small>Вопрос: {specialtyLabel[item.addressee]}</small> : null}
-        <p>{item.text}</p>
-      </article>
-    );
-  }
+  if (item.role === "user") return <UserMessage text={item.text} addressee={item.addressee} />;
   return (
     <AssistantAnswer
       message={item}

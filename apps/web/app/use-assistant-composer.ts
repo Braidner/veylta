@@ -15,9 +15,13 @@ export function attemptFor(current: Attempt | null, fingerprint: string): Attemp
   return current?.fingerprint === fingerprint ? current : { key: crypto.randomUUID(), fingerprint };
 }
 
+/** Whom the composer writes to: the therapist, one persona, or the whole консилиум. */
+export type Recipient = AssistantSpecialty | "consilium" | null;
+
 /**
- * The composer's state and its two mutations: a message (to the therapist or, through a chip,
- * to one persona) and «Собрать консилиум», where the typed text becomes the panel's question.
+ * The composer's state and its two mutations behind one submit: a message (to the therapist or,
+ * through a chip, to one persona) or «Собрать консилиум» when the консилиум is the recipient —
+ * then the typed text becomes the panel's question.
  */
 export function useAssistantComposer(input: {
   readonly endpoint: string;
@@ -26,16 +30,18 @@ export function useAssistantComposer(input: {
   readonly onWorkspace: (response: AssistantWorkspaceResponse) => void;
 }) {
   const [message, setMessage] = useState("");
-  const [addressee, setAddressee] = useState<AssistantSpecialty | null>(null);
+  const [recipient, setRecipient] = useState<Recipient>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [consiliumPending, setConsiliumPending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const sendAttempt = useRef<Attempt | null>(null);
   const conveneAttempt = useRef<Attempt | null>(null);
   const busy = pendingMessage !== null || consiliumPending || input.conversationId === null;
+  const addressee = recipient === "consilium" ? null : recipient;
 
   async function send(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
+    if (recipient === "consilium") return convene();
     const normalized = message.trim();
     const conversationId = input.conversationId;
     if (normalized.length === 0 || normalized.length > 2_000 || busy || conversationId === null) {
@@ -54,7 +60,7 @@ export function useAssistantComposer(input: {
       );
       sendAttempt.current = null;
       setMessage("");
-      setAddressee(null);
+      setRecipient(null);
       input.onWorkspace(response);
     } catch (error) {
       setSendError(assistantSendErrorCopy(error));
@@ -77,6 +83,7 @@ export function useAssistantComposer(input: {
       );
       conveneAttempt.current = null;
       setMessage("");
+      setRecipient(null);
       input.onWorkspace(response);
     } catch (error) {
       setSendError(assistantConsiliumErrorCopy(error));
@@ -88,27 +95,27 @@ export function useAssistantComposer(input: {
   function reset(): void {
     setSendError(null);
     setMessage("");
-    setAddressee(null);
+    setRecipient(null);
   }
 
   /** The dossier's question, put into the field for the person to read and send. */
-  function prefill(text: string, to: AssistantSpecialty | null): void {
+  function prefill(text: string, to: Recipient): void {
     setSendError(null);
     setMessage(text);
-    setAddressee(to);
+    setRecipient(to);
   }
 
   return {
     message,
     setMessage,
+    recipient,
+    setRecipient,
     addressee,
-    setAddressee,
     pendingMessage,
     consiliumPending,
     sendError,
     fail: setSendError,
     send,
-    convene,
     reset,
     prefill,
   };

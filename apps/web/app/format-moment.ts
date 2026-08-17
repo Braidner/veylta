@@ -8,6 +8,16 @@ export function formatDate(value: string): string {
   );
 }
 
+/** "17 авг., 19:45" — the short form a list row can afford, in the reader's own time zone. */
+export function formatShortMoment(value: string): string {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(value));
+}
+
 /**
  * A moment as the source printed it. A laboratory date without a time reaches us as midnight UTC
  * (the extractor's rule for a date-only source) or as a plain calendar date; showing a clock time

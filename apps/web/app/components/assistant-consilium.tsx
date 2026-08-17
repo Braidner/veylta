@@ -4,13 +4,18 @@ import type { AssistantConsilium, AssistantOpinion } from "@veylta/contracts";
 import { Users } from "lucide-react";
 import {
   agreementVerdictLabel,
-  blockKindLabel,
   invitationCopy,
   refusalCopy,
   specialtyLabel,
   urgencyCopy,
 } from "../assistant";
-import { BlockBody, CheckerNote, type EvidenceIndex, SourceRefs } from "./assistant-blocks";
+import {
+  BlockBody,
+  BlockKind,
+  CheckerNote,
+  type EvidenceIndex,
+  SourceRefs,
+} from "./assistant-blocks";
 
 interface AssistantConsiliumProps {
   readonly consilium: AssistantConsilium;
@@ -109,14 +114,16 @@ function OpinionBody({
         {opinion.answer.blocks.map((block, index) => (
           // biome-ignore lint/suspicious/noArrayIndexKey: blocks have no identity beyond their position in the verified answer.
           <li key={`${opinion.specialty}:${index}`} className="assistant-block">
-            <span className="assistant-block__kind">{blockKindLabel[block.kind]}</span>
-            <BlockBody
-              block={block}
-              familyId={familyId}
-              profileId={profileId}
-              evidence={evidence}
-            />
-            <CheckerNote verdict={verdicts.get(index)} />
+            <BlockKind kind={block.kind} />
+            <div className="assistant-block__body">
+              <BlockBody
+                block={block}
+                familyId={familyId}
+                profileId={profileId}
+                evidence={evidence}
+              />
+              <CheckerNote verdict={verdicts.get(index)} />
+            </div>
           </li>
         ))}
       </ol>

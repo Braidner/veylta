@@ -193,7 +193,7 @@ export function AssistantWorkspace({
           );
           createAttempt.current = null;
         }
-        prefill(question, askAddressee(ask));
+        prefill(question, ask === "consilium" ? "consilium" : askAddressee(ask));
       } catch (error) {
         setCreateError(assistantCreateErrorCopy(error));
       }
@@ -210,7 +210,7 @@ export function AssistantWorkspace({
       isSwitching={isSwitching}
       loadError={state.kind === "error"}
       message={composer.message}
-      addressee={composer.addressee}
+      recipient={composer.recipient}
       pendingMessage={composer.pendingMessage}
       consiliumPending={composer.consiliumPending}
       sendError={composer.sendError}
@@ -221,13 +221,12 @@ export function AssistantWorkspace({
       referralError={referrals.error}
       composerRef={composerRef}
       onMessageChange={composer.setMessage}
-      onAddresseeChange={composer.setAddressee}
+      onRecipientChange={composer.setRecipient}
       onSelectConversation={(conversationId) => void handleSelectConversation(conversationId)}
       onCreateConversation={handleCreateConversation}
       onAcknowledge={() => void handleAcknowledge()}
       onAcceptReferral={(key, block) => void referrals.accept(key, block)}
       onSend={(event) => void composer.send(event)}
-      onConvene={() => void composer.convene()}
     />
   );
 }

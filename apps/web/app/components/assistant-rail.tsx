@@ -1,9 +1,9 @@
 "use client";
 
 import type { AssistantWorkspaceResponse } from "@veylta/contracts";
-import { Plus, X } from "lucide-react";
+import { ContactRound, Plus, X } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
-import { formatDate } from "../format-moment";
+import { formatShortMoment } from "../format-moment";
 import { countCopy } from "../russian-plural";
 
 interface AssistantRailProps {
@@ -45,84 +45,84 @@ export function AssistantRail({
   }
 
   return (
-    <aside className="document-agent-workspace__rail" aria-label="Диалоги с ИИ-врачом">
-      <div className="document-agent-workspace__rail-section">
-        <div className="document-agent-workspace__rail-heading">
-          <div>
-            <strong>Диалоги</strong>
-            <span>{workspace?.conversations.length ?? 0}</span>
-          </div>
-          {canWrite ? (
-            <button
-              className="document-agent-workspace__icon-button"
-              type="button"
-              aria-label="Создать диалог"
-              aria-expanded={isCreating}
-              onClick={() => setIsCreating((current) => !current)}
-              disabled={isLoading}
-            >
-              {isCreating ? <X size={16} /> : <Plus size={17} />}
-            </button>
-          ) : null}
-        </div>
-        {isCreating ? (
-          <form className="document-agent-workspace__new-thread" onSubmit={handleCreate}>
-            <label htmlFor={titleInputId}>Название диалога</label>
-            <input
-              id={titleInputId}
-              value={newTitle}
-              maxLength={80}
-              placeholder="Например, разбор анализов за август"
-              onChange={(event) => setNewTitle(event.target.value)}
-              disabled={isSavingTitle}
-            />
-            <button
-              className="button button--primary"
-              type="submit"
-              disabled={newTitle.trim().length === 0 || isSavingTitle}
-            >
-              {isSavingTitle ? "Создаём…" : "Создать"}
-            </button>
-            {createError !== null ? (
-              <p className="form-error" role="alert">
-                {createError}
-              </p>
-            ) : null}
-          </form>
+    <aside className="assistant-rail" aria-label="Диалоги с ИИ-врачом">
+      <div className="assistant-rail__heading">
+        <strong>Диалоги</strong>
+        <span className="assistant-rail__count">{workspace?.conversations.length ?? 0}</span>
+        {canWrite ? (
+          <button
+            className="assistant-rail__new"
+            type="button"
+            aria-label="Создать диалог"
+            aria-expanded={isCreating}
+            onClick={() => setIsCreating((current) => !current)}
+            disabled={isLoading}
+          >
+            {isCreating ? <X size={16} /> : <Plus size={17} />}
+          </button>
         ) : null}
-        <div className="document-agent-workspace__thread-list">
-          {!isLoading && workspace?.conversations.length === 0 ? (
-            <p className="document-agent-workspace__rail-empty">
-              {canWrite
-                ? "Создайте диалог — например, «Разбор анализов за август»."
-                : "Диалогов пока нет."}
+      </div>
+      {isCreating ? (
+        <form className="assistant-rail__form" onSubmit={handleCreate}>
+          <label htmlFor={titleInputId}>Название диалога</label>
+          <input
+            id={titleInputId}
+            value={newTitle}
+            maxLength={80}
+            placeholder="Например, разбор анализов за август"
+            onChange={(event) => setNewTitle(event.target.value)}
+            disabled={isSavingTitle}
+          />
+          <button
+            className="button button--primary"
+            type="submit"
+            disabled={newTitle.trim().length === 0 || isSavingTitle}
+          >
+            {isSavingTitle ? "Создаём…" : "Создать"}
+          </button>
+          {createError !== null ? (
+            <p className="form-error" role="alert">
+              {createError}
             </p>
           ) : null}
-          {workspace?.conversations.map((conversation) => {
-            const isSelected = conversation.id === workspace.selectedConversationId;
-            return (
+        </form>
+      ) : null}
+      <ul className="assistant-rail__list">
+        {!isLoading && workspace?.conversations.length === 0 ? (
+          <li className="assistant-rail__empty">
+            {canWrite
+              ? "Создайте диалог — например, «Разбор анализов за август»."
+              : "Диалогов пока нет."}
+          </li>
+        ) : null}
+        {workspace?.conversations.map((conversation) => {
+          const isSelected = conversation.id === workspace.selectedConversationId;
+          const at = conversation.lastMessageAt ?? conversation.updatedAt;
+          return (
+            <li key={conversation.id}>
               <button
                 type="button"
-                className={`document-agent-workspace__thread${isSelected ? " is-selected" : ""}`}
-                key={conversation.id}
+                className={`assistant-rail__item${isSelected ? " is-selected" : ""}`}
                 aria-current={isSelected ? "page" : undefined}
                 onClick={() => onSelectConversation(conversation.id)}
                 disabled={isSwitching}
               >
-                <span className="document-agent-workspace__thread-title">
-                  <strong>{conversation.title}</strong>
-                  <time dateTime={conversation.lastMessageAt ?? conversation.updatedAt}>
-                    {formatDate(conversation.lastMessageAt ?? conversation.updatedAt)}
-                  </time>
-                </span>
+                <strong>
+                  {conversation.purpose !== null ? (
+                    <ContactRound size={13} aria-hidden="true" />
+                  ) : null}
+                  {conversation.title}
+                </strong>
                 <span>
+                  <time dateTime={at}>{formatShortMoment(at)}</time>
+                  {" · "}
                   {countCopy(conversation.messageCount, ["сообщение", "сообщения", "сообщений"])}
                 </span>
               </button>
-            );
-          })}
-        </div>
-      </div>
+            </li>
+          );
+        })}
+      </ul>
     </aside>
   );
 }
