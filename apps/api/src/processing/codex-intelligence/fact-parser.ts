@@ -1,4 +1,5 @@
 import { LAB_FACT_VALIDATION_ISSUES } from "@veylta/contracts";
+import type { AnalyteCatalogEntry } from "../document-intelligence-provider.js";
 import type { StrictLabExtractionFact, ValidationIssue } from "../synthetic-lab-parser.js";
 import { factFields, referenceRangeFields } from "./answer-schema.js";
 import { keyPattern, limits } from "./constants.js";
@@ -10,8 +11,10 @@ import {
   exactKeys,
   object,
   optionalBoundedString,
+  printedPhrase,
 } from "./field-parsers.js";
-import { valueWithoutRepeatedUnit, verifiedNormalization } from "./readings.js";
+import { printedName } from "./printed-name.js";
+import { printedUnit, valueWithoutRepeatedUnit, verifiedNormalization } from "./readings.js";
 import type { SourceText } from "./source-text.js";
 
 /** Document-level defaults every fact inherits unless it carries its own explicit metadata. */
@@ -71,6 +74,7 @@ export function parseFact(
   value: unknown,
   sourceText: SourceText,
   documentMetadata: DocumentMetadata,
+  catalog: readonly AnalyteCatalogEntry[],
 ): StrictLabExtractionFact {
   const fact = object(value);
   exactKeys(fact, factFields);
@@ -83,16 +87,22 @@ export function parseFact(
   if (sampledAt !== null && resultedAt !== null && sampledAt > resultedAt)
     invalidOutput("invalid_timestamp");
   const issues = parseValidationIssues(fact.validationIssues);
-  const sourceUnit = boundedString(fact.sourceUnit, 100);
+  const sourceUnit = printedUnit(boundedString(fact.sourceUnit, 100));
   const sourceValue = valueWithoutRepeatedUnit(boundedString(fact.sourceValue, 100), sourceUnit);
   const source = sourceText.provenance(fact.source, sourceValue);
   const normalization = verifiedNormalization(sourceValue, normalizedValue, normalizedUnit);
+  const proposedCanonicalCode = optionalBoundedString(fact.proposedCanonicalCode, 100);
   return {
     factKey,
-    sourceName: boundedString(fact.sourceName, 200),
+    sourceName: printedName(
+      printedPhrase(fact.sourceName, 200),
+      source.fragment,
+      proposedCanonicalCode,
+      catalog,
+    ),
     sourceValue,
     sourceUnit,
-    proposedCanonicalCode: optionalBoundedString(fact.proposedCanonicalCode, 100),
+    proposedCanonicalCode,
     proposedNormalizedValue: normalization.value,
     proposedNormalizedUnit: normalization.unit,
     proposedSampledAt: sampledAt,

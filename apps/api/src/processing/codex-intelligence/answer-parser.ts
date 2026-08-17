@@ -4,7 +4,10 @@ import {
   LAB_EXTRACTION_SCHEMA_VERSION,
 } from "@veylta/contracts";
 import type { DocumentPageImage } from "../document-images.js";
-import type { DocumentIntelligenceV2Output } from "../document-intelligence-provider.js";
+import type {
+  AnalyteCatalogEntry,
+  DocumentIntelligenceV2Output,
+} from "../document-intelligence-provider.js";
 import type { ParsedDocumentPage, StrictLabExtractionFact } from "../synthetic-lab-parser.js";
 import { KeyRegistry, keptItems } from "./answer-items.js";
 import { classificationFields } from "./answer-schema.js";
@@ -33,6 +36,8 @@ export interface AnswerContext {
   readonly runtimeVersion: string;
   /** Catalog codes the schema allowed; null when no catalog travelled. */
   readonly knownCodes: ReadonlySet<string> | null;
+  /** The catalog itself, so a slipped name can be recovered from its printed spellings. */
+  readonly catalog: readonly AnalyteCatalogEntry[];
 }
 
 /**
@@ -126,7 +131,9 @@ export class CodexAnswerParser {
   ): StrictLabExtractionFact[] {
     const keys = new KeyRegistry();
     return keptItems(proposals, (proposal) => {
-      const fact = this.withKnownCode(parseFact(proposal, sourceText, documentMetadata));
+      const fact = this.withKnownCode(
+        parseFact(proposal, sourceText, documentMetadata, this.context.catalog),
+      );
       const factKey = keys.claim(fact.factKey);
       return factKey === fact.factKey ? fact : { ...fact, factKey };
     });

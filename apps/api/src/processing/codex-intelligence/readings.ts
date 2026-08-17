@@ -33,6 +33,51 @@ export function valueWithoutRepeatedUnit(value: string, unit: string | null): st
   return trimmed.length === 0 ? value : trimmed;
 }
 
+/** What Veylta stores when a row prints no unit — an index, a ratio, a titre. */
+export const unitlessMark = "—";
+
+const unitPlaceholders = new Set([
+  "",
+  "-",
+  "–",
+  "—",
+  "/",
+  "нет",
+  "не указана",
+  "не указано",
+  "не указан",
+  "ед. не указана",
+  "единица не указана",
+  "без единиц",
+  "без ед.",
+  "n/a",
+  "na",
+  "none",
+  "null",
+  "unitless",
+]);
+
+/**
+ * The unit as the source prints it, or the unitless mark. A row without a unit tempts a model
+ * to fill the field with whatever stands next to the value — the reference range, an out-of-
+ * range flag, a placeholder — none of which is a unit; each is folded to the mark
+ * deterministically so the printed value survives review under an honest unit.
+ */
+export function printedUnit(unit: string): string {
+  const compact = unit.normalize("NFKC").trim().replace(/\s+/g, " ");
+  const folded = compact.toLocaleLowerCase("ru-RU");
+  if (
+    unitPlaceholders.has(folded) ||
+    /^[<>≤≥]\s*\d/.test(compact) ||
+    /^\d+(?:[.,]\d+)?\s*[-–—]\s*\d+(?:[.,]\d+)?$/.test(compact) ||
+    /^[pq↑↓!*]$/.test(compact) ||
+    /^(?:h|l|hi|lo|high|low)$/i.test(compact)
+  ) {
+    return unitlessMark;
+  }
+  return compact;
+}
+
 export interface Normalization {
   readonly value: string | null;
   readonly unit: string | null;

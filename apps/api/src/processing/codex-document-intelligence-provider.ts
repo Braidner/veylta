@@ -72,6 +72,7 @@ export function createCodexDocumentIntelligenceProvider(
           modelId: profile.modelId,
           runtimeVersion: run.runtimeVersion,
           knownCodes: knownCodes(catalog),
+          catalog,
         });
         return { ...parser.parse(run.output), exchange: run.exchange };
       } catch (error) {

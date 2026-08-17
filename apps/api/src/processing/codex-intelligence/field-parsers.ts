@@ -17,6 +17,17 @@ export function oneOf<Member extends string>(value: unknown, members: readonly M
   return value as Member;
 }
 
+/**
+ * A printed phrase the model copied across a line break — a name broken over two lines, say —
+ * is the same phrase; whitespace runs collapse to one space before the bound is applied.
+ */
+export function printedPhrase(value: unknown, maximum: number): string {
+  return boundedString(
+    typeof value === "string" ? value.replace(/\s+/g, " ").trim() : value,
+    maximum,
+  );
+}
+
 export function boundedString(value: unknown, maximum: number): string {
   const hasControlCharacter =
     typeof value === "string" &&
