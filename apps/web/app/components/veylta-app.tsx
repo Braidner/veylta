@@ -2164,15 +2164,22 @@ function ProfileWorkspace({
     <section
       className={`profile-shell profile-shell--${detail === null ? activeTab : detail === "document" ? "documents" : "assistant"}${detail === null ? "" : " profile-shell--document-detail"}`}
       aria-label={
-        detail === null && activeTab !== "documents"
+        detail === null && activeTab !== "documents" && activeTab !== "dossier"
           ? undefined
           : detail === "assistant"
             ? "ИИ-врач · второе мнение"
-            : "Документы профиля"
+            : detail === null && activeTab === "dossier"
+              ? "Досье"
+              : "Документы профиля"
       }
-      aria-labelledby={detail === null && activeTab !== "documents" ? "profile-title" : undefined}
+      aria-labelledby={
+        detail === null && activeTab !== "documents" && activeTab !== "dossier"
+          ? "profile-title"
+          : undefined
+      }
     >
-      {detail === null && activeTab !== "documents" ? (
+      {/* The documents and dossier tabs open on their own identity — the greeting steps aside. */}
+      {detail === null && activeTab !== "documents" && activeTab !== "dossier" ? (
         <div className="profile-heading">
           <div>
             <p className="context-line">

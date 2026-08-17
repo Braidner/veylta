@@ -82,8 +82,8 @@ test("capture the консилиум screenshot", async ({ page }) => {
   const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
   // The dossier: passport, Veylta's own reading of the two values, their dynamics.
-  await expect(page.getByTestId("dossier-attention")).toContainText("Требует внимания");
-  await expect(page.getByTestId("dossier-indicator")).toHaveCount(2);
+  await expect(page.getByTestId("dossier-attention")).toContainText("Требуют внимания");
+  await expect(page.getByTestId("dossier-gauge")).toHaveCount(1);
   // The dossier is one tall page — passport, assessment, dynamics — so this frame is taller.
   await page.setViewportSize({ width: 1440, height: 1320 });
   await page.evaluate(() => {

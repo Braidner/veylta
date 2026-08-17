@@ -122,16 +122,18 @@ The full first slice remains deliberately narrow:
     synthesises with the highest urgency and names where they agree and differ,
     every opinion is shown beside the synthesis, and a chip asks one persona
     directly (docs/assistants.md slice 2, delivered).
-22. open the person's «Досье»: a passport of what they recorded about themselves
-    (sex, age, height, weight, BMI as a number, conditions, medications,
-    allergies) with an inline form for the two facts interpretation starts
-    from; Veylta's deterministic reading of every confirmed value against its
-    printed laboratory reference — outside the range or flagged, grouped by
-    the specialty that reads it, with «В план: визит» and «Спросить ИИ-врача,
-    насколько срочно» — and the dynamics of every indicator over time
-    (sparkline on the reference band, change since the previous value, results
-    in a row outside the range). No score, no diagnosis, no conversion; the
-    heading carries the same identity chips on every tab (delivered).
+22. open the person's «Досье» — the cabinet shown to a doctor: a passport of
+    what they recorded about themselves (sex, age, height, weight, BMI as a
+    number, conditions, medications, allergies) with an inline form for the two
+    facts interpretation starts from; a rail of the record's areas with counts
+    and outside marks; the whole record or one area in focus — Veylta's
+    deterministic reading of every confirmed value against its printed
+    laboratory reference as a gauge card (band, marker, change since the
+    previous value, results in a row outside the range), grouped by the
+    specialty that reads it, with «В план: визит» and «Спросить ИИ-врача,
+    насколько срочно», then the remaining indicators. No score, no diagnosis,
+    no conversion; the heading carries the same identity chips on the other
+    tabs (delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

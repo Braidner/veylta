@@ -101,23 +101,11 @@ export function DossierPassport({
           {initial.length === 0 ? <ContactRound size={22} /> : initial}
         </span>
         <div>
-          <p className="context-line">Досье</p>
           <h2>{displayName}</h2>
           {passport !== null ? (
             <p className="dossier-passport__line">{identityLine(passport)}</p>
           ) : null}
         </div>
-        {canWrite ? (
-          <button
-            type="button"
-            className="dossier-passport__edit"
-            aria-expanded={editing}
-            onClick={onToggleEditing}
-          >
-            <Pencil size={15} aria-hidden="true" />
-            {editing ? "Скрыть редактор" : "Изменить досье"}
-          </button>
-        ) : null}
       </div>
 
       {passport !== null && !passport.ready ? (
@@ -209,6 +197,17 @@ export function DossierPassport({
       ) : (
         <p className="dossier-passport__loading">Читаем досье…</p>
       )}
+      {canWrite ? (
+        <button
+          type="button"
+          className="dossier-passport__edit"
+          aria-expanded={editing}
+          onClick={onToggleEditing}
+        >
+          <Pencil size={15} aria-hidden="true" />
+          {editing ? "Скрыть редактор" : "Изменить досье"}
+        </button>
+      ) : null}
     </section>
   );
 }

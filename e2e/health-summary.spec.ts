@@ -29,6 +29,8 @@ async function uploadAndFinishReview(
   filename: string,
   decision: "confirm" | "correct",
 ): Promise<void> {
+  // The dossier carries no upload; documents enter from the overview or the documents tab.
+  await page.getByRole("tab", { name: "Обзор", exact: true }).click();
   await uploadSyntheticDocument(page, {
     name: filename,
     mimeType: "application/pdf",
@@ -64,6 +66,7 @@ test("profile summary is a source-first immutable version after final human revi
     }),
   ).toBeVisible();
 
+  await page.getByRole("tab", { name: "Обзор", exact: true }).click();
   await uploadSyntheticDocument(page, {
     name: `summary-${crypto.randomUUID().slice(0, 8)}.pdf`,
     mimeType: "application/pdf",

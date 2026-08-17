@@ -7,26 +7,6 @@ import {
 } from "@veylta/contracts";
 import { specialtyLabel } from "./assistant";
 
-/** How the dossier groups indicators; every code lands in exactly one area. */
-export const dossierAreaLabel: Record<AnalyteArea, string> = {
-  blood: "Кровь",
-  iron: "Обмен железа",
-  coagulation: "Свёртывание",
-  lipids: "Липиды",
-  liver: "Печень",
-  pancreas: "Поджелудочная железа",
-  kidney: "Почки",
-  electrolytes: "Электролиты и минералы",
-  glucose: "Углеводный обмен",
-  thyroid: "Щитовидная железа",
-  hormones: "Гормоны",
-  inflammation: "Воспаление",
-  protein: "Белки",
-  vitamins: "Витамины",
-  prostate: "Простата",
-  other: "Другие показатели",
-};
-
 /** Where a value stands against the source's own reference; a comparison value has no number. */
 export type PointStatus = "above" | "below" | "within" | "flagged" | "unknown";
 
@@ -39,6 +19,9 @@ export interface SeriesPoint {
   readonly rangeText: string | null;
   readonly low: number | null;
   readonly high: number | null;
+  /** The bounds as the laboratory printed them, for labels under a scale. */
+  readonly lowText: string | null;
+  readonly highText: string | null;
   readonly documentId: string;
 }
 
@@ -104,6 +87,8 @@ function pointOf(item: ObservationHistoryItem): SeriesPoint {
     rangeText: item.referenceRange?.sourceText ?? null,
     low: numberOf(item.referenceRange?.sourceLow),
     high: numberOf(item.referenceRange?.sourceHigh),
+    lowText: item.referenceRange?.sourceLow ?? null,
+    highText: item.referenceRange?.sourceHigh ?? null,
     documentId: item.sourceDocument.id,
   };
 }

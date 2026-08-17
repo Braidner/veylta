@@ -202,19 +202,25 @@ disagreement can be averaged away. A message with `addressee` runs that persona 
 (`speaker`), never touching the therapist's thread. Exchanges: `opinion`/`checker` per specialty,
 `synthesis`, `checker`.
 
-**Досье** (web tab `dossier`, alias `plan` in `app/paths.ts`) is the person's page: the passport
-(`app/dossier-passport.ts`: `passportOf`, `identityLine`, `identityChips` — BMI as a number only,
-never a category), Veylta's deterministic reading of every confirmed value (`app/dossier.ts`:
-`buildDossierSeries` — one series per code and printed unit, oldest first, status from the printed
-bounds, then the laboratory's flag, else `unknown`; `seriesAssessment` — headline, movement,
-streak, next step naming the specialty; `attentionBySpecialty`), and the components
-`dossier-panel.tsx` (loads the medical profile and the paged observation history) →
-`dossier-passport.tsx` (inline sex/birth-year form while not ready), `dossier-attention.tsx`
-(«В план: визит» writes a `clinician` item; «Спросить ИИ-врача, насколько срочно» links the
-assistant), `dossier-dynamics.tsx` + `dossier-sparkline.tsx`. The heading's `identity-chips.tsx`
-reads the same passport. The synthetic parser and the fake codex read «low–high unit» references
-into printed bounds (`processing/printed-bounds.ts`), so the e2e stand exercises out-of-range
-values without stubbing the API.
+**Досье** (web tab `dossier`, alias `plan` in `app/paths.ts`) is the cabinet a person shows
+their doctor; the profile greeting steps aside on this tab. Pure modules: `app/dossier-passport.ts`
+(`passportOf`, `identityLine`, `identityChips` — BMI as a number only, never a category),
+`app/dossier.ts` (`buildDossierSeries` — one series per code and printed unit, oldest first,
+status from the printed bounds, then the laboratory's flag, else `unknown`; `seriesAssessment`;
+`attentionBySpecialty`), `app/dossier-areas.ts` (`areaSummaries` in `ANALYTE_AREAS` order,
+`statusCounts`, `statusLine`, `readersCopy`), `app/dossier-scale.ts` (`gaugeScale`: the printed
+bounds as a band on a track, the value as a marker, the track stretched so an outside value stays
+visible — placed, never graded). Components: `dossier-panel.tsx` (loads the medical profile and
+the paged observation history; holds the selection and the editing mode) → left `dossier-passport.tsx`
+(inline sex/birth-year form while not ready; «Изменить досье» opens the editor in the right
+column) + `dossier-rail.tsx` (the record's areas with counts and outside marks); right
+`dossier-focus.tsx` (whole record or one area: heading with `StatusStrip`, `dossier-attention.tsx`
+— gauge cards grouped by specialty with «В план: визит» writing a `clinician` item and «Спросить
+ИИ-врача, насколько срочно» — then area tiles or the area's remaining `dossier-gauge.tsx` cards with
+`dossier-sparkline.tsx`). The heading's `identity-chips.tsx` reads the same passport on the other
+tabs. The synthetic parser and the fake codex read «low–high unit» references into printed bounds
+(`processing/printed-bounds.ts`), so the e2e stand exercises out-of-range values without stubbing
+the API.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the

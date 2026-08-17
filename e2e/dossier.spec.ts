@@ -2,10 +2,10 @@ import { expect, test } from "@playwright/test";
 import { recordBasics } from "./support/dossier";
 import { confirmResult, correctResult, openReview } from "./support/review";
 
-// The dossier end to end: the passport asks for sex and birth year right there, Veylta reads
-// every confirmed value against its printed reference and names the specialty for the ones
-// outside it, a visit goes into the care plan on the same page, and every indicator's dynamics
-// card links to its history.
+// The dossier end to end — the cabinet a person shows their doctor: the passport asks for sex
+// and birth year right there, the rail lists the record's areas with what stands outside, the
+// page in focus reads every confirmed value against its printed reference on a scale, names the
+// specialty, puts a visit into the care plan on the same page, and every card links to history.
 
 test("the dossier reads confirmed values against their references and sends the person to a doctor", async ({
   page,
@@ -18,26 +18,45 @@ test("the dossier reads confirmed values against their references and sends the 
   const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
 
   await page.goto(`${profileUrl}?tab=dossier`);
+  // The greeting steps aside: the passport is the page's identity.
+  await expect(page.locator(".profile-heading")).toHaveCount(0);
   const passport = page.getByTestId("dossier-passport");
   await expect(passport).toContainText("пол и возраст не указаны");
   await expect(passport.getByTestId("dossier-basics")).toContainText(
     "Пол и год рождения — с них начинается любая интерпретация.",
   );
-  const heading = page.locator(".profile-heading__access");
-  await expect(heading.getByRole("link", { name: "Указать пол и год рождения" })).toBeVisible();
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
   await expect(passport.getByText("1990", { exact: true })).toBeVisible();
-  // The heading's identity chip follows the passport without a reload.
-  await expect(heading).toContainText("Женщина · 36 лет");
-  await expect(heading.getByRole("link", { name: "Указать пол и год рождения" })).toHaveCount(0);
 
+  // The rail: the whole record, then the areas with data, each with its count and what is outside.
+  const rail = page.getByTestId("dossier-rail");
+  const all = rail.getByRole("button", { name: /^Всё досье/ });
+  await expect(all).toHaveAttribute("aria-current", "true");
+  await expect(all).toContainText("2");
+  const thyroid = rail.getByRole("button", {
+    name: "Щитовидная железа: 1 показатель, 1 вне референса",
+  });
+  await expect(thyroid.locator(".dossier-rail__alert")).toHaveText("1");
+  await expect(rail.getByRole("button", { name: /^Другие показатели/ })).toBeVisible();
+
+  const focus = page.getByTestId("dossier-focus");
+  await expect(focus.getByRole("heading", { level: 2 })).toHaveText("Всё досье");
+  await expect(focus).toContainText("2 показателя · 1 вне референса · 1 в референсе");
   const attention = page.getByTestId("dossier-attention");
-  await expect(attention).toContainText("Требует внимания: 1 показатель");
-  await expect(attention).toContainText("из 2 подтверждённых");
+  await expect(attention).toContainText("Требуют внимания: 1 показатель");
   const group = attention.locator('[data-specialty="endocrinologist"]');
   await expect(group).toContainText("К специалисту: эндокринолог");
-  await expect(group).toContainText("ТТГ — 9.9 мМЕ/л");
-  await expect(group).toContainText("выше референса лаборатории (5.0–8.0 synthetic-unit)");
+  const card = group.getByTestId("dossier-gauge");
+  await expect(card).toHaveCount(1);
+  await expect(card).toContainText("ТТГ");
+  await expect(card).toContainText("9.9");
+  await expect(card).toContainText("выше референса");
+  await expect(card.locator(".dossier-gauge__bounds")).toHaveText("5.08.0");
+  await expect(card).toContainText("Щитовидная железа · читает эндокринолог");
+  await expect(card.getByRole("link", { name: "История" })).toHaveAttribute(
+    "href",
+    /\?tab=history&canonicalCode=tsh$/,
+  );
   await expect(
     group.getByRole("link", { name: "Спросить ИИ-врача, насколько срочно" }),
   ).toHaveAttribute("href", /\/assistants\/physician$/);
@@ -47,27 +66,32 @@ test("the dossier reads confirmed values against their references and sends the 
   const plan = page.getByRole("region", { name: "План заботы" });
   await expect(plan.getByText("Визит: эндокринолог — ТТГ")).toBeVisible();
 
-  const cards = page.getByTestId("dossier-indicator");
-  await expect(cards).toHaveCount(2);
-  const thyroid = cards.filter({ hasText: "ТТГ" });
-  await expect(thyroid).toContainText("выше референса");
-  await expect(thyroid).toContainText("9.9");
-  await expect(thyroid).toContainText("референс 5.0–8.0 synthetic-unit");
-  await expect(thyroid).toContainText("1 значение");
-  await expect(thyroid.getByRole("link", { name: "История показателя" })).toHaveAttribute(
-    "href",
-    /\?tab=history&canonicalCode=tsh$/,
-  );
-  await expect(page.getByRole("heading", { name: "Щитовидная железа" })).toBeVisible();
-  const other = cards.filter({ hasText: "СИНТЕТИЧЕСКИЙ АНАЛИТ B" });
+  // Into one area from its tile, then from the rail.
+  await focus.locator('.dossier-area-tile[data-area="thyroid"]').click();
+  await expect(focus.getByRole("heading", { level: 2 })).toHaveText("Щитовидная железа");
+  await expect(focus).toContainText("1 показатель · 1 вне референса · читает эндокринолог");
+  await expect(thyroid).toHaveAttribute("aria-current", "true");
+  await expect(focus.getByTestId("dossier-gauge")).toHaveCount(1);
+  await expect(focus.getByTestId("dossier-gauge")).not.toContainText("читает эндокринолог");
+
+  await rail.getByRole("button", { name: /^Другие показатели/ }).click();
+  await expect(focus.getByRole("heading", { level: 2 })).toHaveText("Другие показатели");
+  await expect(focus).toContainText("1 показатель · всё в референсе · читает терапевт");
+  await expect(focus.getByTestId("dossier-attention")).toContainText("Требующих внимания нет");
+  const other = focus.getByTestId("dossier-gauge");
+  await expect(other).toHaveCount(1);
+  await expect(other).toContainText("СИНТЕТИЧЕСКИЙ АНАЛИТ B");
   await expect(other).toContainText("в референсе");
   await expect(other).toContainText("12.5");
+  await expect(other.locator(".dossier-gauge__bounds")).toHaveText("10.015.0");
 
-  // The passport survives a reload with the plan item and the assessment.
-  await page.reload();
+  // The overview's identity chips follow the passport; the dossier survives a reload.
+  await page.goto(profileUrl);
+  await expect(page.locator(".profile-heading__access")).toContainText("Женщина · 36 лет");
+  await page.goto(`${profileUrl}?tab=dossier`);
   await expect(page.getByTestId("dossier-passport")).toContainText("Женщина");
   await expect(page.getByTestId("dossier-attention")).toContainText(
-    "Требует внимания: 1 показатель",
+    "Требуют внимания: 1 показатель",
   );
   await expect(
     page.getByRole("region", { name: "План заботы" }).getByText("Визит: эндокринолог — ТТГ"),
