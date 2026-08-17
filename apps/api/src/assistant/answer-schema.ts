@@ -38,7 +38,7 @@ function blockOf(kind: string, properties: Record<string, unknown>) {
     type: "object",
     additionalProperties: false,
     required: ["kind", ...Object.keys(properties)],
-    properties: { kind: { type: "string", const: kind }, ...properties },
+    properties: { kind: { type: "string", enum: [kind] }, ...properties },
   };
 }
 

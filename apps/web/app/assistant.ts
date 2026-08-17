@@ -84,6 +84,7 @@ export const specialtyLabel: Record<AssistantSpecialty, string> = {
   dietitian: "диетолог",
   physiotherapist: "физиотерапевт",
   psychiatrist: "психиатр",
+  emergency: "неотложная помощь",
   other: "профильный специалист",
 };
 

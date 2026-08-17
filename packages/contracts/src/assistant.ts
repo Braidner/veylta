@@ -38,6 +38,7 @@ export const ASSISTANT_SPECIALTIES = [
   "dietitian",
   "physiotherapist",
   "psychiatrist",
+  "emergency",
   "other",
 ] as const;
 export const ASSISTANT_MISSING_CONTEXTS = [
