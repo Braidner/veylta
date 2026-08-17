@@ -38,6 +38,12 @@ const page = {
     "Название/показатель   Результат   Референсные значения **",
     "Концентрация   5.82 ммоль/л   3.2 - 7.3",
     "Другой заголовок",
+    "6,73   q",
+    "Омега-3 индекс (отношение суммы",
+    "эйкозапентаеновой (EPA) и",
+    "докозагексаеновой (DHA) кислот к",
+    "общему содержанию жирных кислот)",
+    "%",
   ].join("\n"),
   extractionMethod: "pdf_text_layer",
   extractionVersion: "pdfjs-dist/6.2.108",
@@ -195,6 +201,28 @@ test("a name set as a heading over the value row is found in the lines above it"
     "context" in stored,
     false,
     "the binding context is never part of the stored source",
+  );
+});
+
+test("a name printed under a value-first cell across several lines is found below it", async () => {
+  const output = await analyzed([
+    fact({
+      factKey: "a",
+      sourceName:
+        "Омега-3 индекс (отношение суммы\nэйкозапентаеновой (EPA) и\nдокозагексаеновой (DHA) кислот к\nобщему содержанию жирных кислот)",
+      sourceValue: "6,73",
+      sourceUnit: "%",
+      // A quote that joins printed lines resolves to the unique value line, short as it is.
+      source: {
+        pageNumber: 1,
+        fragment: "6,73   q\nОмега-3 индекс (отношение суммы эйкозапентаеновой (EPA) и",
+      },
+    }),
+  ]);
+  assert.equal(output.extraction.items[0]?.source.fragment, "6,73   q");
+  assert.equal(
+    output.extraction.items[0]?.sourceName,
+    "Омега-3 индекс (отношение суммы эйкозапентаеновой (EPA) и докозагексаеновой (DHA) кислот к общему содержанию жирных кислот)",
   );
 });
 

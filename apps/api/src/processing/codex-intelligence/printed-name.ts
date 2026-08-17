@@ -58,7 +58,7 @@ function printedSpan(fragment: string, key: string): string | null {
  */
 export function printedName(
   proposed: string,
-  source: { readonly fragment: string; readonly context: string },
+  source: { readonly fragment: string; readonly context: string; readonly heading: string },
   proposedCode: string | null,
   catalog: readonly AnalyteCatalogEntry[],
 ): string {
@@ -67,6 +67,8 @@ export function printedName(
     const printed = printedSpan(source.fragment, key) ?? printedSpan(source.context, key);
     if (printed !== null) return printed;
   }
+  // Recovery reads the row and its heading only: a spelling printed below the value could be
+  // the next row's, and a recovered name must never be a neighbour's.
   const entry = proposedCode === null ? null : catalog.find((item) => item.code === proposedCode);
   if (entry !== null && entry !== undefined) {
     const spellings = [
@@ -74,7 +76,7 @@ export function printedName(
     ].sort((a, b) => b.length - a.length);
     for (const spelling of spellings) {
       const printed =
-        printedSpan(source.fragment, spelling) ?? printedSpan(source.context, spelling);
+        printedSpan(source.fragment, spelling) ?? printedSpan(source.heading, spelling);
       if (printed !== null) return printed;
     }
   }

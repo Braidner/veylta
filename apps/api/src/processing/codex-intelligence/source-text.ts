@@ -8,11 +8,13 @@ export interface SourceProvenance {
   readonly pageNumber: number;
   readonly fragment: string;
   /**
-   * The fragment with the few printed lines around it — up to four above, two below — where
-   * a laboratory prints a row's name as a heading over its value line. For binding a name,
-   * never stored.
+   * The fragment with the few printed lines around it — up to four above and four below —
+   * where a laboratory prints a row's name as a heading over its value line, or under a
+   * value-first cell across several lines. For binding a name, never stored.
    */
   readonly context: string;
+  /** The fragment with the lines above it only: where a catalog spelling may be recovered from. */
+  readonly heading: string;
 }
 
 interface Span {
@@ -20,11 +22,16 @@ interface Span {
   readonly end: number;
 }
 
-function boundedSourceFragment(value: unknown): string {
+/**
+ * A quote the model offers must be substantial (a bare number would bind anywhere); the page
+ * line(s) it resolves to may be short — a value cell of its own — because their place on the
+ * page is already unique.
+ */
+function boundedSourceFragment(value: unknown, minimum = 12): string {
   const normalized = typeof value === "string" ? value.replaceAll("\r\n", "\n") : value;
   if (
     typeof normalized !== "string" ||
-    normalized.length < 12 ||
+    normalized.length < minimum ||
     normalized.length > limits.fragmentCharacters ||
     normalized !== normalized.trim() ||
     [...normalized].some((character) => {
@@ -125,8 +132,9 @@ export class SourceText {
     const lineEnd = followingLineBreak < 0 ? pageText.length : followingLineBreak;
     return {
       pageNumber,
-      fragment: boundedSourceFragment(pageText.slice(lineStart, lineEnd).trim()),
-      context: surroundingLines(pageText, lineStart, lineEnd, 4, 2),
+      fragment: boundedSourceFragment(pageText.slice(lineStart, lineEnd).trim(), 1),
+      context: surroundingLines(pageText, lineStart, lineEnd, 4, 4),
+      heading: surroundingLines(pageText, lineStart, lineEnd, 4, 0),
     };
   }
 }
