@@ -18,10 +18,11 @@ test("the medical profile is user-authored, revisioned and singleton-safe", asyn
     assert.equal(empty.statusCode, 200, empty.body);
     assert.equal(empty.headers["cache-control"], "no-store");
     assert.deepEqual(empty.json(), {
-      contractVersion: "medical-profile/v1",
+      contractVersion: "medical-profile/v2",
       profileId: owner.body.profile.id,
       canWrite: true,
       entries: [],
+      measurements: { heightCm: [], weightKg: [] },
       interpretationReady: false,
     });
 
@@ -158,6 +159,61 @@ test("the medical profile is user-authored, revisioned and singleton-safe", asyn
       "SELECT count(*) AS count FROM medical_profile_entries WHERE archived_at IS NOT NULL",
     );
     assert.equal(rows.rows[0]?.count, 1);
+
+    // Height and weight are read over time: an archived measurement stays in the series in the
+    // order it was recorded, while `entries` keeps only the active one.
+    const firstWeightId = randomUUID();
+    for (const [id, value, recordedOn] of [
+      [firstWeightId, "80", "2026-06-01"],
+      [randomUUID(), "178", "2026-05-20"],
+    ] as const) {
+      const measurement = await app.inject({
+        method: "PUT",
+        url: `${path}/entries/${id}`,
+        headers: { cookie: owner.cookie, origin: webOrigin },
+        payload: { kind: id === firstWeightId ? "weight_kg" : "height_cm", value, recordedOn },
+      });
+      assert.equal(measurement.statusCode, 201, measurement.body);
+    }
+    const weightArchived = await app.inject({
+      method: "PUT",
+      url: `${path}/entries/${firstWeightId}/archive`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { revision: 1 },
+    });
+    assert.equal(weightArchived.statusCode, 200, weightArchived.body);
+    const secondWeight = await app.inject({
+      method: "PUT",
+      url: `${path}/entries/${randomUUID()}`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { kind: "weight_kg", value: "82,5", recordedOn: "2026-07-01" },
+    });
+    assert.equal(secondWeight.statusCode, 201, secondWeight.body);
+    const measured = await app.inject({
+      method: "GET",
+      url: path,
+      headers: { cookie: owner.cookie },
+    });
+    const body = measured.json();
+    assert.deepEqual(
+      body.measurements.weightKg.map((point: { value: string; recordedOn: string | null }) => [
+        point.value,
+        point.recordedOn,
+      ]),
+      [
+        ["80", "2026-06-01"],
+        ["82.5", "2026-07-01"],
+      ],
+    );
+    assert.deepEqual(
+      body.measurements.heightCm.map((point: { value: string }) => point.value),
+      ["178"],
+    );
+    assert.equal(
+      body.entries.filter((entry: { kind: string }) => entry.kind === "weight_kg").length,
+      1,
+    );
+    assert.match(body.measurements.weightKg[0].at, /^\d{4}-\d{2}-\d{2}T/);
   } finally {
     await close();
   }

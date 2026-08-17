@@ -8928,13 +8928,20 @@ body:has(.upload-dialog[open]) {
   position: sticky;
   top: 88px;
   display: grid;
-  gap: 16px;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+  align-content: start;
+  max-height: calc(100dvh - 88px - 12px);
+  padding-right: 2px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .dossier-main {
   display: grid;
   gap: 20px;
   min-width: 0;
+  scroll-margin-top: 92px;
 }
 
 .dossier-section__heading {
@@ -8969,8 +8976,8 @@ body:has(.upload-dialog[open]) {
 /* Passport */
 .dossier-passport {
   display: grid;
-  gap: 14px;
-  padding: 18px;
+  gap: 12px;
+  padding: 14px 16px;
   background: var(--color-canvas);
   border: 1px solid var(--color-line);
   border-radius: 16px;
@@ -8978,55 +8985,206 @@ body:has(.upload-dialog[open]) {
 
 .dossier-passport__identity {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 10px;
   align-items: center;
 }
 
 .dossier-passport__avatar {
   display: grid;
-  width: 46px;
-  height: 46px;
+  width: 40px;
+  height: 40px;
   color: oklch(0.99 0.005 255);
   background: linear-gradient(135deg, var(--color-primary-start), var(--color-primary-end));
-  border-radius: 14px;
-  font-size: 1.25rem;
+  border-radius: 12px;
+  font-size: 1.125rem;
   font-weight: 700;
   place-items: center;
 }
 
 .dossier-passport__identity h2 {
   margin: 0;
-  font-size: 1.125rem;
+  font-size: 1.0625rem;
   line-height: 1.25;
   letter-spacing: -0.01em;
   overflow-wrap: anywhere;
 }
 
 .dossier-passport__line {
-  margin: 3px 0 0;
+  margin: 2px 0 0;
   color: var(--color-muted);
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
 }
 
 .dossier-passport__edit {
-  display: inline-flex;
-  gap: 6px;
-  align-items: center;
-  justify-self: start;
-  padding: 7px 11px;
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  align-self: start;
   color: var(--color-primary);
   background: var(--color-surface);
   border: 1px solid var(--color-line);
   border-radius: 9px;
+  cursor: pointer;
+  place-items: center;
+  transition: border-color 160ms ease-out;
+}
+
+.dossier-passport__edit:hover,
+.dossier-passport__edit[aria-expanded="true"] {
+  border-color: var(--color-primary);
+}
+
+.dossier-passport__none {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.dossier-passport__none-link {
+  padding: 0;
+  color: var(--color-primary);
+  background: none;
+  border: 0;
   font: inherit;
-  font-size: 0.8125rem;
   font-weight: 600;
   cursor: pointer;
 }
 
-.dossier-passport__edit:hover {
-  border-color: var(--color-primary);
+.dossier-passport__none-link:hover {
+  text-decoration: underline;
+}
+
+/* Measurements: weight and height as the person's own series */
+.dossier-measures {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dossier-measure {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 2px 8px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+}
+
+.dossier-measure.is-stale {
+  background: oklch(0.985 0.012 78);
+}
+
+.dossier-measure__label {
+  grid-row: 1 / span 2;
+  padding-top: 5px;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.dossier-measure__main {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 26px;
+}
+
+.dossier-measure__value {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  min-width: 0;
+}
+
+.dossier-measure__value strong {
+  font-size: 0.9375rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dossier-measure__value em {
+  color: var(--color-muted);
+}
+
+.dossier-measure__trend {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  min-height: 18px;
+}
+
+.dossier-measure__spacer {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dossier-measure__when {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  white-space: nowrap;
+}
+
+.dossier-measure.is-stale .dossier-measure__when {
+  color: oklch(0.36 0.1 72);
+}
+
+.dossier-measure__update,
+.dossier-measure__cancel {
+  padding: 4px 6px;
+  color: var(--color-primary);
+  background: none;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.dossier-measure__update:hover,
+.dossier-measure__cancel:hover {
+  background: var(--color-surface);
+}
+
+.dossier-measure__form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  grid-row: 1 / span 2;
+  align-items: center;
+}
+
+.dossier-measure__form input {
+  width: 72px;
+  padding: 5px 8px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dossier-measure__form .dossier-measure__unit {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.dossier-measure__form .button {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+}
+
+.dossier-measure__form .form-error {
+  flex-basis: 100%;
+  font-size: 0.75rem;
 }
 
 .dossier-passport__basics {
@@ -9082,35 +9240,10 @@ body:has(.upload-dialog[open]) {
   justify-self: start;
 }
 
-.dossier-passport__facts {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-}
-
-.dossier-passport__fact {
-  display: grid;
-  gap: 1px;
-  padding: 8px 10px;
-  background: var(--color-surface);
-  border-radius: 10px;
-}
-
-.dossier-passport__fact span {
-  color: var(--color-muted);
-  font-size: 0.6875rem;
-  font-weight: 600;
-}
-
-.dossier-passport__fact strong {
-  font-size: 1rem;
-  font-variant-numeric: tabular-nums;
-}
-
 .dossier-passport__lists {
   display: grid;
-  gap: 10px;
-  padding-top: 12px;
+  gap: 8px;
+  padding-top: 10px;
   border-top: 1px solid var(--color-line);
 }
 
@@ -9175,7 +9308,7 @@ body:has(.upload-dialog[open]) {
   gap: 10px;
   align-items: center;
   width: 100%;
-  padding: 9px 10px;
+  padding: 7px 10px;
   color: var(--color-ink);
   background: transparent;
   border: 1px solid transparent;
@@ -9391,7 +9524,7 @@ body:has(.upload-dialog[open]) {
 /* Gauge cards */
 .dossier-gauges {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(236px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
   gap: 12px;
   margin: 0;
   padding: 0;
@@ -9401,10 +9534,22 @@ body:has(.upload-dialog[open]) {
 .dossier-gauge {
   display: grid;
   gap: 8px;
+  align-content: start;
   padding: 14px 16px;
   background: var(--color-canvas);
   border: 1px solid var(--color-line);
   border-radius: 12px;
+}
+
+.dossier-gauge__name {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  font-size: 0.875rem;
+  line-height: 1.3;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: anywhere;
 }
 
 .dossier-gauge.is-watch {
@@ -9412,22 +9557,9 @@ body:has(.upload-dialog[open]) {
   box-shadow: inset 0 0 0 1px oklch(0.84 0.09 76 / 40%);
 }
 
-.dossier-gauge__head {
-  display: flex;
-  gap: 8px;
-  align-items: flex-start;
-  justify-content: space-between;
-}
-
-.dossier-gauge__head h4 {
-  margin: 0;
-  font-size: 0.875rem;
-  line-height: 1.35;
-  text-wrap: balance;
-}
-
 .dossier-gauge__status {
   flex: 0 0 auto;
+  margin-left: auto;
   padding: 2px 8px;
   color: var(--color-muted);
   background: var(--color-surface);
@@ -9455,33 +9587,36 @@ body:has(.upload-dialog[open]) {
 .dossier-gauge__reading {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  align-items: baseline;
+  gap: 4px 6px;
+  align-items: center;
 }
 
 .dossier-gauge__reading strong {
   font-size: 1.5rem;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
 
-.dossier-gauge__reading > span {
+.dossier-gauge__unit {
+  align-self: baseline;
   color: var(--color-muted);
   font-size: 0.8125rem;
 }
 
 .dossier-gauge__delta {
   display: inline-flex;
-  gap: 2px;
+  gap: 1px;
   align-items: center;
-  margin-left: auto;
-  padding: 2px 7px;
+  padding: 1px 6px;
   color: var(--color-ink);
   background: var(--color-surface);
   border: 1px solid var(--color-line);
   border-radius: 999px;
   font-size: 0.6875rem;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
+  vertical-align: middle;
 }
 
 .dossier-gauge__scale {
@@ -9540,8 +9675,15 @@ body:has(.upload-dialog[open]) {
 }
 
 .dossier-sparkline {
+  display: block;
   width: 100%;
-  height: 32px;
+  height: 34px;
+}
+
+.dossier-measure .dossier-sparkline {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 20px;
 }
 
 .dossier-sparkline__band {
@@ -9556,14 +9698,15 @@ body:has(.upload-dialog[open]) {
   stroke-linecap: round;
 }
 
+/* Points are zero-length lines with round caps: they keep their size when the drawing stretches. */
 .dossier-sparkline__point {
-  fill: var(--color-canvas);
   stroke: var(--color-primary);
-  stroke-width: 1.4;
+  stroke-width: 4;
+  stroke-linecap: round;
 }
 
 .dossier-sparkline__point.is-latest {
-  fill: var(--color-primary);
+  stroke-width: 7;
 }
 
 .dossier-sparkline.is-watch .dossier-sparkline__line,
@@ -9571,15 +9714,11 @@ body:has(.upload-dialog[open]) {
   stroke: oklch(0.6 0.15 60);
 }
 
-.dossier-sparkline.is-watch .dossier-sparkline__point.is-latest {
-  fill: oklch(0.6 0.15 60);
-}
-
 .dossier-gauge__meta {
   margin: 0;
   color: var(--color-muted);
   font-size: 0.6875rem;
-  line-height: 1.45;
+  line-height: 1.6;
 }
 
 .dossier-gauge__foot {
@@ -9685,6 +9824,8 @@ body:has(.upload-dialog[open]) {
 
   .dossier-side {
     position: static;
+    max-height: none;
+    overflow: visible;
   }
 
   .dossier-rail ul {
@@ -9709,6 +9850,14 @@ body:has(.upload-dialog[open]) {
 
   .dossier-focus__head {
     grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dossier-rail__item,
+  .dossier-area-tile,
+  .dossier-passport__edit {
+    transition: none;
   }
 }
 

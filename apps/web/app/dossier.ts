@@ -6,6 +6,7 @@ import {
   type ObservationHistoryItem,
 } from "@veylta/contracts";
 import { specialtyLabel } from "./assistant";
+import { numberOf, type PrintedDelta, printedDelta } from "./dossier-numbers";
 
 /** Where a value stands against the source's own reference; a comparison value has no number. */
 export type PointStatus = "above" | "below" | "within" | "flagged" | "unknown";
@@ -36,27 +37,11 @@ export interface DossierSeries {
   readonly points: readonly SeriesPoint[];
   readonly latest: SeriesPoint;
   readonly previous: SeriesPoint | null;
-  readonly delta: {
-    readonly value: string;
-    readonly direction: "increased" | "decreased" | "unchanged";
-  } | null;
+  readonly delta: PrintedDelta | null;
   readonly status: PointStatus;
   /** How many latest values in a row stand outside the range (0 when the latest is inside). */
   readonly streak: number;
 }
-
-const numberOf = (value: string | null | undefined): number | null => {
-  if (value === null || value === undefined) return null;
-  const normalized = value.trim().replace(",", ".");
-  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-};
-
-const decimalsOf = (printed: string): number => {
-  const fraction = printed.trim().split(/[.,]/)[1];
-  return fraction === undefined ? 0 : fraction.length;
-};
 
 function statusOf(item: ObservationHistoryItem, value: number | null): PointStatus {
   const range = item.referenceRange;
@@ -96,15 +81,10 @@ function pointOf(item: ObservationHistoryItem): SeriesPoint {
 /** The change since the previous confirmed value, printed the way the latest value is. */
 function deltaOf(latest: SeriesPoint, previous: SeriesPoint | null): DossierSeries["delta"] {
   if (previous === null || latest.value === null || previous.value === null) return null;
-  const decimals = Math.max(decimalsOf(latest.printed), decimalsOf(previous.printed));
-  const difference = Number((latest.value - previous.value).toFixed(decimals));
-  const separator = latest.printed.includes(",") ? "," : ".";
-  const magnitude = Math.abs(difference).toFixed(decimals).replace(".", separator);
-  if (difference === 0) return { value: magnitude, direction: "unchanged" };
-  return {
-    value: `${difference > 0 ? "+" : "−"}${magnitude}`,
-    direction: difference > 0 ? "increased" : "decreased",
-  };
+  return printedDelta(
+    { printed: latest.printed, value: latest.value },
+    { printed: previous.printed, value: previous.value },
+  );
 }
 
 /**
@@ -122,7 +102,11 @@ export function buildDossierSeries(
   }
   return [...groups.entries()]
     .map(([key, group]) => {
-      const ordered = [...group].sort((a, b) => a.timelineAt.localeCompare(b.timelineAt));
+      // Two reports on one day keep the order they were confirmed in.
+      const ordered = [...group].sort(
+        (a, b) =>
+          a.timelineAt.localeCompare(b.timelineAt) || a.confirmed.at.localeCompare(b.confirmed.at),
+      );
       const points = ordered.map(pointOf);
       const latest = points[points.length - 1] as SeriesPoint;
       const previous = points.length > 1 ? (points[points.length - 2] ?? null) : null;
@@ -156,7 +140,10 @@ export function buildDossierSeries(
 export interface SeriesAssessmentCopy {
   readonly tone: "calm" | "watch";
   readonly headline: string;
-  readonly detail: string;
+  /** How the value moved since last time, in words («с прошлого раза +2,1»). */
+  readonly movement: string;
+  /** «второй раз подряд вне референса», or empty while the finding does not repeat. */
+  readonly repeat: string;
   readonly nextStep: {
     readonly specialty: AssistantSpecialty | null;
     readonly copy: string;
@@ -182,9 +169,8 @@ export function seriesAssessment(series: DossierSeries): SeriesAssessmentCopy {
         : `с прошлого раза ${series.delta.value}`;
   const repeat =
     series.streak >= 2
-      ? `, ${series.streak <= 5 ? ordinal[series.streak] : `${series.streak}-й`} раз подряд вне референса`
+      ? `${series.streak <= 5 ? ordinal[series.streak] : `${series.streak}-й`} раз подряд вне референса`
       : "";
-  const detail = `${movement}${repeat}`;
   const headlines: Record<PointStatus, string> = {
     above: `Выше референса лаборатории${range}`,
     below: `Ниже референса лаборатории${range}`,
@@ -193,14 +179,15 @@ export function seriesAssessment(series: DossierSeries): SeriesAssessmentCopy {
     unknown: "Референс не напечатан — оценить нельзя",
   };
   if (!outside(series.status)) {
-    return { tone: "calm", headline: headlines[series.status], detail, nextStep: null };
+    return { tone: "calm", headline: headlines[series.status], movement, repeat, nextStep: null };
   }
   const who =
     series.specialty === null ? "терапевту" : `врачу — ${specialtyLabel[series.specialty]}`;
   return {
     tone: "watch",
     headline: headlines[series.status],
-    detail,
+    movement,
+    repeat,
     nextStep: {
       specialty: series.specialty,
       copy: `Стоит показать ${who}: значение подтверждено и вне референса. Насколько срочно — спросите ИИ-врача.`,

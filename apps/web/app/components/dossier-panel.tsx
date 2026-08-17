@@ -5,7 +5,7 @@ import type {
   ObservationHistoryItem,
   ObservationHistoryResponse,
 } from "@veylta/contracts";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest } from "../api-client";
 import { buildDossierSeries } from "../dossier";
 import { areaSummaries, statusCounts } from "../dossier-areas";
@@ -73,6 +73,7 @@ export function DossierPanel({
   const [editing, setEditing] = useState(false);
   const [profileVersion, setProfileVersion] = useState(0);
   const [selection, setSelection] = useState<DossierSelection>("all");
+  const mainRef = useRef<HTMLDivElement | null>(null);
 
   const loadProfile = useCallback(
     async (signal?: AbortSignal) => {
@@ -121,6 +122,15 @@ export function DossierPanel({
   const shown =
     selection === "all" || summaries.some((item) => item.area === selection) ? selection : "all";
 
+  // Choosing a section brings its page to the top of the viewport: the rail may sit far below the
+  // heading the reader wants, and a shorter page would otherwise leave them staring past it.
+  const select = (next: DossierSelection) => {
+    setSelection(next);
+    setEditing(false);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    mainRef.current?.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+  };
+
   return (
     <div className="dossier-cabinet" data-testid="dossier">
       <aside className="dossier-side">
@@ -142,13 +152,10 @@ export function DossierPanel({
           summaries={summaries}
           totals={statusCounts(series)}
           selected={editing ? "all" : shown}
-          onSelect={(next) => {
-            setSelection(next);
-            setEditing(false);
-          }}
+          onSelect={select}
         />
       </aside>
-      <div className="dossier-main">
+      <div className="dossier-main" ref={mainRef}>
         {failed ? (
           <p className="form-error" role="alert">
             Не удалось прочитать досье. Обновите страницу и попробуйте снова.
@@ -174,7 +181,7 @@ export function DossierPanel({
             summaries={summaries}
             loading={history === null && !failed}
             canWrite={canWrite}
-            onSelect={setSelection}
+            onSelect={select}
             onPlanned={onPlanChanged}
           />
         )}

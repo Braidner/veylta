@@ -1,14 +1,8 @@
-import type { MedicalProfileEntryKind } from "@veylta/contracts";
+import type { MedicalProfileEntryKind, MedicalProfileMeasurement } from "@veylta/contracts";
+import { numberOf, type PrintedDelta, printedDelta } from "./dossier-numbers";
 import { countCopy } from "./russian-plural";
 
 /** What the person recorded about themselves, read as facts for the top of their dossier. */
-const numberOf = (value: string | null | undefined): number | null => {
-  if (value === null || value === undefined) return null;
-  const normalized = value.trim().replace(",", ".");
-  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 export interface Passport {
   readonly sex: "female" | "male" | null;
@@ -88,4 +82,55 @@ export function identityChips(passport: Passport): string[] {
     chips.push(`Вес ${String(passport.weightKg).replace(".", ",")} кг`);
   }
   return chips;
+}
+
+export interface MeasurementPoint {
+  readonly printed: string;
+  readonly value: number;
+  /** The local date the point stands on: the recorded date, else the day it was written. */
+  readonly on: string;
+}
+
+export interface MeasurementSeries {
+  readonly points: readonly MeasurementPoint[];
+  readonly latest: MeasurementPoint | null;
+  readonly delta: PrintedDelta | null;
+  /** Days since the latest point, null when nothing is recorded. */
+  readonly ageDays: number | null;
+  /** True when it is time to write the number down again — nothing yet, or older than a month. */
+  readonly stale: boolean;
+}
+
+/** How long a weight or height stays current before the passport asks for a fresh one. */
+export const measurementFreshDays = 30;
+
+const dayMs = 24 * 60 * 60 * 1000;
+
+/**
+ * A person's own weight or height over time, oldest first; non-numbers dropped. The profile
+ * stores numbers with a dot, the passport prints them the Russian way, with a comma.
+ */
+export function measurementSeries(
+  measurements: readonly MedicalProfileMeasurement[],
+  now: Date,
+): MeasurementSeries {
+  const points = measurements.flatMap((measurement) => {
+    const value = numberOf(measurement.value);
+    if (value === null) return [];
+    const on = measurement.recordedOn ?? measurement.at.slice(0, 10);
+    return [{ printed: measurement.value.replace(".", ","), value, on }];
+  });
+  const latest = points[points.length - 1] ?? null;
+  const previous = points.length > 1 ? (points[points.length - 2] ?? null) : null;
+  const ageDays =
+    latest === null
+      ? null
+      : Math.max(0, Math.floor((now.getTime() - Date.parse(`${latest.on}T00:00:00.000Z`)) / dayMs));
+  return {
+    points,
+    latest,
+    delta: latest === null || previous === null ? null : printedDelta(latest, previous),
+    ageDays,
+    stale: ageDays === null || ageDays > measurementFreshDays,
+  };
 }

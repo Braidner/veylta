@@ -5,6 +5,7 @@ import {
   bodyMassIndex,
   identityChips,
   identityLine,
+  measurementSeries,
   passportOf,
 } from "./dossier-passport";
 
@@ -73,4 +74,41 @@ test("the identity line and chips agree the age with its noun and skip what is n
   assert.deepEqual(identityChips(passportOf([{ kind: "height_cm", value: "180" }], now)), [
     "Рост 180 см",
   ]);
+});
+
+test("a measurement series keeps the person's own numbers, the change since last time and its age", () => {
+  const now = new Date("2026-08-17T10:00:00.000Z");
+  const weight = measurementSeries(
+    [
+      { value: "80", recordedOn: "2026-05-01", at: "2026-05-01T09:00:00.000Z" },
+      { value: "82,5", recordedOn: null, at: "2026-06-10T09:00:00.000Z" },
+      { value: "81.9", recordedOn: "2026-07-20", at: "2026-07-21T09:00:00.000Z" },
+    ],
+    now,
+  );
+  assert.deepEqual(
+    weight.points.map((point) => [point.value, point.on]),
+    [
+      [80, "2026-05-01"],
+      [82.5, "2026-06-10"],
+      [81.9, "2026-07-20"],
+    ],
+  );
+  assert.equal(weight.latest?.printed, "81,9");
+  assert.deepEqual(weight.delta, { value: "−0,6", direction: "decreased" });
+  assert.equal(weight.ageDays, 28);
+  assert.equal(weight.stale, false);
+
+  // Older than a month → time to update; nothing recorded → also a prompt, with no age.
+  const old = measurementSeries(
+    [{ value: "178", recordedOn: "2026-05-20", at: "2026-05-20T09:00:00.000Z" }],
+    now,
+  );
+  assert.equal(old.ageDays, 89);
+  assert.equal(old.stale, true);
+  assert.equal(old.delta, null);
+  const none = measurementSeries([], now);
+  assert.equal(none.latest, null);
+  assert.equal(none.ageDays, null);
+  assert.equal(none.stale, true);
 });

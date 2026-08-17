@@ -5,6 +5,8 @@ import {
   type MedicalProfileEntry,
   type MedicalProfileEntryKind,
   type MedicalProfileEntryResponse,
+  type MedicalProfileMeasurement,
+  type MedicalProfileResponse,
 } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import {
@@ -61,6 +63,32 @@ export function entryFromRow(row: EntryRow): MedicalProfileEntry {
 // tiebreaker is the insertion rowid, never the random id.
 export const entrySelect = `SELECT id, kind, value, recorded_on, revision, created_at, updated_at, archived_at
                        FROM medical_profile_entries`;
+
+/**
+ * Height and weight as a series: every measurement ever recorded, archived ones included, in the
+ * order the person dated them (an undated point takes its writing time), oldest first.
+ */
+export async function loadMeasurements(
+  client: DatabaseClient,
+  scope: ProfileScope,
+): Promise<MedicalProfileResponse["measurements"]> {
+  const rows = await client.query<{
+    kind: string;
+    value: string;
+    recorded_on: string | null;
+    created_at: string;
+  }>(
+    `SELECT kind, value, recorded_on, created_at FROM medical_profile_entries
+      WHERE family_id = $1 AND patient_profile_id = $2 AND kind IN ('height_cm', 'weight_kg')
+      ORDER BY COALESCE(recorded_on, substr(created_at, 1, 10)), created_at, rowid`,
+    [scope.familyId, scope.profileId],
+  );
+  const series = (kind: string): MedicalProfileMeasurement[] =>
+    rows.rows
+      .filter((row) => row.kind === kind)
+      .map((row) => ({ value: row.value, recordedOn: row.recorded_on, at: row.created_at }));
+  return { heightCm: series("height_cm"), weightKg: series("weight_kg") };
+}
 
 export async function loadEntry(
   client: DatabaseClient,

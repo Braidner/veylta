@@ -30,6 +30,7 @@ import {
   entrySelect,
   kinds,
   loadEntry,
+  loadMeasurements,
   recordedOn,
   response,
 } from "./medical-profile-storage.js";
@@ -85,6 +86,7 @@ export function createMedicalProfileService(database: Database): MedicalProfileS
           profileId: scope.profileId,
           canWrite,
           entries,
+          measurements: await loadMeasurements(client, scope),
           interpretationReady: has("sex") && has("birth_year"),
         };
       });

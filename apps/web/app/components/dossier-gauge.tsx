@@ -26,18 +26,22 @@ export const statusLabel = {
   unknown: "без референса",
 } as const;
 
-function DeltaChip({ series }: { readonly series: DossierSeries }) {
-  if (series.delta === null) return null;
+export function DeltaChip({
+  delta,
+}: {
+  readonly delta: { readonly value: string; readonly direction: string } | null;
+}) {
+  if (delta === null) return null;
   const Icon =
-    series.delta.direction === "increased"
+    delta.direction === "increased"
       ? ArrowUpRight
-      : series.delta.direction === "decreased"
+      : delta.direction === "decreased"
         ? ArrowDownRight
         : Minus;
   return (
-    <span className="dossier-gauge__delta" title="Изменение с прошлого подтверждённого значения">
-      <Icon size={13} aria-hidden="true" />
-      {series.delta.direction === "unchanged" ? "без изменений" : series.delta.value}
+    <span className="dossier-gauge__delta">
+      <Icon size={12} aria-hidden="true" />
+      {delta.direction === "unchanged" ? "0" : delta.value}
     </span>
   );
 }
@@ -102,23 +106,33 @@ export function GaugeCard({ familyId, profileId, series, showArea = false }: Gau
       className={`dossier-gauge is-${assessment.tone} is-${series.status}`}
       data-testid="dossier-gauge"
     >
-      <div className="dossier-gauge__head">
-        <h4>{series.name}</h4>
-        <span className="dossier-gauge__status">{statusLabel[series.status]}</span>
-      </div>
+      <h4 className="dossier-gauge__name" title={series.name}>
+        {series.name}
+      </h4>
       <div className="dossier-gauge__reading">
         <strong>{series.latest.printed}</strong>
-        <span>{series.unit}</span>
-        <DeltaChip series={series} />
+        <span className="dossier-gauge__unit">{series.unit}</span>
+        <span className="dossier-gauge__status">{statusLabel[series.status]}</span>
       </div>
       <ScaleTrack series={series} />
       {series.points.length > 1 ? (
-        <DossierSparkline points={series.points} tone={assessment.tone} />
+        <DossierSparkline
+          points={series.points.map((point) => ({ id: point.observationId, value: point.value }))}
+          band={{ low: series.latest.low, high: series.latest.high }}
+          tone={assessment.tone}
+          label={`${countCopy(series.points.length, ["значение", "значения", "значений"])} во времени`}
+        />
       ) : null}
       <p className="dossier-gauge__meta">
         <time dateTime={series.latest.at}>{formatSampleMoment(series.latest.at)}</time>
         <span> · {countCopy(series.points.length, ["значение", "значения", "значений"])}</span>
-        {series.points.length > 1 ? <span> · {assessment.detail}</span> : null}
+        {series.delta === null ? null : (
+          <span>
+            {" "}
+            · <DeltaChip delta={series.delta} /> с прошлого раза
+          </span>
+        )}
+        {assessment.repeat.length > 0 ? <span> · {assessment.repeat}</span> : null}
       </p>
       <div className="dossier-gauge__foot">
         {showArea ? (

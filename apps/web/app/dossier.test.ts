@@ -89,8 +89,8 @@ test("the assessment says what the value does against its range and where to tak
   const assessment = seriesAssessment(above);
   assert.equal(assessment.tone, "watch");
   assert.match(assessment.headline, /^Выше референса/);
-  assert.match(assessment.detail, /\+2,1/);
-  assert.match(assessment.detail, /второй раз подряд/);
+  assert.equal(assessment.movement, "с прошлого раза +2,1");
+  assert.equal(assessment.repeat, "второй раз подряд вне референса");
   assert.equal(assessment.nextStep?.specialty, "endocrinologist");
   assert.match(assessment.nextStep?.copy ?? "", /эндокринолог/);
 

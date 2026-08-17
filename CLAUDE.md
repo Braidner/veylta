@@ -161,11 +161,13 @@ transcription exactly as to a text layer; the page is stored with
 agent registers a short-lived loopback MCP endpoint whose only tool re-authorizes the
 server-derived scope and returns bounded projections — never storage keys, paths, or file bytes.
 
-**Medical profile** (`medical-profile/v1`, `apps/api/src/medical-profile/`): what a person
+**Medical profile** (`medical-profile/v2`, `apps/api/src/medical-profile/`): what a person
 records about themselves for the assistants — sex, birth year, height, weight, pregnancy
 (singletons), conditions, medications, allergies, symptoms, goals, constraints… User-authored,
 dated (`recordedOn`), revisioned, archived rather than deleted; closed and numeric kinds are
-validated in `medical-profile-values.ts`. Create is `PUT entries/:id` with a client id (201 /
+validated in `medical-profile-values.ts`. `entries` are the active ones; `measurements` (height
+and weight) come from every entry ever recorded, archived included, oldest first — a new weight
+is a new dated entry after the previous is archived, so the passport can show the series. Create is `PUT entries/:id` with a client id (201 /
 200 replay / 409 on a different body), update `PUT …/value` and archive `PUT …/archive` are
 optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
 assistants refuse to interpret values without them.
@@ -204,15 +206,19 @@ disagreement can be averaged away. A message with `addressee` runs that persona 
 
 **Досье** (web tab `dossier`, alias `plan` in `app/paths.ts`) is the cabinet a person shows
 their doctor; the profile greeting steps aside on this tab. Pure modules: `app/dossier-passport.ts`
-(`passportOf`, `identityLine`, `identityChips` — BMI as a number only, never a category),
-`app/dossier.ts` (`buildDossierSeries` — one series per code and printed unit, oldest first,
+(`passportOf`, `identityLine`, `identityChips` — BMI as a number only, never a category;
+`measurementSeries` — weight/height over time, the change since last time, «пора обновить» after
+`measurementFreshDays`), `app/dossier-numbers.ts` (`numberOf`, `printedDelta` shared by series and
+passport), `app/dossier.ts` (`buildDossierSeries` — one series per code and printed unit, oldest first,
 status from the printed bounds, then the laboratory's flag, else `unknown`; `seriesAssessment`;
 `attentionBySpecialty`), `app/dossier-areas.ts` (`areaSummaries` in `ANALYTE_AREAS` order,
 `statusCounts`, `statusLine`, `readersCopy`), `app/dossier-scale.ts` (`gaugeScale`: the printed
 bounds as a band on a track, the value as a marker, the track stretched so an outside value stays
 visible — placed, never graded). Components: `dossier-panel.tsx` (loads the medical profile and
-the paged observation history; holds the selection and the editing mode) → left `dossier-passport.tsx`
-(inline sex/birth-year form while not ready; «Изменить досье» opens the editor in the right
+the paged observation history; holds the selection and the editing mode; choosing a section scrolls
+its page into view) → left `dossier-passport.tsx` (inline sex/birth-year form while not ready;
+`dossier-measurements.tsx` — weight/height rows with sparkline, delta and «Обновить», a new value
+archives the previous entry and creates a dated one; the pencil opens the editor in the right
 column) + `dossier-rail.tsx` (the record's areas with counts and outside marks); right
 `dossier-focus.tsx` (whole record or one area: heading with `StatusStrip`, `dossier-attention.tsx`
 — gauge cards grouped by specialty with «В план: визит» writing a `clinician` item and «Спросить

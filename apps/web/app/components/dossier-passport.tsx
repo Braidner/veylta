@@ -5,6 +5,7 @@ import { ContactRound, Pencil, ShieldAlert } from "lucide-react";
 import { type FormEvent, useState } from "react";
 import { apiRequest } from "../api-client";
 import { identityLine, type Passport, passportOf } from "../dossier-passport";
+import { DossierMeasurements } from "./dossier-measurements";
 import { medicalProfileErrorCopy, medicalProfilePath } from "./medical-profile-controls";
 
 interface DossierPassportProps {
@@ -18,29 +19,16 @@ interface DossierPassportProps {
   readonly onChanged: () => void;
 }
 
-function Fact({ label, value }: { readonly label: string; readonly value: string | null }) {
-  if (value === null) return null;
-  return (
-    <div className="dossier-passport__fact">
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
 function ChipList({ label, items }: { readonly label: string; readonly items: readonly string[] }) {
+  if (items.length === 0) return null;
   return (
     <div className="dossier-passport__list">
       <span>{label}</span>
-      {items.length === 0 ? (
-        <em>не указано</em>
-      ) : (
-        <ul>
-          {items.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-        </ul>
-      )}
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -94,6 +82,9 @@ export function DossierPassport({
   }
 
   const initial = displayName.trim().charAt(0).toLocaleUpperCase("ru-RU");
+  const listed =
+    passport !== null &&
+    passport.conditions.length + passport.medications.length + passport.allergies.length > 0;
   return (
     <section className="dossier-passport" aria-label="Паспорт досье" data-testid="dossier-passport">
       <div className="dossier-passport__identity">
@@ -103,9 +94,24 @@ export function DossierPassport({
         <div>
           <h2>{displayName}</h2>
           {passport !== null ? (
-            <p className="dossier-passport__line">{identityLine(passport)}</p>
+            <p className="dossier-passport__line">
+              {identityLine(passport)}
+              {passport.birthYear === null ? "" : ` · ${passport.birthYear}`}
+            </p>
           ) : null}
         </div>
+        {canWrite ? (
+          <button
+            type="button"
+            className="dossier-passport__edit"
+            aria-label={editing ? "Скрыть редактор" : "Изменить досье"}
+            title={editing ? "Скрыть редактор" : "Изменить досье"}
+            aria-expanded={editing}
+            onClick={onToggleEditing}
+          >
+            <Pencil size={15} aria-hidden="true" />
+          </button>
+        ) : null}
       </div>
 
       {passport !== null && !passport.ready ? (
@@ -164,50 +170,42 @@ export function DossierPassport({
         </form>
       ) : null}
 
-      {passport !== null ? (
+      {profile !== null && passport !== null ? (
         <>
-          <div className="dossier-passport__facts">
-            <Fact
-              label="Рост"
-              value={passport.heightCm === null ? null : `${passport.heightCm} см`}
-            />
-            <Fact
-              label="Вес"
-              value={
-                passport.weightKg === null
-                  ? null
-                  : `${String(passport.weightKg).replace(".", ",")} кг`
-              }
-            />
-            <Fact
-              label="ИМТ"
-              value={passport.bmi === null ? null : String(passport.bmi).replace(".", ",")}
-            />
-            <Fact
-              label="Год рождения"
-              value={passport.birthYear === null ? null : String(passport.birthYear)}
-            />
-          </div>
-          <div className="dossier-passport__lists">
-            <ChipList label="Состояния" items={passport.conditions} />
-            <ChipList label="Лекарства" items={passport.medications} />
-            <ChipList label="Аллергии и непереносимости" items={passport.allergies} />
-          </div>
+          <DossierMeasurements
+            familyId={familyId}
+            profileId={profileId}
+            profile={profile}
+            canWrite={canWrite}
+            onChanged={onChanged}
+          />
+          {listed ? (
+            <div className="dossier-passport__lists">
+              <ChipList label="Состояния" items={passport.conditions} />
+              <ChipList label="Лекарства" items={passport.medications} />
+              <ChipList label="Аллергии и непереносимости" items={passport.allergies} />
+            </div>
+          ) : (
+            <p className="dossier-passport__none">
+              Состояния, лекарства, аллергии — не указаны
+              {canWrite ? (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    className="dossier-passport__none-link"
+                    onClick={onToggleEditing}
+                  >
+                    добавить
+                  </button>
+                </>
+              ) : null}
+            </p>
+          )}
         </>
       ) : (
         <p className="dossier-passport__loading">Читаем досье…</p>
       )}
-      {canWrite ? (
-        <button
-          type="button"
-          className="dossier-passport__edit"
-          aria-expanded={editing}
-          onClick={onToggleEditing}
-        >
-          <Pencil size={15} aria-hidden="true" />
-          {editing ? "Скрыть редактор" : "Изменить досье"}
-        </button>
-      ) : null}
     </section>
   );
 }

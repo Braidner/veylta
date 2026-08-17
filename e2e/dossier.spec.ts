@@ -26,7 +26,28 @@ test("the dossier reads confirmed values against their references and sends the 
     "Пол и год рождения — с них начинается любая интерпретация.",
   );
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
-  await expect(passport.getByText("1990", { exact: true })).toBeVisible();
+  await expect(passport).toContainText("Женщина · 36 лет · 1990");
+
+  // Weight and height are the person's own series: a new value is a new dated entry, the
+  // previous stays in the history, the change and the BMI follow.
+  const weight = passport.getByTestId("dossier-measure-weight_kg");
+  await expect(weight).toContainText("не указан");
+  await weight.getByRole("button", { name: "Указать" }).click();
+  await weight.getByLabel("Вес, кг").fill("70");
+  await weight.getByRole("button", { name: "Сохранить" }).click();
+  await expect(weight).toContainText("70 кг");
+  await weight.getByRole("button", { name: "Обновить" }).click();
+  await weight.getByLabel("Вес, кг").fill("71,5");
+  await weight.getByRole("button", { name: "Сохранить" }).click();
+  await expect(weight).toContainText("71,5 кг");
+  await expect(weight.locator(".dossier-gauge__delta")).toHaveText("+1,5");
+  await expect(weight.getByRole("img", { name: "Вес: 2 записей во времени" })).toBeVisible();
+  const height = passport.getByTestId("dossier-measure-height_cm");
+  await height.getByRole("button", { name: "Указать" }).click();
+  await height.getByLabel("Рост, см").fill("175");
+  await height.getByRole("button", { name: "Сохранить" }).click();
+  await expect(height).toContainText("175 см");
+  await expect(passport.getByTestId("dossier-measure-bmi")).toContainText("23,3");
 
   // The rail: the whole record, then the areas with data, each with its count and what is outside.
   const rail = page.getByTestId("dossier-rail");
@@ -88,6 +109,8 @@ test("the dossier reads confirmed values against their references and sends the 
   // The overview's identity chips follow the passport; the dossier survives a reload.
   await page.goto(profileUrl);
   await expect(page.locator(".profile-heading__access")).toContainText("Женщина · 36 лет");
+  await expect(page.locator(".profile-heading__access")).toContainText("Рост 175 см");
+  await expect(page.locator(".profile-heading__access")).toContainText("Вес 71,5 кг");
   await page.goto(`${profileUrl}?tab=dossier`);
   await expect(page.getByTestId("dossier-passport")).toContainText("Женщина");
   await expect(page.getByTestId("dossier-attention")).toContainText(
