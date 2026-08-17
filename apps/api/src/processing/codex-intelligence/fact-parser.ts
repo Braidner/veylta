@@ -51,13 +51,15 @@ function parseReferenceRange(value: unknown): StrictLabExtractionFact["reference
     invalidOutput("schema_shape");
   }
   // Printed text copied with stray whitespace is the same text; the reading itself is not.
-  return {
+  const parsed = {
     sourceText: optionalPrintedPhrase(range.sourceText, 200),
     sourceLow: optionalPrintedPhrase(range.sourceLow, 100),
     sourceHigh: optionalPrintedPhrase(range.sourceHigh, 100),
     sourceUnit: optionalPrintedPhrase(range.sourceUnit, 100),
     laboratoryOutOfRange: range.laboratoryOutOfRange as boolean | null,
   };
+  // A range object with nothing in it is the model's way of saying "no range printed".
+  return Object.values(parsed).every((field) => field === null) ? null : parsed;
 }
 
 function parseValidationIssues(value: unknown): ValidationIssue[] {

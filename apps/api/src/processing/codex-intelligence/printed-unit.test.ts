@@ -124,3 +124,19 @@ test("stray whitespace around a printed reading or range is a slip, not a refusa
   assert.equal(item?.referenceRange?.sourceText, "< 5,18");
   assert.equal(item?.referenceRange?.sourceHigh, "5,18");
 });
+
+test("a reference range object with every field null is no range at all", async () => {
+  const output = await analyzed([
+    fact({
+      factKey: "a",
+      referenceRange: {
+        sourceText: null,
+        sourceLow: null,
+        sourceHigh: null,
+        sourceUnit: null,
+        laboratoryOutOfRange: null,
+      },
+    }),
+  ]);
+  assert.equal(output.extraction.items[0]?.referenceRange, null);
+});

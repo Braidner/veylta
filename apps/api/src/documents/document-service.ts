@@ -2014,7 +2014,7 @@ function nullableCanonicalTimestamp(value: unknown, label: string): string | nul
   return canonicalTimestamp(value);
 }
 
-function referenceRange(value: string): LabFactReferenceRange {
+function referenceRange(value: string): LabFactReferenceRange | null {
   const parsed = parseStoredObject<Record<string, unknown>>(value, "reference range");
   const keys = Object.keys(parsed).sort();
   const expectedKeys = [
@@ -2034,13 +2034,16 @@ function referenceRange(value: string): LabFactReferenceRange {
   if (laboratoryOutOfRange !== null && typeof laboratoryOutOfRange !== "boolean") {
     throw new ObjectStorageIntegrityError("Stored reference range is invalid");
   }
-  return {
+  const range = {
     sourceText: nullableBoundedString(parsed.sourceText, 200, "reference range"),
     sourceLow: nullableBoundedString(parsed.sourceLow, 100, "reference range"),
     sourceHigh: nullableBoundedString(parsed.sourceHigh, 100, "reference range"),
     sourceUnit: nullableBoundedString(parsed.sourceUnit, 100, "reference range"),
     laboratoryOutOfRange,
   };
+  // An extraction may have stored an empty range object; it carries nothing an observation
+  // could keep, so the observation gets no range row (the DB refuses an empty one).
+  return Object.values(range).every((field) => field === null) ? null : range;
 }
 
 interface ValidatedFactReviewCommand {

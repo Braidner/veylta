@@ -33,8 +33,14 @@ export const SYNTHETIC_VISION_TRANSCRIPTION = [
   "END",
 ].join("\n");
 
+type SyntheticItems = ReturnType<typeof parseSyntheticLabPages>["extraction"]["items"];
+
 export function createSyntheticIntelligence(
-  options: { visionTranscription?: string } = {},
+  options: {
+    visionTranscription?: string;
+    /** Reshape the extracted facts before storage — to replay a shape an older run wrote. */
+    mapItems?: (items: SyntheticItems) => SyntheticItems;
+  } = {},
 ): DocumentIntelligenceProvider {
   const visionTranscription = options.visionTranscription ?? SYNTHETIC_VISION_TRANSCRIPTION;
   return {
@@ -53,9 +59,10 @@ export function createSyntheticIntelligence(
         ...page,
         textSha256: createHash("sha256").update(page.text, "utf8").digest("hex"),
       }));
-      let items: ReturnType<typeof parseSyntheticLabPages>["extraction"]["items"] = [];
+      let items: SyntheticItems = [];
       try {
         items = parseSyntheticLabPages(textPages).extraction.items;
+        items = options.mapItems === undefined ? items : options.mapItems(items);
       } catch {
         // This deterministic double simulates Codex classifying a non-lab document with no facts.
       }
