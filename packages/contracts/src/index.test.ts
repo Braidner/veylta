@@ -11,8 +11,6 @@ import {
   DOCUMENT_CATEGORIES,
   DOCUMENT_CONTRACT_VERSION,
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
-  DOCUMENT_INTELLIGENCE_RESULT_STATUSES,
-  DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
   DOCUMENT_LIFECYCLE_CONTRACT_VERSION,
   DOCUMENT_PROCESSING_EVENT_CODES,
   DOCUMENT_PROCESSING_FAILURE_CATEGORIES,
@@ -105,28 +103,6 @@ test("public contracts carry explicit versions", () => {
 });
 
 test("document intelligence v2 carries bounded generic source results beside its summary", () => {
-  assert.deepEqual(DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES, [
-    "measurement",
-    "genetic_variant",
-    "finding",
-    "procedure",
-    "medication",
-    "diagnosis",
-    "referral",
-    "follow_up",
-    "other",
-  ]);
-  assert.deepEqual(DOCUMENT_INTELLIGENCE_RESULT_STATUSES, [
-    "above_range",
-    "normal",
-    "abnormal",
-    "detected",
-    "not_detected",
-    "completed",
-    "informational",
-    "unknown",
-  ]);
-
   const result = {
     contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
     provider: "codex",

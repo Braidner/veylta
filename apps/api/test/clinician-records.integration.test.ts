@@ -1,9 +1,7 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import test from "node:test";
-import { assistantPath, startAssistantApp } from "./assistant-app.js";
-import { confirmSyntheticReport } from "./confirmed-observations.js";
-import { medicalProfilePath, register, webOrigin } from "./medical-profile-app.js";
+import { startAssistantApp } from "./assistant-app.js";
+import { register, webOrigin } from "./medical-profile-app.js";
 import { analyseSyntheticNote } from "./synthetic-note.js";
 
 test("the clinician's statements of a note are listed with their fragments and decided one by one", async () => {
