@@ -3,7 +3,7 @@
  * of typed, evidence-bound blocks with an urgency tier — never free prose. See
  * docs/assistants.md for the model; the server refuses anything that does not fit it.
  */
-export const ASSISTANT_CONTRACT_VERSION = "assistant/v2" as const;
+export const ASSISTANT_CONTRACT_VERSION = "assistant/v3" as const;
 export * from "./analytes.js";
 export * from "./assistant-workspace.js";
 
@@ -86,6 +86,18 @@ export type AssistantConfidence = (typeof ASSISTANT_CONFIDENCE_LEVELS)[number];
 export type AssistantTreatmentKind = (typeof ASSISTANT_TREATMENT_KINDS)[number];
 export type AssistantContraindicationState = (typeof ASSISTANT_CONTRAINDICATION_STATES)[number];
 export type AssistantSpecialty = (typeof ASSISTANT_SPECIALTIES)[number];
+
+/**
+ * Why a conversation exists when the dossier opened it: one per specialist («Досье · Кардиолог»,
+ * the therapist for findings no specialty reads) and one for the консилиум over the whole record.
+ * A purpose is found before it is created, so the person's questions to one doctor stay together.
+ */
+export type AssistantConversationPurpose = `dossier:${AssistantSpecialty}` | "dossier:consilium";
+
+export const ASSISTANT_CONVERSATION_PURPOSES: readonly AssistantConversationPurpose[] = [
+  ...ASSISTANT_SPECIALTIES.map((specialty): AssistantConversationPurpose => `dossier:${specialty}`),
+  "dossier:consilium",
+];
 export type AssistantMissingContext = (typeof ASSISTANT_MISSING_CONTEXTS)[number];
 export type AssistantRejectionReason = (typeof ASSISTANT_REJECTION_REASONS)[number];
 export type AssistantCheckerVerdict = (typeof ASSISTANT_CHECKER_VERDICTS)[number];

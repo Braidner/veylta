@@ -10,6 +10,14 @@ import {
   createConversationRequest,
   loadWorkspaceRequest,
 } from "../assistant-requests";
+import {
+  askAddressee,
+  askConversationTitle,
+  askPurpose,
+  type DossierAsk,
+  fallbackQuestion,
+  takeDossierAsk,
+} from "../dossier-ask";
 import { assistantPath } from "../paths";
 import { type Attempt, attemptFor, useAssistantComposer } from "../use-assistant-composer";
 import { useReferralAcceptance } from "../use-referral-acceptance";
@@ -26,6 +34,8 @@ interface AssistantWorkspaceProps {
   readonly profileId: string;
   readonly assistantId: "physician";
   readonly requestedConversationId: string | undefined;
+  /** The dossier sent the person here: open the conversation kept for this addressee. */
+  readonly ask: DossierAsk | null;
 }
 
 /**
@@ -37,6 +47,7 @@ export function AssistantWorkspace({
   profileId,
   assistantId,
   requestedConversationId,
+  ask,
 }: AssistantWorkspaceProps) {
   const router = useRouter();
   const [state, setState] = useState<WorkspaceState>({ kind: "loading" });
@@ -150,6 +161,43 @@ export function AssistantWorkspace({
     conversationId: selectedConversationId,
     mutate,
     onWorkspace: (response) => setState({ kind: "ready", workspace: response }),
+  });
+
+  // The dossier's ask: find the conversation kept for this addressee (create it once), take the
+  // question the dossier left in the browser, and put it into the field. Runs once per visit; the
+  // URL then follows the conversation, so a reload does not repeat it.
+  const askHandled = useRef(false);
+  const prefill = composer.prefill;
+  useEffect(() => {
+    if (ask === null || askHandled.current || state.kind !== "ready" || !state.workspace.canWrite) {
+      return;
+    }
+    askHandled.current = true;
+    const purpose = askPurpose(ask);
+    const handoff = takeDossierAsk(window.sessionStorage, profileId, ask);
+    const question = handoff?.question ?? fallbackQuestion(ask);
+    const existing = state.workspace.conversations.find((item) => item.purpose === purpose);
+    void (async () => {
+      try {
+        if (existing !== undefined) {
+          shownConversation.current = existing.id;
+          router.replace(assistantPath(familyId, profileId, assistantId, existing.id));
+          await load(existing.id);
+        } else {
+          const attempt = attemptFor(createAttempt.current, purpose);
+          createAttempt.current = attempt;
+          show(
+            await mutate(() =>
+              createConversationRequest(endpoint, attempt.key, askConversationTitle(ask), purpose),
+            ),
+          );
+          createAttempt.current = null;
+        }
+        prefill(question, askAddressee(ask));
+      } catch (error) {
+        setCreateError(assistantCreateErrorCopy(error));
+      }
+    })();
   });
 
   return (

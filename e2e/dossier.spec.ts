@@ -80,12 +80,54 @@ test("the dossier reads confirmed values against their references and sends the 
   );
   await expect(
     group.getByRole("link", { name: "Спросить ИИ-врача, насколько срочно" }),
-  ).toHaveAttribute("href", /\/assistants\/physician$/);
+  ).toHaveAttribute("href", /\/assistants\/physician\?ask=endocrinologist$/);
 
   await group.getByRole("button", { name: "В план: визит" }).click();
   await expect(group).toContainText("В плане заботы");
   const plan = page.getByRole("region", { name: "План заботы" });
   await expect(plan.getByText("Визит: эндокринолог — ТТГ")).toBeVisible();
+
+  // «Спросить ИИ-врача» opens the conversation kept for this specialist — created once, found
+  // afterwards — with the group's findings already in the field, addressed to the persona.
+  await group.getByRole("link", { name: "Спросить ИИ-врача, насколько срочно" }).click();
+  await expect(page).toHaveURL(/\/assistants\/physician\?conversationId=[0-9a-f-]{36}$/);
+  const assistant = page.getByTestId("assistant-workspace");
+  const dossierConversation = assistant.getByRole("button", { name: /Досье · Эндокринолог/ });
+  await expect(dossierConversation).toHaveCount(1);
+  await page.getByTestId("assistant-egress-gate").getByRole("button").click();
+  const question = assistant.getByLabel("Вопрос специалисту: эндокринолог");
+  await expect(question).toHaveValue(
+    /^Насколько срочно показать эндокринологу эти значения из моего досье: ТТГ 9.9 мМЕ\/л — выше референса лаборатории \(5\.0–8\.0 synthetic-unit\)/,
+  );
+  await assistant.getByRole("button", { name: "Отправить" }).click();
+  const reply = page.getByTestId("assistant-answer").last();
+  await expect(reply).toContainText("ИИ-эндокринолог", { timeout: 60_000 });
+  const conversationUrl = page.url();
+
+  // The same group again lands in the same conversation, not a second one.
+  await page.goto(`${profileUrl}?tab=dossier`);
+  await page
+    .getByTestId("dossier-attention")
+    .locator('[data-specialty="endocrinologist"]')
+    .getByRole("link", { name: "Спросить ИИ-врача, насколько срочно" })
+    .click();
+  await expect(page).toHaveURL(conversationUrl);
+  await expect(assistant.getByRole("button", { name: /Досье · Эндокринолог/ })).toHaveCount(1);
+  await expect(page.getByTestId("assistant-answer")).toHaveCount(1);
+  await expect(assistant.getByLabel("Вопрос специалисту: эндокринолог")).toHaveValue(
+    /^Насколько срочно показать эндокринологу/,
+  );
+
+  // The whole record asks for a консилиум in its own conversation, the question ready to convene.
+  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.getByRole("link", { name: "Собрать консилиум по досье" }).click();
+  await expect(assistant.getByRole("button", { name: /Досье · Консилиум/ })).toHaveCount(1);
+  await page.getByTestId("assistant-egress-gate").getByRole("button").click();
+  await expect(assistant.getByLabel("Сообщение ИИ-врачу")).toHaveValue(
+    /^Что в моём досье требует внимания в первую очередь и насколько срочно\? Вне референса: ТТГ 9\.9 мМЕ\/л/,
+  );
+  await expect(assistant.getByRole("button", { name: "Собрать консилиум" })).toBeEnabled();
+  await page.goto(`${profileUrl}?tab=dossier`);
 
   // Into one area from its tile, then from the rail.
   await focus.locator('.dossier-area-tile[data-area="thyroid"]').click();

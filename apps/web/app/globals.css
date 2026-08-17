@@ -9403,12 +9403,29 @@ body:has(.upload-dialog[open]) {
   font-size: 0.9375rem;
 }
 
+.dossier-focus__aside {
+  display: grid;
+  gap: 12px;
+  justify-items: end;
+}
+
+.dossier-focus__consilium {
+  gap: 6px;
+  min-height: 36px;
+  padding: 7px 12px;
+  font-size: 0.8125rem;
+}
+
 .dossier-strip {
   display: flex;
   gap: 2px;
   height: 8px;
   overflow: hidden;
   border-radius: 999px;
+}
+
+.dossier-focus__aside .dossier-strip {
+  width: 100%;
 }
 
 .dossier-strip__segment {

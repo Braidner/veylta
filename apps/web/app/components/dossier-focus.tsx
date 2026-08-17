@@ -1,5 +1,7 @@
 "use client";
 
+import { Users } from "lucide-react";
+import Link from "next/link";
 import { attentionBySpecialty, type DossierSeries } from "../dossier";
 import {
   type AreaSummary,
@@ -9,6 +11,8 @@ import {
   statusCounts,
   statusLine,
 } from "../dossier-areas";
+import { askQuestion, stashDossierAsk } from "../dossier-ask";
+import { assistantAskPath } from "../paths";
 import { countCopy } from "../russian-plural";
 import { DossierAttention } from "./dossier-attention";
 import { GaugeCard } from "./dossier-gauge";
@@ -83,7 +87,24 @@ export function DossierFocus({
             {summary === undefined || summary === null ? "" : ` · ${readersCopy(summary.readers)}`}
           </p>
         </div>
-        <StatusStrip counts={counts} />
+        <div className="dossier-focus__aside">
+          <StatusStrip counts={counts} />
+          {selection === "all" && !loading && series.length > 0 ? (
+            <Link
+              className="button button--secondary dossier-focus__consilium"
+              href={assistantAskPath(familyId, profileId, "consilium")}
+              onClick={() =>
+                stashDossierAsk(window.sessionStorage, profileId, {
+                  ask: "consilium",
+                  question: askQuestion("consilium", series.filter(outside)),
+                })
+              }
+            >
+              <Users size={15} aria-hidden="true" />
+              Собрать консилиум по досье
+            </Link>
+          ) : null}
+        </div>
       </header>
       {!loading && series.length === 0 ? (
         <p className="dossier-empty">

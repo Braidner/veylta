@@ -7,7 +7,8 @@ import { useRef, useState } from "react";
 import { apiRequest } from "../api-client";
 import { specialtyLabel } from "../assistant";
 import type { AttentionGroup } from "../dossier";
-import { assistantPath } from "../paths";
+import { askQuestion, type DossierAsk, stashDossierAsk } from "../dossier-ask";
+import { assistantAskPath } from "../paths";
 import { countCopy } from "../russian-plural";
 import { GaugeCard } from "./dossier-gauge";
 
@@ -98,6 +99,7 @@ export function DossierAttention({
       <ul className="dossier-attention__groups">
         {groups.map((group) => {
           const key = group.specialty ?? "therapist";
+          const ask: DossierAsk = group.specialty ?? "therapist";
           const who = group.specialty === null ? "терапевт" : specialtyLabel[group.specialty];
           const title = `Визит: ${who} — ${group.series.map((item) => item.name).join(", ")}`.slice(
             0,
@@ -131,7 +133,13 @@ export function DossierAttention({
                   ) : null}
                   <Link
                     className="dossier-attention__ask"
-                    href={assistantPath(familyId, profileId, "physician")}
+                    href={assistantAskPath(familyId, profileId, ask)}
+                    onClick={() =>
+                      stashDossierAsk(window.sessionStorage, profileId, {
+                        ask,
+                        question: askQuestion(ask, group.series),
+                      })
+                    }
                   >
                     Спросить ИИ-врача, насколько срочно
                     <ArrowRight size={14} aria-hidden="true" />

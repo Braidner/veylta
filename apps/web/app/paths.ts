@@ -32,3 +32,8 @@ export function assistantPath(
     ? base
     : `${base}?conversationId=${encodeURIComponent(conversationId)}`;
 }
+
+/** The dossier's way in: the assistant page opens the conversation kept for this addressee. */
+export function assistantAskPath(familyId: string, profileId: string, ask: string): string {
+  return `${assistantPath(familyId, profileId, "physician")}?ask=${encodeURIComponent(ask)}`;
+}

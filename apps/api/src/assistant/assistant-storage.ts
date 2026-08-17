@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import {
   ASSISTANT_CONTRACT_VERSION,
+  ASSISTANT_CONVERSATION_PURPOSES,
+  type AssistantConversationPurpose,
   type AssistantConversationSummary,
   type AssistantId,
   type AssistantWorkspaceResponse,
@@ -17,6 +19,7 @@ export { persistTurn } from "./assistant-messages.js";
 export interface ConversationRow {
   id: string;
   title: string;
+  purpose: string | null;
   codex_thread_id: string | null;
   evidence_hash: string | null;
   acknowledged_at: string | null;
@@ -27,13 +30,22 @@ export interface ConversationRow {
 }
 
 const conversationSelect = `
-  SELECT c.id, c.title, c.codex_thread_id, c.evidence_hash, c.acknowledged_at,
+  SELECT c.id, c.title, c.purpose, c.codex_thread_id, c.evidence_hash, c.acknowledged_at,
          c.created_at, c.updated_at,
          (SELECT count(*) FROM assistant_messages m
            WHERE m.family_id = c.family_id AND m.conversation_id = c.id) AS message_count,
          (SELECT max(m.created_at) FROM assistant_messages m
            WHERE m.family_id = c.family_id AND m.conversation_id = c.id) AS last_message_at
     FROM assistant_conversations c`;
+
+const purposes: ReadonlySet<string> = new Set(ASSISTANT_CONVERSATION_PURPOSES);
+
+/** A stored purpose is one of the closed values or nothing; anything else is a broken row. */
+export function conversationPurpose(value: string | null): AssistantConversationPurpose | null {
+  if (value === null) return null;
+  if (!purposes.has(value)) throw new Error("Stored assistant conversation purpose is invalid");
+  return value as AssistantConversationPurpose;
+}
 
 export async function loadConversation(
   client: DatabaseClient,
@@ -54,6 +66,7 @@ function summary(row: ConversationRow): AssistantConversationSummary {
   return {
     id: row.id,
     title: row.title,
+    purpose: conversationPurpose(row.purpose),
     messageCount: row.message_count,
     lastMessageAt: row.last_message_at,
     acknowledged: row.acknowledged_at !== null,

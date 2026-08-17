@@ -91,6 +91,13 @@ export function useAssistantComposer(input: {
     setAddressee(null);
   }
 
+  /** The dossier's question, put into the field for the person to read and send. */
+  function prefill(text: string, to: AssistantSpecialty | null): void {
+    setSendError(null);
+    setMessage(text);
+    setAddressee(to);
+  }
+
   return {
     message,
     setMessage,
@@ -103,5 +110,6 @@ export function useAssistantComposer(input: {
     send,
     convene,
     reset,
+    prefill,
   };
 }

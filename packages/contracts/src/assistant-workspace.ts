@@ -8,6 +8,7 @@ import type {
   AssistantAgreementVerdict,
   AssistantAnswer,
   AssistantCheckerVerdict,
+  AssistantConversationPurpose,
   AssistantEvidenceItem,
   AssistantId,
   AssistantRejectionReason,
@@ -91,6 +92,7 @@ export type AssistantMessage =
 export interface AssistantConversationSummary {
   readonly id: string;
   readonly title: string;
+  readonly purpose: AssistantConversationPurpose | null;
   readonly messageCount: number;
   readonly lastMessageAt: string | null;
   readonly acknowledged: boolean;
@@ -118,6 +120,8 @@ export interface AssistantWorkspaceResponse {
 
 export interface AssistantConversationCreateRequest {
   readonly title: string;
+  /** With a purpose the request finds the existing conversation first and creates only if none. */
+  readonly purpose?: AssistantConversationPurpose;
 }
 
 export interface AssistantAcknowledgementRequest {

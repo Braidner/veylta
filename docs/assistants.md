@@ -207,7 +207,7 @@ the cases, never as a rating of a named doctor.
   `medical_profile` + `medical_profile_entries` (typed, dated, revisioned),
   `clinician_records` (slice 2, bound to page + fragment, reviewed like facts),
   `assistant_outcomes` (slice 5).
-- **Contracts**: `assistant/v1` (conversation, urgency, blocks, reasons), `medical-profile/v2`,
+- **Contracts**: `assistant/v3` (conversation with an optional dossier `purpose`, urgency, blocks, reasons), `medical-profile/v2`,
   `clinician-record/v1`; care-plan provenance gains `conversationTurnId`, `clinicianRecordId`.
 - **Extraction**: clinician records reuse `codex-intelligence/` — closed schema, per-item
   verification through `SourceText`, human review — a second target next to laboratory facts.

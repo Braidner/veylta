@@ -1,5 +1,6 @@
 import {
   ASSISTANT_EGRESS_ACKNOWLEDGEMENT,
+  type AssistantConversationPurpose,
   type AssistantSpecialty,
   type AssistantWorkspaceResponse,
 } from "@veylta/contracts";
@@ -23,11 +24,16 @@ export function loadWorkspaceRequest(
   );
 }
 
-export function createConversationRequest(endpoint: string, key: string, title: string) {
+export function createConversationRequest(
+  endpoint: string,
+  key: string,
+  title: string,
+  purpose: AssistantConversationPurpose | null = null,
+) {
   return apiRequest<AssistantWorkspaceResponse>(`${endpoint}/conversations`, {
     method: "POST",
     headers: { "Idempotency-Key": key },
-    body: JSON.stringify({ title }),
+    body: JSON.stringify({ title, ...(purpose === null ? {} : { purpose }) }),
   });
 }
 

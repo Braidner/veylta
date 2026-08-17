@@ -1,4 +1,5 @@
 import {
+  ASSISTANT_CONVERSATION_PURPOSES,
   ASSISTANT_EGRESS_ACKNOWLEDGEMENT,
   type AssistantAcknowledgementRequest,
   type AssistantConversationCreateRequest,
@@ -64,7 +65,10 @@ export function registerAssistantRoutes(
           type: "object",
           additionalProperties: false,
           required: ["title"],
-          properties: { title: { type: "string", minLength: 1, maxLength: 80 } },
+          properties: {
+            title: { type: "string", minLength: 1, maxLength: 80 },
+            purpose: { type: "string", enum: [...ASSISTANT_CONVERSATION_PURPOSES] },
+          },
         },
       },
     },
@@ -79,7 +83,7 @@ export function registerAssistantRoutes(
           actor,
           scope,
           assistantId,
-          request.body.title,
+          request.body,
           idempotencyKey(request),
           request.id,
         );

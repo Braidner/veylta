@@ -113,6 +113,8 @@ import {
   restartTargets,
   uploadButtonCopy,
 } from "../documents-archive";
+import { parseAsk } from "../dossier-ask";
+import { formatBytes } from "../format-bytes";
 import { formatDate, formatSampleMoment } from "../format-moment";
 import {
   documentPath,
@@ -310,6 +312,8 @@ interface VeyltaAppProps {
   /** The assistant view (`/assistants/:assistantId`), optionally pinned to one conversation. */
   requestedAssistantId?: string | undefined;
   requestedConversationId?: string | undefined;
+  /** `?ask=<specialty|consilium>`: the dossier asks to open the conversation kept for that addressee. */
+  requestedAssistantAsk?: string | undefined;
   requestedTab?: string | undefined;
   /** The profile settings should manage first; set when settings is opened from a profile. */
   requestedSettingsProfileId?: string | undefined;
@@ -323,6 +327,7 @@ export function VeyltaApp({
   requestedDocumentId,
   requestedAssistantId,
   requestedConversationId,
+  requestedAssistantAsk,
   requestedTab,
   requestedCanonicalCode,
   requestedSettings = false,
@@ -749,6 +754,7 @@ export function VeyltaApp({
             requestedDocumentId={requestedDocumentId}
             requestedAssistantId={requestedAssistantId === "physician" ? "physician" : undefined}
             requestedConversationId={requestedConversationId}
+            requestedAssistantAsk={requestedAssistantAsk}
             activeTab={activeTab === "settings" ? "overview" : activeTab}
             requestedCanonicalCode={requestedCanonicalCode}
             error={actionError}
@@ -1927,6 +1933,7 @@ interface ProfileWorkspaceProps {
   requestedDocumentId: string | undefined;
   requestedAssistantId: "physician" | undefined;
   requestedConversationId: string | undefined;
+  requestedAssistantAsk: string | undefined;
   activeTab: ProfileTab;
   requestedCanonicalCode?: string | undefined;
   error: string | null;
@@ -1940,6 +1947,7 @@ function ProfileWorkspace({
   requestedDocumentId,
   requestedAssistantId,
   requestedConversationId,
+  requestedAssistantAsk,
   activeTab,
   requestedCanonicalCode,
   error,
@@ -2379,6 +2387,7 @@ function ProfileWorkspace({
             profileId={profile.id}
             assistantId={requestedAssistantId}
             requestedConversationId={requestedConversationId}
+            ask={parseAsk(requestedAssistantAsk)}
           />
         </div>
       ) : null}
@@ -4688,11 +4697,6 @@ function isSupportedSyntheticDocument(file: File): boolean {
   return /\.(pdf|png|jpe?g)$/i.test(file.name);
 }
 
-function formatUploadSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`;
-  return `${(bytes / 1024 / 1024).toFixed(2)} МБ`;
-}
-
 interface DocumentUploadDialogProps {
   dialogRef: RefObject<HTMLDialogElement | null>;
   open: boolean;
@@ -4809,7 +4813,7 @@ function DocumentUploadDialog({
               <li key={`${file.name}:${file.size}:${file.lastModified}`}>
                 <span>
                   <strong>{file.name}</strong>
-                  <small>{formatUploadSize(file.size)}</small>
+                  <small>{formatBytes(file.size)}</small>
                 </span>
                 <button
                   type="button"
@@ -7383,9 +7387,4 @@ function DocumentIndicatorHistory({
       ) : null}
     </section>
   );
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} Б`;
-  return `${new Intl.NumberFormat("ru-RU", { maximumFractionDigits: 1 }).format(bytes / 1024)} КБ`;
 }

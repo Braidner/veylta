@@ -133,7 +133,11 @@ The full first slice remains deliberately narrow:
     specialty that reads it, with «В план: визит» and «Спросить ИИ-врача,
     насколько срочно», then the remaining indicators. No score, no diagnosis,
     no conversion; the heading carries the same identity chips on the other
-    tabs (delivered).
+    tabs. «Спросить ИИ-врача» opens the conversation kept for that specialist
+    («Досье · Кардиолог», found before it is created) with the group's
+    findings already in the field, addressed to the persona; «Собрать
+    консилиум по досье» opens «Досье · Консилиум» with the whole-record
+    question ready to convene — the person still reads and sends (delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

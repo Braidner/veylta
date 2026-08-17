@@ -1,6 +1,7 @@
 import {
   ASSISTANT_EGRESS_ACKNOWLEDGEMENT,
   type AssistantConsiliumRequest,
+  type AssistantConversationCreateRequest,
   type AssistantId,
   type AssistantMessageRequest,
   type AssistantWorkspaceResponse,
@@ -38,7 +39,7 @@ export interface AssistantService {
     actor: SessionActor,
     scope: ProfileScope,
     assistantId: AssistantId,
-    title: string,
+    input: AssistantConversationCreateRequest,
     idempotencyKey: string,
     correlationId: string,
   ): Promise<{ response: AssistantWorkspaceResponse; replayed: boolean }>;
@@ -99,9 +100,9 @@ export function createAssistantService(
       });
     },
 
-    async createConversation(actor, requestedScope, assistantId, rawTitle, key, correlationId) {
+    async createConversation(actor, requestedScope, assistantId, input, key, correlationId) {
       const scope = canonicalProfileScope(requestedScope);
-      const title = rawTitle.trim();
+      const title = input.title.trim();
       if (title.length < 1 || title.length > 80) throw new DomainValidationError();
       return serialized(`${scope.familyId}:${scope.profileId}:create`, () =>
         database.transaction((client) =>
@@ -110,6 +111,7 @@ export function createAssistantService(
             scope,
             assistantId,
             title,
+            purpose: input.purpose ?? null,
             key,
             correlationId,
           }),

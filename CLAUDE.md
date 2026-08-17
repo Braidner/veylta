@@ -172,7 +172,7 @@ is a new dated entry after the previous is archived, so the passport can show th
 optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
 assistants refuse to interpret values without them.
 
-**Assistants** (`assistant/v1`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
+**Assistants** (`assistant/v3`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
 второе мнение» is a profile-scoped conversation at
 `/v1/families/:f/profiles/:p/assistants/physician` (web route `…/assistants/physician`, entered
 from the overview card). `evidence.ts` is the only thing that leaves the machine — medical
@@ -190,6 +190,15 @@ raw exchange in `assistant_exchanges` (owner-only journal, never audit). Web: pu
 `app/assistant.ts`, `assistant-workspace.tsx` (data) → `assistant-panel.tsx` (shell) →
 `assistant-answer.tsx`/`assistant-blocks.tsx` (typed blocks, source links, referral → care-plan
 `clinician` item through the plan's own `PUT items/:id`). Browser routes live in `app/paths.ts`.
+A conversation may carry a `purpose` (`dossier:<specialty>` | `dossier:consilium`, migration
+0033, one per profile and purpose): `POST conversations` with a purpose finds the existing one
+before creating (200, not 201), so the dossier's questions to one doctor stay in one place —
+«Досье · Кардиолог», «Досье · Консилиум». The dossier opens the assistant with `?ask=<specialty>`
+or `?ask=consilium` (`assistantAskPath`) and leaves the composed question in `sessionStorage`
+(`app/dossier-ask.ts`: `askQuestion`, `stashDossierAsk`/`takeDossierAsk`, `askConversationTitle`,
+`askAddressee` — the URL carries only the addressee, never a value); the workspace finds or creates
+the purpose conversation, prefills the composer (addressed to the persona for a specialist, to the
+therapist for the therapist's group and the консилиум) and the person still reads and sends.
 **Консилиум** (`POST …/conversations/:id/consilium`, `consilium-turn.ts`): who joins is decided
 from the evidence by `consilium-panel.ts` over `analyteSpecialty` in
 `packages/contracts/src/analytes.ts` (catalog code → area and specialty; sex hormones by recorded
