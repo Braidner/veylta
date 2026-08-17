@@ -72,7 +72,6 @@ import {
   type SessionActor,
 } from "../family/family-service.js";
 import { resolveAnalyteMapping } from "../processing/analyte-mapping.js";
-import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../processing/codex-document-intelligence-provider.js";
 import {
   appendProcessingEventInTransaction,
   enqueueDocumentExtractionInTransaction,
@@ -88,6 +87,7 @@ import {
   type StagedObjectMetadata,
 } from "../storage/object-storage.js";
 import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
+import { reviewedAnalyte } from "./reviewed-analyte.js";
 
 export class UnsupportedDocumentTypeError extends Error {}
 export class InvalidDocumentSignatureError extends Error {}
@@ -4625,42 +4625,23 @@ export function createDocumentService(
           throw new DomainValidationError();
         }
 
-        const mappedAnalyte = await resolveAnalyteMapping(client, {
-          sourceName: fact.source_name,
-          sourceUnit: fact.source_unit,
-          sourceValue: fact.source_value,
-          proposedLaboratory: fact.proposed_laboratory,
-        });
-        const canonicalCode = nullableBoundedString(
-          mappedAnalyte?.canonicalCode ?? fact.proposed_canonical_code,
-          100,
-          "fact canonical code",
-        );
-        const normalizedValue =
-          command.decision === "correct"
-            ? null
-            : nullableBoundedString(
-                mappedAnalyte?.normalizedValue ?? fact.proposed_normalized_value,
-                100,
-                "fact normalized value",
-              );
-        const normalizedUnit =
-          command.decision === "correct"
-            ? null
-            : nullableBoundedString(
-                mappedAnalyte?.normalizedUnit ?? fact.proposed_normalized_unit,
-                100,
-                "fact normalized unit",
-              );
-        if ((normalizedValue === null) !== (normalizedUnit === null)) {
-          throw new ObjectStorageIntegrityError("Stored fact normalization is invalid");
-        }
-        const conversionVersion =
-          normalizedValue === null
-            ? null
-            : mappedAnalyte === null
-              ? CODEX_DOCUMENT_INTELLIGENCE_VERSION
-              : "analyte-alias/v1";
+        const analyte =
+          command.decision === "reject" ||
+          sourceName === undefined ||
+          sourceValue === undefined ||
+          sourceUnit === undefined
+            ? {
+                canonicalCode: null,
+                normalizedValue: null,
+                normalizedUnit: null,
+                conversionVersion: null,
+              }
+            : await reviewedAnalyte(client, fact, command.decision, {
+                sourceName,
+                sourceValue,
+                sourceUnit,
+              });
+        const { canonicalCode, normalizedValue, normalizedUnit, conversionVersion } = analyte;
         const reference =
           fact.proposed_reference_range === null
             ? null

@@ -24,6 +24,18 @@ export function multipartFile(bytes: Buffer, filename = "synthetic-report.pdf") 
   };
 }
 
+export type SyntheticReviewDecision =
+  | "confirm"
+  | "reject"
+  | {
+      readonly decision: "correct";
+      readonly correction: {
+        readonly sourceName: string;
+        readonly sourceValue: string;
+        readonly sourceUnit: string;
+      };
+    };
+
 /**
  * Uploads the synthetic laboratory fixture, runs the worker over it and reviews every fact
  * the way the caller decides — the only path that yields real confirmed observations.
@@ -33,7 +45,7 @@ export async function confirmSyntheticReport(
   database: Database,
   storageRoot: string,
   identity: Identity,
-  decide: (factKey: string) => "confirm" | "reject" = () => "confirm",
+  decide: (factKey: string) => SyntheticReviewDecision = () => "confirm",
 ): Promise<{ documentId: string; observationIds: string[] }> {
   const profilePath = `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
   const multipart = multipartFile(await readFile(fixtureUrl));
@@ -63,6 +75,7 @@ export async function confirmSyntheticReport(
   assert.equal(facts.statusCode, 200, facts.body);
   const items = facts.json().items as Array<{ id: string; factKey: string; factVersion: number }>;
   for (const fact of items) {
+    const decision = decide(fact.factKey);
     const review = await app.inject({
       method: "POST",
       url: `${profilePath}/documents/${documentId}/facts/${fact.id}/review`,
@@ -71,7 +84,10 @@ export async function confirmSyntheticReport(
         origin: webOrigin,
         "idempotency-key": `review-${randomUUID()}`,
       },
-      payload: { factVersion: fact.factVersion, decision: decide(fact.factKey) },
+      payload:
+        typeof decision === "string"
+          ? { factVersion: fact.factVersion, decision }
+          : { factVersion: fact.factVersion, ...decision },
     });
     assert.equal(review.statusCode, 201, review.body);
   }
@@ -79,7 +95,7 @@ export async function confirmSyntheticReport(
     client.query<{ id: string }>(
       `SELECT id FROM observations
         WHERE family_id = $1 AND patient_profile_id = $2 AND status = 'confirmed'
-        ORDER BY id`,
+        ORDER BY created_at, rowid`,
       [identity.body.family.id, identity.body.profile.id],
     ),
   );
