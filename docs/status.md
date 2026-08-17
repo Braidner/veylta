@@ -138,6 +138,15 @@ The full first slice remains deliberately narrow:
     findings already in the field, addressed to the persona; «Собрать
     консилиум по досье» opens «Досье · Консилиум» with the whole-record
     question ready to convene — the person still reads and sends (delivered).
+23. review the clinician's own statements read out of a discharge summary,
+    consultation or prescription — diagnoses, prescriptions as printed,
+    referrals, follow-ups, procedures, findings — one by one on the document
+    page («Записи врача»: confirm as read, confirm in the person's own words,
+    or reject; immutable, payload-free audit), send only the confirmed ones to
+    the ИИ-врач with the rest of the evidence (disclosed as their own line), and
+    ask for the сверка: agree / differs / cannot assess per record with reasons,
+    every «differs» offered as «обсудить с врачом» in the plan; never a rating
+    of a clinician (docs/assistants.md slice 3, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

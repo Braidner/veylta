@@ -59,3 +59,12 @@ export function confirmedRecordsCopy(items: readonly ClinicianRecordItem[]): str
 
 export const recordsCountCopy = (count: number) =>
   countCopy(count, ["запись врача", "записи врача", "записей врача"]);
+
+/** The question the document page hands to the therapist: the confirmed records, and what to do. */
+export function checkQuestion(
+  items: readonly ClinicianRecordItem[],
+  documentDate: string | null,
+): string {
+  const when = documentDate === null ? "" : ` от ${documentDate.split("-").reverse().join(".")}`;
+  return `Сверь записи врача из документа${when} с моим досье и подтверждёнными значениями: ${confirmedRecordsCopy(items)}. Где вы согласны, где расходитесь и почему, и что спросить на визите?`;
+}

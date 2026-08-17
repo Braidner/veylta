@@ -3,6 +3,7 @@
 import {
   ASSISTANT_AGREEMENT_VERDICTS,
   ASSISTANT_CHECKER_VERDICTS,
+  ASSISTANT_CLINICIAN_CHECK_CLAIMS,
   ASSISTANT_CONFIDENCE_LEVELS,
   ASSISTANT_CONTRAINDICATION_STATES,
   ASSISTANT_MISSING_CONTEXTS,
@@ -89,6 +90,24 @@ export const physicianAnswerSchema = {
             refs,
             contraindications: { type: "string", enum: ASSISTANT_CONTRAINDICATION_STATES },
             conflictNotes: { anyOf: [russian(500), { type: "null" }] },
+            confirmWith: specialty,
+          }),
+          blockOf("clinician_check", {
+            claim: {
+              type: "string",
+              enum: ASSISTANT_CLINICIAN_CHECK_CLAIMS,
+              description:
+                "agree: your read of the evidence supports the clinician's record; differs: it does not, and why is a question for the visit; cannot_assess: the evidence does not allow a view.",
+            },
+            theirs: {
+              type: "object",
+              additionalProperties: false,
+              required: ["recordId"],
+              properties: { recordId: uuid },
+            },
+            ours: russian(500),
+            why: russian(800),
+            refs,
             confirmWith: specialty,
           }),
           blockOf("question", { text: russian(500), refs }),

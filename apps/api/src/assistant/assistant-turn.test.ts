@@ -31,6 +31,7 @@ const evidence: AssistantEvidence = {
       laboratory: null,
     },
   ],
+  clinicianRecords: [],
   carePlan: [],
 };
 

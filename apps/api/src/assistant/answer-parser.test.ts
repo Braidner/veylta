@@ -4,8 +4,10 @@ import { AssistantAnswerError, parseAssistantAnswer } from "./answer-parser.js";
 
 const observationA = "00000000-0000-4000-8000-00000000000a";
 const observationB = "00000000-0000-4000-8000-00000000000b";
+const recordA = "00000000-0000-4000-8000-0000000000aa";
 const context = {
   knownObservationIds: new Set([observationA, observationB]),
+  knownRecordIds: new Set([recordA]),
   profileValues: new Set(["7.0", "12.5"]),
   interpretationReady: true,
 };
@@ -194,5 +196,46 @@ test("Latin-only prose is refused as not Russian", () => {
         context,
       ),
     (error: unknown) => error instanceof AssistantAnswerError && error.reason === "not_russian",
+  );
+});
+
+test("a сверка block binds to a confirmed clinician record; an unknown record or an unbound view is dropped", () => {
+  const check = (overrides: Record<string, unknown>) => ({
+    kind: "clinician_check",
+    claim: "differs",
+    theirs: { recordId: recordA },
+    ours: "По вашим значениям картина ближе к норме.",
+    why: "Значение A в пределах напечатанного диапазона.",
+    refs: [{ observationId: observationA }],
+    confirmWith: "endocrinologist",
+    ...overrides,
+  });
+  const parsed = parseAssistantAnswer(
+    answer({
+      blocks: [
+        check({}),
+        check({ theirs: { recordId: "00000000-0000-4000-8000-0000000000ff" } }),
+        check({ claim: "agree", refs: [] }),
+        check({ claim: "cannot_assess", refs: [] }),
+      ],
+    }),
+    context,
+  );
+  assert.deepEqual(
+    parsed.blocks.map((block) => (block.kind === "clinician_check" ? block.claim : block.kind)),
+    ["differs", "cannot_assess"],
+  );
+  const kept = parsed.blocks[0];
+  assert.ok(kept?.kind === "clinician_check");
+  assert.equal(kept.theirs.recordId, recordA);
+  assert.equal(kept.confirmWith, "endocrinologist");
+  assert.throws(
+    () =>
+      parseAssistantAnswer(answer({ blocks: [check({})] }), {
+        ...context,
+        interpretationReady: false,
+      }),
+    (error: unknown) =>
+      error instanceof AssistantAnswerError && error.reason === "profile_not_ready",
   );
 });

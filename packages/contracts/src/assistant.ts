@@ -3,7 +3,7 @@
  * of typed, evidence-bound blocks with an urgency tier — never free prose. See
  * docs/assistants.md for the model; the server refuses anything that does not fit it.
  */
-export const ASSISTANT_CONTRACT_VERSION = "assistant/v3" as const;
+export const ASSISTANT_CONTRACT_VERSION = "assistant/v4" as const;
 export * from "./analytes.js";
 export * from "./assistant-workspace.js";
 
@@ -125,6 +125,26 @@ export interface AssistantUrgency {
   readonly reasons: readonly AssistantEvidenceRef[];
 }
 
+/** How the assistant's own read stands to one confirmed clinician record. */
+export const ASSISTANT_CLINICIAN_CHECK_CLAIMS = ["agree", "differs", "cannot_assess"] as const;
+export type AssistantClinicianCheckClaim = (typeof ASSISTANT_CLINICIAN_CHECK_CLAIMS)[number];
+
+/** A confirmed clinician record the answer speaks to; the UI resolves it to the record. */
+export interface AssistantRecordRef {
+  readonly recordId: string;
+}
+
+/** What a record ref resolves to: the statement as confirmed and the document it came from. */
+export interface AssistantEvidenceRecordItem {
+  readonly recordId: string;
+  readonly kind: string;
+  readonly label: string;
+  readonly detail: string | null;
+  readonly documentDate: string | null;
+  readonly documentId: string;
+  readonly pageNumber: number;
+}
+
 export type AssistantBlock =
   | {
       readonly kind: "interpretation";
@@ -154,6 +174,18 @@ export type AssistantBlock =
       readonly kind: "question";
       readonly text: string;
       readonly refs: readonly AssistantEvidenceRef[];
+    }
+  | {
+      /** The сверка: the assistant's own read set against one confirmed clinician record. */
+      readonly kind: "clinician_check";
+      readonly claim: AssistantClinicianCheckClaim;
+      readonly theirs: AssistantRecordRef;
+      /** The assistant's own position in one sentence. */
+      readonly ours: string;
+      readonly why: string;
+      readonly refs: readonly AssistantEvidenceRef[];
+      /** Whom to bring a difference to — never a verdict on the clinician. */
+      readonly confirmWith: AssistantSpecialty;
     }
   | { readonly kind: "general"; readonly text: string }
   | { readonly kind: "missing"; readonly context: AssistantMissingContext };

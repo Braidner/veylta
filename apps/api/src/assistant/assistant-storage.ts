@@ -101,7 +101,7 @@ export async function workspaceResponse(
   ) {
     throw new ResourceNotFoundError();
   }
-  const { evidence, sources } = await loadAssistantEvidence(client, scope);
+  const { evidence, sources, records } = await loadAssistantEvidence(client, scope);
   return {
     contractVersion: ASSISTANT_CONTRACT_VERSION,
     profileId: scope.profileId,
@@ -110,6 +110,8 @@ export async function workspaceResponse(
     interpretationReady: evidence.medicalProfile.interpretationReady,
     evidenceCount: evidence.observations.length,
     evidence: sources,
+    recordCount: records.length,
+    records,
     consiliumPanel: consiliumPanel(evidence),
     conversations: conversations.map(summary),
     selectedConversationId,

@@ -10,6 +10,23 @@ function refsOf(prompt) {
   return ids[0] === undefined ? [] : [{ observationId: ids[0] }];
 }
 
+/** A confirmed clinician record in the evidence draws a сверка block bound to it. */
+function clinicianChecks(prompt, ref) {
+  const recordId = /"recordId":"([0-9a-f-]{36})"/.exec(prompt)?.[1];
+  if (recordId === undefined) return [];
+  return [
+    {
+      kind: "clinician_check",
+      claim: "differs",
+      theirs: { recordId },
+      ours: "По подтверждённым значениям картина ближе к норме, чем в записи врача.",
+      why: "Значение A в пределах напечатанного диапазона; расхождение стоит обсудить.",
+      refs: ref,
+      confirmWith: "endocrinologist",
+    },
+  ];
+}
+
 function physicianAnswer(args, prompt) {
   const ref = refsOf(prompt);
   if (prompt.includes('"interpretationReady":true') && ref.length > 0) {
@@ -21,6 +38,7 @@ function physicianAnswer(args, prompt) {
           text: "Синтетический показатель A выше напечатанного диапазона.",
           refs: ref,
         },
+        ...clinicianChecks(prompt, ref),
         {
           kind: "hypothesis",
           name: "Синтетическое состояние A",

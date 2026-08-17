@@ -9,6 +9,13 @@ real need; evidence travels inline — the MCP tool set below stays a later shap
 persona prompts, parallel opinions each verified and refuted, the therapist's synthesis on the
 conversation's thread with agreements, side-by-side opinions and «Спросить …» chips; a person can
 add a specialty to the panel, and the therapist asking for one on its own waits for a real need.
+**Slice 3 (clinician records + сверка) delivered on 2026-08-17**: the clinician's statements are
+reviewed one by one on the document page («Записи врача», `clinician-record/v1`), confirmed
+records travel with the evidence and are disclosed, the physician answers with `clinician_check`
+blocks (agree / differs / cannot assess, bound to the record, never a rating), a «differs» becomes
+«обсудить с врачом» in the plan; the сверка lives in the therapist's dossier conversation, opened
+from the document with the confirmed records in the question. Per-document сверка threads and
+`get_clinician_record` as a tool wait for a real need.
 Revision 1 framed the assistants as
 navigators and secretaries; the owner's intent is different and this revision follows it:
 
@@ -207,7 +214,7 @@ the cases, never as a rating of a named doctor.
   `medical_profile` + `medical_profile_entries` (typed, dated, revisioned),
   `clinician_records` (slice 2, bound to page + fragment, reviewed like facts),
   `assistant_outcomes` (slice 5).
-- **Contracts**: `assistant/v3` (conversation with an optional dossier `purpose`, urgency, blocks, reasons), `medical-profile/v2`,
+- **Contracts**: `assistant/v4` (conversation with an optional dossier `purpose`, urgency, blocks incl. `clinician_check`, reasons, the record index), `medical-profile/v2`,
   `clinician-record/v1`; care-plan provenance gains `conversationTurnId`, `clinicianRecordId`.
 - **Extraction**: clinician records reuse `codex-intelligence/` — closed schema, per-item
   verification through `SourceText`, human review — a second target next to laboratory facts.

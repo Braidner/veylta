@@ -6,6 +6,7 @@ import { parseSynthesis } from "./synthesis-parser.js";
 const observationA = "00000000-0000-4000-8000-00000000000a";
 const context = {
   knownObservationIds: new Set([observationA]),
+  knownRecordIds: new Set<string>(),
   profileValues: new Set(["6.8"]),
   interpretationReady: true,
 };

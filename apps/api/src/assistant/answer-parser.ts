@@ -1,4 +1,5 @@
 import {
+  ASSISTANT_CLINICIAN_CHECK_CLAIMS,
   ASSISTANT_CONFIDENCE_LEVELS,
   ASSISTANT_CONTRAINDICATION_STATES,
   ASSISTANT_MISSING_CONTEXTS,
@@ -29,6 +30,8 @@ export { AssistantAnswerError };
 export interface AnswerContext {
   /** Confirmed observations the assistant was shown; a reference outside them does not resolve. */
   readonly knownObservationIds: ReadonlySet<string>;
+  /** Confirmed clinician records it was shown; a сверка of any other record is dropped. */
+  readonly knownRecordIds: ReadonlySet<string>;
   /** Printed values of those observations; a "general" block may not quote any of them. */
   readonly profileValues: ReadonlySet<string>;
   /** Sex and birth year recorded: without them the assistant may only ask and explain. */
@@ -39,7 +42,12 @@ const maximumRefs = 12;
 /** A dose spelled out — the tool quotes a clinician's prescription, it never writes one. */
 const dosePattern =
   /\d+(?:[.,]\d+)?\s?(?:мг|мкг|мл|г\b|ме\b|мме|ед\b|таблет|капсул|ампул|капл|раз(?:а)? в (?:день|сутки|неделю)|р\/д|р\/сут)/iu;
-const interpretiveKinds = new Set(["interpretation", "hypothesis", "treatment_option"]);
+const interpretiveKinds = new Set([
+  "interpretation",
+  "hypothesis",
+  "treatment_option",
+  "clinician_check",
+]);
 
 function refs(value: unknown, context: AnswerContext): AssistantEvidenceRef[] {
   const items = boundedList(value, maximumRefs);
@@ -142,6 +150,29 @@ function block(value: unknown, context: AnswerContext): AssistantBlock {
         contraindications: member(proposed.contraindications, ASSISTANT_CONTRAINDICATION_STATES),
         conflictNotes:
           proposed.conflictNotes === null ? null : russianText(proposed.conflictNotes, 500),
+        confirmWith: member(proposed.confirmWith, ASSISTANT_SPECIALTIES),
+      };
+    }
+    case "clinician_check": {
+      exactKeys(proposed, ["kind", "claim", "theirs", "ours", "why", "refs", "confirmWith"]);
+      const theirs = object(proposed.theirs);
+      exactKeys(theirs, ["recordId"]);
+      if (typeof theirs.recordId !== "string") refuse("schema_shape");
+      const recordId = theirs.recordId.toLowerCase();
+      if (!context.knownRecordIds.has(recordId)) refuse("unbound_reference");
+      const claim = member(proposed.claim, ASSISTANT_CLINICIAN_CHECK_CLAIMS);
+      // A view for or against the clinician rests on the person's values; «cannot assess» may not.
+      const bound =
+        claim === "cannot_assess"
+          ? refs(proposed.refs, context)
+          : boundRefs(proposed.refs, context);
+      return {
+        kind,
+        claim,
+        theirs: { recordId },
+        ours: russianText(proposed.ours, 500),
+        why: russianText(proposed.why, 800),
+        refs: bound,
         confirmWith: member(proposed.confirmWith, ASSISTANT_SPECIALTIES),
       };
     }

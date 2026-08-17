@@ -1,6 +1,10 @@
 "use client";
 
-import type { AssistantEvidenceItem, AssistantWorkspaceResponse } from "@veylta/contracts";
+import type {
+  AssistantEvidenceItem,
+  AssistantEvidenceRecordItem,
+  AssistantWorkspaceResponse,
+} from "@veylta/contracts";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assistantCreateErrorCopy, assistantSendErrorCopy } from "../assistant";
@@ -94,6 +98,13 @@ export function AssistantWorkspace({
     const index = new Map<string, AssistantEvidenceItem>();
     if (state.kind === "ready") {
       for (const item of state.workspace.evidence) index.set(item.observationId, item);
+    }
+    return index;
+  }, [state]);
+  const records = useMemo(() => {
+    const index = new Map<string, AssistantEvidenceRecordItem>();
+    if (state.kind === "ready") {
+      for (const item of state.workspace.records) index.set(item.recordId, item);
     }
     return index;
   }, [state]);
@@ -206,6 +217,7 @@ export function AssistantWorkspace({
       profileId={profileId}
       workspace={state.kind === "ready" ? state.workspace : null}
       evidence={evidence}
+      records={records}
       isLoading={state.kind === "loading"}
       isSwitching={isSwitching}
       loadError={state.kind === "error"}
@@ -225,7 +237,13 @@ export function AssistantWorkspace({
       onSelectConversation={(conversationId) => void handleSelectConversation(conversationId)}
       onCreateConversation={handleCreateConversation}
       onAcknowledge={() => void handleAcknowledge()}
-      onAcceptReferral={(key, block) => void referrals.accept(key, block)}
+      onAcceptReferral={(key, block) =>
+        void referrals.accept(
+          key,
+          block,
+          block.kind === "clinician_check" ? (records.get(block.theirs.recordId)?.label ?? "") : "",
+        )
+      }
       onSend={(event) => void composer.send(event)}
     />
   );

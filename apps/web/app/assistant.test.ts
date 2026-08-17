@@ -12,13 +12,12 @@ import {
   egressDisclosure,
   invitationCopy,
   invitationSummary,
-  referralItem,
-  referralsOf,
   refusalCopy,
   speakerLabel,
   specialtyLabel,
   urgencyCopy,
 } from "./assistant";
+import { referralItem, referralsOf } from "./assistant-referrals";
 
 test("every closed reason, tier and specialty has fixed Russian copy", () => {
   for (const reason of ASSISTANT_REJECTION_REASONS) assert.match(refusalCopy[reason], /[а-я]/);
@@ -29,18 +28,26 @@ test("every closed reason, tier and specialty has fixed Russian copy", () => {
 });
 
 test("the egress disclosure names the evidence count and the profile's readiness", () => {
-  assert.deepEqual(egressDisclosure({ evidenceCount: 1, interpretationReady: true }), [
-    "1 подтверждённое значение с напечатанными референсами, датами и лабораторией",
-    "записи медицинского профиля: пол, год рождения и всё, что вы добавили",
-    "принятые и предложенные пункты плана",
-  ]);
+  assert.deepEqual(
+    egressDisclosure({ evidenceCount: 1, interpretationReady: true, recordCount: 0 }),
+    [
+      "1 подтверждённое значение с напечатанными референсами, датами и лабораторией",
+      "записи медицинского профиля: пол, год рождения и всё, что вы добавили",
+      "принятые и предложенные пункты плана",
+    ],
+  );
   assert.match(
-    egressDisclosure({ evidenceCount: 5, interpretationReady: false })[0] ?? "",
+    egressDisclosure({ evidenceCount: 5, interpretationReady: false, recordCount: 0 })[0] ?? "",
     /^5 подтверждённых значений/,
   );
   assert.match(
-    egressDisclosure({ evidenceCount: 0, interpretationReady: false })[1] ?? "",
+    egressDisclosure({ evidenceCount: 0, interpretationReady: false, recordCount: 0 })[1] ?? "",
     /пока не указаны/,
+  );
+  // Confirmed clinician records are disclosed by count, in their own line, only when there are any.
+  assert.equal(
+    egressDisclosure({ evidenceCount: 1, interpretationReady: true, recordCount: 2 })[1],
+    "2 подтверждённые записи врача — диагнозы, назначения, направления, как вы их подтвердили",
   );
 });
 
@@ -147,4 +154,29 @@ test("the panel explains each invitation by the printed names in that specialist
   );
   assert.equal(speakerLabel(null), "ИИ-врач");
   assert.equal(speakerLabel("endocrinologist"), "ИИ-эндокринолог");
+});
+
+test("a сверка that differs becomes «обсудить с врачом» over the record; agreement offers nothing", () => {
+  const check = {
+    kind: "clinician_check" as const,
+    claim: "differs" as const,
+    theirs: { recordId: "00000000-0000-4000-8000-0000000000aa" },
+    ours: "По значениям картина ближе к норме.",
+    why: "ТТГ в пределах напечатанного референса.",
+    refs: [],
+    confirmWith: "endocrinologist" as const,
+  };
+  assert.deepEqual(referralItem(check, "Синтетический гипотиреоз"), {
+    category: "clinician",
+    title: "Обсудить с врачом (эндокринолог): Синтетический гипотиреоз",
+    note: "По значениям картина ближе к норме. ТТГ в пределах напечатанного референса.",
+    scheduledFor: null,
+  });
+  assert.equal(
+    referralsOf({
+      urgency: { tier: "none", reasons: [] },
+      blocks: [check, { ...check, claim: "agree" }],
+    }).length,
+    1,
+  );
 });

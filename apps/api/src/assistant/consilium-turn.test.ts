@@ -42,6 +42,7 @@ const evidence: AssistantEvidence = {
       laboratory: null,
     },
   ],
+  clinicianRecords: [],
   carePlan: [],
 };
 const invitations = [

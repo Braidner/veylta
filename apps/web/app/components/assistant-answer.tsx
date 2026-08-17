@@ -10,6 +10,7 @@ import {
   BlockKind,
   CheckerNote,
   type EvidenceIndex,
+  type RecordIndex,
   ReferralAction,
   type ReferralBlock,
   SourceRefs,
@@ -30,6 +31,7 @@ interface AssistantAnswerProps {
   readonly familyId: string;
   readonly profileId: string;
   readonly evidence: EvidenceIndex;
+  readonly records: RecordIndex;
   readonly canWrite: boolean;
   /** Which referral blocks (`${messageId}:${index}`) already became care-plan items. */
   readonly acceptedReferrals: ReadonlySet<string>;
@@ -43,6 +45,7 @@ export function AssistantAnswer({
   familyId,
   profileId,
   evidence,
+  records,
   canWrite,
   acceptedReferrals,
   pendingReferral,
@@ -94,9 +97,12 @@ export function AssistantAnswer({
                       familyId={familyId}
                       profileId={profileId}
                       evidence={evidence}
+                      records={records}
                     />
                     <CheckerNote verdict={verdicts.get(index)} />
-                    {(block.kind === "hypothesis" || block.kind === "treatment_option") &&
+                    {(block.kind === "hypothesis" ||
+                      block.kind === "treatment_option" ||
+                      (block.kind === "clinician_check" && block.claim === "differs")) &&
                     canWrite ? (
                       <ReferralAction
                         block={block}
@@ -119,6 +125,7 @@ export function AssistantAnswer({
           familyId={familyId}
           profileId={profileId}
           evidence={evidence}
+          records={records}
         />
       ) : null}
 

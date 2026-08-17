@@ -9074,6 +9074,67 @@ body:has(.upload-dialog[open]) {
   font-style: italic;
 }
 
+/* Сверка: the assistant's read set against one confirmed clinician record. */
+.assistant-check__claim {
+  justify-self: start;
+  padding: 2px 9px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.assistant-check__claim.is-calm {
+  color: oklch(0.32 0.07 160);
+  background: oklch(0.96 0.03 160);
+  border-color: oklch(0.86 0.06 160);
+}
+
+.assistant-check__claim.is-watch {
+  color: oklch(0.36 0.1 72);
+  background: oklch(0.97 0.04 78);
+  border-color: oklch(0.86 0.08 78);
+}
+
+.assistant-check__claim.is-muted {
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border-color: var(--color-line);
+}
+
+.assistant-check__theirs {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--color-surface);
+  border-radius: 8px;
+  font-size: 0.875rem;
+}
+
+.assistant-check__theirs > span {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.assistant-check__theirs a {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--color-ink);
+  text-decoration: none;
+}
+
+.assistant-check__theirs a:hover {
+  color: var(--color-primary);
+}
+
+.assistant-check__theirs.is-missing {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
 /* Консилиум: opinions side by side under the synthesis, then where they agree and differ. */
 .assistant-consilium {
   display: grid;
@@ -9601,6 +9662,30 @@ body:has(.upload-dialog[open]) {
   border-radius: 8px;
   font: inherit;
   font-size: 0.875rem;
+}
+
+.clinician-records__check {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border-radius: 12px;
+}
+
+.clinician-records__check p {
+  max-width: 62ch;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.clinician-records__check .button {
+  gap: 6px;
+  min-height: 38px;
+  font-size: 0.8125rem;
 }
 
 @media (max-width: 720px) {

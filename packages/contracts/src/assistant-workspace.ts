@@ -10,6 +10,7 @@ import type {
   AssistantCheckerVerdict,
   AssistantConversationPurpose,
   AssistantEvidenceItem,
+  AssistantEvidenceRecordItem,
   AssistantId,
   AssistantRejectionReason,
   AssistantSpecialty,
@@ -111,6 +112,10 @@ export interface AssistantWorkspaceResponse {
   readonly evidenceCount: number;
   /** The same observations, with their sources, so every ref in an answer opens its page. */
   readonly evidence: readonly AssistantEvidenceItem[];
+  /** How many confirmed clinician records travel with the next message. */
+  readonly recordCount: number;
+  /** Those records, so a сверка block resolves to the statement it speaks to. */
+  readonly records: readonly AssistantEvidenceRecordItem[];
   /** Whom a консилиум would convene right now, and on which observations. */
   readonly consiliumPanel: readonly AssistantInvitation[];
   readonly conversations: readonly AssistantConversationSummary[];

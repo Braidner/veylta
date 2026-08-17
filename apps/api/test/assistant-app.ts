@@ -107,6 +107,22 @@ function physicianOutput(prompt: string): unknown {
       ],
     };
   }
+  // A confirmed clinician record in the evidence draws a сверка block bound to it.
+  const recordId = /"recordId":"([0-9a-f-]{36})"/.exec(prompt)?.[1];
+  const checks =
+    recordId === undefined
+      ? []
+      : [
+          {
+            kind: "clinician_check",
+            claim: "differs",
+            theirs: { recordId },
+            ours: "По подтверждённым значениям картина ближе к норме, чем в записи врача.",
+            why: "Значение A в пределах напечатанного диапазона.",
+            refs: ref,
+            confirmWith: "endocrinologist",
+          },
+        ];
   return {
     urgency: { tier: "none", reasons: ref },
     blocks: [
@@ -120,6 +136,7 @@ function physicianOutput(prompt: string): unknown {
         confirmWith: "therapist",
         workup: ["Повторить A"],
       },
+      ...checks,
       { kind: "question", text: "Нужно ли повторять анализ?", refs: ref },
     ],
   };

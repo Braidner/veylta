@@ -14,6 +14,7 @@ import {
   BlockKind,
   CheckerNote,
   type EvidenceIndex,
+  type RecordIndex,
   SourceRefs,
 } from "./assistant-blocks";
 
@@ -22,6 +23,7 @@ interface AssistantConsiliumProps {
   readonly familyId: string;
   readonly profileId: string;
   readonly evidence: EvidenceIndex;
+  readonly records: RecordIndex;
 }
 
 /**
@@ -34,6 +36,7 @@ export function AssistantConsiliumView({
   familyId,
   profileId,
   evidence,
+  records,
 }: AssistantConsiliumProps) {
   const reasons = new Map(consilium.invitations.map((item) => [item.specialty, item]));
   return (
@@ -68,6 +71,7 @@ export function AssistantConsiliumView({
                 familyId={familyId}
                 profileId={profileId}
                 evidence={evidence}
+                records={records}
               />
             </li>
           );
@@ -99,6 +103,7 @@ function OpinionBody({
   familyId,
   profileId,
   evidence,
+  records,
 }: { readonly opinion: AssistantOpinion } & Omit<AssistantConsiliumProps, "consilium">) {
   if (opinion.answer === null) {
     return (
@@ -121,6 +126,7 @@ function OpinionBody({
                 familyId={familyId}
                 profileId={profileId}
                 evidence={evidence}
+                records={records}
               />
               <CheckerNote verdict={verdicts.get(index)} />
             </div>

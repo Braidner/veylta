@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ClinicianRecordItem } from "@veylta/contracts";
 import {
+  checkQuestion,
   clinicianRecordKindLabel,
   confirmedRecordsCopy,
   recordCounts,
@@ -62,4 +63,8 @@ test("records are counted and named as decisions the person took", () => {
     "Диагноз: Синтетический гипотиреоз (E03.9); Назначение: Левотироксин (25 мкг утром)",
   );
   assert.equal(clinicianRecordKindLabel.follow_up, "Контроль");
+  assert.equal(
+    checkQuestion(items, "2026-08-12"),
+    "Сверь записи врача из документа от 12.08.2026 с моим досье и подтверждёнными значениями: Диагноз: Синтетический гипотиреоз (E03.9); Назначение: Левотироксин (25 мкг утром). Где вы согласны, где расходитесь и почему, и что спросить на визите?",
+  );
 });

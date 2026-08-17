@@ -3,7 +3,7 @@
 import type {
   AssistantBlock,
   AssistantCheckerVerdictRecord,
-  AssistantEvidenceItem,
+  AssistantEvidenceRecordItem,
   AssistantEvidenceRef,
 } from "@veylta/contracts";
 import {
@@ -13,27 +13,36 @@ import {
   ExternalLink,
   Lightbulb,
   type LucideIcon,
+  Scale,
   ScanSearch,
   Stethoscope,
 } from "lucide-react";
 import {
   blockKindLabel,
   checkerVerdictLabel,
+  clinicianCheckClaimCopy,
   confidenceLabel,
   contraindicationCopy,
   missingContextCopy,
   specialtyLabel,
   treatmentKindLabel,
 } from "../assistant";
+import type { ReferralBlock } from "../assistant-referrals";
+import { clinicianRecordKindLabel } from "../clinician-records";
+import { formatSampleMoment } from "../format-moment";
 import { documentPath } from "../paths";
+import { type EvidenceIndex, SourceRefs } from "./assistant-source-refs";
 
-export type ReferralBlock = Extract<AssistantBlock, { kind: "hypothesis" | "treatment_option" }>;
-export type EvidenceIndex = ReadonlyMap<string, AssistantEvidenceItem>;
+export type { EvidenceIndex } from "./assistant-source-refs";
+export { SourceRefs } from "./assistant-source-refs";
+export type { ReferralBlock };
+export type RecordIndex = ReadonlyMap<string, AssistantEvidenceRecordItem>;
 
 const blockIcon: Record<AssistantBlock["kind"], LucideIcon> = {
   interpretation: ScanSearch,
   hypothesis: Lightbulb,
   treatment_option: Stethoscope,
+  clinician_check: Scale,
   question: CircleHelp,
   general: BookOpen,
   missing: CircleAlert,
@@ -54,6 +63,34 @@ interface SourceContext {
   readonly familyId: string;
   readonly profileId: string;
   readonly evidence: EvidenceIndex;
+  readonly records: RecordIndex;
+}
+
+/** The clinician's record a сверка speaks to, with the way back to the document it came from. */
+function TheirRecord({
+  recordId,
+  familyId,
+  profileId,
+  records,
+}: { readonly recordId: string } & Pick<SourceContext, "familyId" | "profileId" | "records">) {
+  const record = records.get(recordId);
+  if (record === undefined) {
+    return (
+      <p className="assistant-check__theirs is-missing">запись врача больше не подтверждена</p>
+    );
+  }
+  const kind = clinicianRecordKindLabel[record.kind as keyof typeof clinicianRecordKindLabel];
+  return (
+    <p className="assistant-check__theirs">
+      <span>Врач · {kind ?? record.kind}</span>
+      <a href={documentPath(familyId, profileId, record.documentId)}>
+        {record.label}
+        {record.detail === null ? "" : ` · ${record.detail}`}
+        {record.documentDate === null ? "" : ` · ${formatSampleMoment(record.documentDate)}`}
+        <ExternalLink size={12} aria-hidden="true" />
+      </a>
+    </p>
+  );
 }
 
 export function BlockBody({
@@ -61,11 +98,33 @@ export function BlockBody({
   familyId,
   profileId,
   evidence,
+  records,
 }: SourceContext & { readonly block: AssistantBlock }) {
   const refs = (list: readonly AssistantEvidenceRef[]) => (
     <SourceRefs refs={list} familyId={familyId} profileId={profileId} evidence={evidence} />
   );
   switch (block.kind) {
+    case "clinician_check": {
+      const claim = clinicianCheckClaimCopy[block.claim];
+      return (
+        <>
+          <span className={`assistant-check__claim is-${claim.tone}`}>{claim.label}</span>
+          <TheirRecord
+            recordId={block.theirs.recordId}
+            familyId={familyId}
+            profileId={profileId}
+            records={records}
+          />
+          <p>
+            <strong>ИИ-врач:</strong> {block.ours}
+          </p>
+          <p className="assistant-block__meta">
+            {block.why} · обсудить: {specialtyLabel[block.confirmWith]}
+          </p>
+          {refs(block.refs)}
+        </>
+      );
+    }
     case "interpretation":
     case "question":
       return (
@@ -138,8 +197,15 @@ export function ReferralAction({
   readonly pending: boolean;
   readonly onAccept: () => void;
 }) {
+  const discuss = block.kind === "clinician_check";
   if (accepted) {
-    return <p className="assistant-block__accepted">Добавлено в план: подтвердить у врача.</p>;
+    return (
+      <p className="assistant-block__accepted">
+        {discuss
+          ? "Добавлено в план: обсудить с врачом."
+          : "Добавлено в план: подтвердить у врача."}
+      </p>
+    );
   }
   return (
     <button
@@ -150,43 +216,9 @@ export function ReferralAction({
     >
       {pending
         ? "Добавляем…"
-        : `В план: подтвердить у специалиста (${specialtyLabel[block.confirmWith]})`}
+        : discuss
+          ? `В план: обсудить с врачом (${specialtyLabel[block.confirmWith]})`
+          : `В план: подтвердить у специалиста (${specialtyLabel[block.confirmWith]})`}
     </button>
-  );
-}
-
-/** Every ref opens the page the value was confirmed from; an unknown id is shown, not hidden. */
-export function SourceRefs({
-  refs,
-  familyId,
-  profileId,
-  evidence,
-}: SourceContext & { readonly refs: readonly AssistantEvidenceRef[] }) {
-  if (refs.length === 0) return null;
-  return (
-    <ul className="assistant-refs" aria-label="Источники">
-      <li className="assistant-refs__label">Источники</li>
-      {refs.map((ref) => {
-        const item = evidence.get(ref.observationId);
-        if (item === undefined) {
-          return (
-            <li key={ref.observationId} className="assistant-refs__missing">
-              значение больше не подтверждено
-            </li>
-          );
-        }
-        return (
-          <li key={ref.observationId}>
-            <a href={documentPath(familyId, profileId, item.documentId)}>
-              <span>
-                {item.name} {item.value} {item.unit}
-              </span>
-              <small>стр. {item.pageNumber}</small>
-              <ExternalLink size={12} aria-hidden="true" />
-            </a>
-          </li>
-        );
-      })}
-    </ul>
   );
 }

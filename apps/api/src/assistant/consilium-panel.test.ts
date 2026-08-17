@@ -26,6 +26,7 @@ function evidence(
       entries: sex === null ? [] : [{ kind: "sex", value: sex, recordedOn: null }],
     },
     observations,
+    clinicianRecords: [],
     carePlan: [],
   };
 }

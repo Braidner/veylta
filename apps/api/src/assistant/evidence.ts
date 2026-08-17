@@ -1,4 +1,8 @@
-import type { AssistantEvidenceItem, MedicalProfileEntryKind } from "@veylta/contracts";
+import type {
+  AssistantEvidenceItem,
+  AssistantEvidenceRecordItem,
+  MedicalProfileEntryKind,
+} from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import type { ProfileScope } from "../family/profile-access.js";
 
@@ -18,6 +22,8 @@ export interface AssistantEvidence {
     }[];
   };
   readonly observations: readonly AssistantObservation[];
+  /** The clinicians' own confirmed statements — what the сверка sets the assistant's read against. */
+  readonly clinicianRecords: readonly AssistantClinicianRecord[];
   readonly carePlan: readonly {
     readonly category: string;
     readonly title: string;
@@ -42,6 +48,24 @@ export interface AssistantObservation {
   readonly laboratory: string | null;
 }
 
+export interface AssistantClinicianRecord {
+  readonly recordId: string;
+  readonly kind: string;
+  readonly label: string;
+  readonly detail: string | null;
+  readonly documentDate: string | null;
+}
+
+interface RecordRow {
+  id: string;
+  kind: string;
+  label: string;
+  detail: string | null;
+  document_date: string | null;
+  document_id: string;
+  page_number: number;
+}
+
 interface ObservationRow {
   id: string;
   canonical_code: string | null;
@@ -64,11 +88,13 @@ interface ObservationRow {
 export interface AssistantEvidenceBundle {
   readonly evidence: AssistantEvidence;
   readonly sources: readonly AssistantEvidenceItem[];
+  readonly records: readonly AssistantEvidenceRecordItem[];
 }
 
 /** Bounded so one profile's whole history cannot blow the prompt: the newest per analyte first. */
 const maximumObservations = 200;
 const maximumPerAnalyte = 4;
+const maximumRecords = 100;
 
 export async function loadAssistantEvidence(
   client: DatabaseClient,
@@ -137,6 +163,15 @@ export async function loadAssistantEvidence(
       laboratory: row.laboratory,
     });
   }
+  const records = await client.query<RecordRow>(
+    `SELECT r.id, r.kind, r.label, r.detail, r.document_date, r.document_id, r.page_number
+       FROM clinician_records r
+       JOIN documents d ON d.family_id = r.family_id AND d.id = r.document_id AND d.deleted_at IS NULL
+      WHERE r.family_id = $1 AND r.patient_profile_id = $2 AND r.decision = 'confirmed'
+      ORDER BY COALESCE(r.document_date, substr(r.decided_at, 1, 10)) DESC, r.decided_at DESC, r.rowid
+      LIMIT ${maximumRecords}`,
+    [scope.familyId, scope.profileId],
+  );
   const plan = await client.query<{
     category: string;
     title: string;
@@ -160,6 +195,13 @@ export async function loadAssistantEvidence(
         })),
       },
       observations: kept,
+      clinicianRecords: records.rows.map((row) => ({
+        recordId: row.id,
+        kind: row.kind,
+        label: row.label,
+        detail: row.detail,
+        documentDate: row.document_date,
+      })),
       carePlan: plan.rows.map((item) => ({
         category: item.category,
         title: item.title,
@@ -168,6 +210,15 @@ export async function loadAssistantEvidence(
       })),
     },
     sources,
+    records: records.rows.map((row) => ({
+      recordId: row.id,
+      kind: row.kind,
+      label: row.label,
+      detail: row.detail,
+      documentDate: row.document_date,
+      documentId: row.document_id,
+      pageNumber: row.page_number,
+    })),
   };
 }
 
@@ -175,6 +226,7 @@ export async function loadAssistantEvidence(
 export function answerContextOf(evidence: AssistantEvidence) {
   return {
     knownObservationIds: new Set(evidence.observations.map((item) => item.observationId)),
+    knownRecordIds: new Set(evidence.clinicianRecords.map((item) => item.recordId)),
     profileValues: new Set(
       evidence.observations.flatMap((item) => [item.value, item.value.replace(",", ".")]),
     ),

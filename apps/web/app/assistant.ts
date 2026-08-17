@@ -1,8 +1,8 @@
 import type {
   AssistantAgreementVerdict,
-  AssistantAnswer,
   AssistantBlock,
   AssistantCheckerVerdict,
+  AssistantClinicianCheckClaim,
   AssistantConfidence,
   AssistantContraindicationState,
   AssistantEvidenceItem,
@@ -12,7 +12,6 @@ import type {
   AssistantSpecialty,
   AssistantTreatmentKind,
   AssistantUrgencyTier,
-  CarePlanItemCreateRequest,
 } from "@veylta/contracts";
 import { ApiError } from "./api-client";
 import { countCopy } from "./russian-plural";
@@ -179,44 +178,40 @@ export const blockKindLabel: Record<AssistantBlock["kind"], string> = {
   interpretation: "Что показывают значения",
   hypothesis: "Вероятное объяснение",
   treatment_option: "Что обычно рассматривает врач",
+  clinician_check: "Сверка с записью врача",
   question: "Вопрос врачу",
   general: "Общая справка",
   missing: "Не хватает данных",
+};
+
+/** How the assistant's read stands to the clinician's record — a position, never a grade. */
+export const clinicianCheckClaimCopy: Record<
+  AssistantClinicianCheckClaim,
+  { readonly label: string; readonly tone: "calm" | "watch" | "muted" }
+> = {
+  agree: { label: "Согласен с врачом", tone: "calm" },
+  differs: { label: "Расходится — вопрос к визиту", tone: "watch" },
+  cannot_assess: { label: "Не могу оценить по данным", tone: "muted" },
 };
 
 /** What the egress notice promises — the same items the server's evidence loader sends. */
 export function egressDisclosure(input: {
   readonly evidenceCount: number;
   readonly interpretationReady: boolean;
+  readonly recordCount: number;
 }): readonly string[] {
   return [
     `${countCopy(input.evidenceCount, ["подтверждённое значение", "подтверждённых значения", "подтверждённых значений"])} с напечатанными референсами, датами и лабораторией`,
+    ...(input.recordCount > 0
+      ? [
+          `${countCopy(input.recordCount, ["подтверждённая запись врача", "подтверждённые записи врача", "подтверждённых записей врача"])} — диагнозы, назначения, направления, как вы их подтвердили`,
+        ]
+      : []),
     input.interpretationReady
       ? "записи медицинского профиля: пол, год рождения и всё, что вы добавили"
       : "записи медицинского профиля (пол и год рождения пока не указаны — интерпретации не будет)",
     "принятые и предложенные пункты плана",
   ];
-}
-
-/** Accepting a referral: one clinician item, phrased from the block, for the care plan. */
-export function referralItem(
-  block: Extract<AssistantBlock, { kind: "hypothesis" | "treatment_option" }>,
-): CarePlanItemCreateRequest {
-  const specialty = specialtyLabel[block.confirmWith];
-  const title = `Подтвердить у специалиста (${specialty}): ${block.name}`.slice(0, 120);
-  return {
-    category: "clinician",
-    title,
-    note: block.rationale.slice(0, 500),
-    scheduledFor: null,
-  };
-}
-
-export function referralsOf(answer: AssistantAnswer) {
-  return answer.blocks.filter(
-    (block): block is Extract<AssistantBlock, { kind: "hypothesis" | "treatment_option" }> =>
-      block.kind === "hypothesis" || block.kind === "treatment_option",
-  );
 }
 
 export function assistantSendErrorCopy(error: unknown): string {

@@ -3,8 +3,7 @@
 import type { CarePlanItemResponse } from "@veylta/contracts";
 import { useRef, useState } from "react";
 import { apiRequest } from "./api-client";
-import { referralItem } from "./assistant";
-import type { ReferralBlock } from "./components/assistant-blocks";
+import { type ReferralBlock, referralItem } from "./assistant-referrals";
 
 /**
  * Accepting a referral block puts one clinician item into the care plan through the plan's own
@@ -16,7 +15,7 @@ export function useReferralAcceptance(familyId: string, profileId: string) {
   const [error, setError] = useState<string | null>(null);
   const itemIds = useRef(new Map<string, string>());
 
-  async function accept(key: string, block: ReferralBlock): Promise<void> {
+  async function accept(key: string, block: ReferralBlock, recordLabel = ""): Promise<void> {
     if (pending !== null) return;
     const itemId = itemIds.current.get(key) ?? crypto.randomUUID();
     itemIds.current.set(key, itemId);
@@ -25,7 +24,7 @@ export function useReferralAcceptance(familyId: string, profileId: string) {
     try {
       await apiRequest<CarePlanItemResponse>(
         `/v1/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}/care-plan/items/${itemId}`,
-        { method: "PUT", body: JSON.stringify(referralItem(block)) },
+        { method: "PUT", body: JSON.stringify(referralItem(block, recordLabel)) },
       );
       setAccepted((current) => new Set([...current, key]));
     } catch {

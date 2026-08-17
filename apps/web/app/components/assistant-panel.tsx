@@ -8,7 +8,7 @@ import { profileTabPath } from "../paths";
 import { countCopy } from "../russian-plural";
 import type { Recipient } from "../use-assistant-composer";
 import { AssistantAnswer } from "./assistant-answer";
-import type { EvidenceIndex, ReferralBlock } from "./assistant-blocks";
+import type { EvidenceIndex, RecordIndex, ReferralBlock } from "./assistant-blocks";
 import { AssistantComposer } from "./assistant-composer";
 import { EgressGate } from "./assistant-gate";
 import { Openers, UserMessage, Waiting } from "./assistant-messages";
@@ -19,6 +19,7 @@ interface AssistantPanelProps {
   readonly profileId: string;
   readonly workspace: AssistantWorkspaceResponse | null;
   readonly evidence: EvidenceIndex;
+  readonly records: RecordIndex;
   readonly isLoading: boolean;
   readonly isSwitching: boolean;
   readonly loadError: boolean;
@@ -210,6 +211,7 @@ function ConversationItem({
       familyId={panel.familyId}
       profileId={panel.profileId}
       evidence={panel.evidence}
+      records={panel.records}
       canWrite={panel.workspace?.canWrite ?? false}
       acceptedReferrals={panel.acceptedReferrals}
       pendingReferral={panel.pendingReferral}

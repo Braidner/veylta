@@ -90,6 +90,12 @@ the opposite stance:
   marker, the change since last time, results in a row outside the range) with «В план: визит»
   and «Спросить ИИ-врача, насколько срочно», then the remaining indicators. No score, no
   diagnosis, no conversion.
+- **Записи врача и сверка.** A discharge summary or consultation yields the clinician's own
+  statements — diagnoses, prescriptions as printed, referrals, follow-ups, findings — each bound
+  to its page and fragment and decided one by one (as read, in your own words, or rejected). Only
+  confirmed records reach the ИИ-врач; «Сверить с ИИ-врачом» asks it where it agrees with the
+  doctor, where it differs and why, and what to ask at the visit — every difference is a question
+  for the plan, never a score for a named clinician.
 - **Medical profile and the ИИ-врач.** A person records sex, birth year, conditions, medications,
   allergies, symptoms and goals — user-authored, dated, revisioned, never inferred. The physician
   assistant reads that profile and the confirmed observations (each answer's evidence is disclosed

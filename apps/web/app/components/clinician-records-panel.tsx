@@ -5,9 +5,13 @@ import type {
   ClinicianRecordDecisionResponse,
   ClinicianRecordsResponse,
 } from "@veylta/contracts";
+import { Scale } from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../api-client";
-import { recordCounts, recordCountsLine } from "../clinician-records";
+import { checkQuestion, recordCounts, recordCountsLine } from "../clinician-records";
+import { stashDossierAsk } from "../dossier-ask";
+import { assistantAskPath } from "../paths";
 import { type RecordDecision, RecordRow } from "./clinician-record-row";
 
 interface ClinicianRecordsPanelProps {
@@ -126,6 +130,28 @@ export function ClinicianRecordsPanel({
         <p className="form-error" role="alert">
           {error}
         </p>
+      ) : null}
+      {counts.confirmed > 0 && canWrite ? (
+        <div className="clinician-records__check">
+          <p>
+            ИИ-врач прочитает ваши подтверждённые значения рядом с этими записями и скажет, где
+            согласен, где расходится и что спросить на визите. Каждый вывод — рекомендация, не
+            оценка врача.
+          </p>
+          <Link
+            className="button button--secondary"
+            href={assistantAskPath(familyId, profileId, "therapist")}
+            onClick={() =>
+              stashDossierAsk(window.sessionStorage, profileId, {
+                ask: "therapist",
+                question: checkQuestion(response.items, response.documentDate),
+              })
+            }
+          >
+            <Scale size={15} aria-hidden="true" />
+            Сверить с ИИ-врачом
+          </Link>
+        </div>
       ) : null}
     </section>
   );

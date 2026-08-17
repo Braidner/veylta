@@ -172,7 +172,7 @@ is a new dated entry after the previous is archived, so the passport can show th
 optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
 assistants refuse to interpret values without them.
 
-**Assistants** (`assistant/v3`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
+**Assistants** (`assistant/v4`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
 второе мнение» is a profile-scoped conversation at
 `/v1/families/:f/profiles/:p/assistants/physician` (web route `…/assistants/physician`, entered
 from the overview card). `evidence.ts` is the only thing that leaves the machine — medical
@@ -242,6 +242,23 @@ column) + `dossier-rail.tsx` (the record's areas with counts and outside marks);
 tabs. The synthetic parser and the fake codex read «low–high unit» references into printed bounds
 (`processing/printed-bounds.ts`), so the e2e stand exercises out-of-range values without stubbing
 the API.
+
+**Записи врача и сверка** (`clinician-record/v1`, `apps/api/src/clinician-records/`, migration 0034).
+The extraction already returns a clinician's statements as structured results of the kinds
+`diagnosis`, `medication`, `procedure`, `referral`, `follow_up`, `finding` (bound to a page
+fragment like every result); `GET …/documents/:id/clinician-records` lists those of the
+document's latest analysis with the person's decision, `PUT …/:resultKey` confirms (as read or in
+the person's own words) or rejects — a `clinician_records` row per statement of one analysis,
+immutable, audited payload-free; the opposite decision or another analysis id is a 409. Only
+confirmed records join `assistant/evidence.ts` (`clinicianRecords`, disclosed as their own line
+in the egress notice, `recordCount`/`records` in the workspace). The physician may answer with a
+`clinician_check` block — `claim` agree | differs | cannot_assess, `theirs.recordId` bound to a
+confirmed record (else dropped), `ours`, `why`, `refs`, `confirmWith` — and a «differs» offers
+«В план: обсудить с врачом» (`app/assistant-referrals.ts`). Web: `clinician-records-panel.tsx`
+on the document page («Записи врача»), «Сверить с ИИ-врачом» hands the confirmed records to
+the therapist's dossier conversation through the same `?ask=` handoff (`app/clinician-records.ts`
+`checkQuestion`); the synthetic stand reads a discharge-note grammar (`RECORD|kind|label|detail`,
+`fixtures/veylta-synthetic-discharge-note.pdf` from `scripts/synthetic-discharge-fixture.mjs`).
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the
@@ -336,6 +353,11 @@ YOU MUST NOT relax these to make a feature easier.
 - Assistant egress is disclosed and acknowledged per conversation; the payload is exactly what
   `assistant/evidence.ts` builds — never a document, page, file, path, key, or family/profile
   ID. The raw exchange and checker verdict live in `assistant_exchanges` for the owner only.
+- A clinician record is the clinician's statement as a person confirmed it, never the model's
+  reading on its own; a rejected or unconfirmed statement never reaches an assistant. The сверка
+  says agree / differs / cannot assess with its reasons and hands a difference to a named
+  specialty; it never rates or scores a clinician, and nothing of it becomes a plan item without
+  a human action.
 - A консилиум's panel is decided by the code→specialty table plus the person's additions, never
   by the model; every opinion is verified and refuted on its own and shown beside the synthesis;
   the synthesis is verified as an answer and its agreement notes may name only invited
