@@ -89,18 +89,29 @@ test("the medical profile is user-authored, revisioned and singleton-safe", asyn
     });
     assert.equal(medication.statusCode, 201, medication.body);
 
+    // Entries recorded within one millisecond still list in the order they were recorded.
+    await database.transaction(async (client) => {
+      for (const [kind, value] of [
+        ["symptom", "Синтетическая жалоба"],
+        ["goal", "Синтетическая цель"],
+      ]) {
+        await client.query(
+          `INSERT INTO medical_profile_entries
+             (id, family_id, patient_profile_id, kind, value, recorded_on, created_by_user_id,
+              created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, NULL, $6, '2026-08-17T00:00:00.000Z',
+                   '2026-08-17T00:00:00.000Z')`,
+          [randomUUID(), owner.body.family.id, owner.body.profile.id, kind, value, owner.userId],
+        );
+      }
+    });
+
     // Sex and birth year make the profile ready for interpretation.
     const ready = await app.inject({ method: "GET", url: path, headers: { cookie: owner.cookie } });
     assert.equal(ready.json().interpretationReady, true);
     assert.deepEqual(
-      ready
-        .json()
-        .entries.map((entry: { kind: string; value: string }) => [entry.kind, entry.value]),
-      [
-        ["sex", "female"],
-        ["birth_year", "1992"],
-        ["medication", "Синтетический препарат A, 1 таблетка утром"],
-      ],
+      ready.json().entries.map((entry: { kind: string }) => entry.kind),
+      ["symptom", "goal", "sex", "birth_year", "medication"],
     );
 
     // Update is optimistic on the revision.
@@ -135,7 +146,7 @@ test("the medical profile is user-authored, revisioned and singleton-safe", asyn
       headers: { cookie: owner.cookie },
     });
     assert.equal(afterArchive.json().interpretationReady, false);
-    assert.equal(afterArchive.json().entries.length, 2);
+    assert.equal(afterArchive.json().entries.length, 4);
     const newSex = await app.inject({
       method: "PUT",
       url: `${path}/entries/${randomUUID()}`,

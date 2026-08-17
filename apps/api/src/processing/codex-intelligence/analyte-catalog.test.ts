@@ -32,6 +32,7 @@ test("the analyte catalog is sent to Codex and bounds proposedCanonicalCode", as
         documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
+        assistantReasoningEffort: "high",
         serviceTier: "standard",
       }),
       timeoutMs: 120_000,

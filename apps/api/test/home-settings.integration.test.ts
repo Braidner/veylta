@@ -21,6 +21,7 @@ import { registerHomeSettingsRoutes } from "../src/settings/routes.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
 import { createLocalStorageController } from "../src/storage/storage-controller.js";
+import { syntheticPreference } from "./codex-preference.js";
 
 const webOrigin = "http://127.0.0.1:4300";
 const models = [
@@ -106,13 +107,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
     allowedMutationOrigins: [webOrigin],
     demoRegistrationEnabled: false,
   });
-  const preferences = createCodexPreferencesStore(database, {
-    modelId: "gpt-5.6-sol",
-    documentModelId: null,
-    reasoningEffort: "medium",
-    documentReasoningEffort: "medium",
-    serviceTier: "standard",
-  });
+  const preferences = createCodexPreferencesStore(database, syntheticPreference());
   registerHomeSettingsRoutes(
     app,
     family,
@@ -155,7 +150,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
         accounts: settingsBody.accounts.map(({ id: _id, ...account }) => account),
       },
       {
-        contractVersion: "home-settings/v4",
+        contractVersion: "home-settings/v5",
         codex: {
           installed: true,
           authenticated: true,
@@ -163,13 +158,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
           daemonRunning: false,
           cliVersion: "codex-cli 0.test.0",
           runtimeVersion: null,
-          preference: {
-            modelId: "gpt-5.6-sol",
-            documentModelId: null,
-            reasoningEffort: "medium",
-            documentReasoningEffort: "medium",
-            serviceTier: "standard",
-          },
+          preference: syntheticPreference(),
           models,
           usageLimits,
           authenticationOwner: "codex_cli",
@@ -372,36 +361,24 @@ test("administrator manages local accounts, Codex status, and verified storage r
     }
     assert.deepEqual(Buffer.concat(refreshedWorkerChunks), postRelocationBytes);
 
+    const fastPreference = syntheticPreference({
+      reasoningEffort: "high",
+      documentReasoningEffort: "high",
+      assistantReasoningEffort: "xhigh",
+      serviceTier: "fast",
+    });
     const updatedPreference = await app.inject({
       method: "PUT",
       url: "/v1/settings/codex/preferences",
       headers: { cookie: adminCookie, origin: webOrigin },
-      payload: {
-        modelId: "gpt-5.6-sol",
-        documentModelId: null,
-        reasoningEffort: "high",
-        documentReasoningEffort: "high",
-        serviceTier: "fast",
-      },
+      payload: fastPreference,
     });
     assert.equal(updatedPreference.statusCode, 200);
     assert.deepEqual(
       (updatedPreference.json() as { codex: { preference: unknown } }).codex.preference,
-      {
-        modelId: "gpt-5.6-sol",
-        documentModelId: null,
-        reasoningEffort: "high",
-        documentReasoningEffort: "high",
-        serviceTier: "fast",
-      },
+      fastPreference,
     );
-    assert.deepEqual(await preferences.get(), {
-      modelId: "gpt-5.6-sol",
-      documentModelId: null,
-      reasoningEffort: "high",
-      documentReasoningEffort: "high",
-      serviceTier: "fast",
-    });
+    assert.deepEqual(await preferences.get(), fastPreference);
 
     const started = await app.inject({
       method: "POST",
@@ -418,7 +395,7 @@ test("administrator manages local accounts, Codex status, and verified storage r
     );
     assert.equal(runtimeAudit.rowCount, 1);
     assert.deepEqual(JSON.parse(runtimeAudit.rows[0]?.metadata ?? "{}"), {
-      contractVersion: "home-settings/v4",
+      contractVersion: "home-settings/v5",
     });
   } finally {
     await app.close();

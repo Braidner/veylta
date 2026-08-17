@@ -168,7 +168,7 @@ Defaults match [`.env.example`](.env.example); copy it to `.env` only for local 
 | `DATABASE_PATH` | `.local/veylta.sqlite` | The one SQLite file all three processes share (WAL, foreign keys, busy timeout). |
 | `OBJECT_STORAGE_ROOT` | `.local/storage` | Local object root for immutable originals. An S3-compatible driver exists for synthetic operator testing only. |
 | `MAX_DOCUMENT_BYTES` | `5242880` | Per-file upload cap. |
-| `CODEX_MODEL` / `CODEX_REASONING_EFFORT` | `gpt-5.6-sol` / `medium` | Model and effort for dialogues; the settings page can pick a separate model and effort for document analysis. |
+| `CODEX_MODEL` / `CODEX_REASONING_EFFORT` | `gpt-5.6-sol` / `medium` | Model and effort for dialogues; the settings page can pick a separate model and effort for document analysis and the assistants' effort (`CODEX_ASSISTANT_REASONING_EFFORT`, default `high`). |
 | `CODEX_DOCUMENT_TIMEOUT_MS` | `600000` | One extraction run; the job lease (`PROCESSING_LEASE_DURATION_MS`) is a little longer. |
 | `CODEX_DOCUMENT_AGENT_TIMEOUT_MS` | `120000` | One dialogue turn. |
 | `SESSION_TTL_SECONDS` / `SESSION_COOKIE_SECURE` | `2592000` / `false` | Opaque session token in an HttpOnly cookie; SQLite stores only its SHA-256 digest. |

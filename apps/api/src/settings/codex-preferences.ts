@@ -7,6 +7,7 @@ interface PreferenceRow {
   document_model_id: string | null;
   reasoning_effort: string;
   document_reasoning_effort: string;
+  assistant_reasoning_effort: string;
   service_tier: string;
 }
 
@@ -30,7 +31,7 @@ export function createCodexPreferencesStore(
       const row = (
         await database.query<PreferenceRow>(
           `SELECT model_id, document_model_id, reasoning_effort, document_reasoning_effort,
-                  service_tier
+                  assistant_reasoning_effort, service_tier
              FROM codex_preferences WHERE id = 'primary'`,
         )
       ).rows[0];
@@ -41,6 +42,7 @@ export function createCodexPreferencesStore(
             documentModelId: row.document_model_id,
             reasoningEffort: row.reasoning_effort,
             documentReasoningEffort: row.document_reasoning_effort,
+            assistantReasoningEffort: row.assistant_reasoning_effort,
             serviceTier: row.service_tier,
           });
     },
@@ -49,13 +51,14 @@ export function createCodexPreferencesStore(
       await client.query(
         `INSERT INTO codex_preferences
            (id, model_id, document_model_id, reasoning_effort, document_reasoning_effort,
-            service_tier, updated_by_user_id, created_at, updated_at)
-         VALUES ('primary', $1, $7, $2, $3, $4, $5, $6, $6)
+            assistant_reasoning_effort, service_tier, updated_by_user_id, created_at, updated_at)
+         VALUES ('primary', $1, $7, $2, $3, $8, $4, $5, $6, $6)
          ON CONFLICT (id) DO UPDATE SET
            model_id = excluded.model_id,
            document_model_id = excluded.document_model_id,
            reasoning_effort = excluded.reasoning_effort,
            document_reasoning_effort = excluded.document_reasoning_effort,
+           assistant_reasoning_effort = excluded.assistant_reasoning_effort,
            service_tier = excluded.service_tier,
            updated_by_user_id = excluded.updated_by_user_id,
            updated_at = excluded.updated_at`,
@@ -67,6 +70,7 @@ export function createCodexPreferencesStore(
           actorUserId,
           now,
           value.documentModelId,
+          value.assistantReasoningEffort,
         ],
       );
     },

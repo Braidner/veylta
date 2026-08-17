@@ -83,7 +83,6 @@ registerAssistantRoutes(
     database,
     createCodexAssistantRuntime({
       resolveExecutionProfile: resolveCodexExecutionProfile,
-      reasoningEffort: config.codexAssistantReasoningEffort,
       timeoutMs: config.codexAssistantTimeoutMs,
     }),
   ),

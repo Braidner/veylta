@@ -20,6 +20,11 @@ export interface CodexExecutionPreference {
    * tune the two independently.
    */
   readonly documentReasoningEffort: CodexReasoningEffort;
+  /**
+   * Effort for the assistants («ИИ-врач» and its checker run). A second opinion is reasoning
+   * over evidence, so it defaults high and is kept apart from the fast document effort.
+   */
+  readonly assistantReasoningEffort: CodexReasoningEffort;
   readonly serviceTier: CodexServiceTier;
 }
 

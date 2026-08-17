@@ -179,9 +179,10 @@ feeds both the prompt and the workspace's `evidenceCount`/`evidence` index, so t
 disclosure never describes something other than what is sent. A conversation must be
 acknowledged (`PUT …/acknowledgement`, `send_confirmed_evidence_to_codex`) before its first
 message (409 `ACKNOWLEDGEMENT_REQUIRED` otherwise). `assistant-turn.ts` runs one turn:
-`codex exec` / `exec resume` on the conversation's thread (`codex-assistant-runtime.ts`, high
-effort by default, web search off), `answer-parser.ts` verifies every block against the
-evidence, `answer-checker.ts` runs an independent refuting exec and applies its verdicts, and
+`codex exec` / `exec resume` on the conversation's thread (`codex-assistant-runtime.ts`: the
+dialogue model at `assistantReasoningEffort`, a settings field defaulting to high; web search
+off), `answer-parser.ts` verifies every block against the evidence, `answer-checker.ts` runs an
+independent refuting exec and applies its verdicts, and
 every model failure becomes a refusal with a closed `ASSISTANT_REJECTION_REASONS` code plus its
 raw exchange in `assistant_exchanges` (owner-only journal, never audit). Web: pure copy tables in
 `app/assistant.ts`, `assistant-workspace.tsx` (data) → `assistant-panel.tsx` (shell) →

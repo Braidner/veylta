@@ -15,6 +15,7 @@ export function requireCodexExecutionPreference(value: {
   documentModelId?: string | null;
   reasoningEffort: string;
   documentReasoningEffort: string;
+  assistantReasoningEffort: string;
   serviceTier: string;
 }): CodexExecutionPreference {
   const documentModelId = value.documentModelId ?? null;
@@ -23,6 +24,7 @@ export function requireCodexExecutionPreference(value: {
     (documentModelId !== null && !modelPattern.test(documentModelId)) ||
     !reasoningEfforts.has(value.reasoningEffort) ||
     !reasoningEfforts.has(value.documentReasoningEffort) ||
+    !reasoningEfforts.has(value.assistantReasoningEffort) ||
     !serviceTiers.has(value.serviceTier)
   ) {
     throw new Error("Codex execution preference is invalid");
@@ -43,6 +45,13 @@ export function documentExecutionProfile(
     modelId: preference.documentModelId ?? preference.modelId,
     reasoningEffort: preference.documentReasoningEffort,
   };
+}
+
+/** The assistants and their checker reason over the dialogue model at their own effort. */
+export function assistantExecutionProfile(
+  preference: CodexExecutionPreference,
+): CodexExecutionPreference {
+  return { ...preference, reasoningEffort: preference.assistantReasoningEffort };
 }
 
 export function codexExecutionArguments(profile: CodexExecutionPreference): readonly string[] {

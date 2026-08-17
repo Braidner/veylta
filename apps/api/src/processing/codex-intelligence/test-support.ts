@@ -128,6 +128,7 @@ export function lowEffortProvider(answer: unknown) {
         documentModelId: null,
         reasoningEffort: "low",
         documentReasoningEffort: "low",
+        assistantReasoningEffort: "high",
         serviceTier: "standard",
       }),
       timeoutMs: 120_000,

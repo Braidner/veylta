@@ -22,6 +22,7 @@ test("Codex output fails closed when a shared result key contradicts the review 
         documentModelId: null,
         reasoningEffort: "medium",
         documentReasoningEffort: "medium",
+        assistantReasoningEffort: "high",
         serviceTier: "standard",
       }),
       timeoutMs: 120_000,

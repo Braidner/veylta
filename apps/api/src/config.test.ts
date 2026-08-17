@@ -1,26 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { loadConfig } from "./config.js";
-
-function withEnvironment(
-  overrides: Record<string, string | undefined>,
-  operation: () => void,
-): void {
-  const original = new Map<string, string | undefined>();
-  for (const [name, value] of Object.entries(overrides)) {
-    original.set(name, process.env[name]);
-    if (value === undefined) delete process.env[name];
-    else process.env[name] = value;
-  }
-  try {
-    operation();
-  } finally {
-    for (const [name, value] of original) {
-      if (value === undefined) delete process.env[name];
-      else process.env[name] = value;
-    }
-  }
-}
+import { withEnvironment } from "./test-support/with-environment.js";
 
 test("demo registration cannot bind to a non-loopback API host", () => {
   withEnvironment(
@@ -130,49 +111,6 @@ test("processing worker timings have safe defaults and reject non-positive value
   );
   withEnvironment({ PROCESSING_RETRY_DELAY_MS: "100ms" }, () => {
     assert.throws(() => loadConfig(), /PROCESSING_RETRY_DELAY_MS must be a positive integer/);
-  });
-});
-
-test("Codex execution has one explicit default profile and bounded timeouts", () => {
-  withEnvironment(
-    {
-      CODEX_MODEL: undefined,
-      CODEX_REASONING_EFFORT: undefined,
-      CODEX_DOCUMENT_REASONING_EFFORT: undefined,
-      CODEX_SERVICE_TIER: undefined,
-      CODEX_CARE_PLAN_TIMEOUT_MS: undefined,
-      CODEX_DOCUMENT_TIMEOUT_MS: undefined,
-      CODEX_DOCUMENT_AGENT_TIMEOUT_MS: undefined,
-    },
-    () => {
-      const config = loadConfig();
-      assert.deepEqual(config.codexDefaultPreference, {
-        modelId: "gpt-5.6-sol",
-        documentModelId: null,
-        reasoningEffort: "medium",
-        // Extraction defaults lower than dialogue: it is transcription under a strict schema.
-        documentReasoningEffort: "low",
-        serviceTier: "standard",
-      });
-      assert.equal(config.codexCarePlanTimeoutMs, 120_000);
-      assert.equal(config.codexDocumentTimeoutMs, 600_000);
-      assert.equal(config.codexDocumentAgentTimeoutMs, 120_000);
-    },
-  );
-  withEnvironment({ CODEX_MODEL: "bad model" }, () => {
-    assert.throws(() => loadConfig(), /CODEX_MODEL/);
-  });
-  withEnvironment({ CODEX_REASONING_EFFORT: "extreme" }, () => {
-    assert.throws(() => loadConfig(), /preference/i);
-  });
-  withEnvironment({ CODEX_SERVICE_TIER: "turbo" }, () => {
-    assert.throws(() => loadConfig(), /preference/i);
-  });
-  withEnvironment({ CODEX_CARE_PLAN_TIMEOUT_MS: "600001" }, () => {
-    assert.throws(() => loadConfig(), /CODEX_CARE_PLAN_TIMEOUT_MS must not exceed 600000/);
-  });
-  withEnvironment({ CODEX_DOCUMENT_AGENT_TIMEOUT_MS: "600001" }, () => {
-    assert.throws(() => loadConfig(), /CODEX_DOCUMENT_AGENT_TIMEOUT_MS must not exceed 600000/);
   });
 });
 

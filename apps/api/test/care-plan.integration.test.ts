@@ -17,6 +17,7 @@ import { createFamilyService } from "../src/family/family-service.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
+import { syntheticPreference } from "./codex-preference.js";
 
 const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
@@ -331,13 +332,7 @@ test("an explicit Codex run stores bounded drafts once and never exposes source 
     createCarePlanService(database, {
       generator: {
         async executionProfile() {
-          return {
-            modelId: "gpt-5.4-mini",
-            documentModelId: null,
-            reasoningEffort: "medium",
-            documentReasoningEffort: "medium",
-            serviceTier: "standard",
-          };
+          return syntheticPreference({ modelId: "gpt-5.4-mini" });
         },
         async generate(input) {
           generated += 1;

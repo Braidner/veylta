@@ -57,6 +57,8 @@ export function entryFromRow(row: EntryRow): MedicalProfileEntry {
   };
 }
 
+// Entries render in the order they were recorded. Two entries can share a millisecond, so the
+// tiebreaker is the insertion rowid, never the random id.
 export const entrySelect = `SELECT id, kind, value, recorded_on, revision, created_at, updated_at, archived_at
                        FROM medical_profile_entries`;
 

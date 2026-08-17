@@ -75,7 +75,7 @@ export function createMedicalProfileService(database: Database): MedicalProfileS
         const rows = await client.query<EntryRow>(
           `${entrySelect}
             WHERE family_id = $1 AND patient_profile_id = $2 AND archived_at IS NULL
-            ORDER BY created_at, id`,
+            ORDER BY created_at, rowid`,
           [scope.familyId, scope.profileId],
         );
         const entries = rows.rows.map(entryFromRow);

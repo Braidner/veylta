@@ -195,6 +195,7 @@ export function registerHomeSettingsRoutes(
             "documentModelId",
             "reasoningEffort",
             "documentReasoningEffort",
+            "assistantReasoningEffort",
             "serviceTier",
           ],
           properties: {
@@ -217,6 +218,7 @@ export function registerHomeSettingsRoutes(
             },
             reasoningEffort: { type: "string", enum: CODEX_REASONING_EFFORTS },
             documentReasoningEffort: { type: "string", enum: CODEX_REASONING_EFFORTS },
+            assistantReasoningEffort: { type: "string", enum: CODEX_REASONING_EFFORTS },
             serviceTier: { type: "string", enum: CODEX_SERVICE_TIERS },
           },
         },

@@ -70,6 +70,7 @@ test("a value that repeats its own unit is trimmed and still binds to its struct
           documentModelId: null,
           reasoningEffort: "low",
           documentReasoningEffort: "low",
+          assistantReasoningEffort: "high",
           serviceTier: "standard",
         }),
         timeoutMs: 120_000,

@@ -1,9 +1,10 @@
 # Assistants: physician, nutritionist, trainer — second-opinion plan
 
 Status: **approved by the owner on 2026-08-17 (revision 3)**; slice 1 delivered on 2026-08-17 (medical
-profile, ИИ-врач with parser + checker + egress gate + journal + referrals; the assistant model/effort
-setting is an env default `CODEX_ASSISTANT_REASONING_EFFORT=high` until the settings page gains its
-field with slice 2; evidence travels inline in v1 — the MCP tool set below is the slice-2 shape).
+profile, ИИ-врач with parser + checker + egress gate + journal + referrals; «Рассуждения ассистентов»
+on the settings page next to the document effort, default `high` from `CODEX_ASSISTANT_REASONING_EFFORT`;
+the assistants and the checker run on the dialogue model — a separate assistant model waits for a
+real need; evidence travels inline in v1 — the MCP tool set below is the slice-2 shape).
 Revision 1 framed the assistants as
 navigators and secretaries; the owner's intent is different and this revision follows it:
 

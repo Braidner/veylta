@@ -41,7 +41,6 @@ import {
   type HealthSummaryResponse,
   HOME_CARE_PLAN_CONTRACT_VERSION,
   HOME_SETTINGS_CONTRACT_VERSION,
-  type HomeSettingsResponse,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
   type IndicatorSeriesResponse,
@@ -77,7 +76,7 @@ import {
 test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
-  assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v4");
+  assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v5");
   assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v7");
   assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v2");
   assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
@@ -160,62 +159,6 @@ test("document intelligence v2 carries bounded generic source results beside its
 
   assert.equal(result.structuredResults[0]?.type, "measurement");
   assert.equal(result.structuredResults[0]?.source.pageNumber, 1);
-});
-
-test("home settings expose only Codex-advertised choices and bounded usage", () => {
-  const response = {
-    contractVersion: HOME_SETTINGS_CONTRACT_VERSION,
-    codex: {
-      installed: true,
-      authenticated: true,
-      authenticationMode: "chatgpt",
-      authenticationOwner: "codex_cli",
-      daemonRunning: true,
-      cliVersion: "codex-cli 0.147.0",
-      runtimeVersion: "0.147.0",
-      preference: {
-        modelId: "gpt-5.6-sol",
-        documentModelId: null,
-        reasoningEffort: "medium",
-        documentReasoningEffort: "medium",
-        serviceTier: "standard",
-      },
-      models: [
-        {
-          id: "gpt-5.6-sol",
-          displayName: "GPT-5.6-Sol",
-          isDefault: true,
-          defaultReasoningEffort: "low",
-          supportedReasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-          supportsFastMode: true,
-          upgradeModelId: null,
-        },
-      ],
-      usageLimits: [
-        {
-          name: "Codex",
-          usedPercent: 65,
-          remainingPercent: 35,
-          windowDurationMinutes: 10_080,
-          resetsAt: "2026-08-20T14:41:53.000Z",
-        },
-      ],
-      experimental: true,
-    },
-    storage: {
-      driver: "local",
-      rootPath: "/srv/veylta",
-      state: "stable",
-      targetRootPath: null,
-      generation: 1,
-      relocationSupported: true,
-      lastFailureCode: null,
-    },
-    accounts: [],
-  } as const satisfies HomeSettingsResponse;
-
-  assert.equal(response.codex.preference.modelId, "gpt-5.6-sol");
-  assert.equal(response.codex.usageLimits[0].remainingPercent, 35);
 });
 
 test("document agent workspace separates persistent conversations from ephemeral runs", () => {

@@ -1,0 +1,1 @@
+ALTER TABLE codex_preferences DROP COLUMN assistant_reasoning_effort;

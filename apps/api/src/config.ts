@@ -2,12 +2,8 @@ import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { loadEnvFile } from "node:process";
 import { fileURLToPath } from "node:url";
-import {
-  type CodexExecutionPreference,
-  type CodexReasoningEffort,
-  MAX_SYNTHETIC_DOCUMENT_BYTES,
-} from "@veylta/contracts";
-import { codexAssistantReasoningEffort, codexDefaultPreference } from "./codex/codex-defaults.js";
+import { type CodexExecutionPreference, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { codexDefaultPreference } from "./codex/codex-defaults.js";
 import type { S3ServerSideEncryption } from "./storage/s3-object-storage.js";
 
 function findProjectRoot(start: string): string {
@@ -168,7 +164,6 @@ export interface RuntimeConfig {
   apiPort: number;
   databasePath: string;
   codexDefaultPreference: CodexExecutionPreference;
-  codexAssistantReasoningEffort: CodexReasoningEffort;
   codexAssistantTimeoutMs: number;
   codexCarePlanTimeoutMs: number;
   codexDocumentTimeoutMs: number;
@@ -215,7 +210,6 @@ export function loadConfig(): RuntimeConfig {
     apiHost,
     apiPort: integer("API_PORT", 4301),
     codexDefaultPreference: codexDefaultPreference(),
-    codexAssistantReasoningEffort: codexAssistantReasoningEffort(),
     codexAssistantTimeoutMs: boundedInteger("CODEX_ASSISTANT_TIMEOUT_MS", 300_000, 900_000),
     codexCarePlanTimeoutMs: boundedInteger("CODEX_CARE_PLAN_TIMEOUT_MS", 120_000, 600_000),
     codexDocumentTimeoutMs,

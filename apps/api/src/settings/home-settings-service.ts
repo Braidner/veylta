@@ -299,16 +299,15 @@ export function createHomeSettingsService(
         documentModel === undefined ||
         !model.supportedReasoningEfforts.includes(input.reasoningEffort) ||
         !documentModel.supportedReasoningEfforts.includes(input.documentReasoningEffort) ||
+        !model.supportedReasoningEfforts.includes(input.assistantReasoningEffort) ||
         (input.serviceTier === "fast" && !model.supportsFastMode)
       ) {
         throw new CodexPreferenceUnsupportedError();
       }
       const preference: CodexExecutionPreference = {
+        ...input,
         modelId: model.id,
         documentModelId: documentModel.id === model.id ? null : documentModel.id,
-        reasoningEffort: input.reasoningEffort,
-        documentReasoningEffort: input.documentReasoningEffort,
-        serviceTier: input.serviceTier,
       };
       await database.transaction(async (client) => {
         await preferences.write(client, preference, actor.userId, new Date());

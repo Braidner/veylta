@@ -13,7 +13,6 @@ import type {
   CodexReasoningEffort,
   CodexRuntimeActionResponse,
   CodexServiceTier,
-  DocumentAgentWorkspaceResponse,
   DocumentDeleteResponse,
   DocumentDetail,
   DocumentDetailResponse,
@@ -807,10 +806,17 @@ function HomeSettingsScreen({
     documentModelId: null,
     reasoningEffort: "medium",
     documentReasoningEffort: "low",
+    assistantReasoningEffort: "high",
     serviceTier: "standard",
   });
-  const { modelId, documentModelId, reasoningEffort, documentReasoningEffort, serviceTier } =
-    draftPreference;
+  const {
+    modelId,
+    documentModelId,
+    reasoningEffort,
+    documentReasoningEffort,
+    assistantReasoningEffort,
+    serviceTier,
+  } = draftPreference;
 
   const load = useCallback(async () => {
     const generation = ++settingsLoadGeneration.current;
@@ -937,6 +943,9 @@ function HomeSettingsScreen({
       reasoningEffort: String(form.get("reasoningEffort") ?? "") as CodexReasoningEffort,
       documentReasoningEffort: String(
         form.get("documentReasoningEffort") ?? "",
+      ) as CodexReasoningEffort,
+      assistantReasoningEffort: String(
+        form.get("assistantReasoningEffort") ?? "",
       ) as CodexReasoningEffort,
       documentModelId: (() => {
         const value = String(form.get("documentModelId") ?? "");
@@ -1107,7 +1116,8 @@ function HomeSettingsScreen({
                           (model) => model.id === settings.codex.preference.documentModelId,
                         )?.displayName ?? settings.codex.preference.documentModelId
                       } · `}
-                  {reasoningLabels[settings.codex.preference.documentReasoningEffort]}
+                  {reasoningLabels[settings.codex.preference.documentReasoningEffort]} · ассистенты:{" "}
+                  {reasoningLabels[settings.codex.preference.assistantReasoningEffort]}
                 </dd>
               </div>
             </dl>
@@ -1151,6 +1161,11 @@ function HomeSettingsScreen({
                           )
                             ? current.documentReasoningEffort
                             : "low",
+                          assistantReasoningEffort: nextModel.supportedReasoningEfforts.includes(
+                            current.assistantReasoningEffort,
+                          )
+                            ? current.assistantReasoningEffort
+                            : "high",
                           serviceTier: nextModel.supportsFastMode
                             ? current.serviceTier
                             : "standard",
@@ -1186,6 +1201,31 @@ function HomeSettingsScreen({
                       </option>
                     ))}
                   </select>
+                </label>
+                <label className="field">
+                  <span>Рассуждения ассистентов</span>
+                  <select
+                    name="assistantReasoningEffort"
+                    value={assistantReasoningEffort}
+                    disabled={pending !== null}
+                    onChange={(event) => {
+                      const value = event.currentTarget.value as CodexReasoningEffort;
+                      setDraftPreference((current) => ({
+                        ...current,
+                        assistantReasoningEffort: value,
+                      }));
+                    }}
+                  >
+                    {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                      <option key={effort} value={effort}>
+                        {reasoningLabels[effort]}
+                      </option>
+                    ))}
+                  </select>
+                  <small>
+                    ИИ-врач и его проверяющий запуск: второе мнение — это рассуждение над
+                    доказательствами, поэтому по умолчанию высокий уровень.
+                  </small>
                 </label>
                 <label className="field">
                   <span>Модель для разбора документов</span>

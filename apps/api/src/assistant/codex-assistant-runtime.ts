@@ -1,9 +1,9 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { CodexExecutionPreference, CodexReasoningEffort } from "@veylta/contracts";
 import { type CodexCliExecutor, createCodexCliExecutor } from "../codex/codex-cli-executor.js";
 import {
+  assistantExecutionProfile,
   type CodexExecutionProfileResolver,
   codexExecutionArguments,
 } from "../codex/codex-execution-profile.js";
@@ -43,18 +43,9 @@ export interface AssistantRuntime {
   run(turn: AssistantRuntimeTurn): Promise<AssistantRuntimeResult>;
 }
 
-/** The assistants reason over the household's shared model at their own effort. */
-export function assistantExecutionProfile(
-  preference: CodexExecutionPreference,
-  reasoningEffort: CodexReasoningEffort,
-): CodexExecutionPreference {
-  return { ...preference, reasoningEffort };
-}
-
 export function createCodexAssistantRuntime(
   options: {
     resolveExecutionProfile: CodexExecutionProfileResolver;
-    reasoningEffort: CodexReasoningEffort;
     timeoutMs: number;
   },
   executor: CodexCliExecutor = createCodexCliExecutor({
@@ -66,10 +57,7 @@ export function createCodexAssistantRuntime(
   if (options.timeoutMs < 1_000) throw new Error("Codex assistant configuration is invalid");
   return {
     async run(turn) {
-      const profile = assistantExecutionProfile(
-        await options.resolveExecutionProfile(),
-        options.reasoningEffort,
-      );
+      const profile = assistantExecutionProfile(await options.resolveExecutionProfile());
       const startedAt = Date.now();
       const directory = await mkdtemp(join(tmpdir(), "veylta-assistant-"));
       const schemaPath = join(directory, "output.schema.json");
