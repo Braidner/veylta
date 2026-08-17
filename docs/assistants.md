@@ -1,6 +1,6 @@
 # Assistants: physician, nutritionist, trainer — second-opinion plan
 
-Status: **draft for discussion, revision 2** (2026-08-17). Revision 1 framed the assistants as
+Status: **approved by the owner on 2026-08-17 (revision 3)**; slice 1 in progress. Revision 1 framed the assistants as
 navigators and secretaries; the owner's intent is different and this revision follows it:
 
 > The assistants are a real physician, nutritionist and trainer. Each first analyses the
@@ -9,7 +9,7 @@ navigators and secretaries; the owner's intent is different and this revision fo
 > clinician for confirmation. The main goal is to see how well clinicians choose diagnoses and
 > treatment.
 
-Nothing here is delivered; the open decisions at the end need the owner's answer before slice 1.
+Slice 1 is in progress; the decisions at the end were taken as recommended.
 
 ## What changes in the product, deliberately
 
@@ -50,6 +50,31 @@ single generation is not trustworthy enough for this task.
 All three read the same evidence, the same medical profile, and each other's accepted plan
 items, so nutrition and training do not contradict what the physician-assistant recommended and
 the physician-assistant sees the diet and load the person is actually following.
+
+## One physician, a консилиум on demand
+
+Medicine is not one doctor. But a separate chat per specialty is a poor surface and an
+expensive one. The plan takes the shape real care has:
+
+- **The physician-assistant is a therapist (лечащий врач)**: the single entry point, the one
+  who owns the synthesis and the referrals.
+- **A консилиум is convened per case, not per message.** Which specialists join is decided
+  deterministically from the evidence — a table from analyte codes to specialties
+  (`tsh`, `t4.free`, `anti-tpo` → эндокринолог; lipids → кардиолог; `alt`, `ast`, `ggt`,
+  bilirubin → гастроэнтеролог; the blood count → гематолог; `creatinine`, `urea` → нефролог;
+  sex hormones → гинеколог / андролог; …) — plus whoever the therapist asks for. The person
+  sees why each specialist was invited («в данных есть ТТГ и Т4»).
+- **Each specialist is a persona prompt** (`prompts/assistant-specialist-<id>.prompt.ts`) run
+  separately over the same evidence and profile, answering in the same typed blocks. The
+  therapist's synthesis then names where the specialists agree, where they differ and why —
+  a disagreement between specialists is itself a useful signal, exactly as in a real
+  консилиум — takes the highest urgency, and consolidates the referrals. The checker pass
+  verifies the synthesis.
+- **In the UI** it is one conversation with «ИИ-врач», an action «Собрать консилиум», the
+  opinions side by side under the synthesis, and composer chips such as «Спросить
+  эндокринолога» that address one persona inside the same conversation.
+- **For the сверка** this yields the by-specialty view the owner is after: which specialty the
+  clinician referred to versus which the консилиум would have involved.
 
 ## Evidence the assistants reason over
 
@@ -185,7 +210,7 @@ the cases, never as a rating of a named doctor.
 
 ## Delivery in slices
 
-1. **Medical profile + ИИ-врач.** Profile CRUD in the plan tab (age/sex mandatory for the
+1. **Medical profile + ИИ-врач (терапевт).** Profile CRUD in the plan tab (age/sex mandatory for the
    assistant to interpret); the physician conversation with the tools above minus clinician
    records; typed blocks, validator, urgency, checker pass; referral proposals; exchange
    journal; egress disclosure; assistant model/effort settings; the rewritten invariants in
@@ -193,15 +218,19 @@ the cases, never as a rating of a named doctor.
    interpretation bound to the values, ranked hypotheses each with a referral, an urgency tier,
    and a checker verdict; a fixture with a critical potassium yields `emergency` before any
    block; an answer without referrals is refused by name.
-2. **Clinician records + сверка.** Extraction of diagnoses / prescriptions / referrals from
+2. **Консилиум.** The analyte→specialty table, specialist persona prompts, per-case parallel
+   runs, the therapist's synthesis, side-by-side view and «Спросить …» chips. Acceptance: a
+   thyroid fixture convenes the endocrinologist for a stated reason; a disagreement between
+   two personas is shown, not averaged away; the synthesis carries the highest urgency.
+3. **Clinician records + сверка.** Extraction of diagnoses / prescriptions / referrals from
    documents with review; `get_clinician_record`; the comparison view; every «differs» as a
    question. Acceptance: a discharge-note fixture yields records each opening its fragment; the
    comparison marks agree/differs against the assistant's read of the same evidence.
-3. **ИИ-нутрициолог.** Diet assessment and plan into the `nutrition` lane; interaction with
+4. **ИИ-нутрициолог.** Diet assessment and plan into the `nutrition` lane; interaction with
    conditions and medications from the profile flagged; supplements per decision 3.
-4. **ИИ-тренер.** Activity assessment and programme into `activity` with progression and an
+5. **ИИ-тренер.** Activity assessment and programme into `activity` with progression and an
    adherence log; clearance handling.
-5. **Outcome log and evaluation.** Confirmed / rejected / modified per item, dated, linked to
+6. **Outcome log and evaluation.** Confirmed / rejected / modified per item, dated, linked to
    the confirming document; the agreement view; the vignette eval harness with a first set of
    30 synthetic cases and its report.
 
