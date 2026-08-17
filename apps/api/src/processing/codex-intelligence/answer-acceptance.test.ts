@@ -192,6 +192,8 @@ test("Codex classifies a document and returns only source-bound review drafts", 
     "procedure",
     "medication",
     "diagnosis",
+    "referral",
+    "follow_up",
     "other",
   ]);
   assert.deepEqual(schema.properties?.structuredResults?.items?.properties?.status?.enum, [

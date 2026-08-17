@@ -10,6 +10,7 @@ import {
   SYNTHETIC_LAB_FIXTURE_DISCLAIMER,
   SYNTHETIC_LAB_FIXTURE_HEADER,
 } from "../src/processing/synthetic-lab-parser.js";
+import { syntheticRecords } from "./synthetic-records.js";
 
 /**
  * A deterministic stand-in for Codex: it transcribes the synthetic grammar already printed
@@ -66,6 +67,14 @@ export function createSyntheticIntelligence(
       } catch {
         // This deterministic double simulates Codex classifying a non-lab document with no facts.
       }
+      // A synthetic discharge note carries the clinician's statements instead of measurements.
+      const records = syntheticRecords(textPages);
+      const category =
+        items.length > 0
+          ? "laboratory"
+          : records.results.length > 0
+            ? "discharge_summary"
+            : "other";
       return {
         pages,
         extraction: {
@@ -78,8 +87,13 @@ export function createSyntheticIntelligence(
           provider: "codex",
           modelId: "gpt-5.4-mini",
           runtimeVersion: "codex-cli/test",
-          category: items.length > 0 ? "laboratory" : "other",
-          title: items.length > 0 ? "Синтетические анализы" : "Синтетический документ",
+          category,
+          title:
+            category === "laboratory"
+              ? "Синтетические анализы"
+              : category === "discharge_summary"
+                ? "Синтетический выписной эпикриз"
+                : "Синтетический документ",
           shortSummary:
             items.length > 0
               ? "Синтетические лабораторные результаты."
@@ -88,8 +102,8 @@ export function createSyntheticIntelligence(
             items.length > 0
               ? "Источник содержит только синтетические лабораторные данные для тестирования."
               : "Источник содержит только безопасные синтетические данные для тестирования.",
-          structuredResults: [],
-          documentDate: null,
+          structuredResults: records.results,
+          documentDate: records.documentDate,
           confidence: 0.95,
         },
       };

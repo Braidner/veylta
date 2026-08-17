@@ -11,6 +11,8 @@ import {
   type AssistantRuntimeTurn,
 } from "../src/assistant/codex-assistant-runtime.js";
 import { registerAssistantRoutes } from "../src/assistant/routes.js";
+import { createClinicianRecordService } from "../src/clinician-records/clinician-record-service.js";
+import { registerClinicianRecordRoutes } from "../src/clinician-records/routes.js";
 import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
 import { createDocumentService } from "../src/documents/document-service.js";
@@ -203,6 +205,9 @@ export async function startAssistantApp(): Promise<{
     { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES },
   );
   registerMedicalProfileRoutes(app, family, createMedicalProfileService(database), {
+    allowedMutationOrigins: [webOrigin],
+  });
+  registerClinicianRecordRoutes(app, family, createClinicianRecordService(database), {
     allowedMutationOrigins: [webOrigin],
   });
   const scripted = scriptedRuntime();

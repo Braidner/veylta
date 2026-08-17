@@ -1,0 +1,4 @@
+DROP TRIGGER clinician_records_delete_forbidden;
+DROP TRIGGER clinician_records_update_forbidden;
+DROP INDEX clinician_records_profile;
+DROP TABLE clinician_records;

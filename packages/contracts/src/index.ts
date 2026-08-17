@@ -1,4 +1,8 @@
 import type { CodexExecutionPreference, CodexModelOption, CodexUsageLimit } from "./codex.js";
+import type {
+  DocumentIntelligenceResultStatus,
+  DocumentIntelligenceStructuredResultType,
+} from "./document-intelligence-results.js";
 
 export const HTTP_API_VERSION = "v1" as const;
 export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
@@ -8,7 +12,9 @@ export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
 export * from "./assistant.js";
 export * from "./care-plan.js";
+export * from "./clinician-record.js";
 export * from "./codex.js";
+export * from "./document-intelligence-results.js";
 export * from "./medical-profile.js";
 export const DOCUMENT_CONTRACT_VERSION = "document/v7" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
@@ -57,26 +63,6 @@ export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
 export const MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS = 100;
-
-export const DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES = [
-  "measurement",
-  "genetic_variant",
-  "finding",
-  "procedure",
-  "medication",
-  "diagnosis",
-  "other",
-] as const;
-export const DOCUMENT_INTELLIGENCE_RESULT_STATUSES = [
-  "above_range",
-  "normal",
-  "abnormal",
-  "detected",
-  "not_detected",
-  "completed",
-  "informational",
-  "unknown",
-] as const;
 
 export const VEYLTA_VAULT_MEDIA_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const;
 export const VEYLTA_AGENT_COMMAND_TYPES = ["scan_unprocessed", "analyze_document"] as const;
@@ -593,10 +579,6 @@ export type DocumentProcessingFailureCategory =
 export type DocumentProcessingEventCode = (typeof DOCUMENT_PROCESSING_EVENT_CODES)[number];
 export type ProcessingRejectionReason = (typeof PROCESSING_REJECTION_REASONS)[number];
 export type DocumentCategory = (typeof DOCUMENT_CATEGORIES)[number];
-export type DocumentIntelligenceStructuredResultType =
-  (typeof DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES)[number];
-export type DocumentIntelligenceResultStatus =
-  (typeof DOCUMENT_INTELLIGENCE_RESULT_STATUSES)[number];
 
 /**
  * Immutable semantic metadata proposed by the configured document-intelligence

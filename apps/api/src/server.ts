@@ -12,6 +12,8 @@ import { registerAssistantRoutes } from "./assistant/routes.js";
 import { createCarePlanService } from "./care-plan/care-plan-service.js";
 import { createCodexCarePlanGenerator } from "./care-plan/codex-care-plan-generator.js";
 import { registerCarePlanRoutes } from "./care-plan/routes.js";
+import { createClinicianRecordService } from "./clinician-records/clinician-record-service.js";
+import { registerClinicianRecordRoutes } from "./clinician-records/routes.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, databaseReadiness } from "./database/pool.js";
 import { createDocumentService } from "./documents/document-service.js";
@@ -74,6 +76,9 @@ registerHomeSettingsRoutes(
   { allowedMutationOrigins: config.webOrigins },
 );
 registerMedicalProfileRoutes(app, familyService, createMedicalProfileService(database), {
+  allowedMutationOrigins: config.webOrigins,
+});
+registerClinicianRecordRoutes(app, familyService, createClinicianRecordService(database), {
   allowedMutationOrigins: config.webOrigins,
 });
 registerAssistantRoutes(

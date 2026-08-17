@@ -79,20 +79,59 @@ export async function handleExec(args) {
         });
       }
     }
-    const structuredResults = facts.map((fact, index) => ({
-      resultKey: fact.factKey,
-      type: "measurement",
-      label: "Синтетический результат " + (index + 1),
-      value: fact.sourceValue,
-      unit: fact.sourceUnit,
-      code: fact.proposedCanonicalCode,
-      lab: "Синтетическая лаборатория",
-      specimen: "Синтетическая кровь",
-      date: "2026-08-10",
-      status: "unknown",
-      confidence: fact.confidence,
-      source: fact.source,
-    }));
+    // A synthetic discharge note carries the clinician's statements: RECORD|kind|label|detail
+    // lines become structured results of that kind, each bound to its own line.
+    const records = [];
+    let documentDate = null;
+    for (const page of pages) {
+      for (const line of page.text.replaceAll("\r\n", "\n").split("\n")) {
+        const date = /^Дата:\s*(\d{4}-\d{2}-\d{2})\s*$/.exec(line);
+        if (date !== null) documentDate = date[1];
+        const parts = line.split("|");
+        if (parts[0] !== "RECORD" || parts.length < 3) continue;
+        const [, kind, label, detail = "-"] = parts;
+        if (
+          !["diagnosis", "medication", "procedure", "referral", "follow_up", "finding"].includes(
+            kind,
+          )
+        ) {
+          continue;
+        }
+        records.push({
+          resultKey: `record-${records.length + 1}-${kind.replaceAll("_", "-")}`,
+          type: kind,
+          label,
+          value: detail === "-" ? null : detail,
+          unit: null,
+          code: null,
+          lab: null,
+          specimen: null,
+          date: documentDate,
+          status: "informational",
+          confidence: 0.9,
+          source: { pageNumber: page.pageNumber, fragment: line },
+        });
+      }
+    }
+    const structuredResults = [
+      ...facts.map((fact, index) => ({
+        resultKey: fact.factKey,
+        type: "measurement",
+        label: "Синтетический результат " + (index + 1),
+        value: fact.sourceValue,
+        unit: fact.sourceUnit,
+        code: fact.proposedCanonicalCode,
+        lab: "Синтетическая лаборатория",
+        specimen: "Синтетическая кровь",
+        date: "2026-08-10",
+        status: "unknown",
+        confidence: fact.confidence,
+        source: fact.source,
+      })),
+      ...records,
+    ];
+    const category =
+      facts.length > 0 ? "laboratory" : records.length > 0 ? "discharge_summary" : "other";
     await writeFile(
       args[marker + 1],
       JSON.stringify({
@@ -100,18 +139,26 @@ export async function handleExec(args) {
           ? { pages: pages.map(({ pageNumber, text }) => ({ pageNumber, text })) }
           : {}),
         classification: {
-          category: facts.length > 0 ? "laboratory" : "other",
+          category,
           title:
-            facts.length > 0 ? "Синтетические лабораторные результаты" : "Синтетический документ",
+            category === "laboratory"
+              ? "Синтетические лабораторные результаты"
+              : category === "discharge_summary"
+                ? "Синтетический выписной эпикриз"
+                : "Синтетический документ",
           shortSummary:
             facts.length > 0
               ? "Документ содержит " + facts.length + " синтетических лабораторных значений."
-              : "Документ не содержит поддерживаемых синтетических результатов.",
+              : records.length > 0
+                ? "Документ содержит " + records.length + " синтетических записей врача."
+                : "Документ не содержит поддерживаемых синтетических результатов.",
           detailedSummary:
             facts.length > 0
               ? "Codex структурировал явные синтетические значения и сохранил точные фрагменты источника."
-              : "Codex классифицировал синтетический документ без количественных лабораторных значений.",
-          documentDate: null,
+              : records.length > 0
+                ? "Codex выделил явные синтетические формулировки врача и сохранил точные фрагменты источника."
+                : "Codex классифицировал синтетический документ без количественных лабораторных значений.",
+          documentDate,
           sampledAt: facts.length > 0 ? "2026-08-10T08:00:00.000Z" : null,
           resultedAt: facts.length > 0 ? "2026-08-10T12:00:00.000Z" : null,
           specimenType: facts.length > 0 ? "Синтетическая кровь" : null,
