@@ -21,7 +21,7 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   await expect(page.locator('[data-assistant="physician"]')).toContainText(
     "ИИ-врач · второе мнение",
   );
-  await expect(page.locator('[data-assistant="nutrition"]')).toContainText("недостаточно данных");
+  await expect(page.locator('[data-assistant="nutrition"]')).toContainText("нечего оценивать");
   await expect(page.locator('[data-assistant="movement"]')).toContainText("ограничения");
   await expect(page.getByText("Не заменяют специалиста")).toBeVisible();
 

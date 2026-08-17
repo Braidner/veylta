@@ -6,6 +6,7 @@ import {
   ASSISTANT_CLINICIAN_CHECK_CLAIMS,
   ASSISTANT_CONFIDENCE_LEVELS,
   ASSISTANT_CONTRAINDICATION_STATES,
+  ASSISTANT_DIET_CATEGORIES,
   ASSISTANT_MISSING_CONTEXTS,
   ASSISTANT_SPECIALTIES,
   ASSISTANT_TREATMENT_KINDS,
@@ -110,6 +111,41 @@ export const physicianAnswerSchema = {
             refs,
             confirmWith: specialty,
           }),
+          blockOf("question", { text: russian(500), refs }),
+          blockOf("general", { text: russian(800) }),
+          blockOf("missing", { context: { type: "string", enum: ASSISTANT_MISSING_CONTEXTS } }),
+        ],
+      },
+    },
+  },
+} as const;
+
+/** The nutrition assistant's blocks: assessment, recommendations, rechecks and the shared rest. */
+export const nutritionistAnswerSchema = {
+  ...physicianAnswerSchema,
+  properties: {
+    ...physicianAnswerSchema.properties,
+    blocks: {
+      type: "array",
+      maxItems: MAX_ASSISTANT_BLOCKS,
+      items: {
+        anyOf: [
+          blockOf("diet_assessment", { text: russian(800), refs }),
+          blockOf("diet_recommendation", {
+            name: russian(200),
+            category: {
+              type: "string",
+              enum: ASSISTANT_DIET_CATEGORIES,
+              description:
+                "structure: how meals are built; favour: foods to eat more of; limit: foods to eat less of; supplement: a supplement by name or class, never a dose; hydration; timing.",
+            },
+            rationale: russian(800),
+            refs,
+            interaction: { type: "string", enum: ASSISTANT_CONTRAINDICATION_STATES },
+            conflictNotes: { anyOf: [russian(500), { type: "null" }] },
+            confirmWith: specialty,
+          }),
+          blockOf("recheck", { text: russian(300), when: russian(100), refs }),
           blockOf("question", { text: russian(500), refs }),
           blockOf("general", { text: russian(800) }),
           blockOf("missing", { context: { type: "string", enum: ASSISTANT_MISSING_CONTEXTS } }),

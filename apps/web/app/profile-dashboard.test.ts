@@ -113,8 +113,8 @@ test("nutrition and movement assistants stay honest when context is absent", () 
   const model = buildProfileDashboardModel(overview());
 
   assert.equal(model.assistants[1]?.id, "nutrition");
-  assert.match(model.assistants[1]?.message ?? "", /недостаточно данных/i);
-  assert.match(model.assistants[1]?.action.href ?? "", /\?tab=dossier$/);
+  assert.match(model.assistants[1]?.message ?? "", /нечего оценивать/i);
+  assert.match(model.assistants[1]?.action.href ?? "", /\/assistants\/nutritionist$/);
   assert.equal(model.assistants[2]?.id, "movement");
   assert.match(model.assistants[2]?.message ?? "", /ограничения/i);
   assert.equal(model.signals.sources.value, "0");

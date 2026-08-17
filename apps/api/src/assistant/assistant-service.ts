@@ -124,7 +124,7 @@ export function createAssistantService(
       if (value !== ASSISTANT_EGRESS_ACKNOWLEDGEMENT) throw new DomainValidationError();
       return database.transaction(async (client) => {
         await requireProfileWrite(client, actor, scope);
-        const conversation = await loadConversation(client, scope, conversationId);
+        const conversation = await loadConversation(client, scope, assistantId, conversationId);
         const now = new Date();
         if (conversation.acknowledged_at === null) {
           await client.query(

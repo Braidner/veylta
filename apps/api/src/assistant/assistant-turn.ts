@@ -7,12 +7,16 @@ import type {
   AssistantSpecialty,
 } from "@veylta/contracts";
 import {
+  nutritionistFollowUpPrompt,
+  nutritionistOpeningPrompt,
+} from "../prompts/assistant-nutritionist.prompt.js";
+import {
   physicianFollowUpPrompt,
   physicianOpeningPrompt,
 } from "../prompts/assistant-physician.prompt.js";
 import { specialistOpeningPrompt } from "../prompts/assistant-specialist.prompt.js";
 import { parseAssistantAnswer } from "./answer-parser.js";
-import { physicianAnswerSchema } from "./answer-schema.js";
+import { nutritionistAnswerSchema, physicianAnswerSchema } from "./answer-schema.js";
 import {
   type AssistantRuntime,
   AssistantRuntimeError,
@@ -90,21 +94,41 @@ async function answerAndCheck(
   return { ...base, ...checked, exchanges: [first, ...checked.exchanges] };
 }
 
+/** How one assistant of the same kind opens and continues its own thread. */
+interface ThreadPersona {
+  readonly opening: (evidence: AssistantEvidence, message: string) => string;
+  readonly followUp: (evidence: AssistantEvidence | null, message: string) => string;
+  readonly schema: object;
+}
+
+const physicianPersona: ThreadPersona = {
+  opening: physicianOpeningPrompt,
+  followUp: physicianFollowUpPrompt,
+  schema: physicianAnswerSchema,
+};
+
+const nutritionistPersona: ThreadPersona = {
+  opening: nutritionistOpeningPrompt,
+  followUp: nutritionistFollowUpPrompt,
+  schema: nutritionistAnswerSchema,
+};
+
 /**
- * One physician turn on the conversation's thread. Every model failure becomes a refusal with
- * a closed reason and its raw exchange — the turn itself never throws for a model's sake.
+ * One turn on the conversation's own thread. Every model failure becomes a refusal with a
+ * closed reason and its raw exchange — the turn itself never throws for a model's sake.
  */
-export async function runPhysicianTurn(
+async function runThreadTurn(
   runtime: AssistantRuntime,
+  persona: ThreadPersona,
   input: AssistantTurnInput,
 ): Promise<AssistantTurnOutcome> {
   const prompt =
     input.threadId === null
-      ? physicianOpeningPrompt(input.evidence, input.message)
-      : physicianFollowUpPrompt(input.evidenceChanged ? input.evidence : null, input.message);
+      ? persona.opening(input.evidence, input.message)
+      : persona.followUp(input.evidenceChanged ? input.evidence : null, input.message);
   let result: AssistantRuntimeResult;
   try {
-    result = await runtime.run({ threadId: input.threadId, prompt, schema: physicianAnswerSchema });
+    result = await runtime.run({ threadId: input.threadId, prompt, schema: persona.schema });
   } catch (error) {
     if (!(error instanceof AssistantRuntimeError)) throw error;
     return unavailable(error, input.threadId, null, "answer", prompt);
@@ -116,6 +140,21 @@ export async function runPhysicianTurn(
     exchange("answer", null, prompt, result),
     null,
   );
+}
+
+export function runPhysicianTurn(
+  runtime: AssistantRuntime,
+  input: AssistantTurnInput,
+): Promise<AssistantTurnOutcome> {
+  return runThreadTurn(runtime, physicianPersona, input);
+}
+
+/** The nutrition assistant on its own conversation's thread, verified and refuted the same way. */
+export function runNutritionistTurn(
+  runtime: AssistantRuntime,
+  input: AssistantTurnInput,
+): Promise<AssistantTurnOutcome> {
+  return runThreadTurn(runtime, nutritionistPersona, input);
 }
 
 /**

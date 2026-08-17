@@ -1,3 +1,5 @@
+import { ASSISTANT_IDS, type AssistantId } from "@veylta/contracts";
+
 /** The browser routes of a profile; one place, so no surface spells a URL by hand. */
 export const profileTabs = ["overview", "documents", "history", "dossier"] as const;
 export type ProfileTab = (typeof profileTabs)[number];
@@ -21,10 +23,17 @@ export function documentPath(familyId: string, profileId: string, documentId: st
   return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }
 
+/** The `/assistants/:id` segment as one of the closed ids; anything else is no assistant. */
+export function parseAssistantId(value: string | undefined): AssistantId | undefined {
+  return (ASSISTANT_IDS as readonly string[]).includes(value ?? "")
+    ? (value as AssistantId)
+    : undefined;
+}
+
 export function assistantPath(
   familyId: string,
   profileId: string,
-  assistantId: string,
+  assistantId: AssistantId,
   conversationId?: string | null,
 ): string {
   const base = `${profilePath(familyId, profileId)}/assistants/${encodeURIComponent(assistantId)}`;

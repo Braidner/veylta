@@ -3,6 +3,7 @@
 import type {
   AdminSetupResponse,
   ArchivedProfileListResponse,
+  AssistantId,
   CarePlanCategory,
   CarePlanItem,
   CarePlanItemResponse,
@@ -99,6 +100,7 @@ import {
 } from "react";
 import { adminSetupError, canOpenSettings, validateAdminSetup } from "../account-access";
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
+import { assistantIdentity } from "../assistant";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
   documentResultStatusCopy,
@@ -124,6 +126,7 @@ import {
   documentPath,
   normalizeProfileTab,
   type ProfileTab,
+  parseAssistantId,
   profilePath,
   profileTabPath,
 } from "../paths";
@@ -757,7 +760,7 @@ export function VeyltaApp({
             family={context.family}
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
-            requestedAssistantId={requestedAssistantId === "physician" ? "physician" : undefined}
+            requestedAssistantId={parseAssistantId(requestedAssistantId)}
             requestedConversationId={requestedConversationId}
             requestedAssistantAsk={requestedAssistantAsk}
             activeTab={activeTab === "settings" ? "overview" : activeTab}
@@ -1936,7 +1939,7 @@ interface ProfileWorkspaceProps {
   family: SessionFamily;
   profile: PatientProfileSummary;
   requestedDocumentId: string | undefined;
-  requestedAssistantId: "physician" | undefined;
+  requestedAssistantId: AssistantId | undefined;
   requestedConversationId: string | undefined;
   requestedAssistantAsk: string | undefined;
   activeTab: ProfileTab;
@@ -2179,8 +2182,8 @@ function ProfileWorkspace({
       aria-label={
         detail === null && activeTab !== "documents" && activeTab !== "dossier"
           ? undefined
-          : detail === "assistant"
-            ? "ИИ-врач · второе мнение"
+          : detail === "assistant" && requestedAssistantId !== undefined
+            ? assistantIdentity[requestedAssistantId].title
             : detail === null && activeTab === "dossier"
               ? "Досье"
               : "Документы профиля"
@@ -2383,9 +2386,13 @@ function ProfileWorkspace({
           className="workspace-tab-panel workspace-tab-panel--overview workspace-tab-panel--assistant"
           role="tabpanel"
           aria-labelledby="workspace-tab-overview"
-          aria-label="ИИ-врач · второе мнение"
+          aria-label={assistantIdentity[requestedAssistantId].title}
         >
-          <AssistantHeader familyId={family.id} profileId={profile.id} />
+          <AssistantHeader
+            assistantId={requestedAssistantId}
+            familyId={family.id}
+            profileId={profile.id}
+          />
           <AssistantWorkspace
             key={`assistant:${family.id}:${profile.id}`}
             familyId={family.id}

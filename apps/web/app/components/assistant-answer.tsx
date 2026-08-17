@@ -1,9 +1,15 @@
 "use client";
 
-import type { AssistantEvidenceRef, AssistantExchange, AssistantMessage } from "@veylta/contracts";
+import type {
+  AssistantEvidenceRef,
+  AssistantExchange,
+  AssistantId,
+  AssistantMessage,
+} from "@veylta/contracts";
 import { AlertTriangle, Bot, ClipboardCheck, ShieldCheck, Users } from "lucide-react";
 import { useState } from "react";
 import { refusalCopy, speakerLabel, specialtyLabel, urgencyCopy } from "../assistant";
+import { isReferral, type ReferralBlock } from "../assistant-referrals";
 import { formatDate } from "../format-moment";
 import {
   BlockBody,
@@ -12,7 +18,6 @@ import {
   type EvidenceIndex,
   type RecordIndex,
   ReferralAction,
-  type ReferralBlock,
   SourceRefs,
 } from "./assistant-blocks";
 import { AssistantConsiliumView } from "./assistant-consilium";
@@ -28,6 +33,7 @@ const exchangeLabel: Record<AssistantExchange["stage"], string> = {
 
 interface AssistantAnswerProps {
   readonly message: AssistantReply;
+  readonly assistantId: AssistantId;
   readonly familyId: string;
   readonly profileId: string;
   readonly evidence: EvidenceIndex;
@@ -42,6 +48,7 @@ interface AssistantAnswerProps {
 /** One assistant reply: fixed urgency copy first, then the typed blocks each bound to sources. */
 export function AssistantAnswer({
   message,
+  assistantId,
   familyId,
   profileId,
   evidence,
@@ -65,7 +72,7 @@ export function AssistantAnswer({
           {message.consilium === null ? <Bot size={15} /> : <Users size={15} />}
         </span>
         <strong>
-          {speakerLabel(message.speaker)}
+          {speakerLabel(message.speaker, assistantId)}
           {message.consilium === null ? "" : " · синтез консилиума"}
         </strong>
         <time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time>
@@ -100,10 +107,7 @@ export function AssistantAnswer({
                       records={records}
                     />
                     <CheckerNote verdict={verdicts.get(index)} />
-                    {(block.kind === "hypothesis" ||
-                      block.kind === "treatment_option" ||
-                      (block.kind === "clinician_check" && block.claim === "differs")) &&
-                    canWrite ? (
+                    {isReferral(block) && canWrite ? (
                       <ReferralAction
                         block={block}
                         accepted={acceptedReferrals.has(key)}

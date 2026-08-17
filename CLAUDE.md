@@ -99,7 +99,8 @@ pnpm test:e2e e2e/document-review.spec.ts
   Changing the CLI invocation shape (flags, schema, output file) means updating that stub.
   For `--image` it "transcribes" one fixed synthetic report per attached page, as does
   `apps/api/test/synthetic-intelligence.ts` — neither reads pixels; tests exercise plumbing.
-  The API-side twin for the assistant is `apps/api/test/assistant-app.ts` (a scripted runtime).
+  The API-side twin for the assistant is `apps/api/test/assistant-app.ts` (a scripted runtime whose
+  answers live in `assistant-scripts.ts`).
 - Some e2e specs stub the API with `page.route`. A stub that drifts from the real contract
   is worse than no stub — update it in the same change as the contract.
 - The suite has no known flakes. A spec must never assert a calendar date the app writes at
@@ -172,10 +173,11 @@ is a new dated entry after the previous is archived, so the passport can show th
 optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
 assistants refuse to interpret values without them.
 
-**Assistants** (`assistant/v4`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
+**Assistants** (`assistant/v5`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
 второе мнение» is a profile-scoped conversation at
 `/v1/families/:f/profiles/:p/assistants/physician` (web route `…/assistants/physician`, entered
-from the overview card). `evidence.ts` is the only thing that leaves the machine — medical
+from the overview card); `ASSISTANT_IDS` also names `nutritionist` (see below), each id its own
+room — a conversation id under the other assistant's route is a 404. `evidence.ts` is the only thing that leaves the machine — medical
 profile, bounded confirmed observations with printed ranges, care plan — and the same loader
 feeds both the prompt and the workspace's `evidenceCount`/`evidence` index, so the egress
 disclosure never describes something other than what is sent. A conversation must be
@@ -183,19 +185,25 @@ acknowledged (`PUT …/acknowledgement`, `send_confirmed_evidence_to_codex`) bef
 message (409 `ACKNOWLEDGEMENT_REQUIRED` otherwise). `assistant-turn.ts` runs one turn:
 `codex exec` / `exec resume` on the conversation's thread (`codex-assistant-runtime.ts`: the
 dialogue model at `assistantReasoningEffort`, a settings field defaulting to high; web search
-off), `answer-parser.ts` verifies every block against the evidence, `answer-checker.ts` runs an
+off), `answer-parser.ts` verifies every block against the evidence (`answer-refs.ts` binds refs,
+`answer-blocks.ts` reads one block by kind), `answer-checker.ts` runs an
 independent refuting exec and applies its verdicts, and
 every model failure becomes a refusal with a closed `ASSISTANT_REJECTION_REASONS` code plus its
 raw exchange in `assistant_exchanges` (owner-only journal, never audit). Web: pure copy tables in
-`app/assistant.ts`, `assistant-workspace.tsx` (data) → `assistant-panel.tsx` (shell: a one-line
+`app/assistant.ts` (`assistantIdentity` — title, name in the cases the copy needs, rule, hint per
+id; block labels; `interactionCopy`, `dietCategoryLabel`), `app/assistant-invitations.ts`,
+`app/assistant-errors.ts`, `app/assistant-referrals.ts` (`isReferral`, `referralItem`,
+`referralActionCopy` — which blocks offer a way into the plan and what item they become),
+`assistant-workspace.tsx` (data; `use-evidence-indexes.ts`) → `assistant-panel.tsx` (shell: a one-line
 `assistant-header.tsx` instead of a hero, `assistant-rail.tsx`, the stream, and the composer held
-at the bottom of the viewport) → `assistant-answer.tsx`/`assistant-blocks.tsx` (typed blocks as
-sections with a kind kicker, source links, referral → care-plan `clinician` item through the plan's
-own `PUT items/:id`), `assistant-consilium.tsx`, `assistant-messages.tsx`. `assistant-composer.tsx`
-is «кому + что»: one row of recipients — ИИ-врач, each specialist the evidence names with the count
-of values that put them there (`invitationSummary`), the консилиум — and the primary button follows
-the recipient («Отправить» / «Собрать консилиум»; `use-assistant-composer.ts` `Recipient`). Browser
-routes live in `app/paths.ts`.
+at the bottom of the viewport) → `assistant-answer.tsx`/`assistant-blocks.tsx`/`assistant-block-actions.tsx`
+(typed blocks as sections with a kind kicker, source links, referral → care-plan item through the
+plan's own `PUT items/:id`), `assistant-consilium.tsx`, `assistant-messages.tsx`. `assistant-composer.tsx`
+is «кому + что»: in the physician's room one row of recipients — ИИ-врач, each specialist the evidence
+names with the count of values that put them there (`invitationSummary`), the консилиум — and the
+primary button follows the recipient («Отправить» / «Собрать консилиум»; `use-assistant-composer.ts`
+`Recipient`); the nutritionist's composer is the field alone. Browser routes live in `app/paths.ts`
+(`parseAssistantId` reads the `/assistants/:id` segment against `ASSISTANT_IDS`).
 A conversation may carry a `purpose` (`dossier:<specialty>` | `dossier:consilium`, migration
 0033, one per profile and purpose): `POST conversations` with a purpose finds the existing one
 before creating (200, not 201), so the dossier's questions to one doctor stay in one place —
@@ -259,6 +267,24 @@ on the document page («Записи врача»), «Сверить с ИИ-в�
 the therapist's dossier conversation through the same `?ask=` handoff (`app/clinician-records.ts`
 `checkQuestion`); the synthetic stand reads a discharge-note grammar (`RECORD|kind|label|detail`,
 `fixtures/veylta-synthetic-discharge-note.pdf` from `scripts/synthetic-discharge-fixture.mjs`).
+
+**ИИ-нутрициолог** (`assistantId = nutritionist`, migration 0035 widens the `assistant_id` CHECK
+by rebuilding the five assistant tables; web route `…/assistants/nutritionist` from the overview
+card «Открыть питание»). The same evidence, gate, journal and checker; its own prompt
+(`prompts/assistant-nutritionist.prompt.ts`) and closed schema (`nutritionistAnswerSchema`):
+`diet_assessment` (bound), `diet_recommendation` (`name`, `category` in
+`ASSISTANT_DIET_CATEGORIES` — structure / favour / limit / supplement / hydration / timing —,
+`rationale`, `refs` may be empty when it rests on the profile, `interaction` checked_clear /
+checked_conflict / unknown with `conflictNotes`, `confirmWith`; a supplement whose name or
+rationale carries a dose refuses the block as `prescriptive_dose`), `recheck` (`text`, `when` — the
+assistant's own phrase, never a date Veylta computes —, bound refs), plus question / general /
+missing (`height_weight`, `dietary_restrictions`, `goals` join the contexts). Personas and the
+консилиум are the physician's alone: `addressee` or `POST …/consilium` in this room is a 422 and
+`consiliumPanel` is `[]`. `assistant-turn.ts` runs both rooms through one `ThreadPersona`
+(`runPhysicianTurn`, `runNutritionistTurn`). Web: `referralItem` files a recommendation into the
+`nutrition` lane («В план: питание») and a recheck into `laboratory` («В план: повторить анализ»).
+The fakes (`apps/api/test/assistant-scripts.ts`, `scripts/fake-codex-assistant.mjs`) tell the
+nutritionist by its schema, since a follow-up turn carries no preamble.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the
@@ -345,7 +371,9 @@ YOU MUST NOT relax these to make a feature easier.
   **Model**: hypotheses, treatment options and questions come only from an assistant, as
   verified output: every hypothesis and treatment option names `confirmWith`, every answer
   carries an urgency tier rendered as fixed copy that a later block cannot lower, no
-  medication is ever proposed with a dose, `general` text may not quote the person's values,
+  medication or supplement is ever proposed with a dose, a diet recommendation is read against
+  the recorded conditions and medications and names who confirms it, `general` text may not
+  quote the person's values,
   an unbound block is dropped, a fully refuted answer is refused with a closed reason. Nothing
   of either grade becomes a plan item, an observation, or a record without a human action. Sex
   and birth year missing → `missing` blocks only. The refusal reason shown is always the closed

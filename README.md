@@ -108,6 +108,12 @@ the opposite stance:
   the same evidence independently, the therapist synthesises with the highest urgency and says
   where they agree and differ, and every opinion is shown beside the synthesis. A chip lets you ask
   one specialist directly inside the same conversation.
+- **ИИ-нутрициолог.** A second room over the same disclosed evidence, gate, checker and journal:
+  what the confirmed values say about the diet, recommendations by category — structure, foods to
+  favour or limit, a supplement by name or class (a dose refuses the block), hydration, timing —
+  each read against the recorded conditions and medications with the interaction named and a
+  specialty to confirm it, and what to measure again with the assistant's own phrase for when. An
+  accepted recommendation becomes a «питание» item, a recheck an «анализы» item.
 - **Family and access.** An owner, adults with their own profiles, caregivers with a single
   revocable per-profile grant; reversible profile archiving that deletes nothing.
 - **Evidence over time.** Versioned, evidence-backed health summaries; a household care plan whose

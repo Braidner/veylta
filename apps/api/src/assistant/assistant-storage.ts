@@ -18,6 +18,7 @@ export { persistTurn } from "./assistant-messages.js";
 
 export interface ConversationRow {
   id: string;
+  assistant_id: string;
   title: string;
   purpose: string | null;
   codex_thread_id: string | null;
@@ -30,7 +31,8 @@ export interface ConversationRow {
 }
 
 const conversationSelect = `
-  SELECT c.id, c.title, c.purpose, c.codex_thread_id, c.evidence_hash, c.acknowledged_at,
+  SELECT c.id, c.assistant_id, c.title, c.purpose, c.codex_thread_id, c.evidence_hash,
+         c.acknowledged_at,
          c.created_at, c.updated_at,
          (SELECT count(*) FROM assistant_messages m
            WHERE m.family_id = c.family_id AND m.conversation_id = c.id) AS message_count,
@@ -47,15 +49,18 @@ export function conversationPurpose(value: string | null): AssistantConversation
   return value as AssistantConversationPurpose;
 }
 
+/** One conversation of one assistant: another assistant's conversation is a 404, never a mix-up. */
 export async function loadConversation(
   client: DatabaseClient,
   scope: ProfileScope,
+  assistantId: AssistantId,
   conversationId: string,
 ): Promise<ConversationRow> {
   const row = (
     await client.query<ConversationRow>(
-      `${conversationSelect} WHERE c.family_id = $1 AND c.patient_profile_id = $2 AND c.id = $3`,
-      [scope.familyId, scope.profileId, conversationId],
+      `${conversationSelect}
+        WHERE c.family_id = $1 AND c.patient_profile_id = $2 AND c.assistant_id = $3 AND c.id = $4`,
+      [scope.familyId, scope.profileId, assistantId, conversationId],
     )
   ).rows[0];
   if (row === undefined) throw new ResourceNotFoundError();
@@ -112,7 +117,7 @@ export async function workspaceResponse(
     evidence: sources,
     recordCount: records.length,
     records,
-    consiliumPanel: consiliumPanel(evidence),
+    consiliumPanel: assistantId === "physician" ? consiliumPanel(evidence) : [],
     conversations: conversations.map(summary),
     selectedConversationId,
     messages:

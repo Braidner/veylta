@@ -8,6 +8,7 @@ import { MAX_CONSILIUM_SPECIALISTS } from "@veylta/contracts";
 import type { Database } from "../database/pool.js";
 import {
   DomainConflictError,
+  DomainValidationError,
   ResourceNotFoundError,
   type SessionActor,
 } from "../family/family-service.js";
@@ -22,6 +23,7 @@ import {
 import { audit, loadConversation, persistTurn, workspaceResponse } from "./assistant-storage.js";
 import {
   type AssistantTurnOutcome,
+  runNutritionistTurn,
   runPhysicianTurn,
   runSpecialistTurn,
 } from "./assistant-turn.js";
@@ -99,8 +101,15 @@ export async function sendAssistantTurn(
       if (replay !== conversationId) throw new ResourceNotFoundError();
       return { replayed: await workspaceResponse(client, scope, assistantId, true, replay) };
     }
-    const conversation = await loadConversation(client, scope, conversationId);
+    const conversation = await loadConversation(client, scope, assistantId, conversationId);
     if (conversation.acknowledged_at === null) throw new AssistantAcknowledgementRequiredError();
+    // Personas and the консилиум belong to the physician's room; the others answer alone.
+    if (
+      assistantId !== "physician" &&
+      (request.kind === "consilium" || request.addressee !== null)
+    ) {
+      throw new DomainValidationError();
+    }
     if (conversation.message_count + 2 > maximumMessagesPerConversation) {
       throw new DomainConflictError();
     }
@@ -133,6 +142,13 @@ export async function sendAssistantTurn(
       specialty: request.addressee,
       message: request.message,
     });
+  } else if (assistantId === "nutritionist") {
+    outcome = await runNutritionistTurn(runtime, {
+      threadId,
+      evidence,
+      evidenceChanged,
+      message: request.message,
+    });
   } else {
     outcome = await runPhysicianTurn(runtime, {
       threadId,
@@ -144,7 +160,7 @@ export async function sendAssistantTurn(
 
   const response = await database.transaction(async (client) => {
     await requireProfileWrite(client, actor, scope);
-    const latest = await loadConversation(client, scope, conversationId);
+    const latest = await loadConversation(client, scope, assistantId, conversationId);
     const now = new Date();
     const ids = await persistTurn(client, {
       scope,

@@ -1,9 +1,9 @@
 "use client";
 
-import type { AssistantMessage, AssistantWorkspaceResponse } from "@veylta/contracts";
+import type { AssistantId, AssistantMessage, AssistantWorkspaceResponse } from "@veylta/contracts";
 import { ContactRound, ShieldAlert } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
-import { assistantTitle, specialtyLabel } from "../assistant";
+import { assistantIdentity, specialtyLabel } from "../assistant";
 import { profileTabPath } from "../paths";
 import { countCopy } from "../russian-plural";
 import type { Recipient } from "../use-assistant-composer";
@@ -15,6 +15,7 @@ import { Openers, UserMessage, Waiting } from "./assistant-messages";
 import { AssistantRail } from "./assistant-rail";
 
 interface AssistantPanelProps {
+  readonly assistantId: AssistantId;
   readonly familyId: string;
   readonly profileId: string;
   readonly workspace: AssistantWorkspaceResponse | null;
@@ -43,9 +44,10 @@ interface AssistantPanelProps {
   readonly onSend: (event: FormEvent<HTMLFormElement>) => void;
 }
 
-/** The physician workspace: a rail of conversations, the stream with the egress gate, a composer. */
+/** One assistant's room: a rail of conversations, the stream with the egress gate, a composer. */
 export function AssistantPanel(props: AssistantPanelProps) {
-  const { workspace, familyId, profileId } = props;
+  const { workspace, familyId, profileId, assistantId } = props;
+  const identity = assistantIdentity[assistantId];
   const selected =
     workspace?.conversations.find((item) => item.id === workspace.selectedConversationId) ?? null;
   const canWrite = workspace?.canWrite ?? false;
@@ -70,11 +72,12 @@ export function AssistantPanel(props: AssistantPanelProps) {
   return (
     <section
       className="assistant-workspace"
-      aria-label={assistantTitle}
+      aria-label={identity.title}
       data-testid="assistant-workspace"
     >
       <div className="assistant-shell">
         <AssistantRail
+          label={`Диалоги с ${identity.instrumental}`}
           workspace={workspace}
           canWrite={canWrite}
           isLoading={props.isLoading}
@@ -141,7 +144,9 @@ export function AssistantPanel(props: AssistantPanelProps) {
                 onAcknowledge={props.onAcknowledge}
               />
             ) : null}
-            {empty && canWrite ? <Openers onPick={props.onMessageChange} /> : null}
+            {empty && canWrite ? (
+              <Openers assistantId={assistantId} onPick={props.onMessageChange} />
+            ) : null}
             {!props.isSwitching && selected !== null && selected.acknowledged
               ? workspace?.messages.map((item) => (
                   <ConversationItem key={item.id} item={item} panel={props} />
@@ -156,7 +161,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
                 />
                 <Waiting>
                   {props.recipient === null || props.recipient === "consilium"
-                    ? "ИИ-врач отвечает, затем второй запуск проверяет ответ…"
+                    ? `${identity.name} отвечает, затем второй запуск проверяет ответ…`
                     : `Отвечает специалист (${specialtyLabel[props.recipient]}), затем проверка…`}
                 </Waiting>
               </>
@@ -176,6 +181,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
 
           <div className="assistant-chat__composer">
             <AssistantComposer
+              assistantId={assistantId}
               message={props.message}
               recipient={props.recipient}
               canSend={canSend}
@@ -208,6 +214,7 @@ function ConversationItem({
   return (
     <AssistantAnswer
       message={item}
+      assistantId={panel.assistantId}
       familyId={panel.familyId}
       profileId={panel.profileId}
       evidence={panel.evidence}

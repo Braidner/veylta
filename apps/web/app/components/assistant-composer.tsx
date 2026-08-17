@@ -1,12 +1,14 @@
 "use client";
 
-import type { AssistantEvidenceItem, AssistantInvitation } from "@veylta/contracts";
+import type { AssistantEvidenceItem, AssistantId, AssistantInvitation } from "@veylta/contracts";
 import { Send, Stethoscope, Users } from "lucide-react";
 import type { FormEvent, ReactNode, RefObject } from "react";
-import { invitationCopy, invitationSummary, specialtyLabel } from "../assistant";
+import { assistantIdentity, specialtyLabel } from "../assistant";
+import { invitationCopy, invitationSummary } from "../assistant-invitations";
 import type { Recipient } from "../use-assistant-composer";
 
 interface AssistantComposerProps {
+  readonly assistantId: AssistantId;
   readonly message: string;
   readonly recipient: Recipient;
   readonly canSend: boolean;
@@ -23,8 +25,8 @@ interface AssistantComposerProps {
 }
 
 /** «Сообщение ИИ-врачу», «Вопрос специалисту: гематолог», «Вопрос консилиуму» — the field's name. */
-export function composerLabel(recipient: Recipient): string {
-  if (recipient === null) return "Сообщение ИИ-врачу";
+export function composerLabel(recipient: Recipient, assistantId: AssistantId): string {
+  if (recipient === null) return `Сообщение ${assistantIdentity[assistantId].dative}`;
   if (recipient === "consilium") return "Вопрос консилиуму";
   return `Вопрос специалисту: ${specialtyLabel[recipient]}`;
 }
@@ -59,13 +61,15 @@ function RecipientChip({
 }
 
 /**
- * «Кому + что»: one row of recipients — the therapist, each specialist the evidence names (with
- * how many of the person's values put them there), the whole консилиум — then the field. The
- * primary button follows the recipient: a message, or «Собрать консилиум», where the typed text
- * becomes the question every specialist and the synthesis answer.
+ * «Кому + что»: in the physician's room one row of recipients — the therapist, each specialist
+ * the evidence names (with how many of the person's values put them there), the whole консилиум —
+ * then the field. The primary button follows the recipient: a message, or «Собрать консилиум»,
+ * where the typed text becomes the question every specialist and the synthesis answer. The
+ * nutritionist answers alone, so its composer is the field.
  */
 export function AssistantComposer(props: AssistantComposerProps) {
-  const { panel, recipient, evidence } = props;
+  const { panel, recipient, evidence, assistantId } = props;
+  const identity = assistantIdentity[assistantId];
   const chosen = recipient === null || recipient === "consilium" ? null : recipient;
   const invitation = chosen === null ? null : panel.find((item) => item.specialty === chosen);
   const consilium = recipient === "consilium";
@@ -74,7 +78,7 @@ export function AssistantComposer(props: AssistantComposerProps) {
     : !props.canSend || props.message.trim().length === 0;
   const hint =
     recipient === null
-      ? "Читает все подтверждённые значения и ваш профиль; каждый вывод — рекомендация для разговора с врачом."
+      ? identity.hint
       : consilium
         ? panel.length === 0
           ? "Среди подтверждённых значений нет профильных показателей — созывать некого."
@@ -84,7 +88,7 @@ export function AssistantComposer(props: AssistantComposerProps) {
           : `${specialtyLabel[recipient]} · ${invitationSummary(invitation, evidence)}`;
   return (
     <form className="assistant-composer" onSubmit={props.onSend}>
-      {props.hasConversation ? (
+      {props.hasConversation && assistantId === "physician" ? (
         <div className="assistant-composer__to" data-testid="assistant-consilium-panel">
           <span className="assistant-composer__to-label">Кому</span>
           <ul className="assistant-composer__chips" aria-label="Кому адресован вопрос">
@@ -129,7 +133,7 @@ export function AssistantComposer(props: AssistantComposerProps) {
         </div>
       ) : null}
       <label htmlFor="assistant-message" className="visually-hidden">
-        {composerLabel(recipient)}
+        {composerLabel(recipient, assistantId)}
       </label>
       <div className="assistant-composer__field">
         <textarea
@@ -144,7 +148,7 @@ export function AssistantComposer(props: AssistantComposerProps) {
               : consilium
                 ? "Вопрос консилиуму — или оставьте пустым, каждый ответит по своим данным"
                 : recipient === null
-                  ? "Например: что означают мои последние анализы?"
+                  ? identity.placeholder
                   : `Например: что вы как ${specialtyLabel[recipient]} видите в этих значениях?`
           }
           onChange={(event) => props.onMessageChange(event.target.value)}

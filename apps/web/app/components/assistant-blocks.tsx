@@ -2,40 +2,43 @@
 
 import type {
   AssistantBlock,
-  AssistantCheckerVerdictRecord,
   AssistantEvidenceRecordItem,
   AssistantEvidenceRef,
 } from "@veylta/contracts";
 import {
   BookOpen,
+  CalendarClock,
   CircleAlert,
   CircleHelp,
   ExternalLink,
   Lightbulb,
   type LucideIcon,
+  Salad,
   Scale,
   ScanSearch,
   Stethoscope,
+  Utensils,
 } from "lucide-react";
 import {
   blockKindLabel,
-  checkerVerdictLabel,
   clinicianCheckClaimCopy,
   confidenceLabel,
   contraindicationCopy,
+  dietCategoryLabel,
+  interactionCopy,
   missingContextCopy,
   specialtyLabel,
   treatmentKindLabel,
 } from "../assistant";
-import type { ReferralBlock } from "../assistant-referrals";
 import { clinicianRecordKindLabel } from "../clinician-records";
 import { formatSampleMoment } from "../format-moment";
 import { documentPath } from "../paths";
 import { type EvidenceIndex, SourceRefs } from "./assistant-source-refs";
 
+export type { ReferralBlock } from "../assistant-referrals";
+export { CheckerNote, ReferralAction } from "./assistant-block-actions";
 export type { EvidenceIndex } from "./assistant-source-refs";
 export { SourceRefs } from "./assistant-source-refs";
-export type { ReferralBlock };
 export type RecordIndex = ReadonlyMap<string, AssistantEvidenceRecordItem>;
 
 const blockIcon: Record<AssistantBlock["kind"], LucideIcon> = {
@@ -43,6 +46,9 @@ const blockIcon: Record<AssistantBlock["kind"], LucideIcon> = {
   hypothesis: Lightbulb,
   treatment_option: Stethoscope,
   clinician_check: Scale,
+  diet_assessment: Utensils,
+  diet_recommendation: Salad,
+  recheck: CalendarClock,
   question: CircleHelp,
   general: BookOpen,
   missing: CircleAlert,
@@ -126,10 +132,34 @@ export function BlockBody({
       );
     }
     case "interpretation":
+    case "diet_assessment":
     case "question":
       return (
         <>
           <p>{block.text}</p>
+          {refs(block.refs)}
+        </>
+      );
+    case "recheck":
+      return (
+        <>
+          <p>{block.text}</p>
+          <p className="assistant-block__meta">когда: {block.when}</p>
+          {refs(block.refs)}
+        </>
+      );
+    case "diet_recommendation":
+      return (
+        <>
+          <h5>{block.name}</h5>
+          <p className="assistant-block__meta">
+            {dietCategoryLabel[block.category]} · {interactionCopy[block.interaction]} ·
+            подтвердить: {specialtyLabel[block.confirmWith]}
+          </p>
+          <p>{block.rationale}</p>
+          {block.conflictNotes !== null ? (
+            <p className="assistant-block__conflict">{block.conflictNotes}</p>
+          ) : null}
           {refs(block.refs)}
         </>
       );
@@ -170,55 +200,4 @@ export function BlockBody({
         </>
       );
   }
-}
-
-export function CheckerNote({
-  verdict,
-}: {
-  readonly verdict: AssistantCheckerVerdictRecord | undefined;
-}) {
-  if (verdict === undefined || verdict.verdict === "supported") return null;
-  return (
-    <p className="assistant-block__checker">
-      Проверяющий запуск: {checkerVerdictLabel[verdict.verdict]}
-      {verdict.note === null ? "" : ` — ${verdict.note}`}
-    </p>
-  );
-}
-
-export function ReferralAction({
-  block,
-  accepted,
-  pending,
-  onAccept,
-}: {
-  readonly block: ReferralBlock;
-  readonly accepted: boolean;
-  readonly pending: boolean;
-  readonly onAccept: () => void;
-}) {
-  const discuss = block.kind === "clinician_check";
-  if (accepted) {
-    return (
-      <p className="assistant-block__accepted">
-        {discuss
-          ? "Добавлено в план: обсудить с врачом."
-          : "Добавлено в план: подтвердить у врача."}
-      </p>
-    );
-  }
-  return (
-    <button
-      type="button"
-      className="button button--secondary assistant-block__referral"
-      onClick={onAccept}
-      disabled={pending}
-    >
-      {pending
-        ? "Добавляем…"
-        : discuss
-          ? `В план: обсудить с врачом (${specialtyLabel[block.confirmWith]})`
-          : `В план: подтвердить у специалиста (${specialtyLabel[block.confirmWith]})`}
-    </button>
-  );
 }

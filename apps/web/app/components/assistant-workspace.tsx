@@ -1,13 +1,9 @@
 "use client";
 
-import type {
-  AssistantEvidenceItem,
-  AssistantEvidenceRecordItem,
-  AssistantWorkspaceResponse,
-} from "@veylta/contracts";
+import type { AssistantId, AssistantWorkspaceResponse } from "@veylta/contracts";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { assistantCreateErrorCopy, assistantSendErrorCopy } from "../assistant";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { assistantCreateErrorCopy, assistantSendErrorCopy } from "../assistant-errors";
 import {
   acknowledgeRequest,
   assistantEndpoint,
@@ -24,6 +20,7 @@ import {
 } from "../dossier-ask";
 import { assistantPath } from "../paths";
 import { type Attempt, attemptFor, useAssistantComposer } from "../use-assistant-composer";
+import { useEvidenceIndexes } from "../use-evidence-indexes";
 import { useReferralAcceptance } from "../use-referral-acceptance";
 import { WorkspaceRequests } from "../workspace-requests";
 import { AssistantPanel } from "./assistant-panel";
@@ -36,14 +33,14 @@ type WorkspaceState =
 interface AssistantWorkspaceProps {
   readonly familyId: string;
   readonly profileId: string;
-  readonly assistantId: "physician";
+  readonly assistantId: AssistantId;
   readonly requestedConversationId: string | undefined;
   /** The dossier sent the person here: open the conversation kept for this addressee. */
   readonly ask: DossierAsk | null;
 }
 
 /**
- * The data side of the physician workspace: one endpoint, replay-safe mutations under
+ * The data side of one assistant's room: one endpoint, replay-safe mutations under
  * client-chosen idempotency keys, and the same request discipline as document dialogues.
  */
 export function AssistantWorkspace({
@@ -94,20 +91,7 @@ export function AssistantWorkspace({
     return () => controller.abort();
   }, [load, requestedConversationId]);
 
-  const evidence = useMemo(() => {
-    const index = new Map<string, AssistantEvidenceItem>();
-    if (state.kind === "ready") {
-      for (const item of state.workspace.evidence) index.set(item.observationId, item);
-    }
-    return index;
-  }, [state]);
-  const records = useMemo(() => {
-    const index = new Map<string, AssistantEvidenceRecordItem>();
-    if (state.kind === "ready") {
-      for (const item of state.workspace.records) index.set(item.recordId, item);
-    }
-    return index;
-  }, [state]);
+  const { evidence, records } = useEvidenceIndexes(state.kind === "ready" ? state.workspace : null);
 
   function show(response: AssistantWorkspaceResponse): void {
     shownConversation.current = response.selectedConversationId;
@@ -213,6 +197,7 @@ export function AssistantWorkspace({
 
   return (
     <AssistantPanel
+      assistantId={assistantId}
       familyId={familyId}
       profileId={profileId}
       workspace={state.kind === "ready" ? state.workspace : null}

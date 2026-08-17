@@ -5,20 +5,48 @@ import type {
   AssistantClinicianCheckClaim,
   AssistantConfidence,
   AssistantContraindicationState,
-  AssistantEvidenceItem,
-  AssistantInvitation,
+  AssistantDietCategory,
+  AssistantId,
   AssistantMissingContext,
   AssistantRejectionReason,
   AssistantSpecialty,
   AssistantTreatmentKind,
   AssistantUrgencyTier,
 } from "@veylta/contracts";
-import { ApiError } from "./api-client";
 import { countCopy } from "./russian-plural";
 
-export const assistantTitle = "ИИ-врач · второе мнение";
-export const assistantIntro =
-  "Разбирает только подтверждённые значения с учётом вашего медицинского профиля, называет вероятные объяснения и варианты, которые обычно рассматривает врач. Каждый вывод — рекомендация для разговора с врачом, а не диагноз и не назначение.";
+/** Who answers in each room, in the cases the copy needs; the rule each one is held to. */
+export const assistantIdentity: Record<
+  AssistantId,
+  {
+    readonly title: string;
+    readonly name: string;
+    readonly dative: string;
+    readonly instrumental: string;
+    readonly rule: string;
+    readonly hint: string;
+    readonly placeholder: string;
+  }
+> = {
+  physician: {
+    title: "ИИ-врач · второе мнение",
+    name: "ИИ-врач",
+    dative: "ИИ-врачу",
+    instrumental: "ИИ-врачом",
+    rule: "Разбирает только подтверждённые значения с учётом вашего профиля. Каждый вывод — рекомендация для разговора с врачом, а не диагноз и не назначение.",
+    hint: "Читает все подтверждённые значения и ваш профиль; каждый вывод — рекомендация для разговора с врачом.",
+    placeholder: "Например: что означают мои последние анализы?",
+  },
+  nutritionist: {
+    title: "ИИ-нутрициолог · питание по вашим данным",
+    name: "ИИ-нутрициолог",
+    dative: "ИИ-нутрициологу",
+    instrumental: "ИИ-нутрициологом",
+    rule: "Оценивает рацион по подтверждённым значениям и профилю: что усилить, что ограничить, что сверить с врачом. Добавки — по названию, без доз; каждый пункт подтверждает диетолог или врач.",
+    hint: "Читает подтверждённые значения, ваш профиль (лекарства, диагнозы, аллергии, ограничения, цели) и принятый план; каждый пункт — рекомендация, не назначение.",
+    placeholder: "Например: как мне питаться при таких значениях?",
+  },
+};
 
 /** Fixed copy per tier; the model's own words never become the alarm. */
 export const urgencyCopy: Record<
@@ -110,6 +138,13 @@ export const contraindicationCopy: Record<AssistantContraindicationState, string
   unknown: "в профиле не хватает данных для проверки",
 };
 
+/** The same three states for a diet recommendation, read against conditions and medications. */
+export const interactionCopy: Record<AssistantContraindicationState, string> = {
+  checked_clear: "сверено с профилем: взаимодействий не найдено",
+  checked_conflict: "сверено с профилем: есть взаимодействие",
+  unknown: "в профиле не хватает данных для проверки",
+};
+
 export const missingContextCopy: Record<AssistantMissingContext, string> = {
   sex: "Укажите пол в медицинском профиле — без него интерпретация не проводится.",
   birth_year: "Укажите год рождения в медицинском профиле — без него интерпретация не проводится.",
@@ -118,6 +153,20 @@ export const missingContextCopy: Record<AssistantMissingContext, string> = {
   allergies: "Добавьте в профиль аллергии — ответ учитывал бы их.",
   symptoms: "Опишите в профиле жалобы и симптомы — ответ учитывал бы их.",
   recent_values: "Не хватает свежих значений: загрузите и подтвердите более новый анализ.",
+  height_weight: "Укажите рост и вес в досье — без них план питания остаётся общим.",
+  dietary_restrictions:
+    "Добавьте в профиль ограничения в питании — диету, непереносимости, предпочтения; ответ учитывал бы их.",
+  goals: "Добавьте в профиль цели — ответ учитывал бы их.",
+};
+
+/** The nutritionist's recommendation kinds — what a plan item is about, never how much. */
+export const dietCategoryLabel: Record<AssistantDietCategory, string> = {
+  structure: "структура рациона",
+  favour: "добавить в рацион",
+  limit: "ограничить",
+  supplement: "добавка — без дозы",
+  hydration: "питьевой режим",
+  timing: "режим приёмов пищи",
 };
 
 export const checkerVerdictLabel: Record<AssistantCheckerVerdict, string> = {
@@ -132,46 +181,13 @@ export const agreementVerdictLabel: Record<AssistantAgreementVerdict, string> = 
   differ: "расходятся",
 };
 
-/** Who is speaking in the conversation: the therapist («ИИ-врач») or one persona. */
-export function speakerLabel(specialty: AssistantSpecialty | null): string {
-  if (specialty === null) return "ИИ-врач";
-  const label = specialtyLabel[specialty];
-  return `ИИ-${label}`;
-}
-
-/** The printed names of the observations that put a specialist on the panel, each once. */
-export function invitationNames(
-  invitation: AssistantInvitation,
-  evidence: ReadonlyMap<string, AssistantEvidenceItem>,
-): string[] {
-  return [
-    ...new Set(
-      invitation.observationIds
-        .map((observationId) => evidence.get(observationId)?.name)
-        .filter((name): name is string => name !== undefined),
-    ),
-  ];
-}
-
-/** Why a specialist is on the panel: every name — for the opinion's own heading. */
-export function invitationCopy(
-  invitation: AssistantInvitation,
-  evidence: ReadonlyMap<string, AssistantEvidenceItem>,
+/** Who is speaking in the conversation: the room's own assistant or one persona. */
+export function speakerLabel(
+  specialty: AssistantSpecialty | null,
+  assistantId: AssistantId,
 ): string {
-  const names = invitationNames(invitation, evidence);
-  return names.length === 0 ? "по вашему запросу" : `в данных: ${names.join(", ")}`;
-}
-
-/** The same reason in one line: three names and a count, so a specialist with forty stays a chip. */
-export function invitationSummary(
-  invitation: AssistantInvitation,
-  evidence: ReadonlyMap<string, AssistantEvidenceItem>,
-  shown = 3,
-): string {
-  const names = invitationNames(invitation, evidence);
-  if (names.length === 0) return "по вашему запросу";
-  const rest = names.length - shown;
-  return `в данных: ${names.slice(0, shown).join(", ")}${rest > 0 ? ` и ещё ${rest}` : ""}`;
+  if (specialty === null) return assistantIdentity[assistantId].name;
+  return `ИИ-${specialtyLabel[specialty]}`;
 }
 
 export const blockKindLabel: Record<AssistantBlock["kind"], string> = {
@@ -179,6 +195,9 @@ export const blockKindLabel: Record<AssistantBlock["kind"], string> = {
   hypothesis: "Вероятное объяснение",
   treatment_option: "Что обычно рассматривает врач",
   clinician_check: "Сверка с записью врача",
+  diet_assessment: "Что значения говорят о питании",
+  diet_recommendation: "Рекомендация по питанию",
+  recheck: "Что измерить снова",
   question: "Вопрос врачу",
   general: "Общая справка",
   missing: "Не хватает данных",
@@ -212,27 +231,4 @@ export function egressDisclosure(input: {
       : "записи медицинского профиля (пол и год рождения пока не указаны — интерпретации не будет)",
     "принятые и предложенные пункты плана",
   ];
-}
-
-export function assistantSendErrorCopy(error: unknown): string {
-  if (error instanceof ApiError && error.code === "ACKNOWLEDGEMENT_REQUIRED") {
-    return "Сначала подтвердите отправку данных в Codex.";
-  }
-  if (error instanceof ApiError && error.status === 409) {
-    return "В этом диалоге больше нельзя отправлять сообщения — создайте новый.";
-  }
-  return "Не удалось получить ответ. Проверьте соединение и повторите отправку.";
-}
-
-export function assistantConsiliumErrorCopy(error: unknown): string {
-  if (error instanceof ApiError && error.code === "NOBODY_TO_CONVENE") {
-    return "Некого приглашать: среди подтверждённых значений нет профильных показателей.";
-  }
-  return assistantSendErrorCopy(error);
-}
-
-export function assistantCreateErrorCopy(error: unknown): string {
-  return error instanceof ApiError && error.status === 409
-    ? "Нельзя создать больше 20 диалогов для одного профиля."
-    : "Не удалось создать диалог. Проверьте соединение и повторите.";
 }

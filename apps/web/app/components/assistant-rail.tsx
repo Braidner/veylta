@@ -7,6 +7,8 @@ import { formatShortMoment } from "../format-moment";
 import { countCopy } from "../russian-plural";
 
 interface AssistantRailProps {
+  /** The rail's accessible name — «Диалоги с ИИ-врачом», «Диалоги с ИИ-нутрициологом». */
+  readonly label: string;
   readonly workspace: AssistantWorkspaceResponse | null;
   readonly canWrite: boolean;
   readonly isLoading: boolean;
@@ -16,8 +18,9 @@ interface AssistantRailProps {
   readonly onCreateConversation: (title: string) => Promise<boolean>;
 }
 
-/** The rail of the physician's conversations, newest first, with the create form. */
+/** The rail of one assistant's conversations, newest first, with the create form. */
 export function AssistantRail({
+  label,
   workspace,
   canWrite,
   isLoading,
@@ -45,7 +48,7 @@ export function AssistantRail({
   }
 
   return (
-    <aside className="assistant-rail" aria-label="Диалоги с ИИ-врачом">
+    <aside className="assistant-rail" aria-label={label}>
       <div className="assistant-rail__heading">
         <strong>Диалоги</strong>
         <span className="assistant-rail__count">{workspace?.conversations.length ?? 0}</span>

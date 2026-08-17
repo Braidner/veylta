@@ -2,13 +2,8 @@
 
 import type { AssistantConsilium, AssistantOpinion } from "@veylta/contracts";
 import { Users } from "lucide-react";
-import {
-  agreementVerdictLabel,
-  invitationCopy,
-  refusalCopy,
-  specialtyLabel,
-  urgencyCopy,
-} from "../assistant";
+import { agreementVerdictLabel, refusalCopy, specialtyLabel, urgencyCopy } from "../assistant";
+import { invitationCopy } from "../assistant-invitations";
 import {
   BlockBody,
   BlockKind,

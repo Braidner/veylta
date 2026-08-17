@@ -16,6 +16,16 @@ blocks (agree / differs / cannot assess, bound to the record, never a rating), a
 «обсудить с врачом» in the plan; the сверка lives in the therapist's dossier conversation, opened
 from the document with the confirmed records in the question. Per-document сверка threads and
 `get_clinician_record` as a tool wait for a real need.
+**Slice 4 (ИИ-нутрициолог) delivered on 2026-08-17**: a second room at `/assistants/nutritionist`
+(migration 0035 widens `assistant_id`; `assistant/v5`), the same evidence, gate, journal and
+checker; its own prompt and closed schema — `diet_assessment`, `diet_recommendation` (structure /
+favour / limit / supplement / hydration / timing, each read against the profile's conditions and
+medications as `interaction` checked_clear / checked_conflict / unknown with the conflict named,
+`confirmWith`), `recheck` (what to measure again and the assistant's own phrase for when — never a
+date Veylta computed) — a recommendation files into the `nutrition` lane, a recheck into
+`laboratory`; supplements are named or classed, a dose refuses the block (`prescriptive_dose`,
+decision 3 (a) — (b) still waits for a real need); personas and the консилиум stay the physician's
+(422 elsewhere). The nutritionist reads no dossier `?ask=` yet.
 Revision 1 framed the assistants as
 navigators and secretaries; the owner's intent is different and this revision follows it:
 
@@ -25,7 +35,7 @@ navigators and secretaries; the owner's intent is different and this revision fo
 > clinician for confirmation. The main goal is to see how well clinicians choose diagnoses and
 > treatment.
 
-Slices 1 and 2 are delivered; the decisions at the end were taken as recommended.
+Slices 1–4 are delivered; the decisions at the end were taken as recommended.
 
 ## What changes in the product, deliberately
 
@@ -214,7 +224,7 @@ the cases, never as a rating of a named doctor.
   `medical_profile` + `medical_profile_entries` (typed, dated, revisioned),
   `clinician_records` (slice 2, bound to page + fragment, reviewed like facts),
   `assistant_outcomes` (slice 5).
-- **Contracts**: `assistant/v4` (conversation with an optional dossier `purpose`, urgency, blocks incl. `clinician_check`, reasons, the record index), `medical-profile/v2`,
+- **Contracts**: `assistant/v5` (`ASSISTANT_IDS` physician | nutritionist; conversation with an optional dossier `purpose`, urgency, blocks incl. `clinician_check` and the diet blocks, reasons, the record index), `medical-profile/v2`,
   `clinician-record/v1`; care-plan provenance gains `conversationTurnId`, `clinicianRecordId`.
 - **Extraction**: clinician records reuse `codex-intelligence/` — closed schema, per-item
   verification through `SourceText`, human review — a second target next to laboratory facts.
@@ -244,6 +254,10 @@ the cases, never as a rating of a named doctor.
    comparison marks agree/differs against the assistant's read of the same evidence.
 4. **ИИ-нутрициолог.** Diet assessment and plan into the `nutrition` lane; interaction with
    conditions and medications from the profile flagged; supplements per decision 3.
+   Acceptance (delivered): a ready profile with a confirmed value yields an assessment bound to
+   it, recommendations with their category and interaction state, a recheck with a phrase for
+   when; a supplement with a dose is refused by name; the answer files into `nutrition` and
+   `laboratory`; the room refuses personas and the консилиум.
 5. **ИИ-тренер.** Activity assessment and programme into `activity` with progression and an
    adherence log; clearance handling.
 6. **Outcome log and evaluation.** Confirmed / rejected / modified per item, dated, linked to

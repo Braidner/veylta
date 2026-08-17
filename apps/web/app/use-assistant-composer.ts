@@ -2,7 +2,7 @@
 
 import type { AssistantSpecialty, AssistantWorkspaceResponse } from "@veylta/contracts";
 import { type FormEvent, useRef, useState } from "react";
-import { assistantConsiliumErrorCopy, assistantSendErrorCopy } from "./assistant";
+import { assistantConsiliumErrorCopy, assistantSendErrorCopy } from "./assistant-errors";
 import { conveneRequest, sendMessageRequest } from "./assistant-requests";
 
 /** A mutation keeps its idempotency key while the same input is retried, so a retry replays. */

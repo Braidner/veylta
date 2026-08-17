@@ -8,15 +8,14 @@ import {
 } from "@veylta/contracts";
 import { ApiError } from "./api-client";
 import {
-  assistantSendErrorCopy,
   egressDisclosure,
-  invitationCopy,
-  invitationSummary,
   refusalCopy,
   speakerLabel,
   specialtyLabel,
   urgencyCopy,
 } from "./assistant";
+import { assistantSendErrorCopy } from "./assistant-errors";
+import { invitationCopy, invitationSummary } from "./assistant-invitations";
 import { referralItem, referralsOf } from "./assistant-referrals";
 
 test("every closed reason, tier and specialty has fixed Russian copy", () => {
@@ -152,8 +151,9 @@ test("the panel explains each invitation by the printed names in that specialist
     invitationSummary({ specialty: "hematologist", observationIds: ["h0", "h1"] }, many),
     "в данных: Ферритин, Гемоглобин (Hb)",
   );
-  assert.equal(speakerLabel(null), "ИИ-врач");
-  assert.equal(speakerLabel("endocrinologist"), "ИИ-эндокринолог");
+  assert.equal(speakerLabel(null, "physician"), "ИИ-врач");
+  assert.equal(speakerLabel(null, "nutritionist"), "ИИ-нутрициолог");
+  assert.equal(speakerLabel("endocrinologist", "physician"), "ИИ-эндокринолог");
 });
 
 test("a сверка that differs becomes «обсудить с врачом» over the record; agreement offers nothing", () => {

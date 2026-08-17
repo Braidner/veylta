@@ -93,7 +93,7 @@ test("the assistant is profile-authorized (404 for strangers) and its audit trai
     }
     for (const row of audit.rows) {
       assert.equal(row.resource_type, "AssistantConversation");
-      assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "assistant/v4" });
+      assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "assistant/v5" });
     }
     const exchanges = await database.transaction((client) =>
       client.query<{ value: number }>(`SELECT count(*) AS value FROM assistant_exchanges`),

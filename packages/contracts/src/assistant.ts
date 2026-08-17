@@ -3,11 +3,12 @@
  * of typed, evidence-bound blocks with an urgency tier — never free prose. See
  * docs/assistants.md for the model; the server refuses anything that does not fit it.
  */
-export const ASSISTANT_CONTRACT_VERSION = "assistant/v4" as const;
+export const ASSISTANT_CONTRACT_VERSION = "assistant/v5" as const;
 export * from "./analytes.js";
 export * from "./assistant-workspace.js";
 
-export const ASSISTANT_IDS = ["physician"] as const;
+/** The assistants of the same kind: one conversation surface each, the same evidence and gate. */
+export const ASSISTANT_IDS = ["physician", "nutritionist"] as const;
 export const ASSISTANT_URGENCY_TIERS = ["none", "routine", "soon", "urgent", "emergency"] as const;
 export const ASSISTANT_CONFIDENCE_LEVELS = ["low", "moderate", "high"] as const;
 export const ASSISTANT_TREATMENT_KINDS = [
@@ -16,6 +17,15 @@ export const ASSISTANT_TREATMENT_KINDS = [
   "medication",
   "procedure",
   "referral",
+] as const;
+/** What a diet recommendation is about; the plan puts each into the nutrition lane. */
+export const ASSISTANT_DIET_CATEGORIES = [
+  "structure",
+  "favour",
+  "limit",
+  "supplement",
+  "hydration",
+  "timing",
 ] as const;
 export const ASSISTANT_CONTRAINDICATION_STATES = [
   "checked_clear",
@@ -51,6 +61,9 @@ export const ASSISTANT_MISSING_CONTEXTS = [
   "allergies",
   "symptoms",
   "recent_values",
+  "height_weight",
+  "dietary_restrictions",
+  "goals",
 ] as const;
 /** Closed reasons an answer is refused; rendered through fixed Russian copy, never model text. */
 export const ASSISTANT_REJECTION_REASONS = [
@@ -85,6 +98,7 @@ export type AssistantUrgencyTier = (typeof ASSISTANT_URGENCY_TIERS)[number];
 export type AssistantConfidence = (typeof ASSISTANT_CONFIDENCE_LEVELS)[number];
 export type AssistantTreatmentKind = (typeof ASSISTANT_TREATMENT_KINDS)[number];
 export type AssistantContraindicationState = (typeof ASSISTANT_CONTRAINDICATION_STATES)[number];
+export type AssistantDietCategory = (typeof ASSISTANT_DIET_CATEGORIES)[number];
 export type AssistantSpecialty = (typeof ASSISTANT_SPECIALTIES)[number];
 
 /**
@@ -186,6 +200,31 @@ export type AssistantBlock =
       readonly refs: readonly AssistantEvidenceRef[];
       /** Whom to bring a difference to — never a verdict on the clinician. */
       readonly confirmWith: AssistantSpecialty;
+    }
+  | {
+      /** The nutritionist: what the values and the profile say about the person's diet. */
+      readonly kind: "diet_assessment";
+      readonly text: string;
+      readonly refs: readonly AssistantEvidenceRef[];
+    }
+  | {
+      /** One concrete diet recommendation, checked against the profile, confirmed by a named specialty. */
+      readonly kind: "diet_recommendation";
+      readonly name: string;
+      readonly category: AssistantDietCategory;
+      readonly rationale: string;
+      readonly refs: readonly AssistantEvidenceRef[];
+      /** Against the recorded conditions, medications, allergies and pregnancy — like a treatment option. */
+      readonly interaction: AssistantContraindicationState;
+      readonly conflictNotes: string | null;
+      readonly confirmWith: AssistantSpecialty;
+    }
+  | {
+      /** What to measure again and when, so the plan can carry it as a laboratory item. */
+      readonly kind: "recheck";
+      readonly text: string;
+      readonly when: string;
+      readonly refs: readonly AssistantEvidenceRef[];
     }
   | { readonly kind: "general"; readonly text: string }
   | { readonly kind: "missing"; readonly context: AssistantMissingContext };

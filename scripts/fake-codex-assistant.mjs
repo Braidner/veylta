@@ -1,8 +1,9 @@
-// The assistant half of the fake codex: the physician answer, a specialist persona's opinion,
-// the therapist's консилиум synthesis and the checker verdicts — the same scripted shapes the
-// API-side runtime in apps/api/test/assistant-app.ts answers with, so e2e and integration
-// exercise the same plumbing. Nothing here reads pixels or reasons; it echoes what the prompt
-// carried (observation ids, readiness, the `Specialty:` line) into a fixed synthetic answer.
+// The assistant half of the fake codex: the physician answer, the nutritionist's plan, a
+// specialist persona's opinion, the therapist's консилиум synthesis and the checker verdicts —
+// the same scripted shapes the API-side runtime in apps/api/test/assistant-scripts.ts answers
+// with, so e2e and integration exercise the same plumbing. Nothing here reads pixels or reasons;
+// it echoes what the prompt carried (observation ids, readiness, the `Specialty:` line) and what
+// the schema asks for (diet blocks) into a fixed synthetic answer.
 const tiers = ["none", "routine", "soon", "urgent", "emergency"];
 
 function refsOf(prompt) {
@@ -27,42 +28,10 @@ function clinicianChecks(prompt, ref) {
   ];
 }
 
-function physicianAnswer(args, prompt) {
+/** Ready profile with values → the persona's plan; a resumed thread → a general note; else missing. */
+function answerOrMissing(args, prompt, plan) {
   const ref = refsOf(prompt);
-  if (prompt.includes('"interpretationReady":true') && ref.length > 0) {
-    return {
-      urgency: { tier: "routine", reasons: ref },
-      blocks: [
-        {
-          kind: "interpretation",
-          text: "Синтетический показатель A выше напечатанного диапазона.",
-          refs: ref,
-        },
-        ...clinicianChecks(prompt, ref),
-        {
-          kind: "hypothesis",
-          name: "Синтетическое состояние A",
-          confidence: "moderate",
-          rationale: "Одно отклонение без динамики; нужно повторить измерение.",
-          refs: ref,
-          confirmWith: "therapist",
-          workup: ["Повторить синтетический показатель A через 4 недели"],
-        },
-        {
-          kind: "treatment_option",
-          name: "Скорректировать образ жизни",
-          treatmentKind: "lifestyle",
-          rationale: "Общий первый шаг при таком отклонении.",
-          refs: ref,
-          contraindications: "unknown",
-          conflictNotes: null,
-          confirmWith: "therapist",
-        },
-        { kind: "question", text: "Нужно ли повторить анализ и когда?", refs: ref },
-        { kind: "general", text: "Синтетический показатель A отражает синтетический процесс." },
-      ],
-    };
-  }
+  if (prompt.includes('"interpretationReady":true') && ref.length > 0) return plan(ref);
   if (args[1] === "resume") {
     return {
       urgency: { tier: "none", reasons: [] },
@@ -76,6 +45,82 @@ function physicianAnswer(args, prompt) {
       { kind: "missing", context: "birth_year" },
     ],
   };
+}
+
+function physicianAnswer(args, prompt) {
+  return answerOrMissing(args, prompt, (ref) => ({
+    urgency: { tier: "routine", reasons: ref },
+    blocks: [
+      {
+        kind: "interpretation",
+        text: "Синтетический показатель A выше напечатанного диапазона.",
+        refs: ref,
+      },
+      ...clinicianChecks(prompt, ref),
+      {
+        kind: "hypothesis",
+        name: "Синтетическое состояние A",
+        confidence: "moderate",
+        rationale: "Одно отклонение без динамики; нужно повторить измерение.",
+        refs: ref,
+        confirmWith: "therapist",
+        workup: ["Повторить синтетический показатель A через 4 недели"],
+      },
+      {
+        kind: "treatment_option",
+        name: "Скорректировать образ жизни",
+        treatmentKind: "lifestyle",
+        rationale: "Общий первый шаг при таком отклонении.",
+        refs: ref,
+        contraindications: "unknown",
+        conflictNotes: null,
+        confirmWith: "therapist",
+      },
+      { kind: "question", text: "Нужно ли повторить анализ и когда?", refs: ref },
+      { kind: "general", text: "Синтетический показатель A отражает синтетический процесс." },
+    ],
+  }));
+}
+
+/** The nutritionist's plan: an assessment, a favour, a supplement flagged against the profile, a recheck. */
+function nutritionistAnswer(args, prompt) {
+  return answerOrMissing(args, prompt, (ref) => ({
+    urgency: { tier: "routine", reasons: ref },
+    blocks: [
+      {
+        kind: "diet_assessment",
+        text: "Синтетический показатель A выше напечатанного диапазона — рацион стоит пересмотреть.",
+        refs: ref,
+      },
+      {
+        kind: "diet_recommendation",
+        name: "Больше растворимой клетчатки",
+        category: "favour",
+        rationale: "Овёс, бобовые и овощи обычно помогают при таком значении A.",
+        refs: ref,
+        interaction: "checked_clear",
+        conflictNotes: null,
+        confirmWith: "dietitian",
+      },
+      {
+        kind: "diet_recommendation",
+        name: "Препараты омега-3",
+        category: "supplement",
+        rationale: "Класс, который обычно обсуждают при таком значении A; дозу назначает врач.",
+        refs: ref,
+        interaction: "checked_conflict",
+        conflictNotes: "В профиле записано лекарство, с которым это сочетание стоит обсудить.",
+        confirmWith: "therapist",
+      },
+      {
+        kind: "recheck",
+        text: "Повторить синтетический показатель A после изменения рациона.",
+        when: "через 3 месяца",
+        refs: ref,
+      },
+      { kind: "question", text: "Совместимы ли добавки с лекарством из профиля?", refs: ref },
+    ],
+  }));
 }
 
 /** A persona's read: the endocrinologist alarms sooner than everyone else, on purpose. */
@@ -144,9 +189,17 @@ function checkerVerdicts(prompt) {
   };
 }
 
+/** The nutritionist is told apart by its schema — a follow-up turn carries no preamble. */
+function answersDiet(schema) {
+  return (schema.properties?.blocks?.items?.anyOf ?? []).some(
+    (item) => item.properties?.kind?.enum?.[0] === "diet_assessment",
+  );
+}
+
 export function assistantOutput(schema, args, prompt) {
   if (schema.properties?.verdicts !== undefined) return checkerVerdicts(prompt);
   if (schema.properties?.agreements !== undefined) return synthesis(prompt);
+  if (answersDiet(schema)) return nutritionistAnswer(args, prompt);
   const specialty = /^Specialty: (\w+)$/m.exec(prompt)?.[1];
   return specialty === undefined
     ? physicianAnswer(args, prompt)

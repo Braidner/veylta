@@ -146,7 +146,16 @@ The full first slice remains deliberately narrow:
     the ИИ-врач with the rest of the evidence (disclosed as their own line), and
     ask for the сверка: agree / differs / cannot assess per record with reasons,
     every «differs» offered as «обсудить с врачом» in the plan; never a rating
-    of a clinician (docs/assistants.md slice 3, delivered).
+    of a clinician (docs/assistants.md slice 3, delivered);
+24. open the ИИ-нутрициолог — its own room over the same disclosed evidence,
+    gate, checker and journal: a diet assessment bound to the confirmed values,
+    recommendations by category (structure, favour, limit, supplement by name
+    or class — a dose refuses the block —, hydration, timing) each read against
+    the recorded conditions and medications with the interaction named and a
+    specialty to confirm it, and what to measure again with the assistant's own
+    phrase for when; an accepted recommendation becomes a `nutrition` item, a
+    recheck a `laboratory` item; personas and the консилиум stay the physician's
+    (docs/assistants.md slice 4, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
