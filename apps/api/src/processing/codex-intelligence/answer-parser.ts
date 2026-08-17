@@ -3,6 +3,7 @@ import {
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
   LAB_EXTRACTION_SCHEMA_VERSION,
 } from "@veylta/contracts";
+import { normalizeAnalyteName } from "../analyte-mapping.js";
 import type { DocumentPageImage } from "../document-images.js";
 import type {
   AnalyteCatalogEntry,
@@ -130,10 +131,21 @@ export class CodexAnswerParser {
     documentMetadata: ReturnType<typeof parseDocumentMetadata>,
   ): StrictLabExtractionFact[] {
     const keys = new KeyRegistry();
+    const seen = new Set<string>();
     return keptItems(proposals, (proposal) => {
       const fact = this.withKnownCode(
         parseFact(proposal, sourceText, documentMetadata, this.context.catalog),
       );
+      // The same reading of the same printed row twice is one fact, however it was quoted.
+      const reading = [
+        fact.source.pageNumber,
+        fact.source.fragment,
+        fact.sourceValue,
+        fact.sourceUnit,
+        normalizeAnalyteName(fact.sourceName),
+      ].join("\n");
+      if (seen.has(reading)) invalidOutput("duplicate_binding");
+      seen.add(reading);
       const factKey = keys.claim(fact.factKey);
       return factKey === fact.factKey ? fact : { ...fact, factKey };
     });

@@ -31,12 +31,6 @@ test("an unverifiable normalized value is dropped while the fact is kept", async
           proposedNormalizedValue: "2.4",
           proposedNormalizedUnit: "synthetic-unit/L",
         },
-        // Half a proposal — a value with no unit — is no proposal; the measurement itself stands.
-        {
-          ...measurementFact("half", "Synthetic lactate", "2.0", lactate),
-          proposedNormalizedValue: "2.0",
-          proposedNormalizedUnit: null,
-        },
       ],
     }),
   ).analyze({ contentType: "application/pdf", pages: twoLinePages });
@@ -50,8 +44,28 @@ test("an unverifiable normalized value is dropped while the fact is kept", async
     [
       ["glucose", "7.00", "synthetic-unit/L"],
       ["lactate", null, null],
-      ["half", null, null],
     ],
+  );
+
+  // Half a proposal — a value with no unit — is no proposal; the measurement itself stands.
+  const half = await lowEffortProvider(
+    laboratoryAnswer({
+      facts: [
+        {
+          ...measurementFact("half", "Synthetic lactate", "2.0", lactate),
+          proposedNormalizedValue: "2.0",
+          proposedNormalizedUnit: null,
+        },
+      ],
+    }),
+  ).analyze({ contentType: "application/pdf", pages: twoLinePages });
+  assert.deepEqual(
+    half.extraction.items.map((fact) => [
+      fact.factKey,
+      fact.proposedNormalizedValue,
+      fact.proposedNormalizedUnit,
+    ]),
+    [["half", null, null]],
   );
 });
 

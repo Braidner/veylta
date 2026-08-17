@@ -35,7 +35,7 @@ export function parseStructuredResult(
   const proposedValue = optionalPrintedPhrase(result.value, 500);
   if (unit !== null && proposedValue === null) invalidOutput("inconsistent_fields");
   const resultValue = proposedValue === null ? null : valueWithoutRepeatedUnit(proposedValue, unit);
-  const source = sourceText.provenance(result.source, resultValue);
+  const source = sourceText.provenance(result.source, resultValue, { unit, range: null });
   return {
     resultKey,
     type,

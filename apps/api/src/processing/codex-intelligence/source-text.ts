@@ -1,5 +1,6 @@
 import type { ParsedDocumentPage } from "../synthetic-lab-parser.js";
 import { limits } from "./constants.js";
+import { type ContentHints, contentSpan } from "./content-binding.js";
 import { invalidOutput } from "./errors.js";
 import { exactKeys, object } from "./field-parsers.js";
 
@@ -99,16 +100,25 @@ export class SourceText {
 
   /**
    * Reads a `source` object of the answer and binds it to the page. `value` is the reading the
-   * fragment must carry, so a stitched multi-line fragment can still resolve to its value line.
+   * fragment must carry, so a stitched multi-line fragment can still resolve to its value line;
+   * `hints` (the reading's unit and range) let a misquoted row still bind to the one printed
+   * place that carries all three.
    */
-  provenance(source: unknown, value: string | null): SourceProvenance {
+  provenance(
+    source: unknown,
+    value: string | null,
+    hints: ContentHints = { unit: null, range: null },
+  ): SourceProvenance {
     const proposed = object(source);
     exactKeys(proposed, ["pageNumber", "fragment"]);
     if (!Number.isSafeInteger(proposed.pageNumber)) invalidOutput("schema_shape");
     const pageNumber = proposed.pageNumber as number;
     const requested = boundedSourceFragment(proposed.fragment);
     const pageText = this.page(pageNumber).text.replaceAll("\r\n", "\n");
-    const span = uniqueSpan(pageText, requested) ?? valueLineSpan(pageText, requested, value);
+    const span =
+      uniqueSpan(pageText, requested) ??
+      valueLineSpan(pageText, requested, value) ??
+      (value === null ? null : contentSpan(pageText, value, hints));
     if (span === null) invalidOutput("fragment_not_on_page");
     const lineStart = pageText.lastIndexOf("\n", span.start - 1) + 1;
     const followingLineBreak = pageText.indexOf("\n", span.end);

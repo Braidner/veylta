@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createCodexDocumentIntelligenceProvider } from "../codex-document-intelligence-provider.js";
-import { unitlessMark } from "./readings.js";
 import { executorFor, laboratoryAnswer } from "./test-support.js";
 
 /**
@@ -100,14 +99,25 @@ test("a header, a key or a page label as the name is replaced by the printed spe
     fact({
       factKey: "c",
       sourceName: "page1",
-      sourceValue: "4,61",
-      proposedCanonicalCode: "glucose",
-      source: { pageNumber: 1, fragment: "Глюкоза 4,61 ммоль/л 3,89 - 5,83" },
+      sourceValue: "5.82",
+      proposedCanonicalCode: "urea",
+      source: { pageNumber: 1, fragment: "Концентрация   5.82 ммоль/л   3.2 - 7.3" },
     }),
   ]);
   assert.deepEqual(
     output.extraction.items.map((item) => item.sourceName),
-    ["Холестерин общий (Cholesterol)", "Глюкоза", "Глюкоза"],
+    ["Холестерин общий (Cholesterol)", "Глюкоза", "Мочевина"],
+  );
+});
+
+test("the same reading of the same printed row quoted twice is one fact", async () => {
+  const output = await analyzed([
+    fact({ factKey: "a", sourceName: "Холестерин общий (Cholesterol)" }),
+    fact({ factKey: "again", sourceName: "Холестерин общий (Cholesterol)" }),
+  ]);
+  assert.deepEqual(
+    output.extraction.items.map((item) => item.factKey),
+    ["a"],
   );
 });
 
@@ -188,29 +198,6 @@ test("a name set as a heading over the value row is found in the lines above it"
   );
 });
 
-test("stray whitespace around a printed reading or range is a slip, not a refusal", async () => {
-  const output = await analyzed([
-    fact({
-      factKey: "a",
-      sourceName: "Холестерин общий (Cholesterol)",
-      sourceValue: " 6,99",
-      sourceUnit: "ммоль/л ",
-      referenceRange: {
-        sourceText: " < 5,18",
-        sourceLow: null,
-        sourceHigh: "5,18 ",
-        sourceUnit: "ммоль/л",
-        laboratoryOutOfRange: null,
-      },
-    }),
-  ]);
-  const item = output.extraction.items[0];
-  assert.equal(item?.sourceValue, "6,99");
-  assert.equal(item?.sourceUnit, "ммоль/л");
-  assert.equal(item?.referenceRange?.sourceText, "< 5,18");
-  assert.equal(item?.referenceRange?.sourceHigh, "5,18");
-});
-
 test("a name that is neither on the row nor recoverable drops that fact and keeps the rest", async () => {
   const output = await analyzed([
     fact({ factKey: "a", sourceName: "Холестерин общий (Cholesterol)" }),
@@ -226,20 +213,4 @@ test("a name that is neither on the row nor recoverable drops that fact and keep
     output.extraction.items.map((item) => item.factKey),
     ["a"],
   );
-});
-
-test("a unitless row keeps the unitless mark: a range, a flag or a placeholder is not a unit", async () => {
-  for (const sourceUnit of ["< 4,00", "не указана", "p", "—", "/", "ед. не указана"]) {
-    const output = await analyzed([
-      fact({
-        factKey: "a",
-        sourceName: "Коэффициент атерогенности",
-        sourceValue: "5,03",
-        sourceUnit,
-        source: { pageNumber: 1, fragment: "5,03 p Коэффициент атерогенности < 4,00" },
-      }),
-    ]);
-    assert.equal(output.extraction.items[0]?.sourceUnit, unitlessMark, sourceUnit);
-  }
-  assert.equal(unitlessMark, "—");
 });

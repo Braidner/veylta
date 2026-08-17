@@ -91,7 +91,11 @@ export function parseFact(
   const issues = parseValidationIssues(fact.validationIssues);
   const sourceUnit = printedUnit(printedPhrase(fact.sourceUnit, 100));
   const sourceValue = valueWithoutRepeatedUnit(printedPhrase(fact.sourceValue, 100), sourceUnit);
-  const source = sourceText.provenance(fact.source, sourceValue);
+  const referenceRange = parseReferenceRange(fact.referenceRange);
+  const source = sourceText.provenance(fact.source, sourceValue, {
+    unit: sourceUnit,
+    range: referenceRange?.sourceText ?? null,
+  });
   const normalization = verifiedNormalization(sourceValue, normalizedValue, normalizedUnit);
   const proposedCanonicalCode = optionalBoundedString(fact.proposedCanonicalCode, 100);
   return {
@@ -113,7 +117,7 @@ export function parseFact(
       optionalBoundedString(fact.proposedSpecimenType, 200) ?? documentMetadata.specimenType,
     proposedLaboratory:
       optionalBoundedString(fact.proposedLaboratory, 200) ?? documentMetadata.laboratory,
-    referenceRange: parseReferenceRange(fact.referenceRange),
+    referenceRange,
     confidence: confidence(fact.confidence),
     validationIssues: issues,
     // The binding context stays here: what is stored is the page and its printed line(s).
