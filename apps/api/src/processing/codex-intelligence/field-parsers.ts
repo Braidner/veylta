@@ -28,6 +28,10 @@ export function printedPhrase(value: unknown, maximum: number): string {
   );
 }
 
+export function optionalPrintedPhrase(value: unknown, maximum: number): string | null {
+  return value === null ? null : printedPhrase(value, maximum);
+}
+
 export function boundedString(value: unknown, maximum: number): string {
   const hasControlCharacter =
     typeof value === "string" &&

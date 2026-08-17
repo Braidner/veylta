@@ -14,6 +14,7 @@ import {
   object,
   oneOf,
   optionalBoundedString,
+  optionalPrintedPhrase,
   russianBoundedString,
 } from "./field-parsers.js";
 import { valueWithoutRepeatedUnit } from "./readings.js";
@@ -30,8 +31,8 @@ export function parseStructuredResult(
   if (!keyPattern.test(resultKey)) invalidOutput("invalid_key");
   const type = oneOf(result.type, DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES);
   const status = oneOf(result.status, DOCUMENT_INTELLIGENCE_RESULT_STATUSES);
-  const unit = optionalBoundedString(result.unit, 100);
-  const proposedValue = optionalBoundedString(result.value, 500);
+  const unit = optionalPrintedPhrase(result.unit, 100);
+  const proposedValue = optionalPrintedPhrase(result.value, 500);
   if (unit !== null && proposedValue === null) invalidOutput("inconsistent_fields");
   const resultValue = proposedValue === null ? null : valueWithoutRepeatedUnit(proposedValue, unit);
   const source = sourceText.provenance(result.source, resultValue);
@@ -47,6 +48,6 @@ export function parseStructuredResult(
     date: canonicalDate(result.date),
     status,
     confidence: confidence(result.confidence),
-    source,
+    source: { pageNumber: source.pageNumber, fragment: source.fragment },
   };
 }

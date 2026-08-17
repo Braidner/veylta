@@ -6,6 +6,12 @@ import { exactKeys, object } from "./field-parsers.js";
 export interface SourceProvenance {
   readonly pageNumber: number;
   readonly fragment: string;
+  /**
+   * The fragment with the few printed lines around it — up to four above, two below — where
+   * a laboratory prints a row's name as a heading over its value line. For binding a name,
+   * never stored.
+   */
+  readonly context: string;
 }
 
 interface Span {
@@ -53,6 +59,25 @@ function valueLineSpan(page: string, fragment: string, value: string | null): Sp
   return spans.length === 1 ? (spans[0] ?? null) : null;
 }
 
+function surroundingLines(
+  page: string,
+  start: number,
+  end: number,
+  above: number,
+  below: number,
+): string {
+  let from = start;
+  for (let step = 0; step < above && from > 0; step += 1) {
+    from = page.lastIndexOf("\n", from - 2) + 1;
+  }
+  let to = end;
+  for (let step = 0; step < below && to < page.length; step += 1) {
+    const next = page.indexOf("\n", to + 1);
+    to = next < 0 ? page.length : next;
+  }
+  return page.slice(from, to);
+}
+
 /**
  * The page set every fragment is checked against: the text layer of the document, or the
  * model's own transcription of attached page images. Provenance is always the page's own text —
@@ -91,6 +116,7 @@ export class SourceText {
     return {
       pageNumber,
       fragment: boundedSourceFragment(pageText.slice(lineStart, lineEnd).trim()),
+      context: surroundingLines(pageText, lineStart, lineEnd, 4, 2),
     };
   }
 }

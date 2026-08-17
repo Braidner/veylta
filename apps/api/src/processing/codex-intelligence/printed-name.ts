@@ -10,11 +10,17 @@ import { invalidOutput } from "./errors.js";
 const headerNames = new Set([
   "анализ",
   "показатель",
+  "название/показатель",
   "исследование",
   "результат",
   "наименование",
   "параметр",
   "тест",
+  "концентрация",
+  "активность",
+  "расчет",
+  "значение",
+  "измерение",
   "lab",
   "laboratory",
   "laboratory_result",
@@ -42,20 +48,23 @@ function printedSpan(fragment: string, key: string): string | null {
 }
 
 /**
- * The analyte name as the source prints it in the value's own row. The model's name is kept
- * when it is printed there (in the row's own casing); a header, page label or key is not a
- * name, and is replaced by the household catalog's spelling of the proposed code when that
- * spelling is printed in the row — a deterministic recovery, never a guess. A name that is
- * neither printed nor recoverable is inconsistent with its source and drops the fact.
+ * The analyte name as the source prints it for the value: in the value's own row, or in the
+ * few lines above it where a laboratory sets the name as a heading over the row. The model's
+ * name is kept when it is printed there (in the source's own casing); a header, row label,
+ * page label or key is not a name, and is replaced by the household catalog's spelling of the
+ * proposed code when that spelling is printed there — a deterministic recovery, never a guess.
+ * A name that is neither printed nor recoverable is inconsistent with its source and drops
+ * the fact.
  */
 export function printedName(
   proposed: string,
-  fragment: string,
+  source: { readonly fragment: string; readonly context: string },
   proposedCode: string | null,
   catalog: readonly AnalyteCatalogEntry[],
 ): string {
   if (!isPlaceholder(proposed)) {
-    const printed = printedSpan(fragment, normalizeAnalyteName(proposed));
+    const key = normalizeAnalyteName(proposed);
+    const printed = printedSpan(source.fragment, key) ?? printedSpan(source.context, key);
     if (printed !== null) return printed;
   }
   const entry = proposedCode === null ? null : catalog.find((item) => item.code === proposedCode);
@@ -64,7 +73,8 @@ export function printedName(
       ...new Set([...entry.aliases, entry.displayName].map(normalizeAnalyteName)),
     ].sort((a, b) => b.length - a.length);
     for (const spelling of spellings) {
-      const printed = printedSpan(fragment, spelling);
+      const printed =
+        printedSpan(source.fragment, spelling) ?? printedSpan(source.context, spelling);
       if (printed !== null) return printed;
     }
   }

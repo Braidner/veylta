@@ -19,6 +19,7 @@ const catalog = [
     aliases: ["холестерин общий (cholesterol)", "холестерин общий"],
   },
   { code: "glucose", displayName: "Глюкоза", unit: "mmol/L", aliases: ["глюкоза"] },
+  { code: "urea", displayName: "Мочевина", unit: "mmol/L", aliases: ["мочевина"] },
 ];
 
 const page = {
@@ -33,6 +34,11 @@ const page = {
     "16",
     "Амилаза панкреатическая (Pancreatic",
     "amylase)   Ед/л 8 - 53",
+    "Мочевина в сыворотке",
+    "Метод и оборудование: Фотометрический",
+    "Название/показатель   Результат   Референсные значения **",
+    "Концентрация   5.82 ммоль/л   3.2 - 7.3",
+    "Другой заголовок",
   ].join("\n"),
   extractionMethod: "pdf_text_layer",
   extractionVersion: "pdfjs-dist/6.2.108",
@@ -139,6 +145,70 @@ test("a name the source breaks over two lines is one phrase", async () => {
     output.extraction.items[0]?.sourceName,
     "Амилаза панкреатическая (Pancreatic amylase)",
   );
+});
+
+test("a name set as a heading over the value row is found in the lines above it", async () => {
+  const output = await analyzed([
+    fact({
+      factKey: "a",
+      sourceName: "Мочевина в сыворотке",
+      sourceValue: "5.82",
+      proposedCanonicalCode: "urea",
+      source: { pageNumber: 1, fragment: "Концентрация   5.82 ммоль/л   3.2 - 7.3" },
+    }),
+    fact({
+      factKey: "b",
+      sourceName: "Концентрация",
+      sourceValue: "5.82",
+      proposedCanonicalCode: "urea",
+      source: { pageNumber: 1, fragment: "Концентрация   5.82 ммоль/л   3.2 - 7.3" },
+    }),
+    fact({
+      factKey: "c",
+      sourceName: "Другой заголовок",
+      sourceValue: "5.82",
+      proposedCanonicalCode: null,
+      source: { pageNumber: 1, fragment: "Концентрация   5.82 ммоль/л   3.2 - 7.3" },
+    }),
+  ]);
+  assert.deepEqual(
+    output.extraction.items.map((item) => [item.factKey, item.sourceName]),
+    [
+      ["a", "Мочевина в сыворотке"],
+      ["b", "Мочевина"],
+      ["c", "Другой заголовок"],
+    ],
+    "the row label is replaced by the catalog spelling above; a heading two lines below is still within reach",
+  );
+  const stored = output.extraction.items[0]?.source as unknown as Record<string, unknown>;
+  assert.equal(
+    "context" in stored,
+    false,
+    "the binding context is never part of the stored source",
+  );
+});
+
+test("stray whitespace around a printed reading or range is a slip, not a refusal", async () => {
+  const output = await analyzed([
+    fact({
+      factKey: "a",
+      sourceName: "Холестерин общий (Cholesterol)",
+      sourceValue: " 6,99",
+      sourceUnit: "ммоль/л ",
+      referenceRange: {
+        sourceText: " < 5,18",
+        sourceLow: null,
+        sourceHigh: "5,18 ",
+        sourceUnit: "ммоль/л",
+        laboratoryOutOfRange: null,
+      },
+    }),
+  ]);
+  const item = output.extraction.items[0];
+  assert.equal(item?.sourceValue, "6,99");
+  assert.equal(item?.sourceUnit, "ммоль/л");
+  assert.equal(item?.referenceRange?.sourceText, "< 5,18");
+  assert.equal(item?.referenceRange?.sourceHigh, "5,18");
 });
 
 test("a name that is neither on the row nor recoverable drops that fact and keeps the rest", async () => {

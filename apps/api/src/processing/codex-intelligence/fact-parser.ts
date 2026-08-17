@@ -11,6 +11,7 @@ import {
   exactKeys,
   object,
   optionalBoundedString,
+  optionalPrintedPhrase,
   printedPhrase,
 } from "./field-parsers.js";
 import { printedName } from "./printed-name.js";
@@ -49,11 +50,12 @@ function parseReferenceRange(value: unknown): StrictLabExtractionFact["reference
   if (range.laboratoryOutOfRange !== null && typeof range.laboratoryOutOfRange !== "boolean") {
     invalidOutput("schema_shape");
   }
+  // Printed text copied with stray whitespace is the same text; the reading itself is not.
   return {
-    sourceText: optionalBoundedString(range.sourceText, 200),
-    sourceLow: optionalBoundedString(range.sourceLow, 100),
-    sourceHigh: optionalBoundedString(range.sourceHigh, 100),
-    sourceUnit: optionalBoundedString(range.sourceUnit, 100),
+    sourceText: optionalPrintedPhrase(range.sourceText, 200),
+    sourceLow: optionalPrintedPhrase(range.sourceLow, 100),
+    sourceHigh: optionalPrintedPhrase(range.sourceHigh, 100),
+    sourceUnit: optionalPrintedPhrase(range.sourceUnit, 100),
     laboratoryOutOfRange: range.laboratoryOutOfRange as boolean | null,
   };
 }
@@ -87,8 +89,8 @@ export function parseFact(
   if (sampledAt !== null && resultedAt !== null && sampledAt > resultedAt)
     invalidOutput("invalid_timestamp");
   const issues = parseValidationIssues(fact.validationIssues);
-  const sourceUnit = printedUnit(boundedString(fact.sourceUnit, 100));
-  const sourceValue = valueWithoutRepeatedUnit(boundedString(fact.sourceValue, 100), sourceUnit);
+  const sourceUnit = printedUnit(printedPhrase(fact.sourceUnit, 100));
+  const sourceValue = valueWithoutRepeatedUnit(printedPhrase(fact.sourceValue, 100), sourceUnit);
   const source = sourceText.provenance(fact.source, sourceValue);
   const normalization = verifiedNormalization(sourceValue, normalizedValue, normalizedUnit);
   const proposedCanonicalCode = optionalBoundedString(fact.proposedCanonicalCode, 100);
@@ -96,7 +98,7 @@ export function parseFact(
     factKey,
     sourceName: printedName(
       printedPhrase(fact.sourceName, 200),
-      source.fragment,
+      source,
       proposedCanonicalCode,
       catalog,
     ),
@@ -114,6 +116,7 @@ export function parseFact(
     referenceRange: parseReferenceRange(fact.referenceRange),
     confidence: confidence(fact.confidence),
     validationIssues: issues,
-    source,
+    // The binding context stays here: what is stored is the page and its printed line(s).
+    source: { pageNumber: source.pageNumber, fragment: source.fragment },
   };
 }
