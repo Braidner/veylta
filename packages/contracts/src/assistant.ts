@@ -3,7 +3,8 @@
  * of typed, evidence-bound blocks with an urgency tier — never free prose. See
  * docs/assistants.md for the model; the server refuses anything that does not fit it.
  */
-export const ASSISTANT_CONTRACT_VERSION = "assistant/v1" as const;
+export const ASSISTANT_CONTRACT_VERSION = "assistant/v2" as const;
+export * from "./assistant-workspace.js";
 
 export const ASSISTANT_IDS = ["physician"] as const;
 export const ASSISTANT_URGENCY_TIERS = ["none", "routine", "soon", "urgent", "emergency"] as const;
@@ -70,9 +71,13 @@ export const ASSISTANT_CHECKER_VERDICTS = [
   "unsafe",
 ] as const;
 export const ASSISTANT_EGRESS_ACKNOWLEDGEMENT = "send_confirmed_evidence_to_codex" as const;
+export const ASSISTANT_AGREEMENT_VERDICTS = ["agree", "differ"] as const;
 export const MAX_ASSISTANT_CONVERSATIONS = 20;
 export const MAX_ASSISTANT_MESSAGE_LENGTH = 2_000;
 export const MAX_ASSISTANT_BLOCKS = 40;
+/** A консилиум convenes at most this many specialists besides the therapist. */
+export const MAX_CONSILIUM_SPECIALISTS = 5;
+export const MAX_CONSILIUM_AGREEMENTS = 12;
 
 export type AssistantId = (typeof ASSISTANT_IDS)[number];
 export type AssistantUrgencyTier = (typeof ASSISTANT_URGENCY_TIERS)[number];
@@ -83,6 +88,7 @@ export type AssistantSpecialty = (typeof ASSISTANT_SPECIALTIES)[number];
 export type AssistantMissingContext = (typeof ASSISTANT_MISSING_CONTEXTS)[number];
 export type AssistantRejectionReason = (typeof ASSISTANT_REJECTION_REASONS)[number];
 export type AssistantCheckerVerdict = (typeof ASSISTANT_CHECKER_VERDICTS)[number];
+export type AssistantAgreementVerdict = (typeof ASSISTANT_AGREEMENT_VERDICTS)[number];
 
 /** A confirmed observation the answer rests on; the UI resolves it to its source link. */
 export interface AssistantEvidenceRef {
@@ -142,80 +148,4 @@ export type AssistantBlock =
 export interface AssistantAnswer {
   readonly urgency: AssistantUrgency;
   readonly blocks: readonly AssistantBlock[];
-}
-
-/** One raw attempt, kept for the owner exactly like a processing run's exchange. */
-export interface AssistantExchange {
-  readonly stage: "answer" | "checker";
-  readonly requestText: string;
-  readonly responseText: string;
-  readonly requestBytes: number;
-  readonly responseBytes: number;
-  readonly modelId: string;
-  readonly runtimeVersion: string | null;
-  readonly durationMs: number;
-}
-
-export interface AssistantCheckerVerdictRecord {
-  readonly blockIndex: number;
-  readonly verdict: AssistantCheckerVerdict;
-  readonly note: string | null;
-}
-
-export type AssistantMessage =
-  | {
-      readonly id: string;
-      readonly role: "user";
-      readonly text: string;
-      readonly createdAt: string;
-    }
-  | {
-      readonly id: string;
-      readonly role: "assistant";
-      readonly answer: AssistantAnswer | null;
-      /** Set when the answer was refused; the UI shows fixed copy for the reason. */
-      readonly refusal: AssistantRejectionReason | null;
-      readonly checker: readonly AssistantCheckerVerdictRecord[];
-      readonly provenance: { readonly modelId: string; readonly runtimeVersion: string };
-      /** Owner-only diagnostics; null for a reader. */
-      readonly exchanges: readonly AssistantExchange[] | null;
-      readonly createdAt: string;
-    };
-
-export interface AssistantConversationSummary {
-  readonly id: string;
-  readonly title: string;
-  readonly messageCount: number;
-  readonly lastMessageAt: string | null;
-  readonly acknowledged: boolean;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
-
-export interface AssistantWorkspaceResponse {
-  readonly contractVersion: typeof ASSISTANT_CONTRACT_VERSION;
-  readonly profileId: string;
-  readonly assistantId: AssistantId;
-  readonly canWrite: boolean;
-  /** Sex and birth year recorded; without them the assistant answers only with `missing`. */
-  readonly interpretationReady: boolean;
-  /** How many confirmed observations the assistant will see with the next message. */
-  readonly evidenceCount: number;
-  /** The same observations, with their sources, so every ref in an answer opens its page. */
-  readonly evidence: readonly AssistantEvidenceItem[];
-  readonly conversations: readonly AssistantConversationSummary[];
-  readonly selectedConversationId: string | null;
-  readonly messages: readonly AssistantMessage[];
-}
-
-export interface AssistantConversationCreateRequest {
-  readonly title: string;
-}
-
-export interface AssistantAcknowledgementRequest {
-  readonly acknowledgement: typeof ASSISTANT_EGRESS_ACKNOWLEDGEMENT;
-}
-
-export interface AssistantMessageRequest {
-  readonly message: string;
 }

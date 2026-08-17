@@ -1,15 +1,17 @@
 "use client";
 
-import {
-  ASSISTANT_EGRESS_ACKNOWLEDGEMENT,
-  type AssistantEvidenceItem,
-  type AssistantWorkspaceResponse,
-} from "@veylta/contracts";
+import type { AssistantEvidenceItem, AssistantWorkspaceResponse } from "@veylta/contracts";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest } from "../api-client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { assistantCreateErrorCopy, assistantSendErrorCopy } from "../assistant";
+import {
+  acknowledgeRequest,
+  assistantEndpoint,
+  createConversationRequest,
+  loadWorkspaceRequest,
+} from "../assistant-requests";
 import { assistantPath } from "../paths";
+import { type Attempt, attemptFor, useAssistantComposer } from "../use-assistant-composer";
 import { useReferralAcceptance } from "../use-referral-acceptance";
 import { WorkspaceRequests } from "../workspace-requests";
 import { AssistantPanel } from "./assistant-panel";
@@ -18,11 +20,6 @@ type WorkspaceState =
   | { kind: "loading" }
   | { kind: "ready"; workspace: AssistantWorkspaceResponse }
   | { kind: "error" };
-
-interface Attempt {
-  readonly key: string;
-  readonly fingerprint: string;
-}
 
 interface AssistantWorkspaceProps {
   readonly familyId: string;
@@ -44,32 +41,21 @@ export function AssistantWorkspace({
   const router = useRouter();
   const [state, setState] = useState<WorkspaceState>({ kind: "loading" });
   const [isSwitching, setIsSwitching] = useState(false);
-  const [message, setMessage] = useState("");
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
   const [createError, setCreateError] = useState<string | null>(null);
   const [acknowledgePending, setAcknowledgePending] = useState(false);
   const referrals = useReferralAcceptance(familyId, profileId);
-  const sendAttempt = useRef<Attempt | null>(null);
   const createAttempt = useRef<Attempt | null>(null);
   const requests = useRef(new WorkspaceRequests());
   /** The conversation the panel shows or is about to show; the URL follows it, never leads. */
   const shownConversation = useRef<string | null | undefined>(undefined);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  const endpoint = `/v1/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}/assistants/${assistantId}`;
+  const endpoint = assistantEndpoint(familyId, profileId, assistantId);
 
   const load = useCallback(
     async (conversationId: string | undefined, signal?: AbortSignal): Promise<void> => {
       const isCurrent = requests.current.claim();
       try {
-        const query =
-          conversationId === undefined
-            ? ""
-            : `?conversationId=${encodeURIComponent(conversationId)}`;
-        const response = await apiRequest<AssistantWorkspaceResponse>(
-          `${endpoint}${query}`,
-          signal === undefined ? undefined : { signal },
-        );
+        const response = await loadWorkspaceRequest(endpoint, conversationId, signal);
         if (signal?.aborted || !isCurrent()) return;
         shownConversation.current = response.selectedConversationId;
         setState({ kind: "ready", workspace: response });
@@ -118,11 +104,13 @@ export function AssistantWorkspace({
     }
   }
 
+  const selectedConversationId =
+    state.kind === "ready" ? state.workspace.selectedConversationId : null;
+
   async function handleSelectConversation(conversationId: string): Promise<void> {
     if (isSwitching) return;
     setIsSwitching(true);
-    setSendError(null);
-    setMessage("");
+    composer.reset();
     shownConversation.current = conversationId;
     router.replace(assistantPath(familyId, profileId, assistantId, conversationId));
     await load(conversationId);
@@ -130,22 +118,12 @@ export function AssistantWorkspace({
   }
 
   async function handleCreateConversation(title: string): Promise<boolean> {
-    const attempt =
-      createAttempt.current?.fingerprint === title
-        ? createAttempt.current
-        : { key: crypto.randomUUID(), fingerprint: title };
+    const attempt = attemptFor(createAttempt.current, title);
     createAttempt.current = attempt;
     setCreateError(null);
     try {
-      const response = await mutate(() =>
-        apiRequest<AssistantWorkspaceResponse>(`${endpoint}/conversations`, {
-          method: "POST",
-          headers: { "Idempotency-Key": attempt.key },
-          body: JSON.stringify({ title }),
-        }),
-      );
+      show(await mutate(() => createConversationRequest(endpoint, attempt.key, title)));
       createAttempt.current = null;
-      show(response);
       return true;
     } catch (error) {
       setCreateError(assistantCreateErrorCopy(error));
@@ -154,68 +132,25 @@ export function AssistantWorkspace({
   }
 
   async function handleAcknowledge(): Promise<void> {
-    if (state.kind !== "ready" || state.workspace.selectedConversationId === null) return;
+    if (selectedConversationId === null) return;
     setAcknowledgePending(true);
     try {
-      const response = await mutate(() =>
-        apiRequest<AssistantWorkspaceResponse>(
-          `${endpoint}/conversations/${encodeURIComponent(state.workspace.selectedConversationId ?? "")}/acknowledgement`,
-          {
-            method: "PUT",
-            body: JSON.stringify({ acknowledgement: ASSISTANT_EGRESS_ACKNOWLEDGEMENT }),
-          },
-        ),
-      );
+      const response = await mutate(() => acknowledgeRequest(endpoint, selectedConversationId));
       setState({ kind: "ready", workspace: response });
       composerRef.current?.focus();
     } catch (error) {
-      setSendError(assistantSendErrorCopy(error));
+      composer.fail(assistantSendErrorCopy(error));
     } finally {
       setAcknowledgePending(false);
     }
   }
 
-  async function handleSend(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const normalized = message.trim();
-    if (
-      normalized.length === 0 ||
-      normalized.length > 2_000 ||
-      pendingMessage !== null ||
-      state.kind !== "ready" ||
-      state.workspace.selectedConversationId === null
-    ) {
-      return;
-    }
-    const conversationId = state.workspace.selectedConversationId;
-    const fingerprint = `${conversationId}:${normalized}`;
-    const attempt =
-      sendAttempt.current?.fingerprint === fingerprint
-        ? sendAttempt.current
-        : { key: crypto.randomUUID(), fingerprint };
-    sendAttempt.current = attempt;
-    setPendingMessage(normalized);
-    setSendError(null);
-    try {
-      const response = await mutate(() =>
-        apiRequest<AssistantWorkspaceResponse>(
-          `${endpoint}/conversations/${encodeURIComponent(conversationId)}/messages`,
-          {
-            method: "POST",
-            headers: { "Idempotency-Key": attempt.key },
-            body: JSON.stringify({ message: normalized }),
-          },
-        ),
-      );
-      sendAttempt.current = null;
-      setMessage("");
-      setState({ kind: "ready", workspace: response });
-    } catch (error) {
-      setSendError(assistantSendErrorCopy(error));
-    } finally {
-      setPendingMessage(null);
-    }
-  }
+  const composer = useAssistantComposer({
+    endpoint,
+    conversationId: selectedConversationId,
+    mutate,
+    onWorkspace: (response) => setState({ kind: "ready", workspace: response }),
+  });
 
   return (
     <AssistantPanel
@@ -226,21 +161,25 @@ export function AssistantWorkspace({
       isLoading={state.kind === "loading"}
       isSwitching={isSwitching}
       loadError={state.kind === "error"}
-      message={message}
-      pendingMessage={pendingMessage}
-      sendError={sendError}
+      message={composer.message}
+      addressee={composer.addressee}
+      pendingMessage={composer.pendingMessage}
+      consiliumPending={composer.consiliumPending}
+      sendError={composer.sendError}
       createError={createError}
       acknowledgePending={acknowledgePending}
       acceptedReferrals={referrals.accepted}
       pendingReferral={referrals.pending}
       referralError={referrals.error}
       composerRef={composerRef}
-      onMessageChange={setMessage}
+      onMessageChange={composer.setMessage}
+      onAddresseeChange={composer.setAddressee}
       onSelectConversation={(conversationId) => void handleSelectConversation(conversationId)}
       onCreateConversation={handleCreateConversation}
       onAcknowledge={() => void handleAcknowledge()}
       onAcceptReferral={(key, block) => void referrals.accept(key, block)}
-      onSend={(event) => void handleSend(event)}
+      onSend={(event) => void composer.send(event)}
+      onConvene={() => void composer.convene()}
     />
   );
 }

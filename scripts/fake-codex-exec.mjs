@@ -3,6 +3,7 @@
 // proposals — each answered with fixed synthetic content bound to what the prompt carried.
 import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
+import { assistantOutput } from "./fake-codex-assistant.mjs";
 
 export async function handleExec(args) {
   const marker = args.indexOf("--output-last-message");
@@ -113,95 +114,16 @@ export async function handleExec(args) {
         facts,
       }),
     );
-  } else if (schema.properties?.blocks !== undefined) {
-    // The physician assistant: cites the observation ids it was given and interprets only
-    // when the profile is ready — the same shape the API-side scripted runtime answers with.
+  } else if (schema.properties?.blocks !== undefined || schema.properties?.verdicts !== undefined) {
     let prompt = "";
     for await (const chunk of process.stdin) prompt += chunk;
     process.stdout.write(
-      JSON.stringify({
+      `${JSON.stringify({
         type: "thread.started",
         thread_id: args[1] === "resume" ? args[args.length - 2] : randomUUID(),
-      }) + "\n",
+      })}\n`,
     );
-    const ids = [...prompt.matchAll(/"observationId":"([0-9a-f-]{36})"/g)].map((match) => match[1]);
-    const ref = ids[0] === undefined ? [] : [{ observationId: ids[0] }];
-    const ready = prompt.includes('"interpretationReady":true') && ref.length > 0;
-    await writeFile(
-      args[marker + 1],
-      JSON.stringify(
-        ready
-          ? {
-              urgency: { tier: "routine", reasons: ref },
-              blocks: [
-                {
-                  kind: "interpretation",
-                  text: "Синтетический показатель A выше напечатанного диапазона.",
-                  refs: ref,
-                },
-                {
-                  kind: "hypothesis",
-                  name: "Синтетическое состояние A",
-                  confidence: "moderate",
-                  rationale: "Одно отклонение без динамики; нужно повторить измерение.",
-                  refs: ref,
-                  confirmWith: "therapist",
-                  workup: ["Повторить синтетический показатель A через 4 недели"],
-                },
-                {
-                  kind: "treatment_option",
-                  name: "Скорректировать образ жизни",
-                  treatmentKind: "lifestyle",
-                  rationale: "Общий первый шаг при таком отклонении.",
-                  refs: ref,
-                  contraindications: "unknown",
-                  conflictNotes: null,
-                  confirmWith: "therapist",
-                },
-                { kind: "question", text: "Нужно ли повторить анализ и когда?", refs: ref },
-                {
-                  kind: "general",
-                  text: "Синтетический показатель A отражает синтетический процесс.",
-                },
-              ],
-            }
-          : args[1] === "resume"
-            ? {
-                urgency: { tier: "none", reasons: [] },
-                blocks: [
-                  {
-                    kind: "general",
-                    text: "В общем случае такой показатель оценивают в динамике.",
-                  },
-                ],
-              }
-            : {
-                urgency: { tier: "none", reasons: [] },
-                blocks: [
-                  { kind: "missing", context: "sex" },
-                  { kind: "missing", context: "birth_year" },
-                ],
-              },
-      ),
-    );
-  } else if (schema.properties?.verdicts !== undefined) {
-    let prompt = "";
-    for await (const chunk of process.stdin) prompt += chunk;
-    process.stdout.write(
-      JSON.stringify({ type: "thread.started", thread_id: randomUUID() }) + "\n",
-    );
-    const answer = JSON.parse(prompt.slice(prompt.lastIndexOf("\n") + 1));
-    await writeFile(
-      args[marker + 1],
-      JSON.stringify({
-        verdicts: answer.blocks.map((block, blockIndex) => ({
-          blockIndex,
-          verdict: block.kind === "hypothesis" ? "overreach" : "supported",
-          note: block.kind === "hypothesis" ? "Одного значения мало для уверенности." : null,
-        })),
-        urgency: "routine",
-      }),
-    );
+    await writeFile(args[marker + 1], JSON.stringify(assistantOutput(schema, args, prompt)));
   } else {
     await writeFile(
       args[marker + 1],

@@ -102,8 +102,8 @@ export async function recordMessageRequest(
 
 /**
  * The first turn that reached the model pins the Codex thread; every turn that delivered the
- * evidence refreshes its digest so the next follow-up knows whether to re-send it. A turn the
- * provider never took leaves both untouched.
+ * evidence to that thread refreshes its digest so the next follow-up knows whether to re-send
+ * it. A turn the therapist's thread never received leaves both untouched.
  */
 export async function rememberThread(
   client: DatabaseClient,
@@ -113,7 +113,10 @@ export async function rememberThread(
   hash: string,
   now: Date,
 ): Promise<void> {
-  const delivered = outcome.refusal !== "provider_unavailable" || outcome.exchanges.length > 1;
+  const delivered = outcome.exchanges.some(
+    (item) =>
+      (item.stage === "answer" || item.stage === "synthesis") && item.runtimeVersion !== null,
+  );
   if (!delivered) {
     await client.query(
       `UPDATE assistant_conversations SET updated_at = $1 WHERE family_id = $2 AND id = $3`,

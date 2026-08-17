@@ -116,6 +116,12 @@ The full first slice remains deliberately narrow:
     every hypothesis and treatment option, an independent checker run, closed
     refusal reasons, an owner-only exchange journal, and referrals accepted
     into the care plan's clinician lane (docs/assistants.md slice 1, delivered).
+21. convene a консилиум inside the same conversation: the confirmed values name
+    the specialist personas (a deterministic analyte→specialty table), each
+    reads the evidence independently and is verified and refuted, the therapist
+    synthesises with the highest urgency and names where they agree and differ,
+    every opinion is shown beside the synthesis, and a chip asks one persona
+    directly (docs/assistants.md slice 2, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

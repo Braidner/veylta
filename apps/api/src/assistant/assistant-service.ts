@@ -1,31 +1,30 @@
-import { randomUUID } from "node:crypto";
 import {
   ASSISTANT_EGRESS_ACKNOWLEDGEMENT,
+  type AssistantConsiliumRequest,
   type AssistantId,
+  type AssistantMessageRequest,
   type AssistantWorkspaceResponse,
-  MAX_ASSISTANT_CONVERSATIONS,
   MAX_ASSISTANT_MESSAGE_LENGTH,
 } from "@veylta/contracts";
 import type { Database } from "../database/pool.js";
 import { createSerializer } from "../database/serialized.js";
-import {
-  DomainConflictError,
-  DomainValidationError,
-  type SessionActor,
-} from "../family/family-service.js";
+import { DomainValidationError, type SessionActor } from "../family/family-service.js";
 import {
   canonicalProfileScope,
   type ProfileScope,
   profileAccess,
   requireProfileWrite,
 } from "../family/profile-access.js";
-import { recordConversationRequest, replayedConversation, sha256 } from "./assistant-requests.js";
-import { sendAssistantMessage } from "./assistant-send.js";
+import { createAssistantConversation } from "./assistant-conversations.js";
+import { sendAssistantTurn } from "./assistant-send.js";
 import { audit, loadConversation, workspaceResponse } from "./assistant-storage.js";
 import type { AssistantRuntime } from "./codex-assistant-runtime.js";
 
 export { AssistantIdempotencyConflictError } from "./assistant-requests.js";
-export { AssistantAcknowledgementRequiredError } from "./assistant-send.js";
+export {
+  AssistantAcknowledgementRequiredError,
+  AssistantNobodyToConveneError,
+} from "./assistant-send.js";
 
 export interface AssistantService {
   getWorkspace(
@@ -56,7 +55,16 @@ export interface AssistantService {
     scope: ProfileScope,
     assistantId: AssistantId,
     conversationId: string,
-    message: string,
+    request: AssistantMessageRequest,
+    idempotencyKey: string,
+    correlationId: string,
+  ): Promise<{ response: AssistantWorkspaceResponse; replayed: boolean }>;
+  convene(
+    actor: SessionActor,
+    scope: ProfileScope,
+    assistantId: AssistantId,
+    conversationId: string,
+    request: AssistantConsiliumRequest,
     idempotencyKey: string,
     correlationId: string,
   ): Promise<{ response: AssistantWorkspaceResponse; replayed: boolean }>;
@@ -96,73 +104,16 @@ export function createAssistantService(
       const title = rawTitle.trim();
       if (title.length < 1 || title.length > 80) throw new DomainValidationError();
       return serialized(`${scope.familyId}:${scope.profileId}:create`, () =>
-        database.transaction(async (client) => {
-          await requireProfileWrite(client, actor, scope);
-          const keyHash = sha256(key);
-          const requestHash = sha256(JSON.stringify({ profileId: scope.profileId, title }));
-          const table = "assistant_conversation_requests";
-          const replay = await replayedConversation(
-            client,
-            table,
-            scope,
+        database.transaction((client) =>
+          createAssistantConversation(client, {
             actor,
-            keyHash,
-            requestHash,
-          );
-          if (replay !== null) {
-            const response = await workspaceResponse(client, scope, assistantId, true, replay);
-            return { response, replayed: true };
-          }
-          const count = await client.query<{ value: number }>(
-            `SELECT count(*) AS value FROM assistant_conversations
-              WHERE family_id = $1 AND patient_profile_id = $2 AND assistant_id = $3`,
-            [scope.familyId, scope.profileId, assistantId],
-          );
-          if ((count.rows[0]?.value ?? 0) >= MAX_ASSISTANT_CONVERSATIONS) {
-            throw new DomainConflictError();
-          }
-          const conversationId = randomUUID();
-          const now = new Date();
-          await client.query(
-            `INSERT INTO assistant_conversations
-               (id, family_id, patient_profile_id, assistant_id, created_by_user_id, title,
-                created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-            [
-              conversationId,
-              scope.familyId,
-              scope.profileId,
-              assistantId,
-              actor.userId,
-              title,
-              now,
-            ],
-          );
-          await recordConversationRequest(client, {
-            scope,
-            actor,
-            conversationId,
-            keyHash,
-            requestHash,
-            now,
-          });
-          await audit(client, {
-            actor,
-            scope,
-            action: "profile.assistant.conversation_created",
-            resourceId: conversationId,
-            correlationId,
-            now,
-          });
-          const response = await workspaceResponse(
-            client,
             scope,
             assistantId,
-            true,
-            conversationId,
-          );
-          return { response, replayed: false };
-        }),
+            title,
+            key,
+            correlationId,
+          }),
+        ),
       );
     },
 
@@ -193,16 +144,57 @@ export function createAssistantService(
       });
     },
 
-    async sendMessage(actor, requestedScope, assistantId, conversationId, raw, key, correlationId) {
+    async sendMessage(
+      actor,
+      requestedScope,
+      assistantId,
+      conversationId,
+      body,
+      key,
+      correlationId,
+    ) {
       const scope = canonicalProfileScope(requestedScope);
-      const message = raw.trim();
+      const message = body.message.trim();
       if (message.length < 1 || message.length > MAX_ASSISTANT_MESSAGE_LENGTH) {
         throw new DomainValidationError();
       }
       return serialized(`${scope.familyId}:${scope.profileId}:${conversationId}`, () =>
-        sendAssistantMessage(
+        sendAssistantTurn(
           { database, runtime },
-          { actor, scope, assistantId, conversationId, message, key, correlationId },
+          {
+            actor,
+            scope,
+            assistantId,
+            conversationId,
+            request: { kind: "message", message, addressee: body.addressee ?? null },
+            key,
+            correlationId,
+          },
+        ),
+      );
+    },
+
+    async convene(actor, requestedScope, assistantId, conversationId, body, key, correlationId) {
+      const scope = canonicalProfileScope(requestedScope);
+      const question = body.question === null ? null : body.question.trim();
+      if (
+        question !== null &&
+        (question.length < 1 || question.length > MAX_ASSISTANT_MESSAGE_LENGTH)
+      ) {
+        throw new DomainValidationError();
+      }
+      return serialized(`${scope.familyId}:${scope.profileId}:${conversationId}`, () =>
+        sendAssistantTurn(
+          { database, runtime },
+          {
+            actor,
+            scope,
+            assistantId,
+            conversationId,
+            request: { kind: "consilium", question, specialties: body.specialties ?? [] },
+            key,
+            correlationId,
+          },
         ),
       );
     },

@@ -30,7 +30,70 @@ export interface ScriptedRuntime {
   fail: { next: boolean };
 }
 
+/** A persona's scripted read: the endocrinologist alarms sooner than everyone else. */
+function specialistOutput(specialty: string, prompt: string): unknown {
+  const ids = [...prompt.matchAll(/"observationId":"([0-9a-f-]{36})"/g)].map((match) => match[1]);
+  const ref = ids[0] === undefined ? [] : [{ observationId: ids[0] }];
+  const soon = specialty === "endocrinologist";
+  return {
+    urgency: { tier: soon ? "soon" : "routine", reasons: ref },
+    blocks: [
+      {
+        kind: "hypothesis",
+        name: soon ? "Синтетический субклинический гипотиреоз" : "Синтетическая лёгкая анемия",
+        confidence: soon ? "moderate" : "low",
+        rationale: "Значение вне напечатанного диапазона; нужна динамика.",
+        refs: ref,
+        confirmWith: specialty,
+        workup: ["Повторить через 6 недель"],
+      },
+    ],
+  };
+}
+
+/** The therapist's scripted synthesis: the highest urgency of the opinions and one disagreement. */
+function synthesisOutput(prompt: string): unknown {
+  const opinions = JSON.parse(prompt.slice(prompt.lastIndexOf("\n") + 1)) as Array<{
+    specialty: string;
+    answer: { urgency: { tier: string } } | null;
+  }>;
+  const tiers = ["none", "routine", "soon", "urgent", "emergency"];
+  const tier = opinions.reduce(
+    (best, item) =>
+      item.answer !== null && tiers.indexOf(item.answer.urgency.tier) > tiers.indexOf(best)
+        ? item.answer.urgency.tier
+        : best,
+    "none",
+  );
+  const ids = [...prompt.matchAll(/"observationId":"([0-9a-f-]{36})"/g)].map((match) => match[1]);
+  const ref = ids[0] === undefined ? [] : [{ observationId: ids[0] }];
+  const specialties = opinions.map((item) => item.specialty);
+  return {
+    urgency: { tier, reasons: ref },
+    blocks: [
+      {
+        kind: "interpretation",
+        text: "Специалисты прочли одни и те же подтверждённые значения; ниже — где они сходятся.",
+        refs: ref,
+      },
+    ],
+    agreements:
+      specialties.length > 1
+        ? [
+            {
+              topic: "Срочность визита",
+              verdict: "differ",
+              specialties,
+              why: "Один специалист зовёт в ближайшие недели, другой считает визит плановым.",
+            },
+          ]
+        : [],
+  };
+}
+
 function physicianOutput(prompt: string): unknown {
+  const specialty = /^Specialty: (\w+)$/m.exec(prompt)?.[1];
+  if (specialty !== undefined) return specialistOutput(specialty, prompt);
   const ids = [...prompt.matchAll(/"observationId":"([0-9a-f-]{36})"/g)].map((match) => match[1]);
   const ref = ids[0] === undefined ? [] : [{ observationId: ids[0] }];
   if (!prompt.includes('"interpretationReady":true') || ref.length === 0) {
@@ -88,9 +151,11 @@ export function scriptedRuntime(): ScriptedRuntime {
         }
         const schema = turn.schema as { properties: Record<string, unknown> };
         const output =
-          schema.properties.verdicts === undefined
-            ? physicianOutput(turn.prompt)
-            : checkerOutput(turn.prompt);
+          schema.properties.verdicts !== undefined
+            ? checkerOutput(turn.prompt)
+            : schema.properties.agreements !== undefined
+              ? synthesisOutput(turn.prompt)
+              : physicianOutput(turn.prompt);
         return {
           threadId: turn.threadId ?? scriptedThreadId,
           output: JSON.stringify(output),

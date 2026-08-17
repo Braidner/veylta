@@ -188,6 +188,18 @@ raw exchange in `assistant_exchanges` (owner-only journal, never audit). Web: pu
 `app/assistant.ts`, `assistant-workspace.tsx` (data) → `assistant-panel.tsx` (shell) →
 `assistant-answer.tsx`/`assistant-blocks.tsx` (typed blocks, source links, referral → care-plan
 `clinician` item through the plan's own `PUT items/:id`). Browser routes live in `app/paths.ts`.
+**Консилиум** (`POST …/conversations/:id/consilium`, `consilium-turn.ts`): who joins is decided
+from the evidence by `consilium-panel.ts` (catalog code → specialty; sex hormones by recorded
+sex; ties in `ASSISTANT_SPECIALTIES` order; ≤5) plus whoever the person adds; every persona
+(`prompts/assistant-specialist.prompt.ts`, first line `Specialty: <id>` — the fakes key on it)
+reads the same evidence in its own thread and is verified and refuted like any answer; the
+therapist synthesises on the conversation's thread (`assistant-synthesis.prompt.ts`,
+`synthesis-parser.ts`: the physician answer plus `agreements`, each note bound to invited
+specialties) and the checker refutes the synthesis with the opinions in view. The synthesis is
+the message's `answer`; `consilium` carries invitations, opinions and agreements, so no
+disagreement can be averaged away. A message with `addressee` runs that persona alone
+(`speaker`), never touching the therapist's thread. Exchanges: `opinion`/`checker` per specialty,
+`synthesis`, `checker`.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the
@@ -272,6 +284,10 @@ YOU MUST NOT relax these to make a feature easier.
 - Assistant egress is disclosed and acknowledged per conversation; the payload is exactly what
   `assistant/evidence.ts` builds — never a document, page, file, path, key, or family/profile
   ID. The raw exchange and checker verdict live in `assistant_exchanges` for the owner only.
+- A консилиум's panel is decided by the code→specialty table plus the person's additions, never
+  by the model; every opinion is verified and refuted on its own and shown beside the synthesis;
+  the synthesis is verified as an answer and its agreement notes may name only invited
+  specialties; a lower synthesis urgency is never applied over the checker's read.
 - Archiving a profile flips `patient_profiles.archived_at` only; it never deletes sources,
   facts, observations, audit rows, or storage objects.
 - Synthetic data only, in fixtures, tests, screenshots, and logs. Never commit real medical

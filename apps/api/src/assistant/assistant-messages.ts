@@ -2,9 +2,11 @@ import { randomUUID } from "node:crypto";
 import type {
   AssistantAnswer,
   AssistantCheckerVerdictRecord,
+  AssistantConsilium,
   AssistantExchange,
   AssistantMessage,
   AssistantRejectionReason,
+  AssistantSpecialty,
 } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import type { SessionActor } from "../family/family-service.js";
@@ -15,9 +17,12 @@ interface MessageRow {
   id: string;
   role: "user" | "assistant";
   text: string | null;
+  addressee: string | null;
+  speaker: string | null;
   answer_json: string | null;
   refusal_reason: string | null;
   checker_json: string;
+  consilium_json: string | null;
   model_id: string | null;
   runtime_version: string | null;
   created_at: string;
@@ -26,6 +31,7 @@ interface MessageRow {
 interface ExchangeRow {
   message_id: string;
   stage: AssistantExchange["stage"];
+  specialty: string | null;
   request_text: string;
   response_text: string;
   request_bytes: number;
@@ -40,14 +46,23 @@ function messageFromRow(
   exchanges: readonly AssistantExchange[] | null,
 ): AssistantMessage {
   if (row.role === "user") {
-    return { id: row.id, role: "user", text: row.text ?? "", createdAt: row.created_at };
+    return {
+      id: row.id,
+      role: "user",
+      text: row.text ?? "",
+      addressee: row.addressee as AssistantSpecialty | null,
+      createdAt: row.created_at,
+    };
   }
   return {
     id: row.id,
     role: "assistant",
+    speaker: row.speaker as AssistantSpecialty | null,
     answer: row.answer_json === null ? null : (JSON.parse(row.answer_json) as AssistantAnswer),
     refusal: row.refusal_reason as AssistantRejectionReason | null,
     checker: JSON.parse(row.checker_json) as AssistantCheckerVerdictRecord[],
+    consilium:
+      row.consilium_json === null ? null : (JSON.parse(row.consilium_json) as AssistantConsilium),
     provenance: { modelId: row.model_id ?? "", runtimeVersion: row.runtime_version ?? "" },
     exchanges,
     createdAt: row.created_at,
@@ -61,11 +76,11 @@ async function loadExchanges(
 ): Promise<Map<string, AssistantExchange[]>> {
   const rows = (
     await client.query<ExchangeRow>(
-      `SELECT message_id, stage, request_text, response_text, request_bytes, response_bytes,
-              model_id, runtime_version, duration_ms
+      `SELECT message_id, stage, specialty, request_text, response_text, request_bytes,
+              response_bytes, model_id, runtime_version, duration_ms
          FROM assistant_exchanges
         WHERE family_id = $1 AND conversation_id = $2
-        ORDER BY created_at, stage`,
+        ORDER BY created_at, rowid`,
       [scope.familyId, conversationId],
     )
   ).rows;
@@ -74,6 +89,7 @@ async function loadExchanges(
     const list = byMessage.get(row.message_id) ?? [];
     list.push({
       stage: row.stage,
+      specialty: row.specialty as AssistantSpecialty | null,
       requestText: row.request_text,
       responseText: row.response_text,
       requestBytes: row.request_bytes,
@@ -96,8 +112,8 @@ export async function loadMessages(
 ): Promise<AssistantMessage[]> {
   const rows = (
     await client.query<MessageRow>(
-      `SELECT id, role, text, answer_json, refusal_reason, checker_json, model_id,
-              runtime_version, created_at
+      `SELECT id, role, text, addressee, speaker, answer_json, refusal_reason, checker_json,
+              consilium_json, model_id, runtime_version, created_at
          FROM assistant_messages
         WHERE family_id = $1 AND conversation_id = $2
         ORDER BY sequence`,
@@ -118,7 +134,9 @@ export async function persistTurn(
     actor: SessionActor;
     conversationId: string;
     sequence: number;
+    /** The person's words — a message, or the question a консилиум was convened on. */
     message: string;
+    addressee: AssistantSpecialty | null;
     outcome: AssistantTurnOutcome;
     now: Date;
   },
@@ -128,10 +146,13 @@ export async function persistTurn(
   const { outcome } = input;
   await client.query(
     `INSERT INTO assistant_messages
-       (id, family_id, conversation_id, sequence, role, actor_user_id, text, answer_json,
-        urgency_tier, refusal_reason, checker_json, model_id, runtime_version, created_at)
-     VALUES ($1, $2, $3, $4, 'user', $5, $6, NULL, NULL, NULL, '[]', NULL, NULL, $7),
-            ($8, $2, $3, $9, 'assistant', NULL, NULL, $10, $11, $12, $13, $14, $15, $7)`,
+       (id, family_id, conversation_id, sequence, role, actor_user_id, text, addressee, speaker,
+        answer_json, urgency_tier, refusal_reason, checker_json, consilium_json, model_id,
+        runtime_version, created_at)
+     VALUES ($1, $2, $3, $4, 'user', $5, $6, $16, NULL, NULL, NULL, NULL, '[]', NULL, NULL,
+             NULL, $7),
+            ($8, $2, $3, $9, 'assistant', NULL, NULL, NULL, $17, $10, $11, $12, $13, $18, $14,
+             $15, $7)`,
     [
       userMessageId,
       input.scope.familyId,
@@ -148,14 +169,18 @@ export async function persistTurn(
       JSON.stringify(outcome.checker),
       outcome.modelId,
       outcome.runtimeVersion,
+      input.addressee,
+      outcome.speaker,
+      outcome.consilium === null ? null : JSON.stringify(outcome.consilium),
     ],
   );
   for (const item of outcome.exchanges) {
     await client.query(
       `INSERT INTO assistant_exchanges
-         (id, family_id, conversation_id, message_id, stage, model_id, runtime_version,
-          request_bytes, response_bytes, request_text, response_text, duration_ms, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+         (id, family_id, conversation_id, message_id, stage, specialty, model_id,
+          runtime_version, request_bytes, response_bytes, request_text, response_text,
+          duration_ms, created_at)
+       VALUES ($1, $2, $3, $4, $5, $14, $6, $7, $8, $9, $10, $11, $12, $13)`,
       [
         randomUUID(),
         input.scope.familyId,
@@ -170,6 +195,7 @@ export async function persistTurn(
         item.responseText,
         item.durationMs,
         input.now,
+        item.specialty,
       ],
     );
   }

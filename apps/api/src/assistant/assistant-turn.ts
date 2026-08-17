@@ -1,24 +1,25 @@
 import type {
   AssistantAnswer,
   AssistantCheckerVerdictRecord,
+  AssistantConsilium,
   AssistantExchange,
   AssistantRejectionReason,
+  AssistantSpecialty,
 } from "@veylta/contracts";
-import { checkerPrompt } from "../prompts/assistant-checker.prompt.js";
 import {
   physicianFollowUpPrompt,
   physicianOpeningPrompt,
 } from "../prompts/assistant-physician.prompt.js";
-import { applyCheckerVerdicts, parseCheckerVerdicts } from "./answer-checker.js";
-import { AssistantAnswerError } from "./answer-fields.js";
+import { specialistOpeningPrompt } from "../prompts/assistant-specialist.prompt.js";
 import { parseAssistantAnswer } from "./answer-parser.js";
-import { checkerSchema, physicianAnswerSchema } from "./answer-schema.js";
+import { physicianAnswerSchema } from "./answer-schema.js";
 import {
   type AssistantRuntime,
   AssistantRuntimeError,
   type AssistantRuntimeResult,
 } from "./codex-assistant-runtime.js";
 import { type AssistantEvidence, answerContextOf } from "./evidence.js";
+import { checkAnswer, exchange, refusalOf, unavailableRuntimeVersion } from "./turn-support.js";
 
 export interface AssistantTurnInput {
   readonly threadId: string | null;
@@ -31,54 +32,67 @@ export interface AssistantTurnInput {
 /** Everything one turn produced, in the shape the service persists as one assistant message. */
 export interface AssistantTurnOutcome {
   readonly threadId: string | null;
+  /** null is the therapist; a specialty is that persona answering alone. */
+  readonly speaker: AssistantSpecialty | null;
   readonly modelId: string;
   readonly runtimeVersion: string;
   readonly answer: AssistantAnswer | null;
   readonly refusal: AssistantRejectionReason | null;
   readonly checker: readonly AssistantCheckerVerdictRecord[];
+  readonly consilium: AssistantConsilium | null;
   readonly exchanges: readonly AssistantExchange[];
 }
 
-/** Bounds mirror the assistant_exchanges CHECKs; the journal keeps a prefix, never fails on size. */
-export const maximumExchangeRequestChars = 262_144;
-export const maximumExchangeResponseChars = 131_072;
-const unavailableRuntimeVersion = "unavailable";
+export { needsChecker } from "./turn-support.js";
 
-function exchange(
+function unavailable(
+  error: AssistantRuntimeError,
+  threadId: string | null,
+  speaker: AssistantSpecialty | null,
   stage: AssistantExchange["stage"],
-  requestText: string,
-  result: AssistantRuntimeResult | AssistantRuntimeError,
-): AssistantExchange {
-  const responseText = result instanceof AssistantRuntimeError ? "" : result.output;
+  prompt: string,
+): AssistantTurnOutcome {
   return {
-    stage,
-    requestText: requestText.slice(0, maximumExchangeRequestChars),
-    responseText: responseText.slice(0, maximumExchangeResponseChars),
-    requestBytes: Buffer.byteLength(requestText, "utf8"),
-    responseBytes: Buffer.byteLength(responseText, "utf8"),
-    modelId: result.modelId,
-    runtimeVersion: result instanceof AssistantRuntimeError ? null : result.runtimeVersion,
-    durationMs: result.durationMs,
+    threadId,
+    speaker,
+    modelId: error.modelId,
+    runtimeVersion: unavailableRuntimeVersion,
+    answer: null,
+    refusal: "provider_unavailable",
+    checker: [],
+    consilium: null,
+    exchanges: [exchange(stage, speaker, prompt, error)],
   };
 }
 
-/** Only an answer that says something about this person is worth a second, refuting run. */
-export function needsChecker(answer: AssistantAnswer): boolean {
-  return (
-    answer.urgency.tier !== "none" ||
-    answer.blocks.some((block) => block.kind !== "missing" && block.kind !== "general")
-  );
-}
-
-function refusalOf(error: unknown): AssistantRejectionReason {
-  if (error instanceof AssistantAnswerError) return error.reason;
-  throw error;
+/** Ask, verify against the evidence, let an independent run refute, keep what survives. */
+async function answerAndCheck(
+  runtime: AssistantRuntime,
+  evidence: AssistantEvidence,
+  result: AssistantRuntimeResult,
+  first: AssistantExchange,
+  speaker: AssistantSpecialty | null,
+): Promise<AssistantTurnOutcome> {
+  const base = {
+    threadId: result.threadId,
+    speaker,
+    modelId: result.modelId,
+    runtimeVersion: result.runtimeVersion,
+    consilium: null,
+  };
+  let answer: AssistantAnswer;
+  try {
+    answer = parseAssistantAnswer(result.output, answerContextOf(evidence));
+  } catch (error) {
+    return { ...base, answer: null, refusal: refusalOf(error), checker: [], exchanges: [first] };
+  }
+  const checked = await checkAnswer(runtime, evidence, answer);
+  return { ...base, ...checked, exchanges: [first, ...checked.exchanges] };
 }
 
 /**
- * One physician turn: ask, verify against the evidence, let an independent run refute, keep
- * what survives. Every model failure becomes a refusal with a closed reason and its raw
- * exchange — the turn itself never throws for a model's sake.
+ * One physician turn on the conversation's thread. Every model failure becomes a refusal with
+ * a closed reason and its raw exchange — the turn itself never throws for a model's sake.
  */
 export async function runPhysicianTurn(
   runtime: AssistantRuntime,
@@ -93,56 +107,44 @@ export async function runPhysicianTurn(
     result = await runtime.run({ threadId: input.threadId, prompt, schema: physicianAnswerSchema });
   } catch (error) {
     if (!(error instanceof AssistantRuntimeError)) throw error;
-    return {
-      threadId: input.threadId,
-      modelId: error.modelId,
-      runtimeVersion: unavailableRuntimeVersion,
-      answer: null,
-      refusal: "provider_unavailable",
-      checker: [],
-      exchanges: [exchange("answer", prompt, error)],
-    };
+    return unavailable(error, input.threadId, null, "answer", prompt);
   }
-  const base = {
-    threadId: result.threadId,
-    modelId: result.modelId,
-    runtimeVersion: result.runtimeVersion,
-    checker: [] as AssistantCheckerVerdictRecord[],
-    exchanges: [exchange("answer", prompt, result)],
-  };
-  let answer: AssistantAnswer;
-  try {
-    answer = parseAssistantAnswer(result.output, answerContextOf(input.evidence));
-  } catch (error) {
-    return { ...base, answer: null, refusal: refusalOf(error) };
-  }
-  if (!needsChecker(answer)) return { ...base, answer, refusal: null };
+  return answerAndCheck(
+    runtime,
+    input.evidence,
+    result,
+    exchange("answer", null, prompt, result),
+    null,
+  );
+}
 
-  const review = checkerPrompt(input.evidence, answer);
-  let reviewed: AssistantRuntimeResult;
+/**
+ * One specialist persona answering the person directly («Спросить эндокринолога»): a fresh
+ * run over the same evidence, verified and refuted like the therapist's own answer.
+ */
+export async function runSpecialistTurn(
+  runtime: AssistantRuntime,
+  input: {
+    readonly evidence: AssistantEvidence;
+    readonly specialty: AssistantSpecialty;
+    readonly message: string;
+  },
+): Promise<AssistantTurnOutcome> {
+  const prompt = specialistOpeningPrompt(input.specialty, input.evidence, input.message);
+  let result: AssistantRuntimeResult;
   try {
-    reviewed = await runtime.run({ threadId: null, prompt: review, schema: checkerSchema });
+    result = await runtime.run({ threadId: null, prompt, schema: physicianAnswerSchema });
   } catch (error) {
     if (!(error instanceof AssistantRuntimeError)) throw error;
-    return {
-      ...base,
-      answer: null,
-      refusal: "provider_unavailable",
-      exchanges: [...base.exchanges, exchange("checker", review, error)],
-    };
+    return unavailable(error, null, input.specialty, "opinion", prompt);
   }
-  const exchanges = [...base.exchanges, exchange("checker", review, reviewed)];
-  try {
-    const verdicts = parseCheckerVerdicts(reviewed.output, answer.blocks.length);
-    const kept = applyCheckerVerdicts(answer, verdicts);
-    return {
-      ...base,
-      exchanges,
-      checker: verdicts.verdicts,
-      answer: kept,
-      refusal: kept === null ? "checker_unsafe" : null,
-    };
-  } catch (error) {
-    return { ...base, exchanges, answer: null, refusal: refusalOf(error) };
-  }
+  const outcome = await answerAndCheck(
+    runtime,
+    input.evidence,
+    result,
+    exchange("opinion", input.specialty, prompt, result),
+    input.specialty,
+  );
+  // A persona's own thread is not the conversation's; the therapist thread stays pinned.
+  return { ...outcome, threadId: null };
 }

@@ -1,13 +1,18 @@
 "use client";
 
-import type { AssistantMessage, AssistantWorkspaceResponse } from "@veylta/contracts";
-import { Bot, Send, ShieldAlert } from "lucide-react";
+import type {
+  AssistantMessage,
+  AssistantSpecialty,
+  AssistantWorkspaceResponse,
+} from "@veylta/contracts";
+import { Bot, ShieldAlert } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
-import { assistantTitle } from "../assistant";
+import { assistantTitle, specialtyLabel } from "../assistant";
 import { profileTabPath } from "../paths";
 import { countCopy } from "../russian-plural";
 import { AssistantAnswer } from "./assistant-answer";
 import type { EvidenceIndex, ReferralBlock } from "./assistant-blocks";
+import { AssistantComposer } from "./assistant-composer";
 import { EgressGate } from "./assistant-gate";
 import { AssistantRail } from "./assistant-rail";
 
@@ -20,7 +25,9 @@ interface AssistantPanelProps {
   readonly isSwitching: boolean;
   readonly loadError: boolean;
   readonly message: string;
+  readonly addressee: AssistantSpecialty | null;
   readonly pendingMessage: string | null;
+  readonly consiliumPending: boolean;
   readonly sendError: string | null;
   readonly createError: string | null;
   readonly acknowledgePending: boolean;
@@ -29,11 +36,13 @@ interface AssistantPanelProps {
   readonly referralError: string | null;
   readonly composerRef: RefObject<HTMLTextAreaElement | null>;
   readonly onMessageChange: (message: string) => void;
+  readonly onAddresseeChange: (addressee: AssistantSpecialty | null) => void;
   readonly onSelectConversation: (conversationId: string) => void;
   readonly onCreateConversation: (title: string) => Promise<boolean>;
   readonly onAcknowledge: () => void;
   readonly onAcceptReferral: (key: string, block: ReferralBlock) => void;
   readonly onSend: (event: FormEvent<HTMLFormElement>) => void;
+  readonly onConvene: () => void;
 }
 
 /** The physician workspace: a rail of conversations, the egress gate, typed answers, a composer. */
@@ -44,11 +53,13 @@ export function AssistantPanel(props: AssistantPanelProps) {
   const canWrite = workspace?.canWrite ?? false;
   const gateOpen = selected !== null && !selected.acknowledged;
   const canSend =
-    selected?.acknowledged &&
+    selected?.acknowledged === true &&
     canWrite &&
     !props.isLoading &&
     !props.isSwitching &&
-    props.pendingMessage === null;
+    props.pendingMessage === null &&
+    !props.consiliumPending;
+  const canConvene = canSend && (workspace?.consiliumPanel.length ?? 0) > 0;
 
   return (
     <section
@@ -121,13 +132,29 @@ export function AssistantPanel(props: AssistantPanelProps) {
             {props.pendingMessage !== null ? (
               <>
                 <article className="document-agent-workspace__message is-user is-pending">
+                  {props.addressee !== null ? (
+                    <small>Вопрос: {specialtyLabel[props.addressee]}</small>
+                  ) : null}
                   <p>{props.pendingMessage}</p>
                 </article>
                 <div className="document-agent-workspace__waiting" role="status">
                   <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
-                  <span>ИИ-врач отвечает, затем второй запуск проверяет ответ…</span>
+                  <span>
+                    {props.addressee === null
+                      ? "ИИ-врач отвечает, затем второй запуск проверяет ответ…"
+                      : `Отвечает специалист (${specialtyLabel[props.addressee]}), затем проверка…`}
+                  </span>
                 </div>
               </>
+            ) : null}
+            {props.consiliumPending ? (
+              <div className="document-agent-workspace__waiting" role="status">
+                <Bot size={17} strokeWidth={1.8} aria-hidden="true" />
+                <span>
+                  Консилиум работает: каждый специалист читает данные, затем ИИ-врач сводит мнения и
+                  второй запуск проверяет синтез…
+                </span>
+              </div>
             ) : null}
             {props.referralError !== null ? (
               <p className="form-error" role="alert">
@@ -136,42 +163,22 @@ export function AssistantPanel(props: AssistantPanelProps) {
             ) : null}
           </div>
 
-          <form className="document-agent-workspace__composer" onSubmit={props.onSend}>
-            <label htmlFor="assistant-message">Сообщение ИИ-врачу</label>
-            <div className="document-agent-workspace__composer-row">
-              <textarea
-                ref={props.composerRef}
-                id="assistant-message"
-                value={props.message}
-                maxLength={2_000}
-                rows={3}
-                placeholder={
-                  selected === null
-                    ? "Сначала создайте диалог"
-                    : "Например: что означают мои последние анализы?"
-                }
-                onChange={(event) => props.onMessageChange(event.target.value)}
-                disabled={!canSend}
-              />
-              <button
-                className="button button--primary document-agent-workspace__send"
-                type="submit"
-                disabled={!canSend || props.message.trim().length === 0}
-              >
-                <span>Отправить</span>
-                <Send size={17} strokeWidth={2} aria-hidden="true" />
-              </button>
-            </div>
-            <div className="document-agent-workspace__composer-meta">
-              <span>{props.message.length} / 2000</span>
-              <span>Каждый вывод — рекомендация для подтверждения у врача.</span>
-            </div>
-            {props.sendError !== null ? (
-              <p className="form-error" role="alert">
-                {props.sendError}
-              </p>
-            ) : null}
-          </form>
+          <AssistantComposer
+            message={props.message}
+            addressee={props.addressee}
+            canSend={canSend}
+            canConvene={canConvene}
+            consiliumPending={props.consiliumPending}
+            panel={workspace?.consiliumPanel ?? []}
+            evidence={props.evidence}
+            hasConversation={selected !== null}
+            sendError={props.sendError}
+            composerRef={props.composerRef}
+            onMessageChange={props.onMessageChange}
+            onAddresseeChange={props.onAddresseeChange}
+            onSend={props.onSend}
+            onConvene={props.onConvene}
+          />
         </div>
       </div>
     </section>
@@ -188,6 +195,7 @@ function ConversationItem({
   if (item.role === "user") {
     return (
       <article className="document-agent-workspace__message is-user">
+        {item.addressee !== null ? <small>Вопрос: {specialtyLabel[item.addressee]}</small> : null}
         <p>{item.text}</p>
       </article>
     );

@@ -97,7 +97,7 @@ export async function loadAssistantEvidence(
        LEFT JOIN observation_reference_ranges r
          ON r.family_id = o.family_id AND r.observation_id = o.id
       WHERE o.family_id = $1 AND o.patient_profile_id = $2 AND o.status = 'confirmed'
-      ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.id`,
+      ORDER BY COALESCE(o.sampled_at, o.resulted_at, o.uploaded_at) DESC, o.rowid`,
     [scope.familyId, scope.profileId],
   );
   const perAnalyte = new Map<string, number>();

@@ -1,9 +1,15 @@
 "use client";
 
-import type { AssistantEvidenceRef, AssistantMessage } from "@veylta/contracts";
+import type { AssistantEvidenceRef, AssistantExchange, AssistantMessage } from "@veylta/contracts";
 import { AlertTriangle, ClipboardCheck, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { blockKindLabel, refusalCopy, urgencyCopy } from "../assistant";
+import {
+  blockKindLabel,
+  refusalCopy,
+  speakerLabel,
+  specialtyLabel,
+  urgencyCopy,
+} from "../assistant";
 import { formatDate } from "../format-moment";
 import {
   BlockBody,
@@ -13,8 +19,16 @@ import {
   type ReferralBlock,
   SourceRefs,
 } from "./assistant-blocks";
+import { AssistantConsiliumView } from "./assistant-consilium";
 
 type AssistantReply = Extract<AssistantMessage, { role: "assistant" }>;
+
+const exchangeLabel: Record<AssistantExchange["stage"], string> = {
+  answer: "Ответ",
+  checker: "Проверяющий запуск",
+  opinion: "Мнение специалиста",
+  synthesis: "Синтез консилиума",
+};
 
 interface AssistantAnswerProps {
   readonly message: AssistantReply;
@@ -44,11 +58,15 @@ export function AssistantAnswer({
 
   return (
     <article
-      className={`assistant-answer${message.answer === null ? " is-refused" : ""}`}
+      className={`assistant-answer${message.answer === null ? " is-refused" : ""}${message.consilium === null ? "" : " has-consilium"}`}
       data-testid="assistant-answer"
+      data-speaker={message.speaker ?? "therapist"}
     >
       <header className="assistant-answer__meta">
-        <strong>ИИ-врач</strong>
+        <strong>
+          {speakerLabel(message.speaker)}
+          {message.consilium === null ? "" : " · синтез консилиума"}
+        </strong>
         <time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time>
       </header>
 
@@ -95,6 +113,15 @@ export function AssistantAnswer({
         </>
       )}
 
+      {message.consilium !== null ? (
+        <AssistantConsiliumView
+          consilium={message.consilium}
+          familyId={familyId}
+          profileId={profileId}
+          evidence={evidence}
+        />
+      ) : null}
+
       <footer className="assistant-answer__footer">
         <span>Модель: {message.provenance.modelId}</span>
         {message.exchanges !== null && message.exchanges.length > 0 ? (
@@ -111,11 +138,15 @@ export function AssistantAnswer({
       {journalOpen && message.exchanges !== null ? (
         <div className="assistant-answer__journal">
           {message.exchanges.map((exchange) => (
-            <details key={exchange.stage} className="assistant-answer__exchange">
+            <details
+              key={`${exchange.stage}:${exchange.specialty ?? ""}`}
+              className="assistant-answer__exchange"
+            >
               <summary>
-                {exchange.stage === "answer" ? "Ответ" : "Проверяющий запуск"} · {exchange.modelId}{" "}
-                · {exchange.durationMs} мс · запрос {exchange.requestBytes} Б, ответ{" "}
-                {exchange.responseBytes} Б
+                {exchangeLabel[exchange.stage]}
+                {exchange.specialty === null ? "" : ` (${specialtyLabel[exchange.specialty]})`} ·{" "}
+                {exchange.modelId} · {exchange.durationMs} мс · запрос {exchange.requestBytes} Б,
+                ответ {exchange.responseBytes} Б
               </summary>
               <pre>{exchange.requestText}</pre>
               <pre>

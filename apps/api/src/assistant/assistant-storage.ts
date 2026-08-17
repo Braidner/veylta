@@ -9,6 +9,7 @@ import type { DatabaseClient } from "../database/pool.js";
 import { ResourceNotFoundError, type SessionActor } from "../family/family-service.js";
 import type { ProfileScope } from "../family/profile-access.js";
 import { loadMessages } from "./assistant-messages.js";
+import { consiliumPanel } from "./consilium-panel.js";
 import { loadAssistantEvidence } from "./evidence.js";
 
 export { persistTurn } from "./assistant-messages.js";
@@ -96,6 +97,7 @@ export async function workspaceResponse(
     interpretationReady: evidence.medicalProfile.interpretationReady,
     evidenceCount: evidence.observations.length,
     evidence: sources,
+    consiliumPanel: consiliumPanel(evidence),
     conversations: conversations.map(summary),
     selectedConversationId,
     messages:

@@ -169,15 +169,27 @@ function block(value: unknown, context: AnswerContext): AssistantBlock {
  * read first and never lowered because a reference did not resolve.
  */
 export function parseAssistantAnswer(text: string, context: AnswerContext): AssistantAnswer {
+  return answerFromRoot(parseAnswerJson(text), context, ["urgency", "blocks"]);
+}
+
+export function parseAnswerJson(text: string): Record<string, unknown> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
   } catch {
     refuse("schema_shape");
   }
-  const root = object(parsed);
+  return object(parsed);
+}
+
+/** The urgency-and-blocks core shared by the physician answer and the консилиум synthesis. */
+export function answerFromRoot(
+  root: Record<string, unknown>,
+  context: AnswerContext,
+  keys: readonly string[],
+): AssistantAnswer {
   if (!("urgency" in root)) refuse("missing_urgency");
-  exactKeys(root, ["urgency", "blocks"]);
+  exactKeys(root, keys);
   const tier = urgency(root.urgency, context);
   const proposals = boundedList(root.blocks, MAX_ASSISTANT_BLOCKS);
   const blocks = keepEach(proposals, (proposal) => block(proposal, context));

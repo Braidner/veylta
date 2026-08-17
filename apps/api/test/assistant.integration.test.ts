@@ -20,13 +20,14 @@ test("the physician assistant: disclosure gate, evidence-bound turns, replay and
     assert.equal(empty.statusCode, 200, empty.body);
     assert.equal(empty.headers["cache-control"], "no-store");
     assert.deepEqual(empty.json(), {
-      contractVersion: "assistant/v1",
+      contractVersion: "assistant/v2",
       profileId: owner.body.profile.id,
       assistantId: "physician",
       canWrite: true,
       interpretationReady: false,
       evidenceCount: 0,
       evidence: [],
+      consiliumPanel: [],
       conversations: [],
       selectedConversationId: null,
       messages: [],

@@ -81,3 +81,49 @@ test("capture the README screenshots", async ({ page }) => {
   await assistant.scrollIntoViewIfNeeded();
   await screenshot(page, "assistant.png");
 });
+
+test("capture the консилиум screenshot", async ({ page }) => {
+  await openReview(page);
+  for (const [factKey, name, value, unit] of [
+    ["synthetic-analyte-a", "ТТГ", "6.8", "мМЕ/л"],
+    ["synthetic-analyte-b", "Гемоглобин", "9.8", "г/дл"],
+  ] as const) {
+    const workspace = reviewWorkspace(page);
+    await resultCard(page, factKey).click();
+    await workspace.getByRole("button", { name: "Исправить результат" }).click();
+    const correction = workspace.getByRole("form", { name: "Исправление результата" });
+    await correction.getByLabel("Корректное название").fill(name);
+    await correction.getByLabel("Корректное значение").fill(value);
+    await correction.getByLabel("Корректная единица").fill(unit);
+    await correction.getByRole("button", { name: "Сохранить исправление" }).click();
+    await resultCard(page, factKey).click();
+    await expect(workspace.getByText("Исправлено и подтверждено", { exact: true })).toBeVisible();
+  }
+  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  await page.goto(`${profileUrl}?tab=plan`);
+  const basics = page.getByTestId("medical-profile").getByRole("region", { name: "Основное" });
+  for (const [kind, value] of [
+    ["sex", "female"],
+    ["birth_year", "1990"],
+  ] as const) {
+    await basics.getByRole("button", { name: "Добавить" }).click();
+    await basics.getByLabel("Что записать").selectOption(kind);
+    if (kind === "sex") await basics.getByLabel("Значение").selectOption(value);
+    else await basics.getByLabel("Значение").fill(value);
+    await basics.getByRole("button", { name: "Сохранить" }).click();
+  }
+  await expect(basics.getByText("1990")).toBeVisible();
+  await page.goto(`${profileUrl}/assistants/physician`);
+  const assistant = page.getByTestId("assistant-workspace");
+  await assistant.getByRole("button", { name: "Создать диалог" }).click();
+  await assistant.getByLabel("Название диалога").fill("Консилиум по анализам");
+  await assistant.getByRole("button", { name: "Создать", exact: true }).click();
+  await page.getByTestId("assistant-egress-gate").getByRole("button").click();
+  await assistant.getByLabel("Сообщение ИИ-врачу").fill("Что вы думаете все вместе?");
+  await assistant.getByRole("button", { name: "Собрать консилиум" }).click();
+  const synthesis = page.getByTestId("assistant-answer").filter({ hasText: "синтез консилиума" });
+  await expect(synthesis).toBeVisible({ timeout: 60_000 });
+  await synthesis.getByTestId("assistant-consilium").scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.scrollBy(0, -80));
+  await screenshot(page, "consilium.png");
+});

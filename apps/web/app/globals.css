@@ -8643,3 +8643,249 @@ body:has(.upload-dialog[open]) {
     max-width: none;
   }
 }
+
+/* Консилиум: chips in the composer, opinions side by side under the synthesis, agreements. */
+.assistant-composer__panel {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.assistant-composer__panel-title {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.assistant-composer__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-chip {
+  padding: 6px 12px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font: inherit;
+  font-size: 0.8125rem;
+  cursor: pointer;
+}
+
+.assistant-chip small {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.assistant-chip:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.assistant-chip.is-active {
+  color: oklch(0.28 0.09 265);
+  background: oklch(0.95 0.03 260);
+  border-color: oklch(0.7 0.12 264);
+}
+
+.assistant-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.assistant-composer__meta {
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.assistant-composer__clear {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  padding: 0;
+  color: var(--color-primary);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.6875rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.assistant-composer__convene {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin-left: auto;
+  font-size: 0.8125rem;
+}
+
+.assistant-answer.has-consilium {
+  max-width: none;
+}
+
+.assistant-consilium {
+  display: grid;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+}
+
+.assistant-consilium h5,
+.assistant-consilium h6 {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.assistant-consilium h6 {
+  font-size: 0.875rem;
+}
+
+.assistant-consilium__opinions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-opinion {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+  padding: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+.assistant-opinion > header {
+  display: grid;
+  gap: 2px;
+}
+
+.assistant-opinion > header strong {
+  font-size: 0.9375rem;
+  text-transform: capitalize;
+}
+
+.assistant-opinion > header span {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.assistant-opinion__urgency {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.assistant-opinion__urgency.is-calm {
+  color: oklch(0.32 0.07 160);
+  background: oklch(0.96 0.03 160);
+  border-color: oklch(0.86 0.06 160);
+}
+
+.assistant-opinion__urgency.is-watch {
+  color: oklch(0.36 0.1 72);
+  background: oklch(0.97 0.04 78);
+  border-color: oklch(0.86 0.08 78);
+}
+
+.assistant-opinion__urgency.is-alarm {
+  color: oklch(0.32 0.14 27);
+  background: oklch(0.96 0.03 27);
+  border-color: oklch(0.72 0.16 27);
+}
+
+.assistant-opinion__blocks {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-opinion .assistant-block {
+  background: var(--color-canvas);
+}
+
+.assistant-opinion__refusal {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  font-style: italic;
+}
+
+.assistant-consilium__agreements {
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-consilium__agreements ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-consilium__agreements li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+.assistant-consilium__agreements li strong {
+  font-size: 0.875rem;
+}
+
+.assistant-consilium__agreements li small {
+  grid-column: 2;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.assistant-consilium__agreements li p {
+  grid-column: 2;
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.assistant-consilium__verdict {
+  align-self: start;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.assistant-consilium__agreements li.is-agree .assistant-consilium__verdict {
+  color: oklch(0.32 0.07 160);
+  background: oklch(0.94 0.04 160);
+}
+
+.assistant-consilium__agreements li.is-differ .assistant-consilium__verdict {
+  color: oklch(0.36 0.1 72);
+  background: oklch(0.96 0.05 78);
+}

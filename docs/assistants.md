@@ -4,7 +4,11 @@ Status: **approved by the owner on 2026-08-17 (revision 3)**; slice 1 delivered 
 profile, ИИ-врач with parser + checker + egress gate + journal + referrals; «Рассуждения ассистентов»
 on the settings page next to the document effort, default `high` from `CODEX_ASSISTANT_REASONING_EFFORT`;
 the assistants and the checker run on the dialogue model — a separate assistant model waits for a
-real need; evidence travels inline in v1 — the MCP tool set below is the slice-2 shape).
+real need; evidence travels inline — the MCP tool set below stays a later shape). **Slice 2
+(консилиум) delivered on 2026-08-17**: the analyte→specialty table (`assistant/consilium-panel.ts`),
+persona prompts, parallel opinions each verified and refuted, the therapist's synthesis on the
+conversation's thread with agreements, side-by-side opinions and «Спросить …» chips; a person can
+add a specialty to the panel, and the therapist asking for one on its own waits for a real need.
 Revision 1 framed the assistants as
 navigators and secretaries; the owner's intent is different and this revision follows it:
 
@@ -14,7 +18,7 @@ navigators and secretaries; the owner's intent is different and this revision fo
 > clinician for confirmation. The main goal is to see how well clinicians choose diagnoses and
 > treatment.
 
-Slice 1 is delivered; the decisions at the end were taken as recommended.
+Slices 1 and 2 are delivered; the decisions at the end were taken as recommended.
 
 ## What changes in the product, deliberately
 

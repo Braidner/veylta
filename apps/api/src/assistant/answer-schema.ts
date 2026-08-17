@@ -1,6 +1,7 @@
 // The closed JSON schema the physician answers in, and the checker's. Mirrors answer-parser.ts:
 // the schema keeps the model on the shape, the parser verifies every block against the evidence.
 import {
+  ASSISTANT_AGREEMENT_VERDICTS,
   ASSISTANT_CHECKER_VERDICTS,
   ASSISTANT_CONFIDENCE_LEVELS,
   ASSISTANT_CONTRAINDICATION_STATES,
@@ -9,6 +10,7 @@ import {
   ASSISTANT_TREATMENT_KINDS,
   ASSISTANT_URGENCY_TIERS,
   MAX_ASSISTANT_BLOCKS,
+  MAX_CONSILIUM_AGREEMENTS,
 } from "@veylta/contracts";
 
 const russian = (maximum: number) => ({
@@ -93,6 +95,30 @@ export const physicianAnswerSchema = {
           blockOf("general", { text: russian(800) }),
           blockOf("missing", { context: { type: "string", enum: ASSISTANT_MISSING_CONTEXTS } }),
         ],
+      },
+    },
+  },
+} as const;
+
+/** The therapist's synthesis: the physician answer plus where the specialists agree or differ. */
+export const synthesisSchema = {
+  ...physicianAnswerSchema,
+  required: [...physicianAnswerSchema.required, "agreements"],
+  properties: {
+    ...physicianAnswerSchema.properties,
+    agreements: {
+      type: "array",
+      maxItems: MAX_CONSILIUM_AGREEMENTS,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["topic", "verdict", "specialties", "why"],
+        properties: {
+          topic: russian(200),
+          verdict: { type: "string", enum: ASSISTANT_AGREEMENT_VERDICTS },
+          specialties: { type: "array", minItems: 1, maxItems: 6, items: specialty },
+          why: russian(500),
+        },
       },
     },
   },

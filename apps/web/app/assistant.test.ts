@@ -9,9 +9,11 @@ import { ApiError } from "./api-client";
 import {
   assistantSendErrorCopy,
   egressDisclosure,
+  invitationCopy,
   referralItem,
   referralsOf,
   refusalCopy,
+  speakerLabel,
   specialtyLabel,
   urgencyCopy,
 } from "./assistant";
@@ -100,4 +102,32 @@ test("send errors map the disclosure gate and conversation limits to their own c
   );
   assert.match(assistantSendErrorCopy(new ApiError(409, "CONFLICT")), /новый/);
   assert.match(assistantSendErrorCopy(new Error("network")), /соединение/);
+});
+
+test("the panel explains each invitation by the printed names in that specialist's field", () => {
+  const evidence = new Map([
+    [
+      "o1",
+      {
+        observationId: "o1",
+        code: "tsh",
+        name: "ТТГ",
+        value: "6.8",
+        unit: "мМЕ/л",
+        sampledAt: null,
+        documentId: "d",
+        pageNumber: 1,
+      },
+    ],
+  ]);
+  assert.equal(
+    invitationCopy({ specialty: "endocrinologist", observationIds: ["o1", "o1"] }, evidence),
+    "в данных: ТТГ",
+  );
+  assert.equal(
+    invitationCopy({ specialty: "cardiologist", observationIds: [] }, evidence),
+    "по вашему запросу",
+  );
+  assert.equal(speakerLabel(null), "ИИ-врач");
+  assert.equal(speakerLabel("endocrinologist"), "ИИ-эндокринолог");
 });

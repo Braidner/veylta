@@ -1,9 +1,12 @@
 import type {
+  AssistantAgreementVerdict,
   AssistantAnswer,
   AssistantBlock,
   AssistantCheckerVerdict,
   AssistantConfidence,
   AssistantContraindicationState,
+  AssistantEvidenceItem,
+  AssistantInvitation,
   AssistantMissingContext,
   AssistantRejectionReason,
   AssistantSpecialty,
@@ -125,6 +128,33 @@ export const checkerVerdictLabel: Record<AssistantCheckerVerdict, string> = {
   unsafe: "небезопасно",
 };
 
+export const agreementVerdictLabel: Record<AssistantAgreementVerdict, string> = {
+  agree: "сходятся",
+  differ: "расходятся",
+};
+
+/** Who is speaking in the conversation: the therapist («ИИ-врач») or one persona. */
+export function speakerLabel(specialty: AssistantSpecialty | null): string {
+  if (specialty === null) return "ИИ-врач";
+  const label = specialtyLabel[specialty];
+  return `ИИ-${label}`;
+}
+
+/** Why a specialist is on the panel: the printed names of the observations in their field. */
+export function invitationCopy(
+  invitation: AssistantInvitation,
+  evidence: ReadonlyMap<string, AssistantEvidenceItem>,
+): string {
+  const names = [
+    ...new Set(
+      invitation.observationIds
+        .map((observationId) => evidence.get(observationId)?.name)
+        .filter((name): name is string => name !== undefined),
+    ),
+  ];
+  return names.length === 0 ? "по вашему запросу" : `в данных: ${names.join(", ")}`;
+}
+
 export const blockKindLabel: Record<AssistantBlock["kind"], string> = {
   interpretation: "Что показывают значения",
   hypothesis: "Вероятное объяснение",
@@ -177,6 +207,13 @@ export function assistantSendErrorCopy(error: unknown): string {
     return "В этом диалоге больше нельзя отправлять сообщения — создайте новый.";
   }
   return "Не удалось получить ответ. Проверьте соединение и повторите отправку.";
+}
+
+export function assistantConsiliumErrorCopy(error: unknown): string {
+  if (error instanceof ApiError && error.code === "NOBODY_TO_CONVENE") {
+    return "Некого приглашать: среди подтверждённых значений нет профильных показателей.";
+  }
+  return assistantSendErrorCopy(error);
 }
 
 export function assistantCreateErrorCopy(error: unknown): string {

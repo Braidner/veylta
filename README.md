@@ -87,6 +87,11 @@ the opposite stance:
   bound to source pages, is refuted by an independent checker run, and refuses with a closed reason
   when a block cannot be verified. Accepting a referral puts one «подтвердить у специалиста» item
   into the care plan; the raw exchange stays in the owner's journal.
+- **Консилиум on demand.** The confirmed values themselves name the specialists (ТТГ → an
+  endocrinologist persona, a blood count → a hematologist, lipids → a cardiologist…); each reads
+  the same evidence independently, the therapist synthesises with the highest urgency and says
+  where they agree and differ, and every opinion is shown beside the synthesis. A chip lets you ask
+  one specialist directly inside the same conversation.
 - **Family and access.** An owner, adults with their own profiles, caregivers with a single
   revocable per-profile grant; reversible profile archiving that deletes nothing.
 - **Evidence over time.** Versioned, evidence-backed health summaries; a household care plan whose
@@ -100,6 +105,10 @@ the opposite stance:
 
 <p align="center">
   <img src="docs/media/assistant.png" alt="The physician assistant: a fixed urgency banner, then typed blocks — interpretation, a hypothesis with a referral, a treatment option, a question — each linking to the confirmed value's source page" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/media/consilium.png" alt="A консилиум: the therapist's synthesis with the highest urgency, then the endocrinologist's and the hematologist's opinions side by side, each naming the value that convened them, and where they differ" width="900">
 </p>
 
 ## How it works
