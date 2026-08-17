@@ -9,6 +9,7 @@ import type { FamilyService } from "../family/family-service.js";
 import {
   canonicalUuidSchema,
   errorEnvelope,
+  idempotencyKey,
   privateResponse,
   requireActor,
   requireTrustedOrigin,
@@ -63,23 +64,7 @@ const querySchema = {
   properties: { conversationId: canonicalUuidSchema },
 } as const;
 
-class InvalidDocumentAgentIdempotencyKeyError extends Error {}
-
-function idempotencyKey(request: FastifyRequest): string {
-  const value = request.headers["idempotency-key"];
-  if (typeof value !== "string" || !/^[\x21-\x7e]{16,200}$/.test(value)) {
-    throw new InvalidDocumentAgentIdempotencyKeyError();
-  }
-  return value;
-}
-
 function sendAgentError(error: unknown, request: FastifyRequest, reply: FastifyReply): boolean {
-  if (error instanceof InvalidDocumentAgentIdempotencyKeyError) {
-    reply
-      .code(400)
-      .send(errorEnvelope("VALIDATION_ERROR", "The request could not be accepted.", request.id));
-    return true;
-  }
   if (error instanceof DocumentAgentUnavailableError) {
     reply
       .code(503)

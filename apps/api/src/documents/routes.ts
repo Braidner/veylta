@@ -9,6 +9,7 @@ import type { FamilyService } from "../family/family-service.js";
 import {
   canonicalUuidSchema,
   errorEnvelope,
+  idempotencyKey,
   privateResponse,
   requireActor,
   requireTrustedOrigin,
@@ -53,7 +54,6 @@ export interface DocumentRouteOptions {
 }
 
 class InvalidMultipartUploadError extends Error {}
-class InvalidIdempotencyKeyError extends Error {}
 
 const profileParamsSchema = {
   type: "object",
@@ -180,14 +180,6 @@ const indicatorSeriesQuerySchema = {
   },
 } as const;
 
-function idempotencyKey(request: FastifyRequest): string {
-  const value = request.headers["idempotency-key"];
-  if (typeof value !== "string" || !/^[\x21-\x7e]{16,200}$/.test(value)) {
-    throw new InvalidIdempotencyKeyError();
-  }
-  return value;
-}
-
 function attachmentDisposition(originalFilename: string): string {
   const cleaned = [...originalFilename]
     .filter((character) => {
@@ -281,18 +273,6 @@ function sendDocumentError(error: unknown, request: FastifyRequest, reply: Fasti
         errorEnvelope(
           "IDEMPOTENCY_CONFLICT",
           "The idempotency key was already used for another upload.",
-          request.id,
-        ),
-      );
-    return true;
-  }
-  if (error instanceof InvalidIdempotencyKeyError) {
-    reply
-      .code(400)
-      .send(
-        errorEnvelope(
-          "INVALID_IDEMPOTENCY_KEY",
-          "A valid Idempotency-Key header is required.",
           request.id,
         ),
       );

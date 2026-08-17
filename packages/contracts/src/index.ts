@@ -1,10 +1,14 @@
+import type { CodexExecutionPreference, CodexModelOption, CodexUsageLimit } from "./codex.js";
+
 export const HTTP_API_VERSION = "v1" as const;
 export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
 export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v4" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
+export * from "./assistant.js";
 export * from "./care-plan.js";
+export * from "./codex.js";
 export * from "./medical-profile.js";
 export const DOCUMENT_CONTRACT_VERSION = "document/v7" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
@@ -73,12 +77,6 @@ export const DOCUMENT_INTELLIGENCE_RESULT_STATUSES = [
   "informational",
   "unknown",
 ] as const;
-
-export const CODEX_REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
-export const CODEX_SERVICE_TIERS = ["standard", "fast"] as const;
-
-export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORTS)[number];
-export type CodexServiceTier = (typeof CODEX_SERVICE_TIERS)[number];
 
 export const VEYLTA_VAULT_MEDIA_TYPES = ["application/pdf", "image/png", "image/jpeg"] as const;
 export const VEYLTA_AGENT_COMMAND_TYPES = ["scan_unprocessed", "analyze_document"] as const;
@@ -389,42 +387,6 @@ export interface CodexRuntimeStatus {
   readonly models: readonly CodexModelOption[];
   readonly usageLimits: readonly CodexUsageLimit[];
   readonly experimental: true;
-}
-
-export interface CodexExecutionPreference {
-  readonly modelId: string;
-  /**
-   * Model for document analysis, or null for the same model as dialogues. A separate model
-   * has its own usage window in Codex, so extraction need not compete with conversations.
-   */
-  readonly documentModelId: string | null;
-  /** Effort for dialogues and care-plan proposals — work that benefits from reasoning. */
-  readonly reasoningEffort: CodexReasoningEffort;
-  /**
-   * Effort for document analysis. Extraction is transcription under a strict schema, so it
-   * runs well at a lower effort and several times faster; kept separate so a household can
-   * tune the two independently.
-   */
-  readonly documentReasoningEffort: CodexReasoningEffort;
-  readonly serviceTier: CodexServiceTier;
-}
-
-export interface CodexModelOption {
-  readonly id: string;
-  readonly displayName: string;
-  readonly isDefault: boolean;
-  readonly defaultReasoningEffort: CodexReasoningEffort;
-  readonly supportedReasoningEfforts: readonly CodexReasoningEffort[];
-  readonly supportsFastMode: boolean;
-  readonly upgradeModelId: string | null;
-}
-
-export interface CodexUsageLimit {
-  readonly name: string;
-  readonly usedPercent: number;
-  readonly remainingPercent: number;
-  readonly windowDurationMinutes: number;
-  readonly resetsAt: string;
 }
 
 export interface CodexPreferenceUpdateRequest extends CodexExecutionPreference {}

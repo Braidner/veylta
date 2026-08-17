@@ -6,20 +6,11 @@ import {
   type CodexExecutionProfileResolver,
   codexExecutionArguments,
 } from "../codex/codex-execution-profile.js";
+import { conversationFeatureArguments, threadFromEvents } from "../codex/codex-thread.js";
 import { documentAgentInitialPrompt } from "../prompts/document-agent.prompt.js";
 
 const maximumOutputBytes = 64 * 1024;
 const capabilityEnvironmentName = "VEYLTA_DOCUMENT_AGENT_TOKEN";
-const disabledFeatures = [
-  "shell_tool",
-  "apps",
-  "plugins",
-  "memories",
-  "multi_agent",
-  "browser_use",
-  "computer_use",
-  "image_generation",
-] as const;
 
 export interface DocumentAgentRuntimeResult {
   readonly threadId: string;
@@ -45,32 +36,6 @@ const outputSchema = {
     message: { type: "string", minLength: 1, maxLength: 2_000 },
   },
 } as const;
-
-function threadFromEvents(stdout: string): string | null {
-  for (const line of stdout.split("\n")) {
-    if (line.length === 0) continue;
-    let event: unknown;
-    try {
-      event = JSON.parse(line);
-    } catch {
-      continue;
-    }
-    if (
-      typeof event === "object" &&
-      event !== null &&
-      "type" in event &&
-      event.type === "thread.started" &&
-      "thread_id" in event &&
-      typeof event.thread_id === "string" &&
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-        event.thread_id,
-      )
-    ) {
-      return event.thread_id;
-    }
-  }
-  return null;
-}
 
 function responseText(raw: string): string {
   let parsed: unknown;
@@ -104,10 +69,6 @@ function mcpConfiguration(url: string): readonly string[] {
     "-c",
     'sandbox_mode="read-only"',
   ];
-}
-
-function featureArguments(): string[] {
-  return disabledFeatures.flatMap((feature) => ["--disable", feature]);
 }
 
 export function createCodexDocumentAgentRuntime(
@@ -149,7 +110,7 @@ export function createCodexDocumentAgentRuntime(
           schemaPath,
           "--output-last-message",
           outputPath,
-          ...featureArguments(),
+          ...conversationFeatureArguments(),
           ...mcpConfiguration(options.mcpUrl),
         ];
         const arguments_ =

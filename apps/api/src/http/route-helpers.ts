@@ -16,6 +16,17 @@ export function errorEnvelope(code: string, message: string, requestId: string) 
   return { error: { code, message, requestId, details: [] } };
 }
 
+export class InvalidIdempotencyKeyError extends Error {}
+
+/** Mutations replay under a caller-chosen key; a missing or malformed header is a 400. */
+export function idempotencyKey(request: FastifyRequest): string {
+  const value = request.headers["idempotency-key"];
+  if (typeof value !== "string" || !/^[\x21-\x7e]{16,200}$/.test(value)) {
+    throw new InvalidIdempotencyKeyError();
+  }
+  return value;
+}
+
 export function privateResponse(reply: FastifyReply): void {
   reply.header("cache-control", "no-store").header("vary", "Cookie");
 }
@@ -25,6 +36,18 @@ export function sendDomainError(
   request: FastifyRequest,
   reply: FastifyReply,
 ): boolean {
+  if (error instanceof InvalidIdempotencyKeyError) {
+    reply
+      .code(400)
+      .send(
+        errorEnvelope(
+          "INVALID_IDEMPOTENCY_KEY",
+          "A valid Idempotency-Key header is required.",
+          request.id,
+        ),
+      );
+    return true;
+  }
   if (error instanceof ResourceNotFoundError) {
     reply.code(404).send(errorEnvelope("RESOURCE_NOT_FOUND", "Resource not found.", request.id));
     return true;

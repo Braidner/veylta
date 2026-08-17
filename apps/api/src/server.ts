@@ -6,6 +6,9 @@ import { createDocumentAgentService } from "./agent/document-agent-service.js";
 import { registerDocumentAgentMcpRoute } from "./agent/mcp-route.js";
 import { registerDocumentAgentRoutes } from "./agent/routes.js";
 import { buildApp } from "./app.js";
+import { createAssistantService } from "./assistant/assistant-service.js";
+import { createCodexAssistantRuntime } from "./assistant/codex-assistant-runtime.js";
+import { registerAssistantRoutes } from "./assistant/routes.js";
 import { createCarePlanService } from "./care-plan/care-plan-service.js";
 import { createCodexCarePlanGenerator } from "./care-plan/codex-care-plan-generator.js";
 import { registerCarePlanRoutes } from "./care-plan/routes.js";
@@ -73,6 +76,19 @@ registerHomeSettingsRoutes(
 registerMedicalProfileRoutes(app, familyService, createMedicalProfileService(database), {
   allowedMutationOrigins: config.webOrigins,
 });
+registerAssistantRoutes(
+  app,
+  familyService,
+  createAssistantService(
+    database,
+    createCodexAssistantRuntime({
+      resolveExecutionProfile: resolveCodexExecutionProfile,
+      reasoningEffort: config.codexAssistantReasoningEffort,
+      timeoutMs: config.codexAssistantTimeoutMs,
+    }),
+  ),
+  { allowedMutationOrigins: config.webOrigins },
+);
 registerCarePlanRoutes(
   app,
   familyService,

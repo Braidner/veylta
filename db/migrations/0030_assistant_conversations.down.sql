@@ -1,0 +1,14 @@
+DROP TRIGGER IF EXISTS assistant_conversation_requests_update_forbidden;
+DROP TRIGGER IF EXISTS assistant_message_requests_update_forbidden;
+DROP TRIGGER IF EXISTS assistant_exchanges_delete_forbidden;
+DROP TRIGGER IF EXISTS assistant_exchanges_update_forbidden;
+DROP TRIGGER IF EXISTS assistant_messages_delete_forbidden;
+DROP TRIGGER IF EXISTS assistant_messages_update_forbidden;
+DROP TRIGGER IF EXISTS assistant_conversations_identity_immutable;
+DROP TABLE IF EXISTS assistant_message_requests;
+DROP TABLE IF EXISTS assistant_conversation_requests;
+DROP TABLE IF EXISTS assistant_exchanges;
+DROP INDEX IF EXISTS assistant_messages_conversation;
+DROP TABLE IF EXISTS assistant_messages;
+DROP INDEX IF EXISTS assistant_conversations_profile;
+DROP TABLE IF EXISTS assistant_conversations;

@@ -8,6 +8,7 @@ import {
   type DocumentAgentWorkspaceResponse,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient } from "../database/pool.js";
+import { createSerializer } from "../database/serialized.js";
 import type { DocumentService } from "../documents/document-service.js";
 import {
   DomainConflictError,
@@ -333,18 +334,7 @@ export function createDocumentAgentService(
   runtime: DocumentAgentRuntime,
   capabilities: DocumentAgentCapabilityStore,
 ): DocumentAgentService {
-  const locks = new Map<string, Promise<unknown>>();
-
-  async function serialized<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    const previous = locks.get(key) ?? Promise.resolve();
-    const current = previous.catch(() => undefined).then(operation);
-    locks.set(key, current);
-    try {
-      return await current;
-    } finally {
-      if (locks.get(key) === current) locks.delete(key);
-    }
-  }
+  const serialized = createSerializer();
 
   async function authorize(actor: SessionActor, scope: DocumentAgentScope): Promise<string> {
     return database.transaction((client) => requireDocumentWriteAccess(client, actor, scope));
