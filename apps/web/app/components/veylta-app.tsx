@@ -17,7 +17,6 @@ import type {
   DocumentDetail,
   DocumentDetailResponse,
   DocumentFactsResponse,
-  DocumentIntelligenceResultStatus,
   DocumentIntelligenceStructuredResult,
   DocumentProcessingActivityEvent,
   DocumentProcessingResponse,
@@ -102,6 +101,11 @@ import { adminSetupError, canOpenSettings, validateAdminSetup } from "../account
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
+  documentResultStatusCopy,
+  documentResultTypeCopy,
+  prioritizeDocumentResults,
+} from "../document-results";
+import {
   type ArchiveRow,
   archiveDocumentCountCopy,
   archiveRows,
@@ -127,6 +131,7 @@ import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
 import { AssistantHeader } from "./assistant-header";
 import { AssistantWorkspace } from "./assistant-workspace";
+import { ClinicianRecordsPanel } from "./clinician-records-panel";
 import { DocumentAgentPanel } from "./document-agent-panel";
 import { DocumentHero } from "./document-hero";
 import { DocumentsHero } from "./documents-hero";
@@ -5654,61 +5659,6 @@ type DocumentViewState =
   | { kind: "missing" }
   | { kind: "error" };
 
-export function documentResultStatusCopy(status: DocumentIntelligenceResultStatus): string {
-  switch (status) {
-    case "above_range":
-      return "Выше диапазона";
-    case "normal":
-      return "В пределах источника";
-    case "abnormal":
-      return "Отмечено источником";
-    case "detected":
-      return "Обнаружено";
-    case "not_detected":
-      return "Не обнаружено";
-    case "completed":
-      return "Выполнено";
-    case "informational":
-      return "Информация";
-    case "unknown":
-      return "Без оценки";
-  }
-}
-
-export function documentResultStatusPriority(
-  status: DocumentIntelligenceResultStatus | null,
-): number {
-  return status === "above_range" ? 0 : 1;
-}
-
-export function prioritizeDocumentResults(
-  results: readonly DocumentIntelligenceStructuredResult[],
-): readonly DocumentIntelligenceStructuredResult[] {
-  return [...results].sort(
-    (left, right) =>
-      documentResultStatusPriority(left.status) - documentResultStatusPriority(right.status),
-  );
-}
-
-export function documentResultTypeCopy(type: string): string {
-  switch (type) {
-    case "measurement":
-      return "Измерение";
-    case "genetic_variant":
-      return "Генетический вариант";
-    case "finding":
-      return "Наблюдение";
-    case "procedure":
-      return "Процедура";
-    case "medication":
-      return "Препарат";
-    case "diagnosis":
-      return "Формулировка источника";
-    default:
-      return "Результат";
-  }
-}
-
 interface DocumentViewProps {
   family: SessionFamily;
   profile: PatientProfileSummary;
@@ -5956,6 +5906,19 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
             canWriteProfile={canWriteProfile}
             onReviewSaved={() => setReviewRevision((current) => current + 1)}
             onAskCodex={(prompt) => setSuggestedAgentMessage({ id: crypto.randomUUID(), prompt })}
+          />
+
+          <ClinicianRecordsPanel
+            familyId={family.id}
+            profileId={profile.id}
+            documentId={savedDocument.id}
+            contentUrl={contentUrl}
+            canWrite={canWriteProfile}
+            refreshKey={
+              processing.state === "not_started"
+                ? processing.state
+                : `${processing.state}:${processing.updatedAt}`
+            }
           />
 
           <section className="document-detailed-summary" aria-labelledby="document-detail-title">

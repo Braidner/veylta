@@ -9450,6 +9450,166 @@ body:has(.upload-dialog[open]) {
   }
 }
 
+/* Записи врача — the clinician's statements on the document page, decided one by one. */
+.clinician-records {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+}
+
+.clinician-records__counts {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
+.clinician-records__note {
+  max-width: 68ch;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.clinician-records__list {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.clinician-record {
+  display: grid;
+  grid-template-columns: 112px minmax(0, 1fr);
+  gap: 4px 14px;
+  padding: 12px 0;
+  border-top: 1px solid var(--color-line);
+}
+
+.clinician-record:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.clinician-record__kind {
+  padding-top: 2px;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.clinician-record.is-confirmed .clinician-record__kind {
+  color: var(--color-success);
+}
+
+.clinician-record__body {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.clinician-record__text {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+}
+
+.clinician-record__text span {
+  color: var(--color-muted);
+}
+
+.clinician-record.is-rejected .clinician-record__kind,
+.clinician-record.is-rejected .clinician-record__text {
+  color: var(--color-muted);
+}
+
+.clinician-record.is-rejected .clinician-record__text strong {
+  font-weight: 500;
+  text-decoration: line-through;
+}
+
+.clinician-record__extracted {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.clinician-record__source {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  justify-self: start;
+  max-width: 100%;
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.clinician-record__source:hover {
+  text-decoration: underline;
+}
+
+.clinician-record__decision {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.clinician-record__decision.is-confirmed {
+  color: var(--color-success);
+}
+
+.clinician-record__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.clinician-record__actions .button {
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+}
+
+.clinician-record__form {
+  display: grid;
+  gap: 8px;
+}
+
+.clinician-record__form label {
+  display: grid;
+  gap: 3px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.clinician-record__form input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+@media (max-width: 720px) {
+  .clinician-record {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 3px;
+  }
+}
+
 /* Досье — the cabinet. Left: who this is and the record's table of contents; right: the whole
    record or one area, read the same way every time — what stands where, what needs a look,
    then the rest. Colour appears only where a source's own reference puts a value outside. */

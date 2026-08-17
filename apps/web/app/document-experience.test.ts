@@ -8,12 +8,14 @@ import {
   documentResultAvailabilityCopy,
   documentResultMatchesFact,
   documentResultMissingFields,
+  normalizeDocumentSearchResponse,
+} from "./components/veylta-app";
+import {
   documentResultStatusCopy,
   documentResultStatusPriority,
   documentResultTypeCopy,
-  normalizeDocumentSearchResponse,
   prioritizeDocumentResults,
-} from "./components/veylta-app";
+} from "./document-results";
 
 test("generic measurements reuse their review fact by exact source provenance", () => {
   const fact = {
