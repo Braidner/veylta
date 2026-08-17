@@ -11,7 +11,7 @@ import {
 } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../src/app.js";
-import { migrateDown, migrateUp } from "../src/database/migrations.js";
+import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
 import { createDocumentService } from "../src/documents/document-service.js";
 import { registerDocumentRoutes } from "../src/documents/routes.js";
@@ -19,6 +19,7 @@ import { createFamilyService } from "../src/family/family-service.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
+import { migrationNames, rollbackTo } from "./migration-chain.js";
 
 const webOrigin = "http://127.0.0.1:4300";
 
@@ -152,7 +153,7 @@ test("lifecycle migration adds tombstones and immutable request journals and rol
   const database = createDatabase(join(root, "test.sqlite"));
   try {
     const applied = await migrateUp(database);
-    assert.equal(applied.at(-1), "0028_analyte_catalog_common");
+    assert.equal(applied.at(-1), (await migrationNames()).at(-1));
     const columns = await database.query<{ name: string }>("PRAGMA table_info(documents)");
     assert.equal(
       columns.rows.some(({ name }) => name === "deleted_at"),
@@ -162,12 +163,7 @@ test("lifecycle migration adds tombstones and immutable request journals and rol
       columns.rows.some(({ name }) => name === "deleted_by_user_id"),
       true,
     );
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    await rollbackTo(database, "0023_document_lifecycle");
   } finally {
     await database.close();
     await rm(root, { recursive: true, force: true });

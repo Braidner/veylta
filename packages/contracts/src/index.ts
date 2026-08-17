@@ -4,6 +4,8 @@ export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v4" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
 export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
+export * from "./care-plan.js";
+export * from "./medical-profile.js";
 export const DOCUMENT_CONTRACT_VERSION = "document/v7" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
@@ -18,7 +20,6 @@ export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v2" as const;
 export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
 export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
 export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
-export const HOME_CARE_PLAN_CONTRACT_VERSION = "home-care-plan/v1" as const;
 export const SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION = "synthetic-evidence-bundle/v1" as const;
 /**
  * A complete, profile-scoped synthetic export. It is intentionally distinct
@@ -45,14 +46,6 @@ export const MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS = 10;
 export const MAX_PROFILE_OVERVIEW_REVIEW_DOCUMENTS = 50;
 export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
 export const MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE = 50;
-export const CARE_PLAN_CATEGORIES = [
-  "laboratory",
-  "clinician",
-  "nutrition",
-  "activity",
-  "reminder",
-] as const;
-export const CARE_PLAN_ITEM_STATES = ["proposed", "accepted", "completed", "dismissed"] as const;
 export const MAX_SYNTHETIC_DOCUMENT_BYTES = 5 * 1024 * 1024;
 /** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
 export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
@@ -1088,104 +1081,6 @@ export interface HealthSummaryComparisonResponse {
   readonly newlyIncluded: readonly ObservationHistoryItem[];
   /** Confirmed source observations present in base but absent from target. */
   readonly noLongerIncluded: readonly ObservationHistoryItem[];
-}
-
-export type CarePlanCategory = (typeof CARE_PLAN_CATEGORIES)[number];
-export type CarePlanItemState = (typeof CARE_PLAN_ITEM_STATES)[number];
-
-/**
- * Source binding for an agent/rule proposal. User-authored actions have null
- * provenance and are never presented as source-derived recommendations.
- */
-export interface CarePlanProvenance {
-  readonly proposalRunId: string;
-  readonly healthSummary: {
-    readonly id: string;
-    readonly version: number;
-  };
-  readonly sourceObservationId: string | null;
-  readonly modelId: string;
-  readonly runtimeVersion: string;
-  readonly ruleVersion: string;
-  readonly missingContext: readonly string[];
-}
-
-export interface CarePlanItem {
-  readonly id: string;
-  readonly category: CarePlanCategory;
-  readonly title: string;
-  readonly note: string | null;
-  readonly scheduledFor: string | null;
-  readonly state: CarePlanItemState;
-  readonly origin: "user" | "codex";
-  readonly revision: number;
-  readonly provenance: CarePlanProvenance | null;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-}
-
-export interface CarePlanResponse {
-  readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
-  readonly profileId: string;
-  readonly canWrite: boolean;
-  readonly evidence: {
-    readonly sourceCount: number;
-    readonly pendingReviewCount: number;
-    readonly confirmedObservationCount: number;
-    readonly latestSummary: {
-      readonly id: string;
-      readonly version: number;
-      readonly createdAt: string;
-    } | null;
-  };
-  readonly items: readonly CarePlanItem[];
-}
-
-export interface CarePlanItemCreateRequest {
-  readonly category: CarePlanCategory;
-  readonly title: string;
-  readonly note: string | null;
-  /** Local calendar date in canonical YYYY-MM-DD form. */
-  readonly scheduledFor: string | null;
-}
-
-export interface CarePlanItemStateRequest {
-  readonly revision: number;
-  readonly state: "accepted" | "completed" | "dismissed";
-  readonly scheduledFor: string | null;
-}
-
-export interface CarePlanItemResponse {
-  readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
-  readonly profileId: string;
-  readonly item: CarePlanItem;
-}
-
-export interface CarePlanProposalRequest {
-  /** Explicit acknowledgement that the confirmed summary is sent to the Codex model service. */
-  readonly acknowledgement: "send_confirmed_summary_to_codex";
-}
-
-export interface CarePlanProposalRun {
-  readonly id: string;
-  readonly healthSummary: {
-    readonly id: string;
-    readonly version: number;
-  };
-  readonly modelId: string;
-  readonly runtimeVersion: string;
-  readonly ruleVersion: string;
-  readonly proposalCount: number;
-  readonly completedAt: string;
-}
-
-export interface CarePlanProposalResponse {
-  readonly contractVersion: typeof HOME_CARE_PLAN_CONTRACT_VERSION;
-  readonly profileId: string;
-  /** True when the exact summary/model/rule result was already stored. */
-  readonly replayed: boolean;
-  readonly run: CarePlanProposalRun;
-  readonly items: readonly CarePlanItem[];
 }
 
 /**

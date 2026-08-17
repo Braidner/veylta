@@ -113,7 +113,14 @@ opens `BEGIN IMMEDIATE`. No ORM.
 **Migration readiness gate.** `pool.ts` holds a `requiredSchemaMigration` constant. A new
 migration MUST bump it, or `/readyz` reports OK against a database missing the newest
 tables and the failure surfaces as a request-time 500 instead. Every migration needs a
-working `.down.sql` because CI rolls back and re-applies.
+working `.down.sql` because CI rolls back and re-applies. Integration tests never copy the
+migration list: `test/migration-chain.ts` reads it from `db/migrations` (`rollbackTo`,
+`reapplyFrom`, `migrationNames`), so adding a migration edits no test.
+
+**Profile authorization** is one rule in `family/profile-access.ts` (`profileAccess`,
+`requireProfileWrite`, `canonicalProfileScope`): owner or linked adult writes, a live
+`profile.read` grant reads, everything else is a 404. New profile-scoped services use it
+rather than restating the SQL.
 
 **Versioned contracts.** `packages/contracts/src/index.ts` exports one `*_CONTRACT_VERSION`
 per public boundary. Read the file — do not trust a version quoted elsewhere, including
@@ -150,6 +157,15 @@ transcription exactly as to a text layer; the page is stored with
 `extraction_method = codex_vision`. A run sends text or images, never both. The per-document
 agent registers a short-lived loopback MCP endpoint whose only tool re-authorizes the
 server-derived scope and returns bounded projections — never storage keys, paths, or file bytes.
+
+**Medical profile** (`medical-profile/v1`, `apps/api/src/medical-profile/`): what a person
+records about themselves for the assistants — sex, birth year, height, weight, pregnancy
+(singletons), conditions, medications, allergies, symptoms, goals, constraints… User-authored,
+dated (`recordedOn`), revisioned, archived rather than deleted; closed and numeric kinds are
+validated in `medical-profile-values.ts`. Create is `PUT entries/:id` with a client id (201 /
+200 replay / 409 on a different body), update `PUT …/value` and archive `PUT …/archive` are
+optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
+assistants refuse to interpret values without them.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the

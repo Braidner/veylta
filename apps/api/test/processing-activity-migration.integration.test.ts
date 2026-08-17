@@ -7,6 +7,7 @@ import test from "node:test";
 import { migrateDown, migrateUp } from "../src/database/migrations.js";
 import { createDatabase } from "../src/database/pool.js";
 import { createProcessingJobService } from "../src/processing/processing-job-service.js";
+import { reapplyFrom, rollbackTo } from "./migration-chain.js";
 
 test("processing activity is append-only and prevents a lossy rollback", async () => {
   const root = await mkdtemp(join(tmpdir(), "veylta-processing-activity-"));
@@ -89,25 +90,9 @@ test("processing activity is append-only and prevents a lossy rollback", async (
         database.query("DELETE FROM processing_job_events WHERE processing_job_id = $1", [job.id]),
       /immutable/,
     );
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
-    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
-    assert.equal(await migrateDown(database), "0021_codex_preferences");
+    await rollbackTo(database, "0021_codex_preferences");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
-    assert.deepEqual(await migrateUp(database), [
-      "0021_codex_preferences",
-      "0022_document_intelligence_v2",
-      "0023_document_lifecycle",
-      "0024_document_agent_threads",
-      "0025_run_diagnostics",
-      "0026_document_reasoning_effort",
-      "0027_document_model",
-      "0028_analyte_catalog_common",
-    ]);
+    await reapplyFrom(database, "0021_codex_preferences");
     await assert.doesNotReject(() => database.check());
   } finally {
     await database.close();

@@ -1,0 +1,4 @@
+DROP TRIGGER medical_profile_entries_identity_immutable;
+DROP INDEX medical_profile_entries_singleton;
+DROP INDEX medical_profile_entries_profile;
+DROP TABLE medical_profile_entries;

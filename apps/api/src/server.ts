@@ -15,6 +15,8 @@ import { createDocumentService } from "./documents/document-service.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
 import { registerFamilyRoutes } from "./family/routes.js";
+import { createMedicalProfileService } from "./medical-profile/medical-profile-service.js";
+import { registerMedicalProfileRoutes } from "./medical-profile/routes.js";
 import { createCodexPreferencesStore } from "./settings/codex-preferences.js";
 import { createCodexRuntimeProbe } from "./settings/codex-runtime.js";
 import { createHomeSettingsService } from "./settings/home-settings-service.js";
@@ -68,6 +70,9 @@ registerHomeSettingsRoutes(
   createHomeSettingsService(database, storage, createCodexRuntimeProbe(), codexPreferences),
   { allowedMutationOrigins: config.webOrigins },
 );
+registerMedicalProfileRoutes(app, familyService, createMedicalProfileService(database), {
+  allowedMutationOrigins: config.webOrigins,
+});
 registerCarePlanRoutes(
   app,
   familyService,

@@ -19,6 +19,11 @@ import {
   ResourceNotFoundError,
   type SessionActor,
 } from "../family/family-service.js";
+import {
+  canonicalProfileScope,
+  profileAccess,
+  requireProfileWrite,
+} from "../family/profile-access.js";
 import type {
   CarePlanGeneratorEvidence,
   CarePlanGeneratorResult,
@@ -113,15 +118,6 @@ const canonicalUuidPattern =
 const localDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const categorySet = new Set<string>(CARE_PLAN_CATEGORIES);
 const stateSet = new Set<string>(CARE_PLAN_ITEM_STATES);
-
-function canonicalScope(scope: CarePlanScope): CarePlanScope {
-  const familyId = scope.familyId.toLowerCase();
-  const profileId = scope.profileId.toLowerCase();
-  if (!canonicalUuidPattern.test(familyId) || !canonicalUuidPattern.test(profileId)) {
-    throw new DomainValidationError();
-  }
-  return { familyId, profileId };
-}
 
 function canonicalItemId(value: string): string {
   const id = value.toLowerCase();
@@ -279,56 +275,6 @@ function carePlanItem(row: CarePlanItemRow): CarePlanItem {
     createdAt,
     updatedAt,
   };
-}
-
-async function access(
-  client: Queryable,
-  actor: SessionActor,
-  scope: CarePlanScope,
-): Promise<{ canWrite: boolean }> {
-  const result = await client.query<{ can_write: number }>(
-    `SELECT CASE
-              WHEN m.role = 'owner'
-                OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
-              THEN 1 ELSE 0
-            END AS can_write
-       FROM patient_profiles p
-       JOIN family_memberships m
-         ON m.family_id = p.family_id
-        AND m.user_id = $3
-        AND m.status = 'active'
-      WHERE p.family_id = $1
-        AND p.id = $2
-        AND p.archived_at IS NULL
-        AND (
-          m.role = 'owner'
-          OR (m.role = 'adult_member' AND p.linked_user_id = m.user_id)
-          OR (
-            m.role IN ('adult_member', 'caregiver')
-            AND EXISTS (
-              SELECT 1
-                FROM profile_consent_grants grant_access
-               WHERE grant_access.family_id = p.family_id
-                 AND grant_access.patient_profile_id = p.id
-                 AND grant_access.grantee_user_id = m.user_id
-                 AND grant_access.capability = 'profile.read'
-                 AND grant_access.revoked_at IS NULL
-            )
-          )
-        )`,
-    [scope.familyId, scope.profileId, actor.userId],
-  );
-  const row = result.rows[0];
-  if (row === undefined || ![0, 1].includes(row.can_write)) throw new ResourceNotFoundError();
-  return { canWrite: row.can_write === 1 };
-}
-
-async function requireWrite(
-  client: Queryable,
-  actor: SessionActor,
-  scope: CarePlanScope,
-): Promise<void> {
-  if (!(await access(client, actor, scope)).canWrite) throw new ResourceNotFoundError();
 }
 
 async function audit(
@@ -500,9 +446,9 @@ export function createCarePlanService(
 ): CarePlanService {
   return {
     async get(actor, requestedScope, correlationId) {
-      const scope = canonicalScope(requestedScope);
+      const scope = canonicalProfileScope(requestedScope);
       return database.transaction(async (client) => {
-        const { canWrite } = await access(client, actor, scope);
+        const { canWrite } = await profileAccess(client, actor, scope);
         const evidence = (
           await client.query<{
             source_count: number;
@@ -605,7 +551,7 @@ export function createCarePlanService(
     },
 
     async createItem(actor, requestedScope, requestedItemId, requestedInput, correlationId) {
-      const scope = canonicalScope(requestedScope);
+      const scope = canonicalProfileScope(requestedScope);
       const itemId = canonicalItemId(requestedItemId);
       if (!categorySet.has(requestedInput.category)) throw new DomainValidationError();
       const input: CarePlanItemCreateRequest = {
@@ -615,7 +561,7 @@ export function createCarePlanService(
         scheduledFor: localDate(requestedInput.scheduledFor),
       };
       return database.transaction(async (client) => {
-        await requireWrite(client, actor, scope);
+        await requireProfileWrite(client, actor, scope);
         const existing = await itemById(client, scope, itemId);
         const now = new Date();
         if (existing !== undefined) {
@@ -679,7 +625,7 @@ export function createCarePlanService(
     },
 
     async changeItemState(actor, requestedScope, requestedItemId, requestedInput, correlationId) {
-      const scope = canonicalScope(requestedScope);
+      const scope = canonicalProfileScope(requestedScope);
       const itemId = canonicalItemId(requestedItemId);
       if (
         !Number.isSafeInteger(requestedInput.revision) ||
@@ -694,7 +640,7 @@ export function createCarePlanService(
         scheduledFor: localDate(requestedInput.scheduledFor),
       } as const;
       return database.transaction(async (client) => {
-        await requireWrite(client, actor, scope);
+        await requireProfileWrite(client, actor, scope);
         const existing = await itemById(client, scope, itemId);
         if (existing === undefined) throw new ResourceNotFoundError();
         const before = carePlanItem(existing);
@@ -762,10 +708,10 @@ export function createCarePlanService(
     async generateProposals(actor, requestedScope, correlationId) {
       if (proposals === undefined) throw new CarePlanProposalGenerationError("CODEX_UNAVAILABLE");
       const executionProfile = await proposals.generator.executionProfile();
-      const scope = canonicalScope(requestedScope);
+      const scope = canonicalProfileScope(requestedScope);
       const leaseDurationMs = proposals.leaseDurationMs ?? 180_000;
       const claimed = await database.transaction(async (client) => {
-        await requireWrite(client, actor, scope);
+        await requireProfileWrite(client, actor, scope);
         const summary = (
           await client.query<ProposalSummaryRow>(
             `SELECT id, version, missing_data
@@ -892,7 +838,7 @@ export function createCarePlanService(
       });
       if (claimed.kind === "replay") {
         return database.transaction(async (client) => {
-          await requireWrite(client, actor, scope);
+          await requireProfileWrite(client, actor, scope);
           const response = await completedProposalResponse(client, scope, claimed.runId, true);
           await audit(client, {
             actor,
@@ -942,7 +888,7 @@ export function createCarePlanService(
         throw new CarePlanProposalGenerationError(code);
       }
       const persisted = await database.transaction(async (client) => {
-        await requireWrite(client, actor, scope);
+        await requireProfileWrite(client, actor, scope);
         const currentSummary = (
           await client.query<{ id: string }>(
             `SELECT id FROM health_summaries

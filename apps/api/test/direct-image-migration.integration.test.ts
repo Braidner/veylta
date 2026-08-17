@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import { migrateDown, migrateUp } from "../src/database/migrations.js";
 import { createDatabase } from "../src/database/pool.js";
+import { rollbackTo } from "./migration-chain.js";
 
 test("direct-image MIME provenance blocks a lossy schema rollback", async () => {
   const root = await mkdtemp(join(tmpdir(), "veylta-direct-image-rollback-"));
@@ -43,25 +44,7 @@ test("direct-image MIME provenance blocks a lossy schema rollback", async () => 
       );
     });
 
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
-    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
-    assert.equal(await migrateDown(database), "0021_codex_preferences");
-    assert.equal(await migrateDown(database), "0020_processing_activity");
-    assert.equal(await migrateDown(database), "0019_document_agent");
-    assert.equal(await migrateDown(database), "0018_document_reanalysis");
-    assert.equal(await migrateDown(database), "0017_analyte_catalog");
-    assert.equal(await migrateDown(database), "0016_document_intelligence");
-    assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
-    assert.equal(await migrateDown(database), "0014_home_care_plan");
-    assert.equal(await migrateDown(database), "0013_home_settings");
-    assert.equal(await migrateDown(database), "0012_app_accounts");
-    assert.equal(await migrateDown(database), "0011_health_summaries");
+    await rollbackTo(database, "0011_health_summaries");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
   } finally {
     await database.close();

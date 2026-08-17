@@ -11,6 +11,7 @@ import {
   type DatabaseClient,
   isSqliteConstraintError,
 } from "../src/database/pool.js";
+import { reapplyFrom, rollbackTo } from "./migration-chain.js";
 
 interface DocumentFixture {
   documentId: string;
@@ -544,32 +545,21 @@ test("all migrations apply, populated processing data rolls back, and migrations
         ),
       "check",
     );
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
-    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
-    assert.equal(await migrateDown(database), "0021_codex_preferences");
-    assert.equal(await migrateDown(database), "0020_processing_activity");
-    assert.equal(await migrateDown(database), "0019_document_agent");
-    assert.equal(await migrateDown(database), "0018_document_reanalysis");
+    await rollbackTo(database, "0018_document_reanalysis");
     assert.equal(await tableExists(database, "processing_restart_requests"), false);
-    assert.equal(await migrateDown(database), "0017_analyte_catalog");
+    await rollbackTo(database, "0017_analyte_catalog");
     assert.equal(await tableExists(database, "analyte_catalog"), false);
-    assert.equal(await migrateDown(database), "0016_document_intelligence");
+    await rollbackTo(database, "0016_document_intelligence");
     assert.equal(await tableExists(database, "document_intelligence_results"), false);
-    assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
+    await rollbackTo(database, "0015_codex_care_plan_proposals");
     assert.equal(await tableExists(database, "care_plan_proposal_runs"), false);
-    assert.equal(await migrateDown(database), "0014_home_care_plan");
+    await rollbackTo(database, "0014_home_care_plan");
     assert.equal(await tableExists(database, "care_plan_items"), false);
-    assert.equal(await migrateDown(database), "0013_home_settings");
+    await rollbackTo(database, "0013_home_settings");
     assert.equal(await tableExists(database, "home_storage_settings"), false);
-    assert.equal(await migrateDown(database), "0012_app_accounts");
+    await rollbackTo(database, "0012_app_accounts");
     assert.equal(await tableExists(database, "app_accounts"), false);
-    assert.equal(await migrateDown(database), "0011_health_summaries");
-    assert.equal(await migrateDown(database), "0010_direct_image_documents");
+    await rollbackTo(database, "0010_direct_image_documents");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     await database.query("DELETE FROM profile_consent_grants WHERE id = $1", [consentGrantId]);
     await database.query("DELETE FROM family_invitations WHERE id = $1", [caregiverInvitationId]);
@@ -586,19 +576,19 @@ test("all migrations apply, populated processing data rolls back, and migrations
       idempotencyKeyHash: "d".repeat(64),
     });
 
-    assert.equal(await migrateDown(database), "0009_caregiver_access");
+    await rollbackTo(database, "0009_caregiver_access");
     assert.equal(await tableExists(database, "profile_consent_grants"), true);
 
-    assert.equal(await migrateDown(database), "0008_profile_consent_grants");
+    await rollbackTo(database, "0008_profile_consent_grants");
     assert.equal(await tableExists(database, "profile_consent_grants"), false);
 
-    assert.equal(await migrateDown(database), "0007_family_invitations");
+    await rollbackTo(database, "0007_family_invitations");
     assert.equal(await tableExists(database, "family_invitations"), false);
 
-    assert.equal(await migrateDown(database), "0006_audit_log_integrity");
+    await rollbackTo(database, "0006_audit_log_integrity");
     assert.equal(await tableExists(database, "audit_events"), true);
 
-    assert.equal(await migrateDown(database), "0005_review_observations");
+    await rollbackTo(database, "0005_review_observations");
     assert.equal(await tableExists(database, "review_decisions"), false);
     assert.equal(await tableExists(database, "review_requests"), false);
     assert.equal(await tableExists(database, "observations"), false);
@@ -606,7 +596,7 @@ test("all migrations apply, populated processing data rolls back, and migrations
     assert.equal(await tableExists(database, "processing_jobs"), true);
     assert.equal(await tableExists(database, "extracted_facts"), true);
 
-    assert.equal(await migrateDown(database), "0004_processing");
+    await rollbackTo(database, "0004_processing");
     assert.equal(await tableExists(database, "processing_jobs"), false);
     assert.equal(await tableExists(database, "processing_retry_requests"), false);
     assert.equal(await tableExists(database, "extraction_runs"), false);
@@ -619,49 +609,20 @@ test("all migrations apply, populated processing data rolls back, and migrations
     );
     assert.equal(preservedDocument.rowCount, 1);
 
-    assert.equal(await migrateDown(database), "0003_documents");
+    await rollbackTo(database, "0003_documents");
     assert.equal(await tableExists(database, "documents"), false);
     await assert.rejects(
       () => database.check(),
       /Current database schema migration is not available/,
     );
 
-    assert.equal(await migrateDown(database), "0002_family_profiles");
+    await rollbackTo(database, "0002_family_profiles");
     assert.equal(await tableExists(database, "users"), false);
 
-    assert.equal(await migrateDown(database), "0001_foundation");
+    await rollbackTo(database, "0001_foundation");
     assert.equal(await tableExists(database, "service_metadata"), false);
 
-    assert.deepEqual(await migrateUp(database), [
-      "0001_foundation",
-      "0002_family_profiles",
-      "0003_documents",
-      "0004_processing",
-      "0005_review_observations",
-      "0006_audit_log_integrity",
-      "0007_family_invitations",
-      "0008_profile_consent_grants",
-      "0009_caregiver_access",
-      "0010_direct_image_documents",
-      "0011_health_summaries",
-      "0012_app_accounts",
-      "0013_home_settings",
-      "0014_home_care_plan",
-      "0015_codex_care_plan_proposals",
-      "0016_document_intelligence",
-      "0017_analyte_catalog",
-      "0018_document_reanalysis",
-      "0019_document_agent",
-      "0020_processing_activity",
-      "0021_codex_preferences",
-      "0022_document_intelligence_v2",
-      "0023_document_lifecycle",
-      "0024_document_agent_threads",
-      "0025_run_diagnostics",
-      "0026_document_reasoning_effort",
-      "0027_document_model",
-      "0028_analyte_catalog_common",
-    ]);
+    await reapplyFrom(database, "0001_foundation");
     await assert.doesNotReject(() => database.check());
     const foreignKeyViolations = await database.query<Record<string, unknown>>(
       "PRAGMA foreign_key_check",
@@ -845,12 +806,7 @@ test("document intelligence v2 stores bounded summaries, generic results, and se
       [fixture.familyId, fixture.documentVersionId],
     );
     assert.equal(Number(results.rows[0]?.count), 2);
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
+    await rollbackTo(database, "0023_document_lifecycle");
     await assert.rejects(() => migrateDown(database));
     assert.equal(await tableExists(database, "document_intelligence_results"), true);
     const preserved = await database.query<{ count: number }>(
@@ -1120,20 +1076,7 @@ test("home care plan keeps provenance tenant-bound, content immutable, and rollb
       "trigger",
     );
 
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
-    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
-    assert.equal(await migrateDown(database), "0021_codex_preferences");
-    assert.equal(await migrateDown(database), "0020_processing_activity");
-    assert.equal(await migrateDown(database), "0019_document_agent");
-    assert.equal(await migrateDown(database), "0018_document_reanalysis");
-    assert.equal(await migrateDown(database), "0017_analyte_catalog");
-    assert.equal(await migrateDown(database), "0016_document_intelligence");
+    await rollbackTo(database, "0016_document_intelligence");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     assert.equal(await tableExists(database, "care_plan_items"), true);
   } finally {
@@ -1225,23 +1168,7 @@ test("health summary schema preserves only confirmed profile evidence and fails 
         ),
       "trigger",
     );
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
-    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
-    assert.equal(await migrateDown(database), "0021_codex_preferences");
-    assert.equal(await migrateDown(database), "0020_processing_activity");
-    assert.equal(await migrateDown(database), "0019_document_agent");
-    assert.equal(await migrateDown(database), "0018_document_reanalysis");
-    assert.equal(await migrateDown(database), "0017_analyte_catalog");
-    assert.equal(await migrateDown(database), "0016_document_intelligence");
-    assert.equal(await migrateDown(database), "0015_codex_care_plan_proposals");
-    assert.equal(await migrateDown(database), "0014_home_care_plan");
-    assert.equal(await migrateDown(database), "0013_home_settings");
-    assert.equal(await migrateDown(database), "0012_app_accounts");
+    await rollbackTo(database, "0012_app_accounts");
     await assert.rejects(() => migrateDown(database), /CHECK constraint failed/);
     assert.equal(await tableExists(database, "health_summaries"), true);
     assert.equal(await tableExists(database, "health_summary_evidence"), true);
@@ -1744,25 +1671,9 @@ test("Codex preferences keep one validated server-wide execution profile", async
         database.query(`UPDATE codex_preferences SET service_tier = 'turbo' WHERE id = 'primary'`),
       "check",
     );
-    assert.equal(await migrateDown(database), "0028_analyte_catalog_common");
-    assert.equal(await migrateDown(database), "0027_document_model");
-    assert.equal(await migrateDown(database), "0026_document_reasoning_effort");
-    assert.equal(await migrateDown(database), "0025_run_diagnostics");
-    assert.equal(await migrateDown(database), "0024_document_agent_threads");
-    assert.equal(await migrateDown(database), "0023_document_lifecycle");
-    assert.equal(await migrateDown(database), "0022_document_intelligence_v2");
-    assert.equal(await migrateDown(database), "0021_codex_preferences");
+    await rollbackTo(database, "0021_codex_preferences");
     assert.equal(await tableExists(database, "codex_preferences"), false);
-    assert.deepEqual(await migrateUp(database), [
-      "0021_codex_preferences",
-      "0022_document_intelligence_v2",
-      "0023_document_lifecycle",
-      "0024_document_agent_threads",
-      "0025_run_diagnostics",
-      "0026_document_reasoning_effort",
-      "0027_document_model",
-      "0028_analyte_catalog_common",
-    ]);
+    await reapplyFrom(database, "0021_codex_preferences");
   } finally {
     await database.close();
     await rm(testRoot, { force: true, recursive: true });

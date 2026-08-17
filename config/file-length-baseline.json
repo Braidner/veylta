@@ -3,7 +3,7 @@
   "files": {
     "apps/api/src/accounts/account-service.ts": 278,
     "apps/api/src/agent/document-agent-service.ts": 671,
-    "apps/api/src/care-plan/care-plan-service.ts": 1045,
+    "apps/api/src/care-plan/care-plan-service.ts": 991,
     "apps/api/src/config.test.ts": 260,
     "apps/api/src/config.ts": 251,
     "apps/api/src/documents/document-service.ts": 5031,
@@ -25,7 +25,7 @@
     "apps/api/src/storage/storage-controller.ts": 357,
     "apps/api/test/care-plan.integration.test.ts": 596,
     "apps/api/test/document-agent.integration.test.ts": 304,
-    "apps/api/test/document-lifecycle.integration.test.ts": 584,
+    "apps/api/test/document-lifecycle.integration.test.ts": 580,
     "apps/api/test/document-processing.integration.test.ts": 929,
     "apps/api/test/document-review.integration.test.ts": 682,
     "apps/api/test/document-upload.integration.test.ts": 787,
@@ -33,7 +33,7 @@
     "apps/api/test/family-profiles.integration.test.ts": 1389,
     "apps/api/test/health-summary.integration.test.ts": 580,
     "apps/api/test/home-settings.integration.test.ts": 428,
-    "apps/api/test/migrations.integration.test.ts": 2220,
+    "apps/api/test/migrations.integration.test.ts": 2131,
     "apps/api/test/observation-history.integration.test.ts": 567,
     "apps/api/test/profile-overview.integration.test.ts": 406,
     "apps/web/app/components/document-agent-workspace.tsx": 648,
@@ -44,7 +44,7 @@
     "e2e/document-upload.spec.ts": 298,
     "e2e/family-profile.spec.ts": 307,
     "packages/contracts/src/index.test.ts": 855,
-    "packages/contracts/src/index.ts": 1644,
+    "packages/contracts/src/index.ts": 1539,
     "test/veylta-agent/bridge.test.mjs": 298
   }
 }
