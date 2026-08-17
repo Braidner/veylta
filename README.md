@@ -219,6 +219,7 @@ Read more:
 | [Product](docs/product.md) · [PRODUCT.md](PRODUCT.md) · [DESIGN.md](DESIGN.md) | positioning, register, tokens |
 | [ADRs](docs/adr) | decisions, including the home-server PWA and the Codex runtime |
 | [Delivered scope](docs/status.md) | every delivered slice and the operational detail of the current build |
+| [Assistants plan](docs/assistants.md) | how the navigator, nutrition and movement assistants will work — draft for discussion |
 
 ## Safety and data policy
 
