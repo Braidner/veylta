@@ -253,7 +253,12 @@ YOU MUST NOT relax these to make a feature easier.
   unbound fact or summary result is dropped, the verified rest is kept, and only an answer
   whose every item fails is refused. Bookkeeping slips (a repeated key, a unit repeated
   inside the value, a fragment stitched from non-adjacent lines that still names one unique
-  value line) are normalised deterministically — never taken on trust, never fatal.
+  value line, a name broken over two printed lines) are normalised deterministically — never
+  taken on trust, never fatal. A fact's `sourceName` is the name printed in the value's own row
+  (`codex-intelligence/printed-name.ts`): a column header, page label or key in its place is
+  replaced by the catalog's spelling of the proposed code found on that row, or the fact is
+  dropped; a unitless row keeps the mark `—` (`readings.ts` `printedUnit`) — a range, a flag or
+  a placeholder is never a unit.
 - A model-proposed normalization survives only in the identity case (same number under a
   canonical unit spelling); Veylta performs no unit conversions and never carries a model's
   converted number into an observation. `resolveAnalyteMapping` derives the normalized value
