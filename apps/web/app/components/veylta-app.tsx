@@ -100,6 +100,7 @@ import {
   useState,
 } from "react";
 import { adminSetupError, validateAdminSetup } from "../account-access";
+import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
   type ArchiveRow,
@@ -119,11 +120,11 @@ import { WorkspaceRequests } from "../workspace-requests";
 import { DocumentAgentWorkspace } from "./document-agent-workspace";
 import { DocumentHero } from "./document-hero";
 import { DocumentsHero } from "./documents-hero";
+import { MedicalProfileSection } from "./medical-profile-section";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
 import { VeyltaMark } from "./veylta-mark";
 
-const apiPrefix = "/health-api";
 const processingPollIntervalMs = 2_000;
 
 type ScreenState =
@@ -132,49 +133,6 @@ type ScreenState =
   | { kind: "login" }
   | { kind: "authenticated"; session: SessionResponse }
   | { kind: "error" };
-
-class ApiError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string | null,
-  ) {
-    super(`API request failed with status ${status}`);
-    this.name = "ApiError";
-  }
-}
-
-async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers = new Headers(init?.headers);
-  if (
-    init?.body !== undefined &&
-    !(init.body instanceof FormData) &&
-    !headers.has("content-type")
-  ) {
-    headers.set("content-type", "application/json");
-  }
-  const response = await fetch(`${apiPrefix}${path}`, {
-    ...init,
-    credentials: "same-origin",
-    headers,
-  });
-
-  if (!response.ok) {
-    let code: string | null = null;
-    try {
-      const body = (await response.json()) as { error?: { code?: unknown } };
-      if (typeof body.error?.code === "string") code = body.error.code;
-    } catch {
-      // The status remains authoritative when an intermediary returns no JSON envelope.
-    }
-    throw new ApiError(response.status, code);
-  }
-
-  if (response.status === 204) {
-    return undefined as T;
-  }
-
-  return (await response.json()) as T;
-}
 
 async function readSession(): Promise<SessionResponse | null> {
   try {
@@ -2330,6 +2288,12 @@ function ProfileWorkspace({
           aria-labelledby="workspace-tab-plan"
           aria-label="План"
         >
+          <MedicalProfileSection
+            key={`medical-profile:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            canWriteProfile={canWriteProfile}
+          />
           <HealthSummaryPanel
             key={`summary:${family.id}:${profile.id}`}
             familyId={family.id}
