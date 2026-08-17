@@ -115,9 +115,11 @@ import {
   uploadButtonCopy,
 } from "../documents-archive";
 import { formatDate, formatSampleMoment } from "../format-moment";
+import { documentPath, type ProfileTab, profilePath, profileTabPath, profileTabs } from "../paths";
 import { countCopy, pluralForm } from "../russian-plural";
-import { WorkspaceRequests } from "../workspace-requests";
-import { DocumentAgentWorkspace } from "./document-agent-workspace";
+import { AssistantHero } from "./assistant-hero";
+import { AssistantWorkspace } from "./assistant-workspace";
+import { DocumentAgentPanel } from "./document-agent-panel";
 import { DocumentHero } from "./document-hero";
 import { DocumentsHero } from "./documents-hero";
 import { MedicalProfileSection } from "./medical-profile-section";
@@ -163,12 +165,6 @@ function findProfileContext(
   return family === undefined || profile === undefined ? undefined : { family, profile };
 }
 
-function profilePath(familyId: string, profileId: string): string {
-  return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;
-}
-
-const profileTabs = ["overview", "documents", "history", "plan"] as const;
-
 /**
  * Settings holds two unrelated things: server administration (admin only) and family
  * profiles and access (any family owner). Either grants entry; the sections gate themselves.
@@ -178,20 +174,10 @@ function canOpenSettings(session: SessionResponse): boolean {
     session.user.role === "admin" || session.families.some((family) => family.role === "owner")
   );
 }
-type ProfileTab = (typeof profileTabs)[number];
 type WorkspaceTab = ProfileTab | "settings";
 
 function normalizeProfileTab(value: string | undefined): ProfileTab {
   return profileTabs.includes(value as ProfileTab) ? (value as ProfileTab) : "overview";
-}
-
-function profileTabPath(familyId: string, profileId: string, tab: ProfileTab): string {
-  const base = profilePath(familyId, profileId);
-  return tab === "overview" ? base : `${base}?tab=${tab}`;
-}
-
-function documentPath(familyId: string, profileId: string, documentId: string): string {
-  return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }
 
 function documentProcessingPath(
@@ -206,10 +192,6 @@ function documentProcessingPath(
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
   return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
-}
-
-function documentAgentPath(familyId: string, profileId: string, documentId: string): string {
-  return `/v1${documentPath(familyId, profileId, documentId)}/agent`;
 }
 
 export function buildDocumentSearchPath(
@@ -331,6 +313,9 @@ interface VeyltaAppProps {
   requestedFamilyId?: string;
   requestedProfileId?: string;
   requestedDocumentId?: string;
+  /** The assistant view (`/assistants/:assistantId`), optionally pinned to one conversation. */
+  requestedAssistantId?: string | undefined;
+  requestedConversationId?: string | undefined;
   requestedTab?: string | undefined;
   /** The profile settings should manage first; set when settings is opened from a profile. */
   requestedSettingsProfileId?: string | undefined;
@@ -342,6 +327,8 @@ export function VeyltaApp({
   requestedFamilyId,
   requestedProfileId,
   requestedDocumentId,
+  requestedAssistantId,
+  requestedConversationId,
   requestedTab,
   requestedCanonicalCode,
   requestedSettings = false,
@@ -547,7 +534,9 @@ export function VeyltaApp({
     ? "settings"
     : requestedDocumentId !== undefined
       ? "documents"
-      : normalizeProfileTab(requestedTab);
+      : requestedAssistantId !== undefined
+        ? "overview"
+        : normalizeProfileTab(requestedTab);
   const pageTitle = requestedSettings
     ? "Настройки — Veylta"
     : context === undefined
@@ -764,6 +753,8 @@ export function VeyltaApp({
             family={context.family}
             profile={context.profile}
             requestedDocumentId={requestedDocumentId}
+            requestedAssistantId={requestedAssistantId === "physician" ? "physician" : undefined}
+            requestedConversationId={requestedConversationId}
             activeTab={activeTab === "settings" ? "overview" : activeTab}
             requestedCanonicalCode={requestedCanonicalCode}
             error={actionError}
@@ -1899,6 +1890,8 @@ interface ProfileWorkspaceProps {
   family: SessionFamily;
   profile: PatientProfileSummary;
   requestedDocumentId: string | undefined;
+  requestedAssistantId: "physician" | undefined;
+  requestedConversationId: string | undefined;
   activeTab: ProfileTab;
   requestedCanonicalCode?: string | undefined;
   error: string | null;
@@ -1910,12 +1903,21 @@ function ProfileWorkspace({
   family,
   profile,
   requestedDocumentId,
+  requestedAssistantId,
+  requestedConversationId,
   activeTab,
   requestedCanonicalCode,
   error,
   onProfileChange,
 }: ProfileWorkspaceProps) {
   const router = useRouter();
+  /** A detail view replaces the tab panels: one document, or one assistant. */
+  const detail =
+    requestedDocumentId !== undefined
+      ? "document"
+      : requestedAssistantId !== undefined
+        ? "assistant"
+        : null;
   const profiles = session.families.flatMap((sessionFamily) => sessionFamily.profiles);
   const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
@@ -2121,17 +2123,17 @@ function ProfileWorkspace({
 
   return (
     <section
-      className={`profile-shell profile-shell--${requestedDocumentId === undefined ? activeTab : "documents"}${requestedDocumentId === undefined ? "" : " profile-shell--document-detail"}`}
+      className={`profile-shell profile-shell--${detail === null ? activeTab : detail === "document" ? "documents" : "assistant"}${detail === null ? "" : " profile-shell--document-detail"}`}
       aria-label={
-        requestedDocumentId === undefined && activeTab !== "documents"
+        detail === null && activeTab !== "documents"
           ? undefined
-          : "Документы профиля"
+          : detail === "assistant"
+            ? "ИИ-врач · второе мнение"
+            : "Документы профиля"
       }
-      aria-labelledby={
-        requestedDocumentId === undefined && activeTab !== "documents" ? "profile-title" : undefined
-      }
+      aria-labelledby={detail === null && activeTab !== "documents" ? "profile-title" : undefined}
     >
-      {requestedDocumentId === undefined && activeTab !== "documents" ? (
+      {detail === null && activeTab !== "documents" ? (
         <div className="profile-heading">
           <div>
             <p className="context-line">
@@ -2216,7 +2218,7 @@ function ProfileWorkspace({
         </div>
       )}
 
-      {requestedDocumentId === undefined && activeTab === "overview" ? (
+      {detail === null && activeTab === "overview" ? (
         <div
           id="workspace-panel-overview"
           className="workspace-tab-panel workspace-tab-panel--overview"
@@ -2235,7 +2237,7 @@ function ProfileWorkspace({
         </div>
       ) : null}
 
-      {requestedDocumentId === undefined && activeTab === "documents" ? (
+      {detail === null && activeTab === "documents" ? (
         <div
           id="workspace-panel-documents"
           className="workspace-tab-panel workspace-tab-panel--documents"
@@ -2257,7 +2259,7 @@ function ProfileWorkspace({
         </div>
       ) : null}
 
-      {requestedDocumentId === undefined && activeTab === "history" ? (
+      {detail === null && activeTab === "history" ? (
         <div
           id="workspace-panel-history"
           className="workspace-tab-panel workspace-tab-panel--history"
@@ -2280,7 +2282,7 @@ function ProfileWorkspace({
         </div>
       ) : null}
 
-      {requestedDocumentId === undefined && activeTab === "plan" ? (
+      {detail === null && activeTab === "plan" ? (
         <div
           id="workspace-panel-plan"
           className="workspace-tab-panel workspace-tab-panel--plan"
@@ -2303,6 +2305,25 @@ function ProfileWorkspace({
             familyId={family.id}
             profileId={profile.id}
             canWriteProfile={canWriteProfile}
+          />
+        </div>
+      ) : null}
+
+      {requestedAssistantId !== undefined ? (
+        <div
+          id="workspace-panel-assistant"
+          className="workspace-tab-panel workspace-tab-panel--overview workspace-tab-panel--assistant"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-overview"
+          aria-label="ИИ-врач · второе мнение"
+        >
+          <AssistantHero familyId={family.id} profileId={profile.id} />
+          <AssistantWorkspace
+            key={`assistant:${family.id}:${profile.id}`}
+            familyId={family.id}
+            profileId={profile.id}
+            assistantId={requestedAssistantId}
+            requestedConversationId={requestedConversationId}
           />
         </div>
       ) : null}
@@ -6344,250 +6365,6 @@ function DocumentProcessingPanel({
         />
       ) : null}
     </div>
-  );
-}
-
-type DocumentAgentState =
-  | { kind: "loading" }
-  | { kind: "ready"; workspace: DocumentAgentWorkspaceResponse }
-  | { kind: "error" };
-
-interface DocumentAgentAttempt {
-  key: string;
-  message: string;
-}
-
-interface DocumentAgentConversationAttempt {
-  key: string;
-  title: string;
-}
-
-function DocumentAgentPanel({
-  familyId,
-  profileId,
-  documentId,
-  documentName,
-  documentUploadedAt,
-  workspaceRefreshKey,
-  suggestedMessage,
-  selectedRunId,
-  activityRunId,
-  activity,
-  diagnostics,
-  onSelectRun,
-}: {
-  familyId: string;
-  profileId: string;
-  documentId: string;
-  documentName: string;
-  documentUploadedAt: string;
-  workspaceRefreshKey: string;
-  suggestedMessage: { id: string; prompt: string } | null;
-  selectedRunId: string | null;
-  activityRunId: string | null;
-  activity: readonly DocumentProcessingActivityEvent[];
-  diagnostics: DocumentProcessingRunDiagnostics | null;
-  onSelectRun: (runId: string | null) => void;
-}) {
-  const [state, setState] = useState<DocumentAgentState>({ kind: "loading" });
-  const [isSwitching, setIsSwitching] = useState(false);
-  const [message, setMessage] = useState("");
-  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
-  const [sendError, setSendError] = useState<string | null>(null);
-  const [createError, setCreateError] = useState<string | null>(null);
-  const attemptRef = useRef<DocumentAgentAttempt | null>(null);
-  const conversationAttemptRef = useRef<DocumentAgentConversationAttempt | null>(null);
-  const workspaceRequests = useRef(new WorkspaceRequests());
-  /**
-   * The conversation the user means to see, updated synchronously on a selection or a
-   * mutation. A background reload asks for this — never for the selection in `state`, which
-   * may still be the previous one while a read is in flight.
-   */
-  const intendedConversation = useRef<string | null>(null);
-  const loadedWorkspaceRefreshKey = useRef(workspaceRefreshKey);
-  const composerRef = useRef<HTMLTextAreaElement>(null);
-  const endpoint = documentAgentPath(familyId, profileId, documentId);
-
-  const loadWorkspace = useCallback(
-    async (conversationId?: string, signal?: AbortSignal): Promise<void> => {
-      const isCurrent = workspaceRequests.current.claim();
-      try {
-        const query =
-          conversationId === undefined
-            ? ""
-            : `?conversationId=${encodeURIComponent(conversationId)}`;
-        const response = await apiRequest<DocumentAgentWorkspaceResponse>(
-          `${endpoint}${query}`,
-          signal === undefined ? undefined : { signal },
-        );
-        if (signal?.aborted || !isCurrent()) return;
-        intendedConversation.current = response.selectedConversationId;
-        setState({ kind: "ready", workspace: response });
-      } catch {
-        if (!signal?.aborted && isCurrent()) setState({ kind: "error" });
-      }
-    },
-    [endpoint],
-  );
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setState({ kind: "loading" });
-    setMessage("");
-    setPendingMessage(null);
-    setSendError(null);
-    setCreateError(null);
-    setIsSwitching(false);
-    attemptRef.current = null;
-    conversationAttemptRef.current = null;
-    intendedConversation.current = null;
-    void loadWorkspace(undefined, controller.signal);
-    return () => controller.abort();
-  }, [loadWorkspace]);
-
-  // A processing update reloads the workspace, but never over a mutation in flight: the reload
-  // would carry the selection from before the mutation and revert what the user just did. A
-  // deferred reload runs when the mutation settles, with the selection the mutation returned.
-  useEffect(() => {
-    if (loadedWorkspaceRefreshKey.current === workspaceRefreshKey) return;
-    loadedWorkspaceRefreshKey.current = workspaceRefreshKey;
-    if (!workspaceRequests.current.requestRefresh()) return;
-    void loadWorkspace(intendedConversation.current ?? undefined);
-  }, [loadWorkspace, workspaceRefreshKey]);
-
-  const settleMutation = useCallback(() => {
-    const { refreshDeferred } = workspaceRequests.current.endMutation();
-    if (refreshDeferred) void loadWorkspace(intendedConversation.current ?? undefined);
-  }, [loadWorkspace]);
-
-  useEffect(() => {
-    if (suggestedMessage === null) return;
-    setMessage(suggestedMessage.prompt);
-    composerRef.current?.focus();
-    composerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-  }, [suggestedMessage]);
-
-  async function handleSelectConversation(conversationId: string): Promise<void> {
-    if (
-      isSwitching ||
-      (state.kind === "ready" && state.workspace.selectedConversationId === conversationId)
-    ) {
-      return;
-    }
-    setIsSwitching(true);
-    setSendError(null);
-    setMessage("");
-    intendedConversation.current = conversationId;
-    await loadWorkspace(conversationId);
-    setIsSwitching(false);
-  }
-
-  async function handleCreateConversation(title: string): Promise<boolean> {
-    const previousAttempt = conversationAttemptRef.current;
-    const attempt =
-      previousAttempt?.title === title ? previousAttempt : { key: crypto.randomUUID(), title };
-    conversationAttemptRef.current = attempt;
-    setCreateError(null);
-    const isCurrent = workspaceRequests.current.beginMutation();
-    try {
-      const response = await apiRequest<DocumentAgentWorkspaceResponse>(
-        `${endpoint}/conversations`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": attempt.key },
-          body: JSON.stringify({ title }),
-        },
-      );
-      intendedConversation.current = response.selectedConversationId;
-      if (isCurrent()) setState({ kind: "ready", workspace: response });
-      setMessage("");
-      conversationAttemptRef.current = null;
-      return true;
-    } catch (error) {
-      if (error instanceof ApiError && error.status < 500) conversationAttemptRef.current = null;
-      setCreateError(
-        error instanceof ApiError && error.status === 409
-          ? "Нельзя создать больше 20 диалогов для одного документа."
-          : "Не удалось создать диалог. Проверьте соединение и повторите.",
-      );
-      return false;
-    } finally {
-      settleMutation();
-    }
-  }
-
-  async function handleSend(event: FormEvent<HTMLFormElement>): Promise<void> {
-    event.preventDefault();
-    const normalized = message.trim();
-    if (
-      normalized.length === 0 ||
-      normalized.length > 2_000 ||
-      pendingMessage !== null ||
-      state.kind !== "ready" ||
-      state.workspace.selectedConversationId === null
-    ) {
-      return;
-    }
-
-    const previousAttempt = attemptRef.current;
-    const attempt =
-      previousAttempt?.message === normalized
-        ? previousAttempt
-        : { key: crypto.randomUUID(), message: normalized };
-    attemptRef.current = attempt;
-    setPendingMessage(normalized);
-    setSendError(null);
-    const isCurrent = workspaceRequests.current.beginMutation();
-    try {
-      const response = await apiRequest<DocumentAgentWorkspaceResponse>(
-        `${endpoint}/conversations/${encodeURIComponent(state.workspace.selectedConversationId)}/messages`,
-        {
-          method: "POST",
-          headers: { "Idempotency-Key": attempt.key },
-          body: JSON.stringify({ message: normalized }),
-        },
-      );
-      intendedConversation.current = response.selectedConversationId;
-      if (isCurrent()) setState({ kind: "ready", workspace: response });
-      setMessage("");
-      attemptRef.current = null;
-    } catch (error) {
-      if (error instanceof ApiError && error.status < 500) attemptRef.current = null;
-      setSendError(
-        error instanceof ApiError && error.status === 503
-          ? "Codex сейчас недоступен. Сообщение не потеряно — повторите отправку позже."
-          : "Не удалось получить ответ Codex. Проверьте соединение и повторите отправку.",
-      );
-    } finally {
-      setPendingMessage(null);
-      settleMutation();
-    }
-  }
-
-  return (
-    <DocumentAgentWorkspace
-      workspace={state.kind === "ready" ? state.workspace : null}
-      documentName={documentName}
-      documentUploadedAt={documentUploadedAt}
-      documentContentHref={`${apiPrefix}/v1${documentPath(familyId, profileId, documentId)}/content`}
-      isLoading={state.kind === "loading"}
-      isSwitching={isSwitching}
-      loadError={state.kind === "error"}
-      message={message}
-      pendingMessage={pendingMessage}
-      sendError={sendError}
-      createError={createError}
-      selectedRunId={selectedRunId}
-      activityRunId={activityRunId}
-      activity={activity}
-      diagnostics={diagnostics}
-      composerRef={composerRef}
-      onMessageChange={setMessage}
-      onSelectRun={onSelectRun}
-      onSelectConversation={(conversationId) => void handleSelectConversation(conversationId)}
-      onCreateConversation={handleCreateConversation}
-      onSend={(event) => void handleSend(event)}
-    />
   );
 }
 

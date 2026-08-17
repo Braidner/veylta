@@ -18,8 +18,8 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   await expect(page.getByRole("button", { name: "Загрузить документ" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Помощники" })).toBeVisible();
   await expect(page.locator("[data-assistant]")).toHaveCount(3);
-  await expect(page.locator('[data-assistant="medical_navigator"]')).toContainText(
-    "Медицинский навигатор",
+  await expect(page.locator('[data-assistant="physician"]')).toContainText(
+    "ИИ-врач · второе мнение",
   );
   await expect(page.locator('[data-assistant="nutrition"]')).toContainText("недостаточно данных");
   await expect(page.locator('[data-assistant="movement"]')).toContainText("ограничения");

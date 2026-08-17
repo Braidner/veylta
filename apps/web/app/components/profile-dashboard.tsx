@@ -9,13 +9,11 @@ import {
   CircleAlert,
   ClipboardCheck,
   FileText,
-  FolderSearch,
-  History,
-  Maximize2,
   MessagesSquare,
   PersonStanding,
   ShieldCheck,
   Sparkles,
+  Stethoscope,
   Utensils,
 } from "lucide-react";
 import Link from "next/link";
@@ -27,9 +25,10 @@ import type {
   ProfileDashboardModel,
 } from "../profile-dashboard";
 import { buildProfileDashboardModel } from "../profile-dashboard";
+import { DashboardTools } from "./dashboard-tools";
 
 const assistantIcons: Record<DashboardAssistantId, LucideIcon> = {
-  medical_navigator: ShieldCheck,
+  physician: Stethoscope,
   nutrition: Utensils,
   movement: PersonStanding,
 };
@@ -264,26 +263,6 @@ function DashboardPlan({ href }: { href: string }) {
         <ShieldCheck size={20} aria-hidden="true" />
       </Link>
     </section>
-  );
-}
-
-function DashboardTools({ historyHref }: { historyHref: string }) {
-  return (
-    <nav className="dashboard-tools" aria-label="Быстрые действия обзора">
-      <Link
-        href={`${historyHref}#indicator-catalog`}
-        aria-label="Найти показатель"
-        title="Найти показатель"
-      >
-        <FolderSearch size={19} aria-hidden="true" />
-      </Link>
-      <a href="#profile-dashboard" aria-label="Вернуться к началу обзора" title="Начало обзора">
-        <Maximize2 size={19} aria-hidden="true" />
-      </a>
-      <Link href={historyHref} aria-label="Открыть историю" title="История">
-        <History size={19} aria-hidden="true" />
-      </Link>
-    </nav>
   );
 }
 

@@ -1,0 +1,164 @@
+"use client";
+
+import type { AssistantEvidenceRef, AssistantMessage } from "@veylta/contracts";
+import { AlertTriangle, ClipboardCheck, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { blockKindLabel, refusalCopy, urgencyCopy } from "../assistant";
+import { formatDate } from "../format-moment";
+import {
+  BlockBody,
+  CheckerNote,
+  type EvidenceIndex,
+  ReferralAction,
+  type ReferralBlock,
+  SourceRefs,
+} from "./assistant-blocks";
+
+type AssistantReply = Extract<AssistantMessage, { role: "assistant" }>;
+
+interface AssistantAnswerProps {
+  readonly message: AssistantReply;
+  readonly familyId: string;
+  readonly profileId: string;
+  readonly evidence: EvidenceIndex;
+  readonly canWrite: boolean;
+  /** Which referral blocks (`${messageId}:${index}`) already became care-plan items. */
+  readonly acceptedReferrals: ReadonlySet<string>;
+  readonly pendingReferral: string | null;
+  readonly onAcceptReferral: (key: string, block: ReferralBlock) => void;
+}
+
+/** One assistant reply: fixed urgency copy first, then the typed blocks each bound to sources. */
+export function AssistantAnswer({
+  message,
+  familyId,
+  profileId,
+  evidence,
+  canWrite,
+  acceptedReferrals,
+  pendingReferral,
+  onAcceptReferral,
+}: AssistantAnswerProps) {
+  const [journalOpen, setJournalOpen] = useState(false);
+  const verdicts = new Map(message.checker.map((verdict) => [verdict.blockIndex, verdict]));
+
+  return (
+    <article
+      className={`assistant-answer${message.answer === null ? " is-refused" : ""}`}
+      data-testid="assistant-answer"
+    >
+      <header className="assistant-answer__meta">
+        <strong>ИИ-врач</strong>
+        <time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time>
+      </header>
+
+      {message.answer === null ? (
+        <p className="assistant-answer__refusal" role="status">
+          <ShieldCheck size={16} aria-hidden="true" />
+          <span>{refusalCopy[message.refusal ?? "schema_shape"]}</span>
+        </p>
+      ) : (
+        <>
+          <UrgencyBanner
+            tier={message.answer.urgency.tier}
+            reasons={message.answer.urgency.reasons}
+            familyId={familyId}
+            profileId={profileId}
+            evidence={evidence}
+          />
+          <ol className="assistant-answer__blocks">
+            {message.answer.blocks.map((block, index) => {
+              const key = `${message.id}:${index}`;
+              return (
+                <li key={key} className={`assistant-block assistant-block--${block.kind}`}>
+                  <span className="assistant-block__kind">{blockKindLabel[block.kind]}</span>
+                  <BlockBody
+                    block={block}
+                    familyId={familyId}
+                    profileId={profileId}
+                    evidence={evidence}
+                  />
+                  <CheckerNote verdict={verdicts.get(index)} />
+                  {(block.kind === "hypothesis" || block.kind === "treatment_option") &&
+                  canWrite ? (
+                    <ReferralAction
+                      block={block}
+                      accepted={acceptedReferrals.has(key)}
+                      pending={pendingReferral === key}
+                      onAccept={() => onAcceptReferral(key, block)}
+                    />
+                  ) : null}
+                </li>
+              );
+            })}
+          </ol>
+        </>
+      )}
+
+      <footer className="assistant-answer__footer">
+        <span>Модель: {message.provenance.modelId}</span>
+        {message.exchanges !== null && message.exchanges.length > 0 ? (
+          <button
+            type="button"
+            className="assistant-answer__journal-toggle"
+            aria-expanded={journalOpen}
+            onClick={() => setJournalOpen((current) => !current)}
+          >
+            {journalOpen ? "Скрыть журнал обмена" : "Журнал обмена"}
+          </button>
+        ) : null}
+      </footer>
+      {journalOpen && message.exchanges !== null ? (
+        <div className="assistant-answer__journal">
+          {message.exchanges.map((exchange) => (
+            <details key={exchange.stage} className="assistant-answer__exchange">
+              <summary>
+                {exchange.stage === "answer" ? "Ответ" : "Проверяющий запуск"} · {exchange.modelId}{" "}
+                · {exchange.durationMs} мс · запрос {exchange.requestBytes} Б, ответ{" "}
+                {exchange.responseBytes} Б
+              </summary>
+              <pre>{exchange.requestText}</pre>
+              <pre>
+                {exchange.responseText.length === 0 ? "(нет ответа)" : exchange.responseText}
+              </pre>
+            </details>
+          ))}
+        </div>
+      ) : null}
+    </article>
+  );
+}
+
+function UrgencyBanner({
+  tier,
+  reasons,
+  familyId,
+  profileId,
+  evidence,
+}: {
+  readonly tier: keyof typeof urgencyCopy;
+  readonly reasons: readonly AssistantEvidenceRef[];
+  readonly familyId: string;
+  readonly profileId: string;
+  readonly evidence: EvidenceIndex;
+}) {
+  const copy = urgencyCopy[tier];
+  return (
+    <div
+      className={`assistant-urgency is-${copy.tone}`}
+      role={copy.tone === "alarm" ? "alert" : "status"}
+      data-testid="assistant-urgency"
+    >
+      {copy.tone === "calm" ? (
+        <ClipboardCheck size={18} aria-hidden="true" />
+      ) : (
+        <AlertTriangle size={18} aria-hidden="true" />
+      )}
+      <div>
+        <strong>{copy.label}</strong>
+        <p>{copy.copy}</p>
+        <SourceRefs refs={reasons} familyId={familyId} profileId={profileId} evidence={evidence} />
+      </div>
+    </div>
+  );
+}

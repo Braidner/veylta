@@ -108,6 +108,14 @@ The full first slice remains deliberately narrow:
     verified original bytes under the original display filename, and
     idempotently remove a document from every active read without claiming
     physical backup erasure (Tasks 39/40, delivered).
+20. record a user-authored, dated, revisioned medical profile (sex, birth year,
+    conditions, medications, allergies, symptoms, goals, constraints) and ask
+    the «ИИ-врач · второе мнение» for a second opinion over the confirmed
+    observations and that profile: per-conversation egress acknowledgement,
+    typed evidence-bound blocks under a mandatory urgency tier, a referral on
+    every hypothesis and treatment option, an independent checker run, closed
+    refusal reasons, an owner-only exchange journal, and referrals accepted
+    into the care plan's clinician lane (docs/assistants.md slice 1, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

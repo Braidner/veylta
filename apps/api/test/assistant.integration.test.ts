@@ -26,6 +26,7 @@ test("the physician assistant: disclosure gate, evidence-bound turns, replay and
       canWrite: true,
       interpretationReady: false,
       evidenceCount: 0,
+      evidence: [],
       conversations: [],
       selectedConversationId: null,
       messages: [],
@@ -127,6 +128,17 @@ test("the physician assistant: disclosure gate, evidence-bound turns, replay and
     const ready = await app.inject({ method: "GET", url: path, headers: { cookie: owner.cookie } });
     assert.equal(ready.json().interpretationReady, true);
     assert.equal(ready.json().evidenceCount, 1);
+    assert.deepEqual(
+      ready
+        .json()
+        .evidence.map((item: { observationId: string; documentId: string; pageNumber: number }) => [
+          item.observationId,
+          item.documentId,
+          item.pageNumber,
+        ]),
+      [[seeded.observationIds[0], seeded.documentId, 1]],
+      "every ref resolves to its source page",
+    );
 
     const messageKey = `m-${randomUUID()}`;
     const answered = await app.inject({

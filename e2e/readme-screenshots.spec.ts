@@ -50,4 +50,34 @@ test("capture the README screenshots", async ({ page }) => {
   await tabs.getByRole("tab", { name: "Обзор", exact: true }).click();
   await expect(page).not.toHaveURL(/tab=/);
   await screenshot(page, "overview.png");
+
+  // The physician's second opinion over the confirmed value, profile filled in first.
+  const profileUrl = page.url();
+  await page.goto(`${profileUrl}?tab=plan`);
+  const basics = page.getByTestId("medical-profile").getByRole("region", { name: "Основное" });
+  for (const [kind, value] of [
+    ["sex", "female"],
+    ["birth_year", "1992"],
+  ] as const) {
+    await basics.getByRole("button", { name: "Добавить" }).click();
+    await basics.getByLabel("Что записать").selectOption(kind);
+    if (kind === "sex") await basics.getByLabel("Значение").selectOption(value);
+    else await basics.getByLabel("Значение").fill(value);
+    await basics.getByRole("button", { name: "Сохранить" }).click();
+  }
+  await expect(basics.getByText("1992")).toBeVisible();
+  await page.goto(`${profileUrl}/assistants/physician`);
+  const assistant = page.getByTestId("assistant-workspace");
+  await assistant.getByRole("button", { name: "Создать диалог" }).click();
+  await assistant.getByLabel("Название диалога").fill("Разбор анализов за август");
+  await assistant.getByRole("button", { name: "Создать", exact: true }).click();
+  await expect(page.getByTestId("assistant-egress-gate")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "assistant-gate.png");
+  await page.getByTestId("assistant-egress-gate").getByRole("button").click();
+  await assistant.getByLabel("Сообщение ИИ-врачу").fill("Что значат мои последние анализы?");
+  await assistant.getByRole("button", { name: "Отправить" }).click();
+  await expect(page.getByTestId("assistant-answer")).toBeVisible({ timeout: 60_000 });
+  await assistant.scrollIntoViewIfNeeded();
+  await screenshot(page, "assistant.png");
 });

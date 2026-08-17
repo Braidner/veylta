@@ -48,10 +48,11 @@ Calm, exact, and humane. The product should lower cognitive load without softeni
 
 ## Assistant Surfaces
 
-- `Медицинский навигатор` is deterministic navigation over the current source, processing, and review state. It is not a doctor, chatbot, diagnosis, or model inference.
-- `Питание` and `Движение` lead to the existing care plan. Codex may prepare a bounded draft only after the user explicitly requests it and accepts the disclosed egress boundary.
-- No assistant sends unsolicited medical advice or silently changes the care plan. Every proposal remains a draft until an explicit human action.
-- `Сигналы здоровья` reports only counts and explicit source flags: pending review, source-marked range flags, recent sources, and confirmed values. There is no aggregate health score, risk score, or inferred clinical state.
+- `ИИ-врач · второе мнение` is a real second opinion over the person's confirmed values and their own medical profile (docs/assistants.md). It answers only in typed, evidence-bound blocks — interpretation, hypothesis, treatment option, question for the visit, general knowledge, missing data — under a mandatory urgency tier rendered as fixed copy. Every hypothesis and treatment option names the specialty that must confirm it; a medication is never proposed with a dose; a second, independent run refutes each answer before it is shown; an answer that fails verification is refused with a closed reason. It is a recommendation for a conversation with a clinician, never a diagnosis or a prescription, and it interprets nothing until sex and birth year are recorded.
+- The evidence that leaves the machine is disclosed verbatim in the egress notice and confirmed per conversation before the first message: confirmed observations with printed ranges, the medical profile, the care plan. Never a document, page or file. The raw exchange and the checker's verdict are journaled for the owner, like a run journal; nothing of it reaches logs, metrics or audit.
+- `ИИ-нутрициолог` and `ИИ-тренер` lead to the existing care plan today (Codex may prepare a bounded draft only after the user explicitly requests it and accepts the disclosed egress boundary) and become assistants of the same kind in later slices.
+- No assistant sends unsolicited medical advice or silently changes the care plan. Accepting a referral or a proposal is a human action that creates one `clinician`/lane item; every proposal remains a draft until then.
+- Veylta itself — rules, summaries, dashboards, comparisons — never produces a health score, diagnosis, triage, risk, trend or treatment advice. `Сигналы здоровья` reports only counts and explicit source flags: pending review, source-marked range flags, recent sources, and confirmed values.
 
 ## Accessibility & Inclusion
 

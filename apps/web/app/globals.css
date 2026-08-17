@@ -8309,3 +8309,337 @@ body:has(.upload-dialog[open]) {
     grid-template-columns: 1fr;
   }
 }
+
+/* Assistant workspace («ИИ-врач · второе мнение»): the conversation shell of document dialogues,
+   plus typed answers whose urgency is fixed copy and whose every block links to its source. */
+.profile-shell--assistant {
+  padding-top: 0;
+}
+
+.workspace-tab-panel--assistant {
+  display: grid;
+  width: 100%;
+  max-width: none;
+  gap: 20px;
+  margin: 0;
+  padding-bottom: 48px;
+}
+
+.assistant-workspace .document-agent-workspace__shell {
+  grid-template-columns: minmax(240px, 280px) minmax(0, 1fr);
+  border-top: 0;
+}
+
+.assistant-notice {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 20px;
+  color: oklch(0.36 0.1 72);
+  background: oklch(0.97 0.04 78);
+  border-bottom: 1px solid oklch(0.88 0.06 78);
+}
+
+.assistant-notice svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.assistant-notice p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.assistant-notice a {
+  color: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.assistant-gate {
+  display: grid;
+  max-width: 62ch;
+  gap: 10px;
+  padding: 18px 20px;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+}
+
+.assistant-gate h5 {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.assistant-gate ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.assistant-gate p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.assistant-gate .button {
+  justify-self: start;
+}
+
+.assistant-gate__readonly {
+  font-style: italic;
+}
+
+.assistant-answer {
+  display: grid;
+  width: 100%;
+  max-width: 78ch;
+  gap: 12px;
+  padding: 14px 16px;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+}
+
+.assistant-answer.is-refused {
+  background: var(--color-surface);
+}
+
+.assistant-answer__meta,
+.assistant-answer__footer {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+}
+
+.assistant-answer__meta strong {
+  color: var(--color-ink);
+  font-size: 0.8125rem;
+}
+
+.assistant-answer__refusal {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.assistant-answer__refusal svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: var(--color-muted);
+}
+
+.assistant-answer__journal-toggle {
+  padding: 0;
+  color: var(--color-primary);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.6875rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.assistant-answer__journal {
+  display: grid;
+  gap: 8px;
+}
+
+.assistant-answer__exchange {
+  padding: 8px 10px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
+.assistant-answer__exchange summary {
+  cursor: pointer;
+}
+
+.assistant-answer__exchange pre {
+  max-height: 320px;
+  margin: 8px 0 0;
+  overflow: auto;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.assistant-urgency {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 14px;
+  border: 1px solid;
+  border-radius: 10px;
+}
+
+.assistant-urgency svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.assistant-urgency > div {
+  display: grid;
+  gap: 4px;
+}
+
+.assistant-urgency strong {
+  font-size: 0.9375rem;
+}
+
+.assistant-urgency p {
+  margin: 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.assistant-urgency.is-calm {
+  color: oklch(0.32 0.07 160);
+  background: oklch(0.96 0.03 160);
+  border-color: oklch(0.86 0.06 160);
+}
+
+.assistant-urgency.is-watch {
+  color: oklch(0.36 0.1 72);
+  background: oklch(0.97 0.04 78);
+  border-color: oklch(0.86 0.08 78);
+}
+
+.assistant-urgency.is-alarm {
+  color: oklch(0.32 0.14 27);
+  background: oklch(0.96 0.03 27);
+  border-color: oklch(0.72 0.16 27);
+}
+
+.assistant-answer__blocks {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-block {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+.assistant-block__kind {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.assistant-block h5 {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+.assistant-block p {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+}
+
+.assistant-block__meta,
+.assistant-block__workup,
+.assistant-block__checker {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.assistant-block__conflict {
+  color: oklch(0.36 0.1 72);
+}
+
+.assistant-block__checker {
+  color: oklch(0.36 0.1 72);
+}
+
+.assistant-block__accepted {
+  color: var(--color-success);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+.assistant-block__referral {
+  justify-self: start;
+  margin-top: 4px;
+  font-size: 0.8125rem;
+}
+
+.assistant-block--general {
+  background: var(--color-canvas);
+  border-style: dashed;
+}
+
+.assistant-refs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-refs a {
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+  padding: 3px 8px;
+  color: var(--color-primary);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+.assistant-refs a:hover {
+  border-color: var(--color-primary);
+}
+
+.assistant-refs a small {
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+}
+
+.assistant-refs a svg {
+  align-self: center;
+}
+
+.assistant-refs__missing {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-style: italic;
+}
+
+@media (max-width: 900px) {
+  .assistant-workspace .document-agent-workspace__shell {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .assistant-answer {
+    max-width: none;
+  }
+}

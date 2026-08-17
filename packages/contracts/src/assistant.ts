@@ -88,6 +88,18 @@ export interface AssistantEvidenceRef {
   readonly observationId: string;
 }
 
+/** What a ref resolves to: the printed value and the page it was confirmed from. */
+export interface AssistantEvidenceItem {
+  readonly observationId: string;
+  readonly code: string | null;
+  readonly name: string;
+  readonly value: string;
+  readonly unit: string;
+  readonly sampledAt: string | null;
+  readonly documentId: string;
+  readonly pageNumber: number;
+}
+
 export interface AssistantUrgency {
   readonly tier: AssistantUrgencyTier;
   readonly reasons: readonly AssistantEvidenceRef[];
@@ -188,6 +200,8 @@ export interface AssistantWorkspaceResponse {
   readonly interpretationReady: boolean;
   /** How many confirmed observations the assistant will see with the next message. */
   readonly evidenceCount: number;
+  /** The same observations, with their sources, so every ref in an answer opens its page. */
+  readonly evidence: readonly AssistantEvidenceItem[];
   readonly conversations: readonly AssistantConversationSummary[];
   readonly selectedConversationId: string | null;
   readonly messages: readonly AssistantMessage[];

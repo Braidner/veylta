@@ -1,4 +1,4 @@
-import type { MedicalProfileEntryKind } from "@veylta/contracts";
+import type { AssistantEvidenceItem, MedicalProfileEntryKind } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import type { ProfileScope } from "../family/profile-access.js";
 
@@ -56,6 +56,14 @@ interface ObservationRow {
   reference_low: string | null;
   reference_high: string | null;
   reference_flag: number | null;
+  document_id: string;
+  page_number: number;
+}
+
+/** The evidence as the model sees it, and the source index the UI needs to resolve its refs. */
+export interface AssistantEvidenceBundle {
+  readonly evidence: AssistantEvidence;
+  readonly sources: readonly AssistantEvidenceItem[];
 }
 
 /** Bounded so one profile's whole history cannot blow the prompt: the newest per analyte first. */
@@ -65,7 +73,7 @@ const maximumPerAnalyte = 4;
 export async function loadAssistantEvidence(
   client: DatabaseClient,
   scope: ProfileScope,
-): Promise<AssistantEvidence> {
+): Promise<AssistantEvidenceBundle> {
   const entries = await client.query<{
     kind: MedicalProfileEntryKind;
     value: string;
@@ -80,9 +88,12 @@ export async function loadAssistantEvidence(
     `SELECT o.id, o.canonical_code, o.source_name, o.source_value, o.source_unit,
             o.sampled_at, o.resulted_at, o.uploaded_at, o.laboratory,
             r.source_text AS reference_text, r.source_low AS reference_low,
-            r.source_high AS reference_high, r.laboratory_out_of_range AS reference_flag
+            r.source_high AS reference_high, r.laboratory_out_of_range AS reference_flag,
+            o.document_id, page.page_number
        FROM observations o
        JOIN documents d ON d.family_id = o.family_id AND d.id = o.document_id AND d.deleted_at IS NULL
+       JOIN document_pages page
+         ON page.family_id = o.family_id AND page.id = o.document_page_id
        LEFT JOIN observation_reference_ranges r
          ON r.family_id = o.family_id AND r.observation_id = o.id
       WHERE o.family_id = $1 AND o.patient_profile_id = $2 AND o.status = 'confirmed'
@@ -91,11 +102,22 @@ export async function loadAssistantEvidence(
   );
   const perAnalyte = new Map<string, number>();
   const kept: AssistantObservation[] = [];
+  const sources: AssistantEvidenceItem[] = [];
   for (const row of observations.rows) {
     const analyte = row.canonical_code ?? row.source_name.toLowerCase();
     const seen = perAnalyte.get(analyte) ?? 0;
     if (seen >= maximumPerAnalyte || kept.length >= maximumObservations) continue;
     perAnalyte.set(analyte, seen + 1);
+    sources.push({
+      observationId: row.id,
+      code: row.canonical_code,
+      name: row.source_name,
+      value: row.source_value,
+      unit: row.source_unit,
+      sampledAt: row.sampled_at ?? row.resulted_at,
+      documentId: row.document_id,
+      pageNumber: row.page_number,
+    });
     kept.push({
       observationId: row.id,
       code: row.canonical_code,
@@ -128,21 +150,24 @@ export async function loadAssistantEvidence(
   );
   const kinds = new Set(entries.rows.map((entry) => entry.kind));
   return {
-    medicalProfile: {
-      interpretationReady: kinds.has("sex") && kinds.has("birth_year"),
-      entries: entries.rows.map((entry) => ({
-        kind: entry.kind,
-        value: entry.value,
-        recordedOn: entry.recorded_on,
+    evidence: {
+      medicalProfile: {
+        interpretationReady: kinds.has("sex") && kinds.has("birth_year"),
+        entries: entries.rows.map((entry) => ({
+          kind: entry.kind,
+          value: entry.value,
+          recordedOn: entry.recorded_on,
+        })),
+      },
+      observations: kept,
+      carePlan: plan.rows.map((item) => ({
+        category: item.category,
+        title: item.title,
+        state: item.state,
+        scheduledFor: item.scheduled_for,
       })),
     },
-    observations: kept,
-    carePlan: plan.rows.map((item) => ({
-      category: item.category,
-      title: item.title,
-      state: item.state,
-      scheduledFor: item.scheduled_for,
-    })),
+    sources,
   };
 }
 

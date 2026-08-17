@@ -1,6 +1,7 @@
 import type { ProfileOverviewResponse } from "@veylta/contracts";
+import { assistantPath, documentPath, profileTabPath } from "./paths";
 
-export type DashboardAssistantId = "medical_navigator" | "nutrition" | "movement";
+export type DashboardAssistantId = "physician" | "nutrition" | "movement";
 export type DashboardSignalTone = "neutral" | "positive" | "attention";
 
 export interface DashboardAssistant {
@@ -32,18 +33,6 @@ export interface ProfileDashboardModel {
   };
 }
 
-function profilePath(familyId: string, profileId: string): string {
-  return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;
-}
-
-function profileTabPath(familyId: string, profileId: string, tab: string): string {
-  return `${profilePath(familyId, profileId)}?tab=${tab}`;
-}
-
-function documentPath(familyId: string, profileId: string, documentId: string): string {
-  return `${profilePath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
-}
-
 function countCopy(count: number, one: string, few: string, many: string): string {
   const mod100 = count % 100;
   const mod10 = count % 10;
@@ -52,14 +41,43 @@ function countCopy(count: number, one: string, few: string, many: string): strin
   return `${count} ${word}`;
 }
 
-function medicalNavigator(overview: ProfileOverviewResponse): DashboardAssistant {
+/**
+ * The physician card is the primary one. It reads only confirmed values, so while values still
+ * wait for review it points there first; the second opinion opens once there is evidence.
+ */
+function physician(overview: ProfileOverviewResponse): DashboardAssistant {
+  const label = "ИИ-врач · второе мнение";
+  const role = "Второе мнение по подтверждённым данным";
+  const { familyId, id: profileId } = overview.profile;
   const firstReview = overview.reviewQueue.documents[0];
-  if (overview.reviewQueue.pendingFactCount > 0) {
+  const activeDocument = overview.recentDocuments.find(
+    (document) => !["completed", "failed", "awaiting_review"].includes(document.processing.state),
+  );
+
+  const pending = overview.reviewQueue.pendingFactCount;
+  if (overview.recentObservations.length > 0) {
     return {
-      id: "medical_navigator",
-      label: "Медицинский навигатор",
-      role: "Навигация по вашим источникам",
-      message: `${countCopy(overview.reviewQueue.pendingFactCount, "значение ждёт", "значения ждут", "значений ждут")} вашей проверки. Я покажу исходный фрагмент перед каждым решением.`,
+      id: "physician",
+      label,
+      role,
+      message:
+        pending > 0
+          ? `${countCopy(pending, "значение ещё ждёт", "значения ещё ждут", "значений ещё ждут")} вашей проверки — ИИ-врач читает только подтверждённые. Разберу их с учётом вашего профиля и назову, что подтвердить у врача.`
+          : "Разберу подтверждённые значения с учётом вашего профиля, назову вероятные объяснения и то, что стоит подтвердить у врача.",
+      meta: "Рекомендации для разговора с врачом, не диагноз",
+      action: {
+        label: "Открыть второе мнение",
+        href: assistantPath(familyId, profileId, "physician"),
+      },
+    };
+  }
+
+  if (pending > 0) {
+    return {
+      id: "physician",
+      label,
+      role,
+      message: `${countCopy(pending, "значение ждёт", "значения ждут", "значений ждут")} вашей проверки. ИИ-врач читает только подтверждённые значения — сначала проверьте их.`,
       meta:
         overview.reviewQueue.needsAttentionFactCount > 0
           ? `${countCopy(overview.reviewQueue.needsAttentionFactCount, "значение требует", "значения требуют", "значений требуют")} особого внимания`
@@ -68,51 +86,33 @@ function medicalNavigator(overview: ProfileOverviewResponse): DashboardAssistant
         label: "Проверить значения",
         href:
           firstReview === undefined
-            ? `${profileTabPath(overview.profile.familyId, overview.profile.id, "documents")}#overview-review-title`
-            : documentPath(overview.profile.familyId, overview.profile.id, firstReview.id),
+            ? `${profileTabPath(familyId, profileId, "documents")}#overview-review-title`
+            : documentPath(familyId, profileId, firstReview.id),
       },
     };
   }
 
-  const activeDocument = overview.recentDocuments.find(
-    (document) => !["completed", "failed", "awaiting_review"].includes(document.processing.state),
-  );
   if (activeDocument !== undefined) {
     return {
-      id: "medical_navigator",
-      label: "Медицинский навигатор",
-      role: "Навигация по вашим источникам",
+      id: "physician",
+      label,
+      role,
       message:
-        "Новый источник обрабатывается локально. Я сообщу, когда появятся значения для проверки.",
+        "Новый источник обрабатывается локально. Когда значения будут подтверждены, ИИ-врач сможет их разобрать.",
       meta: "Документ ещё не стал подтверждённой записью",
       action: {
         label: "Открыть обработку",
-        href: documentPath(overview.profile.familyId, overview.profile.id, activeDocument.id),
-      },
-    };
-  }
-
-  if (overview.recentObservations.length > 0) {
-    return {
-      id: "medical_navigator",
-      label: "Медицинский навигатор",
-      role: "Навигация по вашим источникам",
-      message:
-        "Новых решений нет. Последние подтверждённые значения сохранены вместе с документом, страницей и фрагментом.",
-      meta: "Без диагноза и скрытых выводов",
-      action: {
-        label: "Открыть историю",
-        href: profileTabPath(overview.profile.familyId, overview.profile.id, "history"),
+        href: documentPath(familyId, profileId, activeDocument.id),
       },
     };
   }
 
   return {
-    id: "medical_navigator",
-    label: "Медицинский навигатор",
-    role: "Навигация по вашим источникам",
+    id: "physician",
+    label,
+    role,
     message:
-      "Добавьте первый источник. Я помогу разобрать его на проверяемые значения, но ничего не подтвержу за вас.",
+      "Добавьте первый источник и подтвердите значения — тогда появится второе мнение по ним.",
     meta: "Поддерживаются только синтетические документы",
     action: { label: "Добавить источник", href: "#document-inbox-title" },
   };
@@ -129,10 +129,10 @@ export function buildProfileDashboardModel(
 
   return {
     assistants: [
-      medicalNavigator(overview),
+      physician(overview),
       {
         id: "nutrition",
-        label: "Питание",
+        label: "ИИ-нутрициолог",
         role: "Codex · только по вашему запросу",
         message:
           confirmedCount === 0
@@ -146,7 +146,7 @@ export function buildProfileDashboardModel(
       },
       {
         id: "movement",
-        label: "Движение",
+        label: "ИИ-тренер",
         role: "Codex · только по вашему запросу",
         message:
           confirmedCount === 0

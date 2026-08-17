@@ -52,8 +52,13 @@ the opposite stance:
   and the exact printed line it came from — you can always open the source next to the number.
 - **Human in the loop.** The model *proposes*; a person confirms, corrects or rejects each value.
   Only a confirmed value becomes an observation, and the raw extraction is never edited.
-- **Explainable, never diagnostic.** No health score, no risk, no trend verdicts. Range membership
-  is computed from the printed reference range; summaries and comparisons list evidence only.
+- **Explainable, never a verdict.** Veylta itself computes no health score, risk or trend verdict;
+  range membership comes from the printed reference range and summaries list evidence only. The
+  **ИИ-врач · второе мнение** assistant reasons over confirmed values and your medical profile in
+  typed, source-bound blocks — interpretation, ranked hypotheses, what a physician would consider,
+  questions for the visit — under a mandatory urgency tier, each hypothesis naming the specialty
+  that must confirm it, no doses ever, every answer refuted by a second independent run before it
+  is shown. A recommendation for the conversation with your doctor, not a diagnosis.
 - **Bounded AI.** Extraction runs through the locally authenticated [Codex CLI](https://github.com/openai/codex)
   with a closed JSON schema, tools disabled and every answer verified item by item. Veylta never
   reads, copies or stores the Codex credentials.
@@ -75,6 +80,13 @@ the opposite stance:
   from a closed list; confirmed values chart per analyte with provenance back to the page.
 - **Per-document Codex dialogues.** Up to 20 named Russian conversations per document over a
   short-lived, read-only loopback MCP tool that re-authorises the document scope on every call.
+- **Medical profile and the ИИ-врач.** A person records sex, birth year, conditions, medications,
+  allergies, symptoms and goals — user-authored, dated, revisioned, never inferred. The physician
+  assistant reads that profile and the confirmed observations (each answer's evidence is disclosed
+  and acknowledged per conversation before anything leaves the machine), answers in typed blocks
+  bound to source pages, is refuted by an independent checker run, and refuses with a closed reason
+  when a block cannot be verified. Accepting a referral puts one «подтвердить у специалиста» item
+  into the care plan; the raw exchange stays in the owner's journal.
 - **Family and access.** An owner, adults with their own profiles, caregivers with a single
   revocable per-profile grant; reversible profile archiving that deletes nothing.
 - **Evidence over time.** Versioned, evidence-backed health summaries; a household care plan whose
@@ -84,6 +96,10 @@ the opposite stance:
 
 <p align="center">
   <img src="docs/media/review.png" alt="The review workspace: extracted values on the left, the selected value with its source fragment, printed range and the confirm / correct / reject decisions on the right" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/media/assistant.png" alt="The physician assistant: a fixed urgency banner, then typed blocks — interpretation, a hypothesis with a referral, a treatment option, a question — each linking to the confirmed value's source page" width="900">
 </p>
 
 ## How it works

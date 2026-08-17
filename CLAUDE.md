@@ -93,10 +93,13 @@ pnpm test:e2e e2e/document-review.spec.ts
   temp database via `mkdtemp` + `migrateUp`. Never touch `.local/veylta.sqlite`.
 - Pure logic belongs in a testable `*.ts` module beside the component, not inside the
   `.tsx`. See `document-agent-workspace.ts`, `profile-dashboard.ts`, `account-access.ts`.
-- `scripts/run-e2e.mjs` puts a **fake `codex` executable** on `PATH` for the whole e2e run.
+- `scripts/run-e2e.mjs` puts a **fake `codex` executable** on `PATH` for the whole e2e run;
+  its body lives in `scripts/fake-codex.mjs` (probes, app-server) and `scripts/fake-codex-exec.mjs`
+  (one `exec` branch per output schema: extraction, physician answer, checker, care plan).
   Changing the CLI invocation shape (flags, schema, output file) means updating that stub.
   For `--image` it "transcribes" one fixed synthetic report per attached page, as does
   `apps/api/test/synthetic-intelligence.ts` — neither reads pixels; tests exercise plumbing.
+  The API-side twin for the assistant is `apps/api/test/assistant-app.ts` (a scripted runtime).
 - Some e2e specs stub the API with `page.route`. A stub that drifts from the real contract
   is worse than no stub — update it in the same change as the contract.
 - The suite has no known flakes. A spec must never assert a calendar date the app writes at
@@ -166,6 +169,24 @@ validated in `medical-profile-values.ts`. Create is `PUT entries/:id` with a cli
 200 replay / 409 on a different body), update `PUT …/value` and archive `PUT …/archive` are
 optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
 assistants refuse to interpret values without them.
+
+**Assistants** (`assistant/v1`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
+второе мнение» is a profile-scoped conversation at
+`/v1/families/:f/profiles/:p/assistants/physician` (web route `…/assistants/physician`, entered
+from the overview card). `evidence.ts` is the only thing that leaves the machine — medical
+profile, bounded confirmed observations with printed ranges, care plan — and the same loader
+feeds both the prompt and the workspace's `evidenceCount`/`evidence` index, so the egress
+disclosure never describes something other than what is sent. A conversation must be
+acknowledged (`PUT …/acknowledgement`, `send_confirmed_evidence_to_codex`) before its first
+message (409 `ACKNOWLEDGEMENT_REQUIRED` otherwise). `assistant-turn.ts` runs one turn:
+`codex exec` / `exec resume` on the conversation's thread (`codex-assistant-runtime.ts`, high
+effort by default, web search off), `answer-parser.ts` verifies every block against the
+evidence, `answer-checker.ts` runs an independent refuting exec and applies its verdicts, and
+every model failure becomes a refusal with a closed `ASSISTANT_REJECTION_REASONS` code plus its
+raw exchange in `assistant_exchanges` (owner-only journal, never audit). Web: pure copy tables in
+`app/assistant.ts`, `assistant-workspace.tsx` (data) → `assistant-panel.tsx` (shell) →
+`assistant-answer.tsx`/`assistant-blocks.tsx` (typed blocks, source links, referral → care-plan
+`clinician` item through the plan's own `PUT items/:id`). Browser routes live in `app/paths.ts`.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the
@@ -237,8 +258,19 @@ YOU MUST NOT relax these to make a feature easier.
 - A rejection reason is always a server-derived code from `PROCESSING_REJECTION_REASONS`,
   rendered through `rejectionReasonCopy`. Never surface a sentence the model produced as
   the reason a run failed.
-- The UI must not produce a health score, diagnosis, triage, risk, trend, or treatment
-  advice — including from a comparison of two summary versions.
+- Veylta itself — rules, summaries, dashboards, comparisons of two summary versions — never
+  produces a health score, diagnosis, triage, risk, trend, or treatment advice. Only an
+  assistant may, and only as verified model output: every hypothesis and treatment option
+  names the specialty that must confirm it (`confirmWith`), every answer carries an urgency
+  tier rendered as fixed copy that a later block cannot lower, no medication is ever proposed
+  with a dose, `general` text may not quote the person's values, an unbound block is dropped,
+  a fully refuted answer is refused with a closed reason, and nothing an assistant says becomes
+  a plan item, an observation, or a record without a human action. Sex and birth year missing
+  → `missing` blocks only. The refusal reason shown is always the closed code's copy, never a
+  model sentence.
+- Assistant egress is disclosed and acknowledged per conversation; the payload is exactly what
+  `assistant/evidence.ts` builds — never a document, page, file, path, key, or family/profile
+  ID. The raw exchange and checker verdict live in `assistant_exchanges` for the owner only.
 - Archiving a profile flips `patient_profiles.archived_at` only; it never deletes sources,
   facts, observations, audit rows, or storage objects.
 - Synthetic data only, in fixtures, tests, screenshots, and logs. Never commit real medical

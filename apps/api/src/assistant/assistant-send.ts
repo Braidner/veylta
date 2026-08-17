@@ -58,7 +58,7 @@ export async function sendAssistantMessage(
     if (conversation.message_count + 2 > maximumMessagesPerConversation) {
       throw new DomainConflictError();
     }
-    return { conversation, evidence: await loadAssistantEvidence(client, scope) };
+    return { conversation, evidence: (await loadAssistantEvidence(client, scope)).evidence };
   });
   if ("replayed" in prepared) return { response: prepared.replayed, replayed: true };
 
