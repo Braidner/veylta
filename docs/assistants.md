@@ -1,248 +1,227 @@
-# Assistants: navigator, nutrition, movement — working plan
+# Assistants: physician, nutritionist, trainer — second-opinion plan
 
-Status: **draft for discussion** (2026-08-17). Nothing here is delivered; the open decisions at
-the end need an owner's answer before slice 1 starts.
+Status: **draft for discussion, revision 2** (2026-08-17). Revision 1 framed the assistants as
+navigators and secretaries; the owner's intent is different and this revision follows it:
 
-## What exists today
+> The assistants are a real physician, nutritionist and trainer. Each first analyses the
+> confirmed evidence, then names likely diagnoses and treatment options — all of it as
+> recommendations. Every diagnosis and every suggested test carries a referral to a real
+> clinician for confirmation. The main goal is to see how well clinicians choose diagnoses and
+> treatment.
 
-- The profile overview shows three assistant cards (`profile-dashboard.ts`): «Медицинский
-  навигатор», «Питание», «Движение». The navigator is a deterministic projection of the
-  review/processing state (it links to the pending review, the latest document, the summary).
-  Nutrition and movement only open the care plan and say what they *would* do.
-- The care plan (`home-care-plan/v1`) has five lanes — `laboratory`, `clinician`, `nutrition`,
-  `activity`, `reminder` — with items in `proposed → accepted → completed | dismissed`. A Codex
-  proposal run (`codex-care-plan/v1`) may only *choose lanes* over the latest confirmed health
-  summary; titles and notes are deterministic server templates («Собрать контекст о питании
-  для обсуждения», «Уточнить ограничения для физической активности»…), every item carries run,
-  summary version, model, rule version, source observation and missing context, and stays
-  `proposed` until a person decides. The request needs the literal acknowledgement
-  `send_confirmed_summary_to_codex`.
-- Per-document Codex dialogues (`document-agent/v2`): resumable `codex exec` threads, a
-  short-lived loopback MCP endpoint whose only tool re-authorises the document scope and returns
-  bounded read-only projections. The runtime never sees storage keys or credentials.
-- The health summary (`health-summary/v1`) is the immutable evidence snapshot: confirmed
-  observations with provenance, missing data, and only deterministic next actions.
-- Invariants that do not move: no diagnosis, triage, risk, trend or treatment advice; nothing
-  reaches the model without explicit disclosure; audit stays payload-free; every displayed
-  value is traceable to a page and fragment; drafts never become actions by themselves.
+Nothing here is delivered; the open decisions at the end need the owner's answer before slice 1.
 
-## The idea in one sentence
+## What changes in the product, deliberately
 
-The assistants do not tell a family what to do with its health — they help the family **carry
-out what its clinicians decided, understand its own evidence, and arrive at the next visit
-prepared**. Advice originates in a clinician's document or in the family's own decision; the
-assistants organise, explain, schedule and remind, and every claim about this family's data
-points at a source.
+Veylta so far promised «no diagnosis, no treatment advice, no risk, no trend». That promise is
+withdrawn **for the assistant surfaces**, on purpose, and replaced by a stricter one:
 
-That framing is what lets three assistants be genuinely useful without becoming a doctor:
+1. An assistant may state an interpretation, a likely diagnosis, a workup and treatment options
+   — always labelled as an AI recommendation, never as a finding.
+2. Every such statement is bound to the evidence it rests on (confirmed values with page and
+   fragment, the person's own medical profile), states its uncertainty, and is paired with a
+   referral: «подтвердить у врача (специальность)».
+3. Urgency is never softened. If the evidence can mean an emergency, the assistant says so first,
+   in fixed copy, before anything else.
+4. Nothing an assistant says changes the record by itself: diagnoses, treatments and referrals
+   are proposals until a person accepts them into the care plan; the raw exchange is kept for
+   the owner; audit rows stay payload-free.
 
-| Assistant | Is | Is not |
+Everything else holds: source-first, immutable originals, human confirmation of extracted facts,
+explicit egress disclosure, no credentials, no cloud of ours. The rewritten invariants land in
+`PRODUCT.md`, `docs/threat-model.md` and `CLAUDE.md` in slice 1 — the current text says the
+opposite and must not stay.
+
+Two facts to keep in view. Regulation: a household tool for one's own family is a private
+matter, but a diagnosing tool offered to others is software-as-a-medical-device in most
+jurisdictions — the plan is written for the household. Model quality: the model has no live
+guideline access (tools are disabled by design), so any guideline reference is the model's
+memory and is labelled that way; the checker pass and evidence binding below exist because a
+single generation is not trustworthy enough for this task.
+
+## The three assistants
+
+| Assistant | Delivers | Confirms with |
 | --- | --- | --- |
-| **Навигатор** («Медицинский навигатор») | A guide over the family's own evidence: what is confirmed, what is pending, what a document or analyte is in general, what to ask at the visit, what the clinician's document says to do next | A doctor. It never says what a value *means for you*, never diagnoses, ranks urgency, or suggests treatment |
-| **Питание** | A secretary and educator for the diet the clinician (or the family) decided on: turns a written recommendation into a schedule, keeps restrictions and preferences, explains nutrition concepts in general, prepares questions for a dietitian | A dietitian. It never derives a diet from a laboratory value, never prescribes supplements, calories or exclusions |
-| **Движение** | A secretary and educator for activity: schedules what a physician or physiotherapist recommended, keeps constraints, explains concepts (zones, warm-up, load progression) in general, prepares questions | A trainer or physician. It never derives a programme from a laboratory value, never clears the person for a load |
+| **ИИ-врач** («второе мнение») | Interpretation of confirmed values against printed ranges, age and sex; likely explanations ranked with stated confidence; suggested workup; treatment options a physician would consider, with rationale and the person's contraindications checked against their profile; a comparison with what the family's own clinician documented; questions for the visit | Referral per item: therapist / specialist named by the assistant |
+| **ИИ-нутрициолог** | A diet assessment from the same evidence plus goals, restrictions and preferences; a concrete plan (structure, foods to favour or limit, and — decision 3 — quantities and supplements); what to re-check and when | Physician or dietitian; anything that interacts with a condition or medication is flagged |
+| **ИИ-тренер** | An activity assessment from evidence, stated constraints, clearance and goals; a concrete programme with progression; what to stop and re-check | Physician / physiotherapist for clearance where the profile or values warrant it |
 
-## Where advice may come from — the source ladder
+All three read the same evidence, the same medical profile, and each other's accepted plan
+items, so nutrition and training do not contradict what the physician-assistant recommended and
+the physician-assistant sees the diet and load the person is actually following.
 
-Every assistant output is one of four kinds, and the kind is visible in the UI:
+## Evidence the assistants reason over
 
-1. **From a clinician's document.** A recommendation extracted from an uploaded source (a diet
-   sheet, a discharge note, a physiotherapy plan) with page and fragment. Extraction follows the
-   laboratory-fact pipeline exactly: closed schema, per-item verification, human confirmation
-   before it becomes a plan item. Provenance: document, page, fragment.
-2. **From the family's own decision.** A goal or constraint the person typed («не ем глютен»,
-   «хочу ходить 30 минут в день», «врач разрешил только ходьбу»). Stored as profile context,
-   user-authored, editable, dated. Provenance: «Ваше решение, dd.mm.yyyy».
-3. **General knowledge.** An explanation of a concept («что такое ферритин», «зачем нужна
-   разминка») that does not use this family's values. Rendered with a fixed label «Общая
-   справка, не про ваши значения» and no numbers from the profile in the same block.
-4. **Deterministic navigation.** Counts, states and links Veylta computes itself (pending
-   review, last source date, items due). No model involved.
+- **Confirmed observations** — code, printed value and unit, printed reference range and the
+  laboratory's own flag, sample date, laboratory, source page and fragment. Never unconfirmed
+  extractions.
+- **The medical profile** (new, user-authored, dated, versioned): sex, birth year, height/weight,
+  known conditions, current medications with dose as the person records them, allergies,
+  intolerances, family history, symptoms and complaints (free text, dated), pregnancy/lactation
+  where relevant, goals, dietary restrictions and preferences, activity constraints and
+  clearance as stated. Age and sex are not optional: interpretation without them is guesswork,
+  and the assistant refuses to interpret while they are missing (a `missing` block).
+- **The clinician's own record** (new extraction target, slice 2): diagnoses, prescriptions
+  (drug, dose, schedule as written), referrals, follow-up instructions extracted from uploaded
+  documents, reviewed like laboratory facts, bound to page and fragment.
+- **The care plan and the accepted proposals** — what the person decided.
 
-There is deliberately no fifth kind — «a recommendation derived from your value». A prompt is
-not enough to guarantee that; the answer schema and the validator make it structurally
-impossible (below).
+Everything that travels to the model is disclosed verbatim in the assistant's egress notice.
 
 ## How an assistant answers
 
-Each assistant is a profile-scoped Codex conversation, built on the document-agent runtime
-(resumable `codex exec` thread, loopback MCP tools, capability token per turn). What changes
-is the **tool set** and the **answer shape**.
+Built on the document-agent runtime (`codex exec` + resumable thread, loopback MCP tools,
+capability token per turn, features disabled, bounded I/O). What is new is the answer shape,
+the checker pass and the tool set.
 
-### Tools (read-only unless stated)
+### Typed blocks
+
+```
+answer = { urgency, blocks: [...] }
+
+urgency: { tier: "none" | "routine" | "soon" | "urgent" | "emergency", reasons: [evidenceRef] }
+
+block kinds:
+  interpretation   { text, refs: [observationId] }                        // what the values show
+  hypothesis       { name, confidence: "low"|"moderate"|"high", rationale, refs, confirmWith: specialty, workup: [test] }
+  treatment_option { name, kind: "lifestyle"|"medication_class"|"medication"|"procedure"|"referral",
+                     rationale, refs, contraindications: "checked_clear"|"checked_conflict"|"unknown",
+                     conflictNotes, confirmWith: specialty }
+  clinician_check  { claim: "agree"|"differs"|"cannot_assess", theirs: recordRef, ours: hypothesis|treatment_option, why }
+  question         { text, refs }                                          // for the visit
+  general          { text }                                                // knowledge, labelled
+  missing          { context: "sex"|"birth_year"|"medications"|"symptoms"|... }
+  proposal         { itemId }                                              // created through a tool
+```
+
+### Validation — fail closed, per block
+
+- Every `interpretation`, `hypothesis`, `treatment_option` and `clinician_check` must reference
+  evidence that exists and is authorised; an unbound block is dropped, an answer whose every
+  block fails is refused with a closed reason (`unbound_reference`, `missing_urgency`,
+  `unpaired_recommendation`, `schema_shape`, …).
+- Every `hypothesis` and `treatment_option` must carry `confirmWith`; an answer that recommends
+  without a referral is refused (`unpaired_recommendation`). Accepting the block creates the
+  referral item in the `clinician` lane automatically.
+- `urgency` is mandatory. `urgent`/`emergency` render fixed copy at the top of the answer and
+  in the assistant card, and cannot be dismissed by the model's own later blocks.
+- A `treatment_option` of kind `medication` with a dose is refused unless it quotes the
+  clinician's own prescription from a document (decision 3 may relax this for the nutritionist's
+  supplements).
+- `general` blocks may not contain a number that appears among the profile's values.
+- The raw exchange, the checker verdict and the closed reason are stored per turn for the owner
+  (like the run journal); nothing of it reaches logs, metrics or audit.
+
+### The checker pass
+
+Every substantive answer runs a second, independent `codex exec` with a different prompt: given
+the evidence and the answer, refute it. It returns per block `supported | overreach |
+contradicted | unsafe`, plus its own urgency read. Rules: a block marked `contradicted` or
+`unsafe` is dropped; `overreach` lowers the confidence and adds the checker's note; the higher
+of the two urgency reads wins. Two disagreeing runs are cheaper than one wrong recommendation,
+and the disagreement is visible to the owner. Both runs use the assistants' own model and effort
+setting (settings page, next to the document model) — the strongest model the household has,
+at high effort; the fast document model is not enough here.
+
+### Tools
 
 | Tool | Returns | Available to |
 | --- | --- | --- |
-| `get_profile_context` | confirmed observations (code, printed value, unit, sample date, laboratory, source pointer), latest summary version, pending review counts, care plan items, the family's own context (goals, restrictions) | all |
-| `get_source_fragment(observationId)` | the exact page fragment behind one confirmed value | all |
-| `list_sources` | documents with title, category, date, extraction state | all |
-| `get_document_recommendations(documentId)` | confirmed clinician recommendations extracted from a document (slice 2) | all |
-| `propose_plan_item` (**write**) | creates one `proposed` care-plan item with provenance to this conversation turn and, when applicable, to a document fragment or a context entry | Питание, Движение, Навигатор |
-| `propose_visit_questions` (**write**) | stores a draft question list for the next visit, each question bound to an observation or a context entry | Навигатор |
+| `get_medical_profile` | the profile as the person recorded it | all |
+| `get_confirmed_observations` | confirmed values with ranges, flags, dates, source pointers; optional code filter and time window | all |
+| `get_source_fragment(observationId)` | the exact fragment | all |
+| `get_clinician_record` | confirmed diagnoses / prescriptions / referrals from documents (slice 2) | all |
+| `get_care_plan` | accepted and proposed items with provenance | all |
+| `propose_plan_item` (write) | one `proposed` item in a lane, with provenance to this turn and its evidence | all |
+| `propose_referral` (write) | one `proposed` `clinician` item naming the specialty and the block it confirms | all |
 
-Every tool re-authorises the profile scope from the capability token; no tool returns storage
-keys, paths, bytes, or anything outside the profile. Writes only ever create `proposed`
-things — nothing accepted, nothing scheduled, nothing changed.
+Writes create proposals only. Every tool re-authorises the profile scope from the capability
+token and returns bounded projections — no storage keys, paths, bytes.
 
-### Answer shape
+## Seeing how well the clinicians did
 
-An assistant turn is not free prose. It is a bounded list of typed blocks the server
-validates and the UI renders:
+The owner's main goal is a comparison, and it has to be honest about what it can know:
 
-```
-answer = {
-  blocks: [
-    { kind: "evidence",  text, refs: [observationId | documentId+fragment] }   // must cite
-    { kind: "general",   text }                                                 // labelled general
-    { kind: "question",  text, refs: [...] }                                    // for the clinician
-    { kind: "proposal",  itemId }                                               // created via tool
-    { kind: "missing",   context: "dietary_restrictions" | ... }                // what it needs
-    { kind: "boundary",  code: "not_a_diagnosis" | "ask_clinician" | ... }      // fixed copy
-  ]
-}
-```
+- **What we can measure**: agreement between the assistant's second opinion and the clinician's
+  documented diagnosis/treatment; what the assistant would have added (workup, referrals) that
+  the clinician did not order; what later evidence showed (a follow-up value, a later
+  diagnosis in a later document); which side the person eventually acted on.
+- **What we cannot claim**: that either side was right. The assistant's own error rate is not
+  known; a disagreement is a question for the next visit, not a verdict.
 
-Validation, fail-closed and per block like the extraction pipeline:
-
-- an `evidence` block must reference authorised observations/fragments that exist; a block
-  whose reference does not resolve is dropped; an answer whose every block fails is refused with
-  a closed reason (`unbound_reference`, `prescriptive_language`, `schema_shape`…);
-- `general` blocks may not contain a number that appears among the profile's values (a cheap
-  deterministic check that keeps «general» general);
-- a lexicon gate refuses prescriptive language in any block: dosages («мг», «мкг/сут»,
-  «таблетк»), drug forms, «принимайте», «назначаю», «диагноз», «у вас … (болезнь)» patterns.
-  It is a guard, not a classifier: false positives are shown as «Ассистент не смог ответить в
-  рамках правил», never as a softened answer;
-- `boundary` codes render fixed Russian copy from one table, exactly like rejection reasons;
-- the raw exchange is stored per turn for the owner (like the run journal), payload-free
-  elsewhere.
-
-### What the person sees
-
-- One workspace per assistant on the profile: the conversation, and next to it the assistant's
-  «рабочий стол» — for the navigator the pending review, last sources and the draft visit
-  questions; for nutrition and movement the relevant care-plan lane, the context entries the
-  assistant relies on, and the proposals awaiting a decision.
-- Every evidence sentence carries the same source link as the review workspace (document,
-  page, quoted fragment). Every general block carries its label. Every proposal is a card with
-  «Принять / Отклонить», never applied on its own.
-- Egress is disclosed once per assistant conversation, naming exactly what travels: confirmed
-  values with codes and dates, the family's context entries, the conversation — never raw
-  documents unless the person attaches one deliberately (which opens the existing document
-  dialogue). The acknowledgement is stored with the conversation.
-
-## What each assistant does, concretely
-
-### Навигатор
-
-- «Что у меня подтверждено и что ждёт решения?» — deterministic; the model only phrases.
-- «Что это за анализ / документ?» — general block + evidence block («в вашем источнике от
-  20.03.2026 он есть на стр. 2»).
-- «Подготовь вопросы к приёму» — reads confirmed observations, source flags (the laboratory's
-  own out-of-range marks — never Veylta's judgement), missing data, the family's goals; drafts
-  a question list where each question cites its source; the person edits and accepts; the
-  accepted list is attached to the health summary bundle for the visit.
-- «Что врач написал делать?» — surfaces confirmed recommendations extracted from clinician
-  documents (slice 2) and offers to turn them into plan items.
-- Never: interpret a value, rank urgency, suggest a specialist «because of» a value. It may
-  say «в источнике лаборатория пометила значение как вне референса» — that is the source's
-  own flag.
-
-### Питание
-
-- Keeps the family's dietary context: restrictions, allergies, preferences, goals — typed by the
-  person, dated, with an optional link to the document they came from.
-- Turns a clinician's written diet recommendations (extracted and confirmed) into a plan:
-  items in the `nutrition` lane, reminders, a shopping-list draft — every item pointing at the
-  fragment it came from.
-- Explains general nutrition concepts on request, labelled general.
-- Prepares questions for a dietitian or the treating physician from the context and the
-  confirmed values («у меня ферритин из отчёта от 20.03 — стоит ли обсуждать питание?» is a
-  *question* the person will ask, not an answer).
-- Optional (decision 2): generic, non-medical templates offered as drafts only after the person
-  states there are no clinical restrictions and accepts the disclosure — e.g. «структура
-  недельного меню» without quantities tied to values.
-- Never: a diet from a value, supplements, calories, exclusions «because of» a value.
-
-### Движение
-
-- Keeps activity context: constraints («после операции — только ходьба до июня»), clearance
-  status as the person stated it, preferences, equipment, goals.
-- Schedules what a physician or physiotherapist recommended (extracted from a document or typed
-  by the person as their decision) into the `activity` lane with reminders and a simple
-  adherence log («сделано / пропущено», user-recorded).
-- Explains general concepts, labelled general.
-- Prepares questions for the physician/physiotherapist about load and limits.
-- Optional (decision 2): generic beginner templates (walking, mobility) as drafts, only after
-  stated constraints and disclosure, never adjusted by laboratory values.
-- Never: clear a load, progress intensity from values, treat pain or symptoms.
+So slice 2 delivers the **сверка** («сверка с назначением врача»): per document, the
+clinician's record next to the assistant's independent read, item by item — agree / differs
+(with why) / cannot assess — and every «differs» becomes a question the person can bring to
+that clinician or to a second one. Slice 5 adds the **outcome log**: for each hypothesis and
+treatment option the person marks what the clinician said (confirmed / rejected / modified,
+dated, optionally linked to the document that says so). Over time the log answers the owner's
+question as far as it can be answered: agreement rates, what was missed by whom, and how often
+later evidence sided with the assistant or the clinician. It is shown as counts with links to
+the cases, never as a rating of a named doctor.
 
 ## Architecture (reuse first)
 
-- **Runtime**: `codex-document-agent-runtime.ts` generalised to `assistant-runtime` — same
-  `codex exec` + resume, same disabled features, same bounded I/O; the prompt per assistant
-  lives in `apps/api/src/prompts/assistant-<id>.prompt.ts`.
-- **MCP**: `document-agent-mcp.ts` generalised to a per-turn capability that names the profile
-  scope and the assistant id; tools registered per assistant from one registry.
-- **Storage**: `assistant_conversations` / `assistant_messages` (shape of the document-agent
-  tables plus `assistant_id`), `assistant_exchanges` for the owner-visible raw turn (like
-  `processing_job_exchanges`), `profile_context_entries` (user-authored context: kind, text,
-  optional source pointer, created/updated, revision), `visit_question_sets` (draft → accepted).
-- **Contracts**: `assistant/v1` (conversation, message, blocks, boundary codes),
-  `profile-context/v1`, care-plan provenance extended with `conversationTurnId` and
-  `contextEntryId` next to the existing `sourceObservationId`.
-- **Recommendation extraction** (slice 2): a second extraction target next to laboratory facts —
-  `document_recommendations` bound to page + fragment, reviewed like facts, with a closed
-  `kind` (diet, activity, medication-as-written, follow-up, other) and never rephrased into
-  advice by Veylta.
-- **Validation**: `assistant-answer-parser` sits beside `codex-intelligence/` and reuses its
-  primitives (bounded strings, per-item keep/drop, closed reasons, source binding through
-  `SourceText` for fragment references).
-- **Prompts** in the prompts folder; phrases pinned by tests as today.
+- **Runtime**: `codex-document-agent-runtime.ts` generalised to `assistant-runtime` (same
+  `codex exec` + resume, disabled features, bounded I/O) plus a second `checker` invocation per
+  turn. Prompts in `apps/api/src/prompts/assistant-<id>.prompt.ts` and
+  `assistant-checker.prompt.ts`; the disclaimer copy and boundary codes in one table.
+- **MCP**: `document-agent-mcp.ts` generalised — a per-turn capability names profile scope and
+  assistant id; tools registered per assistant from one registry.
+- **Storage**: `assistant_conversations` / `assistant_messages` (document-agent shape +
+  `assistant_id`), `assistant_exchanges` (raw turn, checker verdict, reason),
+  `medical_profile` + `medical_profile_entries` (typed, dated, revisioned),
+  `clinician_records` (slice 2, bound to page + fragment, reviewed like facts),
+  `assistant_outcomes` (slice 5).
+- **Contracts**: `assistant/v1` (conversation, urgency, blocks, reasons), `medical-profile/v1`,
+  `clinician-record/v1`; care-plan provenance gains `conversationTurnId`, `clinicianRecordId`.
+- **Extraction**: clinician records reuse `codex-intelligence/` — closed schema, per-item
+  verification through `SourceText`, human review — a second target next to laboratory facts.
+- **Validation**: `assistant-answer-parser` beside `codex-intelligence/`, reusing its
+  primitives (bounded strings, per-item keep/drop, closed reasons, source binding).
+- **Evaluation**: `apps/api/eval/assistants/` — synthetic vignettes with expected urgency,
+  expected top hypotheses and forbidden statements; run on demand against the real model
+  (`pnpm eval:assistants`), and in CI against the fake codex for plumbing only.
 
-## Delivery in slices (each ships green: unit, integration, e2e; each behind the same egress disclosure)
+## Delivery in slices
 
-1. **Profile context + navigator questions (no new extraction).** Context entries CRUD in the
-   plan tab; navigator conversation with `get_profile_context`, `get_source_fragment`,
-   `propose_visit_questions`; typed blocks + validator + lexicon gate; exchange journal;
-   disclosure. Acceptance: a question list where every question opens its source; a refused
-   answer names its rule; nothing in audit rows.
-2. **Clinician recommendations from documents.** Extraction target, review, `document_recommendations`,
-   `get_document_recommendations`; navigator can surface them; care-plan items may cite them.
-   Acceptance: a diet sheet fixture yields items each linked to its fragment; unbound items are
-   dropped exactly like unbound facts.
-3. **Питание.** Its conversation, `propose_plan_item` into `nutrition`/`reminder`, dietary context
-   kinds, questions for a dietitian, general explanations. Acceptance: no numeric value from
-   the profile ever appears inside a `general` block; a diet «because of a value» is refused by
-   the gate in a red-team spec.
-4. **Движение.** Same shape over `activity`; adherence log on accepted items.
-5. **Optional generic templates** (decision 2), behind an explicit per-profile switch and the
-   constraint statement; then reminders/notifications hardening; then evaluation: a fixed set
-   of adversarial prompts (asking for diagnosis, dosage, «is this dangerous?») run in CI against
-   the fake codex with expected boundary codes.
-
-Not in this plan: symptom questions, medication management beyond «as written in the
-document», anything that reads unconfirmed extractions, and any assistant initiative without a
-person's message.
+1. **Medical profile + ИИ-врач.** Profile CRUD in the plan tab (age/sex mandatory for the
+   assistant to interpret); the physician conversation with the tools above minus clinician
+   records; typed blocks, validator, urgency, checker pass; referral proposals; exchange
+   journal; egress disclosure; assistant model/effort settings; the rewritten invariants in
+   PRODUCT.md / threat model / CLAUDE.md. Acceptance: a synthetic anaemia vignette yields an
+   interpretation bound to the values, ranked hypotheses each with a referral, an urgency tier,
+   and a checker verdict; a fixture with a critical potassium yields `emergency` before any
+   block; an answer without referrals is refused by name.
+2. **Clinician records + сверка.** Extraction of diagnoses / prescriptions / referrals from
+   documents with review; `get_clinician_record`; the comparison view; every «differs» as a
+   question. Acceptance: a discharge-note fixture yields records each opening its fragment; the
+   comparison marks agree/differs against the assistant's read of the same evidence.
+3. **ИИ-нутрициолог.** Diet assessment and plan into the `nutrition` lane; interaction with
+   conditions and medications from the profile flagged; supplements per decision 3.
+4. **ИИ-тренер.** Activity assessment and programme into `activity` with progression and an
+   adherence log; clearance handling.
+5. **Outcome log and evaluation.** Confirmed / rejected / modified per item, dated, linked to
+   the confirming document; the agreement view; the vignette eval harness with a first set of
+   30 synthetic cases and its report.
 
 ## Open decisions (owner's call, with a recommendation)
 
-1. **Name of the first assistant.** «Доктор» in the request vs «Медицинский навигатор» in the
-   product. *Recommendation:* keep «Навигатор» in the UI (or «Навигатор по здоровью») — the
-   product promises never to impersonate a professional, and the name is the first thing that
-   promise touches; «доктор» can stay as our internal shorthand.
-2. **Depth of nutrition and movement content.** (A) secretary + educator only; (B) A plus
-   generic non-medical templates as drafts after stated constraints; (C) recommendations
-   derived from values — excluded, it breaks the invariants. *Recommendation:* ship A in slices
-   3–4, decide on B after seeing A in use.
-3. **Interaction model.** (a) structured requests only (buttons: «Подготовить вопросы»,
-   «Составить расписание из документа»); (b) chat with typed blocks; (c) both, chat first.
-   *Recommendation:* (b) — one conversation surface per assistant, but every request the
-   buttons would make is also a chip in the composer, so the common paths need no typing.
-4. **What travels to the model.** Confirmed values with codes/dates/laboratory and the family's
-   context; never raw documents in the assistant channel (a document is discussed in its own
-   dialogue). *Recommendation:* yes, and say it verbatim in the disclosure.
-5. **Reference ranges in evidence blocks.** Show only the printed range and the laboratory's own
-   flag (as the review workspace does), or hide ranges from assistants entirely.
-   *Recommendation:* show the printed range and the source's flag — it is source data, and
-   hiding it invites the model to guess.
+1. **Names.** «ИИ-врач · второе мнение», «ИИ-нутрициолог», «ИИ-тренер» — honest about being
+   AI, honest about the depth. *Recommendation:* these three; «Медицинский навигатор» retires.
+2. **Model and effort.** A separate assistant model setting; default the strongest model at
+   high effort, checker on the same model. *Recommendation:* yes; the fast document model
+   stays for extraction only.
+3. **Doses and supplements.** (a) never invent a dose — quote only the clinician's;
+   (b) allow the nutritionist supplement doses within general reference ranges, referral
+   required; (c) allow medication doses as recommendations. *Recommendation:* (a) in slice 1;
+   (b) can be switched on per profile in slice 3; (c) not offered — it is where the tool stops
+   being a second opinion and starts prescribing.
+4. **Urgency behaviour.** Fixed copy for `urgent`/`emergency` at the top of the answer and on
+   the card; no way for the model to soften it. *Recommendation:* yes, and log the tier in the
+   payload-free audit as a code.
+5. **What the сверка may say about a clinician.** Agree / differs / cannot assess with reasons,
+   counts over time, never a score for a named doctor. *Recommendation:* exactly that.
+6. **Guideline grounding.** Model memory only (labelled) now; a locally curated guideline pack
+   fed as context later. *Recommendation:* start with memory + label; add the pack when the
+   eval shows where the model drifts.
