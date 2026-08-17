@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createCodexDocumentIntelligenceProvider } from "../codex-document-intelligence-provider.js";
 import { unitlessMark } from "./readings.js";
-import { executorFor, laboratoryAnswer } from "./test-support.js";
+import { executorFor, laboratoryAnswer, measurementResult } from "./test-support.js";
 
 /**
  * What a printed reading looks like after the parser: the unit as printed or the unitless
@@ -41,7 +41,7 @@ function fact(overrides: Record<string, unknown>) {
   };
 }
 
-async function analyzed(facts: readonly unknown[]) {
+async function analyzed(facts: readonly unknown[], structuredResults: readonly unknown[] = []) {
   const provider = createCodexDocumentIntelligenceProvider(
     {
       resolveExecutionProfile: async () => ({
@@ -54,10 +54,37 @@ async function analyzed(facts: readonly unknown[]) {
       }),
       timeoutMs: 120_000,
     },
-    executorFor(laboratoryAnswer({ facts }), []),
+    executorFor(laboratoryAnswer({ facts, structuredResults }), []),
   );
   return provider.analyze({ contentType: "application/pdf", pages: [page] });
 }
+
+test("a summary result whose unit is the range still binds to its unitless fact", async () => {
+  const output = await analyzed(
+    [
+      fact({
+        factKey: "index",
+        sourceName: "Коэффициент атерогенности",
+        sourceValue: "5,03",
+        sourceUnit: "< 4,00",
+        source: { pageNumber: 1, fragment: "5,03 p Коэффициент атерогенности < 4,00" },
+      }),
+    ],
+    [
+      {
+        ...measurementResult(
+          "index",
+          "Коэффициент атерогенности",
+          "5,03",
+          "5,03 p Коэффициент атерогенности < 4,00",
+        ),
+        unit: "< 4,00",
+      },
+    ],
+  );
+  assert.equal(output.extraction.items[0]?.sourceUnit, unitlessMark);
+  assert.equal(output.intelligence.structuredResults[0]?.unit, unitlessMark);
+});
 
 test("a unitless row keeps the unitless mark: a range, a flag or a placeholder is not a unit", async () => {
   for (const sourceUnit of ["< 4,00", "не указана", "p", "—", "/", "ед. не указана"]) {

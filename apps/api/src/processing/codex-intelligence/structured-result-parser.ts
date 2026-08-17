@@ -17,7 +17,7 @@ import {
   optionalPrintedPhrase,
   russianBoundedString,
 } from "./field-parsers.js";
-import { valueWithoutRepeatedUnit } from "./readings.js";
+import { printedUnit, valueWithoutRepeatedUnit } from "./readings.js";
 import type { SourceText } from "./source-text.js";
 
 /** One generic summary result, source-bound; its status is settled later against its fact. */
@@ -31,7 +31,9 @@ export function parseStructuredResult(
   if (!keyPattern.test(resultKey)) invalidOutput("invalid_key");
   const type = oneOf(result.type, DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES);
   const status = oneOf(result.status, DOCUMENT_INTELLIGENCE_RESULT_STATUSES);
-  const unit = optionalPrintedPhrase(result.unit, 100);
+  // The same folding as a fact's unit, or a summary result and its fact could not be one reading.
+  const printed = optionalPrintedPhrase(result.unit, 100);
+  const unit = printed === null ? null : printedUnit(printed);
   const proposedValue = optionalPrintedPhrase(result.value, 500);
   if (unit !== null && proposedValue === null) invalidOutput("inconsistent_fields");
   const resultValue = proposedValue === null ? null : valueWithoutRepeatedUnit(proposedValue, unit);
