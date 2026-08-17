@@ -31,10 +31,10 @@ export function AssistantHero({
           </a>
           <a
             className="button page-hero__action"
-            href={profileTabPath(familyId, profileId, "plan")}
+            href={profileTabPath(familyId, profileId, "dossier")}
           >
             <ClipboardList size={17} aria-hidden="true" />
-            Медпрофиль и план
+            Досье
           </a>
         </>
       }

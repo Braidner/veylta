@@ -69,8 +69,8 @@ import {
   Bot,
   CalendarDays,
   CheckCheck,
-  ClipboardList,
   Clock3,
+  ContactRound,
   Files,
   FileText,
   FileUp,
@@ -98,7 +98,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { adminSetupError, validateAdminSetup } from "../account-access";
+import { adminSetupError, canOpenSettings, validateAdminSetup } from "../account-access";
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
@@ -114,14 +114,22 @@ import {
   uploadButtonCopy,
 } from "../documents-archive";
 import { formatDate, formatSampleMoment } from "../format-moment";
-import { documentPath, type ProfileTab, profilePath, profileTabPath, profileTabs } from "../paths";
+import {
+  documentPath,
+  normalizeProfileTab,
+  type ProfileTab,
+  profilePath,
+  profileTabPath,
+} from "../paths";
+import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
 import { AssistantHero } from "./assistant-hero";
 import { AssistantWorkspace } from "./assistant-workspace";
 import { DocumentAgentPanel } from "./document-agent-panel";
 import { DocumentHero } from "./document-hero";
 import { DocumentsHero } from "./documents-hero";
-import { MedicalProfileSection } from "./medical-profile-section";
+import { DossierPanel } from "./dossier-panel";
+import { IdentityChips } from "./identity-chips";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SystemStatus } from "./system-status";
 import { VeyltaMark } from "./veylta-mark";
@@ -164,20 +172,7 @@ function findProfileContext(
   return family === undefined || profile === undefined ? undefined : { family, profile };
 }
 
-/**
- * Settings holds two unrelated things: server administration (admin only) and family
- * profiles and access (any family owner). Either grants entry; the sections gate themselves.
- */
-function canOpenSettings(session: SessionResponse): boolean {
-  return (
-    session.user.role === "admin" || session.families.some((family) => family.role === "owner")
-  );
-}
 type WorkspaceTab = ProfileTab | "settings";
-
-function normalizeProfileTab(value: string | undefined): ProfileTab {
-  return profileTabs.includes(value as ProfileTab) ? (value as ProfileTab) : "overview";
-}
 
 function documentProcessingPath(
   familyId: string,
@@ -623,16 +618,16 @@ export function VeyltaApp({
               История
             </Link>
             <Link
-              id="workspace-tab-plan"
-              className={`workspace-primary-nav__item ${activeTab === "plan" ? "workspace-primary-nav__item--active" : ""}`}
-              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "plan")}
+              id="workspace-tab-dossier"
+              className={`workspace-primary-nav__item ${activeTab === "dossier" ? "workspace-primary-nav__item--active" : ""}`}
+              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "dossier")}
               role="tab"
-              aria-selected={activeTab === "plan"}
-              aria-controls="workspace-panel-plan"
-              tabIndex={activeTab === "plan" ? 0 : -1}
+              aria-selected={activeTab === "dossier"}
+              aria-controls="workspace-panel-dossier"
+              tabIndex={activeTab === "dossier" ? 0 : -1}
             >
-              <ClipboardList size={17} aria-hidden="true" />
-              План
+              <ContactRound size={17} aria-hidden="true" />
+              Досье
             </Link>
             {session !== undefined && canOpenSettings(session) ? (
               <Link
@@ -1962,6 +1957,10 @@ function ProfileWorkspace({
   const canWriteProfile = profile.access !== "granted_read";
   const [uploadPending, setUploadPending] = useState(false);
   const [uploadOpen, setUploadOpen] = useState(false);
+  /** Bumped when the dossier writes into the plan, so the plan below reloads and shows the visit. */
+  const [planVersion, setPlanVersion] = useState(0);
+  /** Bumped when the dossier changes the medical profile, so the heading's identity chips follow. */
+  const [medicalProfileVersion, setMedicalProfileVersion] = useState(0);
   const [selectedUploads, setSelectedUploads] = useState<readonly File[]>([]);
   const [codexConsent, setCodexConsent] = useState(false);
   const [dragActive, setDragActive] = useState(false);
@@ -2192,6 +2191,11 @@ function ProfileWorkspace({
                 {family.role === "owner" ? "Владелец пространства" : "Участник пространства"}
               </span>
               {profile.access === "granted_read" ? <span>Только чтение</span> : null}
+              <IdentityChips
+                key={`identity:${family.id}:${profile.id}:${medicalProfileVersion}`}
+                familyId={family.id}
+                profileId={profile.id}
+              />
             </div>
           </div>
 
@@ -2322,19 +2326,22 @@ function ProfileWorkspace({
         </div>
       ) : null}
 
-      {detail === null && activeTab === "plan" ? (
+      {detail === null && activeTab === "dossier" ? (
         <div
-          id="workspace-panel-plan"
-          className="workspace-tab-panel workspace-tab-panel--plan"
+          id="workspace-panel-dossier"
+          className="workspace-tab-panel workspace-tab-panel--dossier"
           role="tabpanel"
-          aria-labelledby="workspace-tab-plan"
-          aria-label="План"
+          aria-labelledby="workspace-tab-dossier"
+          aria-label="Досье"
         >
-          <MedicalProfileSection
-            key={`medical-profile:${family.id}:${profile.id}`}
+          <DossierPanel
+            key={`dossier:${family.id}:${profile.id}`}
             familyId={family.id}
             profileId={profile.id}
+            displayName={profile.displayName}
             canWriteProfile={canWriteProfile}
+            onPlanChanged={() => setPlanVersion((current) => current + 1)}
+            onProfileChanged={() => setMedicalProfileVersion((current) => current + 1)}
           />
           <HealthSummaryPanel
             key={`summary:${family.id}:${profile.id}`}
@@ -2342,6 +2349,7 @@ function ProfileWorkspace({
             profileId={profile.id}
           />
           <CarePlanPanel
+            key={`plan:${family.id}:${profile.id}:${planVersion}`}
             familyId={family.id}
             profileId={profile.id}
             canWriteProfile={canWriteProfile}
@@ -4930,15 +4938,6 @@ function observationSourceHref(contentPath: string): string {
   return `${apiPrefix}${contentPath}`;
 }
 
-function referenceRangeCopy(
-  referenceRange: NonNullable<ObservationHistoryItem["referenceRange"]>,
-): string {
-  if (referenceRange.sourceText !== null) return referenceRange.sourceText;
-  if (referenceRange.sourceLow === null && referenceRange.sourceHigh === null) return "Не указан";
-  const bounds = `${referenceRange.sourceLow ?? "…"} — ${referenceRange.sourceHigh ?? "…"}`;
-  return referenceRange.sourceUnit === null ? bounds : `${bounds} ${referenceRange.sourceUnit}`;
-}
-
 function ObservationHistoryPanel({
   familyId,
   profileId,
@@ -6537,13 +6536,6 @@ function proposedValue(value: string | null): string {
   return value ?? "Не предложено";
 }
 
-function labReferenceRangeCopy(range: NonNullable<ReviewFact["referenceRange"]>): string {
-  if (range.sourceText !== null) return range.sourceText;
-  if (range.sourceLow === null && range.sourceHigh === null) return "Не указан";
-  const bounds = `${range.sourceLow ?? "…"}–${range.sourceHigh ?? "…"}`;
-  return range.sourceUnit === null ? bounds : `${bounds} ${range.sourceUnit}`;
-}
-
 function reviewErrorCopy(error: unknown): string {
   if (error instanceof ApiError && error.status === 409) {
     return "Версия извлечения уже изменилась. Обновите список и проверьте источник ещё раз.";
@@ -7027,7 +7019,7 @@ function DocumentReviewPanel({
                 <dl className="document-review-context__range">
                   <div>
                     <dt>Диапазон в документе</dt>
-                    <dd>{labReferenceRangeCopy(selectedFact.referenceRange)}</dd>
+                    <dd>{referenceRangeCopy(selectedFact.referenceRange)}</dd>
                   </div>
                 </dl>
               ) : null}

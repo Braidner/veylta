@@ -1,6 +1,7 @@
 import { mkdir } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
-import { openReview, resultCard, reviewWorkspace } from "./support/review";
+import { recordBasics } from "./support/dossier";
+import { correctResult, openReview, resultCard, reviewWorkspace } from "./support/review";
 
 /**
  * Regenerates the README screenshots from a fresh synthetic family on the e2e stand:
@@ -53,19 +54,7 @@ test("capture the README screenshots", async ({ page }) => {
 
   // The physician's second opinion over the confirmed value, profile filled in first.
   const profileUrl = page.url();
-  await page.goto(`${profileUrl}?tab=plan`);
-  const basics = page.getByTestId("medical-profile").getByRole("region", { name: "Основное" });
-  for (const [kind, value] of [
-    ["sex", "female"],
-    ["birth_year", "1992"],
-  ] as const) {
-    await basics.getByRole("button", { name: "Добавить" }).click();
-    await basics.getByLabel("Что записать").selectOption(kind);
-    if (kind === "sex") await basics.getByLabel("Значение").selectOption(value);
-    else await basics.getByLabel("Значение").fill(value);
-    await basics.getByRole("button", { name: "Сохранить" }).click();
-  }
-  await expect(basics.getByText("1992")).toBeVisible();
+  await recordBasics(page, profileUrl, { sex: "female", birthYear: "1992" });
   await page.goto(`${profileUrl}/assistants/physician`);
   const assistant = page.getByTestId("assistant-workspace");
   await assistant.getByRole("button", { name: "Создать диалог" }).click();
@@ -84,35 +73,26 @@ test("capture the README screenshots", async ({ page }) => {
 
 test("capture the консилиум screenshot", async ({ page }) => {
   await openReview(page);
-  for (const [factKey, name, value, unit] of [
-    ["synthetic-analyte-a", "ТТГ", "6.8", "мМЕ/л"],
-    ["synthetic-analyte-b", "Гемоглобин", "9.8", "г/дл"],
-  ] as const) {
-    const workspace = reviewWorkspace(page);
-    await resultCard(page, factKey).click();
-    await workspace.getByRole("button", { name: "Исправить результат" }).click();
-    const correction = workspace.getByRole("form", { name: "Исправление результата" });
-    await correction.getByLabel("Корректное название").fill(name);
-    await correction.getByLabel("Корректное значение").fill(value);
-    await correction.getByLabel("Корректная единица").fill(unit);
-    await correction.getByRole("button", { name: "Сохранить исправление" }).click();
-    await resultCard(page, factKey).click();
-    await expect(workspace.getByText("Исправлено и подтверждено", { exact: true })).toBeVisible();
-  }
+  await correctResult(page, "synthetic-analyte-a", { name: "ТТГ", value: "6.8", unit: "мМЕ/л" });
+  await correctResult(page, "synthetic-analyte-b", {
+    name: "Гемоглобин",
+    value: "9.8",
+    unit: "г/дл",
+  });
   const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
-  await page.goto(`${profileUrl}?tab=plan`);
-  const basics = page.getByTestId("medical-profile").getByRole("region", { name: "Основное" });
-  for (const [kind, value] of [
-    ["sex", "female"],
-    ["birth_year", "1990"],
-  ] as const) {
-    await basics.getByRole("button", { name: "Добавить" }).click();
-    await basics.getByLabel("Что записать").selectOption(kind);
-    if (kind === "sex") await basics.getByLabel("Значение").selectOption(value);
-    else await basics.getByLabel("Значение").fill(value);
-    await basics.getByRole("button", { name: "Сохранить" }).click();
-  }
-  await expect(basics.getByText("1990")).toBeVisible();
+  await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
+  // The dossier: passport, Veylta's own reading of the two values, their dynamics.
+  await expect(page.getByTestId("dossier-attention")).toContainText("Требует внимания");
+  await expect(page.getByTestId("dossier-indicator")).toHaveCount(2);
+  // The dossier is one tall page — passport, assessment, dynamics — so this frame is taller.
+  await page.setViewportSize({ width: 1440, height: 1320 });
+  await page.evaluate(() => {
+    const passport = document.querySelector('[data-testid="dossier-passport"]');
+    if (passport !== null)
+      window.scrollTo(0, passport.getBoundingClientRect().top + window.scrollY - 104);
+  });
+  await screenshot(page, "dossier.png");
+  await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${profileUrl}/assistants/physician`);
   const assistant = page.getByTestId("assistant-workspace");
   await assistant.getByRole("button", { name: "Создать диалог" }).click();

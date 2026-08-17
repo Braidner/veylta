@@ -189,7 +189,8 @@ raw exchange in `assistant_exchanges` (owner-only journal, never audit). Web: pu
 `assistant-answer.tsx`/`assistant-blocks.tsx` (typed blocks, source links, referral → care-plan
 `clinician` item through the plan's own `PUT items/:id`). Browser routes live in `app/paths.ts`.
 **Консилиум** (`POST …/conversations/:id/consilium`, `consilium-turn.ts`): who joins is decided
-from the evidence by `consilium-panel.ts` (catalog code → specialty; sex hormones by recorded
+from the evidence by `consilium-panel.ts` over `analyteSpecialty` in
+`packages/contracts/src/analytes.ts` (catalog code → area and specialty; sex hormones by recorded
 sex; ties in `ASSISTANT_SPECIALTIES` order; ≤5) plus whoever the person adds; every persona
 (`prompts/assistant-specialist.prompt.ts`, first line `Specialty: <id>` — the fakes key on it)
 reads the same evidence in its own thread and is verified and refuted like any answer; the
@@ -200,6 +201,20 @@ the message's `answer`; `consilium` carries invitations, opinions and agreements
 disagreement can be averaged away. A message with `addressee` runs that persona alone
 (`speaker`), never touching the therapist's thread. Exchanges: `opinion`/`checker` per specialty,
 `synthesis`, `checker`.
+
+**Досье** (web tab `dossier`, alias `plan` in `app/paths.ts`) is the person's page: the passport
+(`app/dossier-passport.ts`: `passportOf`, `identityLine`, `identityChips` — BMI as a number only,
+never a category), Veylta's deterministic reading of every confirmed value (`app/dossier.ts`:
+`buildDossierSeries` — one series per code and printed unit, oldest first, status from the printed
+bounds, then the laboratory's flag, else `unknown`; `seriesAssessment` — headline, movement,
+streak, next step naming the specialty; `attentionBySpecialty`), and the components
+`dossier-panel.tsx` (loads the medical profile and the paged observation history) →
+`dossier-passport.tsx` (inline sex/birth-year form while not ready), `dossier-attention.tsx`
+(«В план: визит» writes a `clinician` item; «Спросить ИИ-врача, насколько срочно» links the
+assistant), `dossier-dynamics.tsx` + `dossier-sparkline.tsx`. The heading's `identity-chips.tsx`
+reads the same passport. The synthetic parser and the fake codex read «low–high unit» references
+into printed bounds (`processing/printed-bounds.ts`), so the e2e stand exercises out-of-range
+values without stubbing the API.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the
@@ -281,7 +296,7 @@ YOU MUST NOT relax these to make a feature easier.
   confirmed values and the dossier — outside the printed range or flagged by the laboratory,
   the change against the previous confirmed value and along the series, a repeating finding,
   a value the dossier says to watch — stated plainly with how long it can wait and the analyte's
-  specialty (`assistant/consilium-panel.ts` is the one code→specialty table); never an
+  specialty (`packages/contracts/src/analytes.ts` is the one code→area/specialty table); never an
   invented number, a converted unit, a single index over findings, or a diagnosis from a rule.
   **Model**: hypotheses, treatment options and questions come only from an assistant, as
   verified output: every hypothesis and treatment option names `confirmWith`, every answer

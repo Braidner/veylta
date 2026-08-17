@@ -50,6 +50,34 @@ export function reviewWorkspace(page: Page): Locator {
   return page.getByTestId("document-review-workspace");
 }
 
+/** Corrects one extracted result to the given printed name, value and unit, and waits for the decision. */
+export async function correctResult(
+  page: Page,
+  factKey: string,
+  correction: { name: string; value: string; unit: string },
+): Promise<void> {
+  const workspace = reviewWorkspace(page);
+  await resultCard(page, factKey).click();
+  await workspace.getByRole("button", { name: "Исправить результат" }).click();
+  const form = workspace.getByRole("form", { name: "Исправление результата" });
+  await form.getByLabel("Корректное название").fill(correction.name);
+  await form.getByLabel("Корректное значение").fill(correction.value);
+  await form.getByLabel("Корректная единица").fill(correction.unit);
+  await form.getByRole("button", { name: "Сохранить исправление" }).click();
+  await resultCard(page, factKey).click();
+  await expect(workspace.getByText("Исправлено и подтверждено", { exact: true })).toBeVisible();
+}
+
+/** Confirms one extracted result as printed and waits for the decision. */
+export async function confirmResult(page: Page, factKey: string): Promise<void> {
+  const workspace = reviewWorkspace(page);
+  await resultCard(page, factKey).click();
+  await workspace.getByRole("button", { name: "Подтвердить результат" }).click();
+  await expect(workspace.locator(".document-review-workspace__notice")).toHaveText(
+    "Подтверждено пользователем",
+  );
+}
+
 /** The journal carries the moment the decision was written — the real clock, not a fixture date. */
 export async function expectDecisionTimeJustNow(time: Locator): Promise<void> {
   await expect(time).toHaveAttribute("datetime", /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);

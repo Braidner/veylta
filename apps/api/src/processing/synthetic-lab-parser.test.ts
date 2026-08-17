@@ -77,6 +77,31 @@ test("parses the narrow synthetic format into a strict fact with page provenance
   assert.equal(reviewStatusForFact(firstFact), "needs_review");
 });
 
+test("reads printed numeric bounds out of a «low–high unit» reference, keeping the printed text", () => {
+  const block = syntheticFactBlock.replace(
+    "RANGE|synthetic reference",
+    "RANGE|5.0–8.0 synthetic-unit",
+  );
+  const parsed = parseSyntheticLabPages([
+    syntheticPage({
+      text: [
+        "VEYLTA SYNTHETIC LAB REPORT v1",
+        "SYNTHETIC TEST DATA — NOT FOR MEDICAL USE",
+        block,
+      ].join("\n"),
+    }),
+  ]);
+  const fact = parsed.extraction.items[0];
+  assert.ok(fact !== undefined);
+  assert.deepEqual(fact.referenceRange, {
+    sourceText: "5.0–8.0 synthetic-unit",
+    sourceLow: "5.0",
+    sourceHigh: "8.0",
+    sourceUnit: "synthetic-unit",
+    laboratoryOutOfRange: null,
+  });
+});
+
 test("accepts a versioned vision provenance marker without widening the synthetic grammar", () => {
   const parsed = parseSyntheticLabPages([
     syntheticPage({

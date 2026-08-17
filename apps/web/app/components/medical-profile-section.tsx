@@ -28,10 +28,13 @@ export function MedicalProfileSection({
   familyId,
   profileId,
   canWriteProfile,
+  onChanged,
 }: {
   familyId: string;
   profileId: string;
   canWriteProfile: boolean;
+  /** Told after every saved change, so a passport above can re-read the profile. */
+  onChanged?: () => void;
 }) {
   const formId = useId();
   const path = medicalProfilePath(familyId, profileId);
@@ -68,6 +71,7 @@ export function MedicalProfileSection({
     try {
       await request();
       await load();
+      onChanged?.();
       return true;
     } catch (caught) {
       setError(medicalProfileErrorCopy(caught));

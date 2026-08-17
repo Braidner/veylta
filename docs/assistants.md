@@ -5,7 +5,7 @@ profile, ИИ-врач with parser + checker + egress gate + journal + referrals
 on the settings page next to the document effort, default `high` from `CODEX_ASSISTANT_REASONING_EFFORT`;
 the assistants and the checker run on the dialogue model — a separate assistant model waits for a
 real need; evidence travels inline — the MCP tool set below stays a later shape). **Slice 2
-(консилиум) delivered on 2026-08-17**: the analyte→specialty table (`assistant/consilium-panel.ts`),
+(консилиум) delivered on 2026-08-17**: the analyte→area/specialty table (`packages/contracts/src/analytes.ts`, read by `assistant/consilium-panel.ts` and the dossier),
 persona prompts, parallel opinions each verified and refuted, the therapist's synthesis on the
 conversation's thread with agreements, side-by-side opinions and «Спросить …» chips; a person can
 add a specialty to the panel, and the therapist asking for one on its own waits for a real need.

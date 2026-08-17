@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { recordBasics } from "./support/dossier";
 import { openReview, reviewWorkspace } from "./support/review";
 
 // The physician assistant end to end against the fake codex: nothing leaves before the egress
@@ -52,18 +53,7 @@ test("the physician assistant gates egress, binds every block to a source and re
   await expect(firstAnswer.getByTestId("assistant-urgency")).toContainText("Срочных действий нет");
 
   // Record sex and birth year, then ask again in the same conversation.
-  await page.goto(`${profileUrl}?tab=plan`);
-  const basics = page.getByTestId("medical-profile").getByRole("region", { name: "Основное" });
-  await basics.getByRole("button", { name: "Добавить" }).click();
-  await basics.getByLabel("Что записать").selectOption("sex");
-  await basics.getByLabel("Значение").selectOption("female");
-  await basics.getByRole("button", { name: "Сохранить" }).click();
-  await expect(basics.getByText("Женский")).toBeVisible();
-  await basics.getByRole("button", { name: "Добавить" }).click();
-  await basics.getByLabel("Что записать").selectOption("birth_year");
-  await basics.getByLabel("Значение").fill("1992");
-  await basics.getByRole("button", { name: "Сохранить" }).click();
-  await expect(basics.getByText("1992")).toBeVisible();
+  await recordBasics(page, profileUrl, { sex: "female", birthYear: "1992" });
 
   await page.goto(`${profileUrl}/assistants/physician`);
   await expect(page.getByTestId("assistant-readiness")).toHaveCount(0);
@@ -95,7 +85,7 @@ test("the physician assistant gates egress, binds every block to a source and re
     .click();
   await expect(answer.getByText("Добавлено в план: подтвердить у врача.")).toBeVisible();
 
-  await page.goto(`${profileUrl}?tab=plan`);
+  await page.goto(`${profileUrl}?tab=dossier`);
   const plan = page.getByRole("region", { name: "План заботы" });
   await expect(
     plan.getByText("Подтвердить у специалиста (терапевт): Синтетическое состояние A"),

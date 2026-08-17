@@ -19,7 +19,7 @@ test("an owner plans and completes a dated home-care action without losing it on
   page,
 }) => {
   await openSyntheticProfile(page);
-  await page.getByRole("tab", { name: "План", exact: true }).click();
+  await page.getByRole("tab", { name: "Досье", exact: true }).click();
 
   const plan = page.getByRole("region", { name: "План заботы" });
   await expect(plan).toBeVisible();
@@ -72,7 +72,7 @@ test("an owner explicitly sends a confirmed summary to the ChatGPT Codex session
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
 
   await page.goto(profileUrl);
-  await page.getByRole("tab", { name: "План", exact: true }).click();
+  await page.getByRole("tab", { name: "Досье", exact: true }).click();
   const plan = page.getByRole("region", { name: "План заботы" });
   await plan.getByRole("button", { name: "Предложения Codex" }).click();
   const disclosure = plan.getByRole("region", {

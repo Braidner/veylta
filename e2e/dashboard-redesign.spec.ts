@@ -88,9 +88,10 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   await expect(page.getByRole("region", { name: "История подтверждённых значений" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Документы профиля" })).toHaveCount(0);
 
-  await tabs.getByRole("tab", { name: "План", exact: true }).click();
-  await expect(page).toHaveURL(/\?tab=plan$/);
-  await expect(page.getByRole("tabpanel", { name: "План" })).toBeVisible();
+  await tabs.getByRole("tab", { name: "Досье", exact: true }).click();
+  await expect(page).toHaveURL(/\?tab=dossier$/);
+  await expect(page.getByRole("tabpanel", { name: "Досье" })).toBeVisible();
+  await expect(page.getByTestId("dossier-passport")).toBeVisible();
   await expect(page.getByRole("region", { name: "План заботы" })).toBeVisible();
 
   await tabs.getByRole("tab", { name: "Обзор", exact: true }).focus();
@@ -103,7 +104,7 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   await expect(
     page
       .getByRole("tablist", { name: "Основные разделы профиля" })
-      .getByRole("tab", { name: "План", exact: true }),
+      .getByRole("tab", { name: "Досье", exact: true }),
   ).toBeVisible();
   const overflows = await page.evaluate(
     () => document.documentElement.scrollWidth > window.innerWidth,

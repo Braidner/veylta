@@ -276,7 +276,7 @@ export function ProfileDashboard({
   const model = buildProfileDashboardModel(overview);
   const profileHref = `/families/${encodeURIComponent(overview.profile.familyId)}/profiles/${encodeURIComponent(overview.profile.id)}`;
   const historyHref = `${profileHref}?tab=history`;
-  const planHref = `${profileHref}?tab=plan`;
+  const planHref = `${profileHref}?tab=dossier`;
   const signals = Object.entries(model.signals) as Array<
     [keyof ProfileDashboardModel["signals"], DashboardSignal]
   >;

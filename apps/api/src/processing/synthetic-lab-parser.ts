@@ -4,6 +4,7 @@ import {
   REVIEW_BLOCKING_VALIDATION_ISSUES,
   SYNTHETIC_INDICATOR_CATALOG,
 } from "@veylta/contracts";
+import { printedBounds } from "./printed-bounds.js";
 
 export const SYNTHETIC_LAB_PARSER_VERSION = "synthetic-lab-text/v1" as const;
 export const SYNTHETIC_LAB_FIXTURE_HEADER = "VEYLTA SYNTHETIC LAB REPORT v1" as const;
@@ -209,8 +210,7 @@ function parseFact(block: readonly string[], pageNumber: number): StrictLabExtra
     proposedNormalizedUnit: null,
     referenceRange: {
       sourceText: boundedField(referenceText, 200),
-      sourceLow: null,
-      sourceHigh: null,
+      ...printedBounds(referenceText),
       sourceUnit: boundedField(sourceUnit, 100),
       laboratoryOutOfRange: null,
     },

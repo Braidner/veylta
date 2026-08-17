@@ -1,51 +1,26 @@
-import { expect, type Page, test } from "@playwright/test";
-import { openReview, resultCard, reviewWorkspace } from "./support/review";
+import { expect, test } from "@playwright/test";
+import { recordBasics } from "./support/dossier";
+import { correctResult, openReview } from "./support/review";
 
 // The консилиум end to end against the fake codex: a corrected ТТГ convenes the endocrinologist
 // and a corrected гемоглобин the hematologist, each for a stated reason; their opinions stand
 // side by side under the therapist's synthesis, the disagreement is shown, the synthesis carries
 // the highest urgency; a chip addresses one persona inside the same conversation.
 
-async function correct(
-  page: Page,
-  factKey: string,
-  name: string,
-  value: string,
-  unit: string,
-): Promise<void> {
-  const workspace = reviewWorkspace(page);
-  await resultCard(page, factKey).click();
-  await workspace.getByRole("button", { name: "Исправить результат" }).click();
-  const correction = workspace.getByRole("form", { name: "Исправление результата" });
-  await correction.getByLabel("Корректное название").fill(name);
-  await correction.getByLabel("Корректное значение").fill(value);
-  await correction.getByLabel("Корректная единица").fill(unit);
-  await correction.getByRole("button", { name: "Сохранить исправление" }).click();
-  await resultCard(page, factKey).click();
-  await expect(workspace.getByText("Исправлено и подтверждено", { exact: true })).toBeVisible();
-}
-
 test("the консилиум convenes the specialties the evidence names and keeps every opinion", async ({
   page,
 }) => {
   test.setTimeout(120_000);
   await openReview(page);
-  await correct(page, "synthetic-analyte-a", "ТТГ", "6.8", "мМЕ/л");
-  await correct(page, "synthetic-analyte-b", "Гемоглобин", "9.8", "г/дл");
+  await correctResult(page, "synthetic-analyte-a", { name: "ТТГ", value: "6.8", unit: "мМЕ/л" });
+  await correctResult(page, "synthetic-analyte-b", {
+    name: "Гемоглобин",
+    value: "9.8",
+    unit: "г/дл",
+  });
 
   const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
-  await page.goto(`${profileUrl}?tab=plan`);
-  const basics = page.getByTestId("medical-profile").getByRole("region", { name: "Основное" });
-  await basics.getByRole("button", { name: "Добавить" }).click();
-  await basics.getByLabel("Что записать").selectOption("sex");
-  await basics.getByLabel("Значение").selectOption("female");
-  await basics.getByRole("button", { name: "Сохранить" }).click();
-  await expect(basics.getByText("Женский")).toBeVisible();
-  await basics.getByRole("button", { name: "Добавить" }).click();
-  await basics.getByLabel("Что записать").selectOption("birth_year");
-  await basics.getByLabel("Значение").fill("1990");
-  await basics.getByRole("button", { name: "Сохранить" }).click();
-  await expect(basics.getByText("1990")).toBeVisible();
+  await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
 
   await page.goto(`${profileUrl}/assistants/physician`);
   const assistant = page.getByTestId("assistant-workspace");

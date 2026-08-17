@@ -5,6 +5,15 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { assistantOutput } from "./fake-codex-assistant.mjs";
 
+// «5.0–8.0 synthetic-unit» → printed bounds, as the API-side twin reads them; other text stays text.
+const printedBoundsPattern = /^(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)(?:\s+\S.*)?$/;
+function printedBounds(referenceText) {
+  const match = printedBoundsPattern.exec(referenceText.trim());
+  return match === null
+    ? { sourceLow: null, sourceHigh: null }
+    : { sourceLow: match[1], sourceHigh: match[2] };
+}
+
 export async function handleExec(args) {
   const marker = args.indexOf("--output-last-message");
   if (marker < 0 || args[marker + 1] === undefined) process.exit(2);
@@ -60,8 +69,7 @@ export async function handleExec(args) {
           proposedLaboratory: null,
           referenceRange: {
             sourceText: value(4, "RANGE|"),
-            sourceLow: null,
-            sourceHigh: null,
+            ...printedBounds(value(4, "RANGE|")),
             sourceUnit,
             laboratoryOutOfRange: null,
           },

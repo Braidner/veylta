@@ -81,6 +81,12 @@ the opposite stance:
   from a closed list; confirmed values chart per analyte with provenance back to the page.
 - **Per-document Codex dialogues.** Up to 20 named Russian conversations per document over a
   short-lived, read-only loopback MCP tool that re-authorises the document scope on every call.
+- **Досье.** The person's own page: a passport of what they recorded about themselves (sex, age,
+  height, weight, BMI as a number, conditions, medications, allergies), Veylta's deterministic
+  reading of every confirmed value against its printed laboratory reference — «требует внимания»
+  grouped by the specialty that reads it, with «В план: визит» and «Спросить ИИ-врача, насколько
+  срочно» — and the dynamics of every indicator over time: sparkline on the reference band, change
+  since the previous value, how many results in a row stand outside the range.
 - **Medical profile and the ИИ-врач.** A person records sex, birth year, conditions, medications,
   allergies, symptoms and goals — user-authored, dated, revisioned, never inferred. The physician
   assistant reads that profile and the confirmed observations (each answer's evidence is disclosed
@@ -102,6 +108,10 @@ the opposite stance:
 
 <p align="center">
   <img src="docs/media/review.png" alt="The review workspace: extracted values on the left, the selected value with its source fragment, printed range and the confirm / correct / reject decisions on the right" width="900">
+</p>
+
+<p align="center">
+  <img src="docs/media/dossier.png" alt="The dossier: the person's passport, Veylta's reading of the confirmed values against their printed references grouped by the specialty that reads them, and the dynamics of every indicator" width="900">
 </p>
 
 <p align="center">

@@ -141,7 +141,7 @@ export function buildProfileDashboardModel(
         meta: "Не назначает рацион и добавки",
         action: {
           label: "Открыть план",
-          href: profileTabPath(overview.profile.familyId, overview.profile.id, "plan"),
+          href: profileTabPath(overview.profile.familyId, overview.profile.id, "dossier"),
         },
       },
       {
@@ -155,7 +155,7 @@ export function buildProfileDashboardModel(
         meta: "Не заменяет тренера или врача",
         action: {
           label: "Открыть план",
-          href: profileTabPath(overview.profile.familyId, overview.profile.id, "plan"),
+          href: profileTabPath(overview.profile.familyId, overview.profile.id, "dossier"),
         },
       },
     ],

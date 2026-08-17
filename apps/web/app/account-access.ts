@@ -42,3 +42,16 @@ export function adminSetupError(status: number, _code: string | null): string {
   }
   return "Сервер не смог создать администратора. Данные не сохранены; повторите попытку.";
 }
+
+/**
+ * Settings holds two unrelated things: server administration (admin only) and family
+ * profiles and access (any family owner). Either grants entry; the sections gate themselves.
+ */
+export function canOpenSettings(session: {
+  readonly user: { readonly role: string | null };
+  readonly families: ReadonlyArray<{ readonly role: string | null }>;
+}): boolean {
+  return (
+    session.user.role === "admin" || session.families.some((family) => family.role === "owner")
+  );
+}

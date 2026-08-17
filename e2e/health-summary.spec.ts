@@ -49,14 +49,14 @@ async function uploadAndFinishReview(
   await page.getByRole("button", { name: "Отклонить результат" }).click();
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
   await page.getByRole("tab", { name: "История", exact: true }).click();
-  await page.getByRole("tab", { name: "План", exact: true }).click();
+  await page.getByRole("tab", { name: "Досье", exact: true }).click();
 }
 
 test("profile summary is a source-first immutable version after final human review", async ({
   page,
 }) => {
   const profileUrl = await registerDemoFamily(page);
-  await page.getByRole("tab", { name: "План", exact: true }).click();
+  await page.getByRole("tab", { name: "Досье", exact: true }).click();
   const summary = page.getByRole("region", { name: "Сводка для разговора об источниках" });
   await expect(
     summary.getByText("Сводка появится после завершения проверки хотя бы одного документа", {
@@ -82,7 +82,7 @@ test("profile summary is a source-first immutable version after final human revi
 
   await page.getByRole("tab", { name: "История", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}?tab=history`);
-  await page.getByRole("tab", { name: "План", exact: true }).click();
+  await page.getByRole("tab", { name: "Досье", exact: true }).click();
   await expect(summary.getByLabel("Версия сводки")).toHaveValue("1");
   await expect(summary.getByText("СИНТЕТИЧЕСКИЙ АНАЛИТ A: 7.0 synthetic-unit")).toBeVisible();
   await expect(summary.getByText(/Новый источник в этой версии/)).toBeVisible();

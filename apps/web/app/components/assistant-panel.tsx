@@ -101,7 +101,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
               <p>
                 <strong>Интерпретации не будет:</strong> в медицинском профиле нет пола или года
                 рождения.{" "}
-                <a href={profileTabPath(familyId, profileId, "plan")}>Заполнить профиль</a>
+                <a href={profileTabPath(familyId, profileId, "dossier")}>Заполнить профиль</a>
               </p>
             </div>
           ) : null}

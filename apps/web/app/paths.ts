@@ -1,6 +1,12 @@
 /** The browser routes of a profile; one place, so no surface spells a URL by hand. */
-export const profileTabs = ["overview", "documents", "history", "plan"] as const;
+export const profileTabs = ["overview", "documents", "history", "dossier"] as const;
 export type ProfileTab = (typeof profileTabs)[number];
+
+/** Older links say `plan`; the tab is the dossier now and still answers to the old name. */
+export function normalizeProfileTab(value: string | undefined): ProfileTab {
+  if (value === "plan") return "dossier";
+  return profileTabs.includes(value as ProfileTab) ? (value as ProfileTab) : "overview";
+}
 
 export function profilePath(familyId: string, profileId: string): string {
   return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;

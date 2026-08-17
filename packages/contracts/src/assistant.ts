@@ -4,6 +4,7 @@
  * docs/assistants.md for the model; the server refuses anything that does not fit it.
  */
 export const ASSISTANT_CONTRACT_VERSION = "assistant/v2" as const;
+export * from "./analytes.js";
 export * from "./assistant-workspace.js";
 
 export const ASSISTANT_IDS = ["physician"] as const;

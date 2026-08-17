@@ -12,8 +12,11 @@ test("a person records their medical profile and the assistants' readiness follo
   });
   await page
     .getByRole("tablist", { name: "Основные разделы профиля" })
-    .getByRole("tab", { name: "План", exact: true })
+    .getByRole("tab", { name: "Досье", exact: true })
     .click();
+  const passport = page.getByTestId("dossier-passport");
+  await expect(passport).toContainText("пол и возраст не указаны");
+  await passport.getByRole("button", { name: "Изменить досье" }).click();
   const section = page.getByTestId("medical-profile");
   await expect(section.getByRole("heading", { name: "Медицинский профиль" })).toBeVisible();
   await expect(section.getByRole("status")).toContainText("пол и год рождения");
@@ -33,6 +36,8 @@ test("a person records their medical profile and the assistants' readiness follo
   await basics.getByRole("button", { name: "Сохранить" }).click();
   await expect(basics.getByText("1992")).toBeVisible();
   await expect(section.getByRole("status")).toHaveCount(0);
+  await expect(passport.getByTestId("dossier-basics")).toHaveCount(0);
+  await expect(passport).toContainText(`Женщина · ${new Date().getUTCFullYear() - 1992} `);
 
   const health = section.getByRole("region", { name: "Состояния и лекарства" });
   await health.getByRole("button", { name: "Добавить" }).click();
@@ -44,6 +49,9 @@ test("a person records their medical profile and the assistants' readiness follo
   await expect(health.getByText("1 августа 2026 г.")).toBeVisible();
 
   await page.reload();
+  const reloadedPassport = page.getByTestId("dossier-passport");
+  await expect(reloadedPassport.getByText("Синтетический препарат A, утром")).toBeVisible();
+  await reloadedPassport.getByRole("button", { name: "Изменить досье" }).click();
   const reloaded = page.getByTestId("medical-profile");
   await expect(reloaded.getByText("Женский")).toBeVisible();
   await expect(reloaded.getByText("Синтетический препарат A, утром")).toBeVisible();

@@ -273,8 +273,8 @@ test("observation history is source-first, paginated, re-authorized, and audited
     });
     assert.deepEqual(correctedItem.referenceRange, {
       sourceText: "5.0–8.0 synthetic-unit",
-      sourceLow: null,
-      sourceHigh: null,
+      sourceLow: "5.0",
+      sourceHigh: "8.0",
       sourceUnit: "synthetic-unit",
       laboratoryOutOfRange: null,
       normalizedLow: null,
