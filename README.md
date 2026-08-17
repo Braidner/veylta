@@ -52,9 +52,10 @@ the opposite stance:
   and the exact printed line it came from — you can always open the source next to the number.
 - **Human in the loop.** The model *proposes*; a person confirms, corrects or rejects each value.
   Only a confirmed value becomes an observation, and the raw extraction is never edited.
-- **Explainable, never a verdict.** Veylta itself computes no health score, risk or trend verdict;
-  range membership comes from the printed reference range and summaries list evidence only. The
-  **ИИ-врач · второе мнение** assistant reasons over confirmed values and your medical profile in
+- **Assesses, then sends you to the right doctor.** Every finding is a recommendation that ends in
+  a named specialist. Veylta's own rules say plainly what a confirmed value means against its printed
+  reference range and how it moved since last time — never a single score, never a diagnosis from a
+  rule. The **ИИ-врач · второе мнение** assistant reasons over confirmed values and your medical profile in
   typed, source-bound blocks — interpretation, ranked hypotheses, what a physician would consider,
   questions for the visit — under a mandatory urgency tier, each hypothesis naming the specialty
   that must confirm it, no doses ever, every answer refuted by a second independent run before it

@@ -276,16 +276,21 @@ YOU MUST NOT relax these to make a feature easier.
 - A rejection reason is always a server-derived code from `PROCESSING_REJECTION_REASONS`,
   rendered through `rejectionReasonCopy`. Never surface a sentence the model produced as
   the reason a run failed.
-- Veylta itself — rules, summaries, dashboards, comparisons of two summary versions — never
-  produces a health score, diagnosis, triage, risk, trend, or treatment advice. Only an
-  assistant may, and only as verified model output: every hypothesis and treatment option
-  names the specialty that must confirm it (`confirmWith`), every answer carries an urgency
-  tier rendered as fixed copy that a later block cannot lower, no medication is ever proposed
-  with a dose, `general` text may not quote the person's values, an unbound block is dropped,
-  a fully refuted answer is refused with a closed reason, and nothing an assistant says becomes
-  a plan item, an observation, or a record without a human action. Sex and birth year missing
-  → `missing` blocks only. The refusal reason shown is always the closed code's copy, never a
-  model sentence.
+- Two grades of assessment, both recommendations that end in a named specialist
+  (PRODUCT.md «What Veylta itself may say»). **Deterministic**: Veylta's own rules over
+  confirmed values and the dossier — outside the printed range or flagged by the laboratory,
+  the change against the previous confirmed value and along the series, a repeating finding,
+  a value the dossier says to watch — stated plainly with how long it can wait and the analyte's
+  specialty (`assistant/consilium-panel.ts` is the one code→specialty table); never an
+  invented number, a converted unit, a single index over findings, or a diagnosis from a rule.
+  **Model**: hypotheses, treatment options and questions come only from an assistant, as
+  verified output: every hypothesis and treatment option names `confirmWith`, every answer
+  carries an urgency tier rendered as fixed copy that a later block cannot lower, no
+  medication is ever proposed with a dose, `general` text may not quote the person's values,
+  an unbound block is dropped, a fully refuted answer is refused with a closed reason. Nothing
+  of either grade becomes a plan item, an observation, or a record without a human action. Sex
+  and birth year missing → `missing` blocks only. The refusal reason shown is always the closed
+  code's copy, never a model sentence.
 - Assistant egress is disclosed and acknowledged per conversation; the payload is exactly what
   `assistant/evidence.ts` builds — never a document, page, file, path, key, or family/profile
   ID. The raw exchange and checker verdict live in `assistant_exchanges` for the owner only.

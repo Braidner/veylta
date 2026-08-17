@@ -16,35 +16,46 @@ Users may be reviewing unfamiliar medical language while worried or short on tim
 
 ## Product Purpose
 
-Veylta is a home health-care PWA backed by SQLite and immutable source documents. It helps a household upload a result, review uncertain extraction, confirm facts, and understand what is known, missing, or due without presenting itself as a clinician or an electronic health record. The profile landing page turns those existing states into a small inbox of assistants and factual health signals so the next safe action is visible immediately.
+Veylta is a home health-care PWA backed by SQLite and immutable source documents. It helps a household upload a result, review uncertain extraction, confirm facts — and then **accompanies the person**: it reads the confirmed record, says what it sees, names the likely explanations and the treatment a physician would consider, and turns every finding into a next step with a named specialist. It is a second opinion that walks with you, not a filing cabinet and not a clinician.
 
-Success means a user can verify every displayed medical value against a specific page and fragment of the source, distinguish evidence from safe suggestions, correct uncertain extraction without destroying the raw value, and control who may open each profile.
+Everything Veylta says is a **recommendation that ends in a doctor's office**: every assessment, hypothesis and treatment option names the specialty that must confirm it and offers to put that visit into the plan. Veylta never presents a finding as a settled diagnosis or a prescription; it makes the case for the visit, keeps the evidence attached, and records what the doctor then said, so over time the household can see how the assessments and the clinicians' decisions compared.
+
+Success means a person can see, on one screen, what in their record deserves attention and why, what to do next and with whom, verify every value against a specific page and fragment of the source, and control who may open each profile.
 
 ## Positioning
 
-Every health value remains understandable in context and independently traceable to the family's own source document.
+A second opinion that keeps you moving: every health value is understandable in context, independently traceable to the family's own source document, assessed for what it means, and answered with the next step.
 
 ## Brand Personality
 
-Calm, exact, and humane. The product should lower cognitive load without softening uncertainty, use plain language without becoming patronizing, and communicate urgency only when evidence supports it.
+Calm, exact, humane — and engaged. The product lowers cognitive load without softening uncertainty, uses plain language without patronizing, says plainly when something deserves attention, and communicates urgency exactly as the evidence supports it: neither alarm for routine review work nor reassurance it cannot justify.
 
 ## Anti-references
 
-- Opaque or gamified health scores.
+- One opaque or gamified "health score" standing in for the record.
 - Black-box AI answers without dates, confidence, or provenance.
-- Alarmist red states and false urgency for routine review work.
+- Alarmist red states and false urgency for routine review work — and the opposite: a passive archive that never says what a value means.
 - Clinic billing, scheduling, or EHR administration patterns imposed on a family tool.
 - Decorative wellness imagery that competes with the user's actual documents and measurements.
 - Generic server-admin dashboards that make the household member secondary.
 
 ## Design Principles
 
-1. Source before interpretation: a value, explanation, or recommendation always has a visible path to evidence.
-2. Uncertainty is a first-class state: low-confidence extraction requires an explicit human decision.
-3. The active person is never implicit: every screen makes the selected family profile clear.
-4. Progressive disclosure: lead with the next useful action, then reveal raw, technical, and provenance details.
-5. Familiar controls, careful language: interaction should disappear into the task while medical meaning stays precise.
-6. Home-server clarity: account, storage, Codex runtime, and access settings must expose their actual local state without revealing secrets.
+1. Source before interpretation: a value, assessment, or recommendation always has a visible path to evidence.
+2. Every assessment ends in a next step: what it means, how much it can wait, which specialist confirms it, and one action to put that into the plan.
+3. Uncertainty is a first-class state: low-confidence extraction requires an explicit human decision; a hypothesis carries its confidence; a refused answer says so by name.
+4. The active person is never implicit: every screen makes the selected family profile clear, and their own dossier — sex, age, height, weight, conditions, medications — is where interpretation starts.
+5. Progressive disclosure: lead with what deserves attention and the next useful action, then reveal raw, technical, and provenance details.
+6. Familiar controls, careful language: interaction should disappear into the task while medical meaning stays precise.
+7. Home-server clarity: account, storage, Codex runtime, and access settings must expose their actual local state without revealing secrets.
+
+## What Veylta itself may say, and what only an assistant may
+
+Two grades of statement, both recommendations, both ending in a referral:
+
+- **Deterministic assessments** — Veylta's own rules over confirmed values and the person's dossier: a value outside its printed reference range or flagged by the laboratory; how it changed against the previous confirmed value and over the series; a finding that repeats; a value the dossier says to watch (a recorded condition, medication or pregnancy). Veylta states these plainly, marks how much they can wait, names the specialty the analyte belongs to (the same code→specialty table that convenes the консилиум) and offers the visit as a plan item. It never invents a number, never converts a unit, never sums findings into one index, and never claims a diagnosis from a rule.
+- **Model assessments** — hypotheses, treatment options and questions for the visit come only from the assistants: verified block by block against the evidence, refuted by an independent run, each with its confidence, its `confirmWith` specialty and its urgency tier in fixed copy; no medication with a dose. A refused answer shows a closed reason, never a model sentence.
+- Nothing either grade says becomes a plan item, an observation, or a record without a human action; the doctor's actual decision — recorded later — is what the assessment is measured against.
 
 ## Assistant Surfaces
 
@@ -53,7 +64,7 @@ Calm, exact, and humane. The product should lower cognitive load without softeni
 - «Собрать консилиум» convenes specialist personas the evidence itself names (a table from analyte codes to specialties, shown to the person as «в данных: ТТГ»), plus any the person adds; each persona reads the same evidence independently and is verified and refuted like the therapist; the therapist's synthesis takes the highest urgency, keeps every referral and names where the specialists agree and differ. Every opinion is shown beside the synthesis, so a disagreement is never averaged away; a chip lets the person ask one persona directly inside the same conversation. Nothing beyond the disclosed evidence leaves the machine for a консилиум.
 - `ИИ-нутрициолог` and `ИИ-тренер` lead to the existing care plan today (Codex may prepare a bounded draft only after the user explicitly requests it and accepts the disclosed egress boundary) and become assistants of the same kind in later slices.
 - No assistant sends unsolicited medical advice or silently changes the care plan. Accepting a referral or a proposal is a human action that creates one `clinician`/lane item; every proposal remains a draft until then.
-- Veylta itself — rules, summaries, dashboards, comparisons — never produces a health score, diagnosis, triage, risk, trend or treatment advice. `Сигналы здоровья` reports only counts and explicit source flags: pending review, source-marked range flags, recent sources, and confirmed values.
+- The dossier («Досье») is the person's page: their passport of recorded facts, the dynamics of every confirmed indicator with Veylta's deterministic assessment and the next step, the summary, the care plan and the assistants' latest read. Every assessment on it is a recommendation with a named specialist; none is a diagnosis, none is a single score.
 
 ## Accessibility & Inclusion
 
