@@ -34,7 +34,8 @@
     "pretest": "pnpm --filter @veylta/contracts build",
     "pretest:e2e": "pnpm --filter @veylta/contracts build",
     "pretypecheck": "pnpm --filter @veylta/contracts build",
-    "test": "pnpm -r test && node --test \"test/veylta-agent/**/*.test.mjs\"",
+    "test": "pnpm -r test && node --test \"test/veylta-agent/**/*.test.mjs\" && pnpm eval:assistants --fake",
+    "eval:assistants": "pnpm --filter @veylta/api eval:assistants --",
     "test:e2e": "node scripts/run-e2e.mjs",
     "test:integration": "pnpm --filter @veylta/api test:integration",
     "typecheck": "pnpm -r typecheck"

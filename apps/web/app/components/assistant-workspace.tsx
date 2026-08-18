@@ -21,6 +21,7 @@ import {
 import { assistantPath } from "../paths";
 import { type Attempt, attemptFor, useAssistantComposer } from "../use-assistant-composer";
 import { useEvidenceIndexes } from "../use-evidence-indexes";
+import { useOutcomeRecording } from "../use-outcome-recording";
 import { useReferralAcceptance } from "../use-referral-acceptance";
 import { WorkspaceRequests } from "../workspace-requests";
 import { AssistantPanel } from "./assistant-panel";
@@ -157,6 +158,12 @@ export function AssistantWorkspace({
     mutate,
     onWorkspace: (response) => setState({ kind: "ready", workspace: response }),
   });
+  const outcomes = useOutcomeRecording({
+    endpoint,
+    conversationId: selectedConversationId,
+    mutate,
+    onWorkspace: (response) => setState({ kind: "ready", workspace: response }),
+  });
 
   // The dossier's ask: find the conversation kept for this addressee (create it once), take the
   // question the dossier left in the browser, and put it into the field. Runs once per visit; the
@@ -229,6 +236,9 @@ export function AssistantWorkspace({
           block.kind === "clinician_check" ? (records.get(block.theirs.recordId)?.label ?? "") : "",
         )
       }
+      pendingOutcome={outcomes.pending}
+      outcomeError={outcomes.error}
+      onRecordOutcome={outcomes.record}
       onSend={(event) => void composer.send(event)}
     />
   );

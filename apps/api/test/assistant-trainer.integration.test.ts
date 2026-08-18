@@ -18,7 +18,7 @@ test("the training assistant: its own room, activity blocks with clearance, prog
 
     const empty = await app.inject({ method: "GET", url: path, headers: { cookie: owner.cookie } });
     assert.equal(empty.statusCode, 200, empty.body);
-    assert.equal(empty.json().contractVersion, "assistant/v6");
+    assert.equal(empty.json().contractVersion, "assistant/v7");
     assert.equal(empty.json().assistantId, "trainer");
     assert.deepEqual(empty.json().consiliumPanel, []);
 

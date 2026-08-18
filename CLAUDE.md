@@ -12,6 +12,7 @@ becomes an observation. One household machine: SQLite + a local object root, no 
 ```bash
 pnpm db:migrate          # apply db/migrations/*.up.sql
 pnpm dev                 # api 4301 + worker health 4302 + web 4300
+pnpm eval:assistants     # 30 synthetic vignettes against the local Codex CLI (--fake: scripted, in pnpm test)
 ```
 
 Full check sequence, in CI order:
@@ -173,7 +174,7 @@ is a new dated entry after the previous is archived, so the passport can show th
 optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
 assistants refuse to interpret values without them.
 
-**Assistants** (`assistant/v6`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
+**Assistants** (`assistant/v7`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
 второе мнение» is a profile-scoped conversation at
 `/v1/families/:f/profiles/:p/assistants/physician` (web route `…/assistants/physician`, entered
 from the overview card); `ASSISTANT_IDS` also names `nutritionist` and `trainer` (see below), each
@@ -321,6 +322,37 @@ payload-free as `care_plan.checkin.recorded`. `CarePlanItem.checkins` carries th
 strip of days ending on the browser's local day, `checkinSummaryCopy`, `takesCheckins`) and
 `components/care-plan-checkins.tsx` under each accepted regimen item in the plan lane («Сегодня:
 Сделал / Пропустил» + a note); the assistants read the marks as `adherence`.
+
+**Журнал исходов** (`packages/contracts/src/assistant-outcomes.ts`, migration 0037
+`assistant_outcomes`, append-only with update/delete triggers): the clinician's word on one block
+of one answer as the person recorded it — `verdict` confirmed | rejected | modified, `decidedOn`
+(the day they say the clinician said it, or null), `note` ≤500, `recordId` of a confirmed clinician
+record that documents it (else null; another profile's record is a 404). Only the blocks an answer
+asks to confirm take a mark (`ASSISTANT_OUTCOME_BLOCK_KINDS`: hypothesis, treatment_option,
+diet_recommendation, activity_recommendation, clinician_check — a question is a 422).
+`PUT …/conversations/:c/messages/:m/blocks/:i/outcome` (`outcome-routes.ts`, `blockIndex` a
+string segment) → `outcome-flow.ts` → `assistant-outcomes.ts` (`recordOutcome`, `outcomesByMessage`,
+`outcomeSummary`): a new row every time, the latest per block stands (201 first, 200 after),
+audited payload-free as `assistant.outcome.recorded`. Every assistant message carries `outcomes`
+(latest per block); the workspace carries `outcomes` — `counts` per verdict, `checks` (the
+сверка's agree/differs/cannot_assess across the room's answers, counted in SQL over `json_each`),
+`entries` newest first (≤100, `title` = the block's name or the сверка's `ours`). Web:
+`app/assistant-outcomes.ts` (`outcomeVerdictCopy`, `outcomeLine`, `outcomeCountsCopy`,
+`checkCountsCopy`, `takesOutcome`), `use-outcome-recording.ts`, `assistant-outcome-control.tsx`
+(«Что сказал врач?» under a block: verdict chips, date, note, confirmed record; the mark as one
+line), `assistant-outcomes.tsx` in the rail («Исходы»: counts and the marked cases with a way back
+to the conversation — never a rating).
+
+**Eval harness** (`apps/api/eval/assistants/`, `pnpm eval:assistants`): 30 synthetic vignettes
+(`vignettes-physician-a.ts`, `-b.ts`, `vignettes-regimen.ts`; `vignette.ts` — `Vignette`,
+`lab()`, `evidenceOf()` builds the same `AssistantEvidence` the API sends with deterministic ids)
+run through `runAssistantTurn` — the same persona, schema, parser and checker — against the local
+Codex CLI (`codexDefaultPreference`, the assistants' effort), or with `--fake` against the scripted
+runtime the tests use. `evaluate.ts` judges plumbing (a verified answer came back) apart from the
+clinical expectations (`minUrgency`/`maxUrgency`, `names`, `specialties`, `kinds`, `forbid`,
+`missing`) and renders a Markdown report; `--fake` runs inside `pnpm test` and fails only on
+plumbing, the real run fails on either. `--only <id-prefix>` picks vignettes; the report lands under
+the ignored `.local/eval/` and holds synthetic content only.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the

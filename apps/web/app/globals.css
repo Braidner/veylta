@@ -9221,6 +9221,165 @@ body:has(.upload-dialog[open]) {
   border-color: oklch(0.86 0.08 78);
 }
 
+/* The clinician's word on a block — the person's own record of the visit, one line and a form. */
+.assistant-outcome {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+}
+
+.assistant-outcome__line {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  padding: 3px 9px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.assistant-outcome__line.is-calm,
+.assistant-outcome__chip.is-calm {
+  color: oklch(0.32 0.07 160);
+  background: oklch(0.96 0.03 160);
+  border-color: oklch(0.86 0.06 160);
+}
+
+.assistant-outcome__line.is-watch,
+.assistant-outcome__chip.is-watch {
+  color: oklch(0.36 0.1 72);
+  background: oklch(0.97 0.04 78);
+  border-color: oklch(0.86 0.08 78);
+}
+
+.assistant-outcome__line.is-muted,
+.assistant-outcome__chip.is-muted {
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border-color: var(--color-line);
+}
+
+.assistant-outcome__chip {
+  flex: 0 0 auto;
+  padding: 1px 7px;
+  border: 1px solid;
+  border-radius: 999px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+}
+
+.assistant-outcome__form {
+  display: grid;
+  gap: 8px;
+  width: min(100%, 520px);
+  padding: 10px 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 12px;
+}
+
+.assistant-outcome__form label {
+  display: grid;
+  gap: 4px;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.assistant-outcome__form input,
+.assistant-outcome__form select {
+  min-height: 34px;
+  padding: 5px 10px;
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.assistant-outcome__verdicts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.assistant-outcome__verdicts legend {
+  margin-bottom: 4px;
+  padding: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.assistant-outcome__actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.assistant-outcome__actions .button {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 0.75rem;
+}
+
+/* The room's log in the rail: counts and cases, never a rating. */
+.assistant-outcomes {
+  display: grid;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-line);
+}
+
+.assistant-outcomes h3 {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  font-size: 0.8125rem;
+}
+
+.assistant-outcomes__empty,
+.assistant-outcomes__counts {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.assistant-outcomes__list {
+  display: grid;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.assistant-outcomes__list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.assistant-outcomes__list .text-button {
+  min-width: 0;
+  padding: 0;
+  font-size: 0.75rem;
+  text-align: left;
+}
+
+.assistant-outcomes__list small {
+  color: var(--color-muted);
+}
+
 .assistant-check__theirs {
   display: grid;
   gap: 2px;

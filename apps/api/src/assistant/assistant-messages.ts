@@ -4,13 +4,16 @@ import type {
   AssistantCheckerVerdictRecord,
   AssistantConsilium,
   AssistantExchange,
+  AssistantId,
   AssistantMessage,
+  AssistantOutcome,
   AssistantRejectionReason,
   AssistantSpecialty,
 } from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import type { SessionActor } from "../family/family-service.js";
 import type { ProfileScope } from "../family/profile-access.js";
+import { outcomesByMessage } from "./assistant-outcomes.js";
 import type { AssistantTurnOutcome } from "./assistant-turn.js";
 
 interface MessageRow {
@@ -44,6 +47,7 @@ interface ExchangeRow {
 function messageFromRow(
   row: MessageRow,
   exchanges: readonly AssistantExchange[] | null,
+  outcomes: readonly AssistantOutcome[],
 ): AssistantMessage {
   if (row.role === "user") {
     return {
@@ -64,6 +68,7 @@ function messageFromRow(
     consilium:
       row.consilium_json === null ? null : (JSON.parse(row.consilium_json) as AssistantConsilium),
     provenance: { modelId: row.model_id ?? "", runtimeVersion: row.runtime_version ?? "" },
+    outcomes,
     exchanges,
     createdAt: row.created_at,
   };
@@ -107,6 +112,7 @@ async function loadExchanges(
 export async function loadMessages(
   client: DatabaseClient,
   scope: ProfileScope,
+  assistantId: AssistantId,
   conversationId: string,
   withExchanges: boolean,
 ): Promise<AssistantMessage[]> {
@@ -121,8 +127,13 @@ export async function loadMessages(
     )
   ).rows;
   const exchanges = withExchanges ? await loadExchanges(client, scope, conversationId) : null;
+  const outcomes = await outcomesByMessage(client, scope, assistantId, conversationId);
   return rows.map((row) =>
-    messageFromRow(row, exchanges === null ? null : (exchanges.get(row.id) ?? [])),
+    messageFromRow(
+      row,
+      exchanges === null ? null : (exchanges.get(row.id) ?? []),
+      outcomes.get(row.id) ?? [],
+    ),
   );
 }
 

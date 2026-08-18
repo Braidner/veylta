@@ -4,6 +4,7 @@ import {
   type AssistantConversationCreateRequest,
   type AssistantId,
   type AssistantMessageRequest,
+  type AssistantOutcomeRequest,
   type AssistantWorkspaceResponse,
   MAX_ASSISTANT_MESSAGE_LENGTH,
 } from "@veylta/contracts";
@@ -20,6 +21,7 @@ import { createAssistantConversation } from "./assistant-conversations.js";
 import { sendAssistantTurn } from "./assistant-send.js";
 import { audit, loadConversation, workspaceResponse } from "./assistant-storage.js";
 import type { AssistantRuntime } from "./codex-assistant-runtime.js";
+import { recordOutcomeInRoom } from "./outcome-flow.js";
 
 export { AssistantIdempotencyConflictError } from "./assistant-requests.js";
 export {
@@ -69,6 +71,17 @@ export interface AssistantService {
     idempotencyKey: string,
     correlationId: string,
   ): Promise<{ response: AssistantWorkspaceResponse; replayed: boolean }>;
+  /** The clinician's word on one block of one answer; the latest mark stands, earlier ones stay. */
+  recordOutcome(
+    actor: SessionActor,
+    scope: ProfileScope,
+    assistantId: AssistantId,
+    conversationId: string,
+    messageId: string,
+    blockIndex: number,
+    request: AssistantOutcomeRequest,
+    correlationId: string,
+  ): Promise<{ response: AssistantWorkspaceResponse; created: boolean }>;
 }
 
 export function createAssistantService(
@@ -143,6 +156,19 @@ export function createAssistantService(
           });
         }
         return workspaceResponse(client, scope, assistantId, true, conversationId);
+      });
+    },
+
+    recordOutcome(actor, scope, assistantId, conversationId, messageId, blockIndex, request, id) {
+      return recordOutcomeInRoom(database, {
+        actor,
+        scope,
+        assistantId,
+        conversationId,
+        messageId,
+        blockIndex,
+        request,
+        correlationId: id,
       });
     },
 

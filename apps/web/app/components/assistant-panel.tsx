@@ -1,6 +1,11 @@
 "use client";
 
-import type { AssistantId, AssistantMessage, AssistantWorkspaceResponse } from "@veylta/contracts";
+import type {
+  AssistantId,
+  AssistantMessage,
+  AssistantOutcomeRequest,
+  AssistantWorkspaceResponse,
+} from "@veylta/contracts";
 import { ContactRound, ShieldAlert } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
 import { assistantIdentity, specialtyLabel } from "../assistant";
@@ -41,6 +46,13 @@ interface AssistantPanelProps {
   readonly onCreateConversation: (title: string) => Promise<boolean>;
   readonly onAcknowledge: () => void;
   readonly onAcceptReferral: (key: string, block: ReferralBlock) => void;
+  readonly pendingOutcome: string | null;
+  readonly outcomeError: string | null;
+  readonly onRecordOutcome: (
+    messageId: string,
+    blockIndex: number,
+    request: AssistantOutcomeRequest,
+  ) => Promise<boolean>;
   readonly onSend: (event: FormEvent<HTMLFormElement>) => void;
 }
 
@@ -78,6 +90,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
       <div className="assistant-shell">
         <AssistantRail
           label={`Диалоги с ${identity.instrumental}`}
+          assistantId={assistantId}
           workspace={workspace}
           canWrite={canWrite}
           isLoading={props.isLoading}
@@ -172,9 +185,9 @@ export function AssistantPanel(props: AssistantPanelProps) {
                 второй запуск проверяет синтез…
               </Waiting>
             ) : null}
-            {props.referralError !== null ? (
+            {props.referralError !== null || props.outcomeError !== null ? (
               <p className="form-error" role="alert">
-                {props.referralError}
+                {props.referralError ?? props.outcomeError}
               </p>
             ) : null}
           </div>
@@ -223,6 +236,8 @@ function ConversationItem({
       acceptedReferrals={panel.acceptedReferrals}
       pendingReferral={panel.pendingReferral}
       onAcceptReferral={panel.onAcceptReferral}
+      pendingOutcome={panel.pendingOutcome}
+      onRecordOutcome={panel.onRecordOutcome}
     />
   );
 }

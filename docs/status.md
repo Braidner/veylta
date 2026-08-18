@@ -166,7 +166,15 @@ The full first slice remains deliberately narrow:
     gives it; and mark each accepted activity or nutrition item day by day —
     done or skipped, with a note — as a four-week strip the assistants read as
     adherence, so progression follows what was actually done
-    (docs/assistants.md slice 5, delivered).
+    (docs/assistants.md slice 5, delivered);
+26. record what the clinician said about any block an assistant asked to
+    confirm — confirmed, rejected or modified, dated, optionally tied to a
+    confirmed clinician record — and see the room's log: counts, the сверка's
+    positions so far, the marked cases with a way back to each answer; never a
+    rating of a named doctor. The vignette harness `pnpm eval:assistants` runs
+    30 synthetic cases through the real turn (or the fake, in CI) and reports
+    plumbing and clinical expectations apart (docs/assistants.md slice 6,
+    delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

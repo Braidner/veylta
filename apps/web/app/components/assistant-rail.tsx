@@ -1,14 +1,16 @@
 "use client";
 
-import type { AssistantWorkspaceResponse } from "@veylta/contracts";
+import type { AssistantId, AssistantWorkspaceResponse } from "@veylta/contracts";
 import { ContactRound, Plus, X } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { formatShortMoment } from "../format-moment";
 import { countCopy } from "../russian-plural";
+import { AssistantOutcomes } from "./assistant-outcomes";
 
 interface AssistantRailProps {
   /** The rail's accessible name — «Диалоги с ИИ-врачом», «Диалоги с ИИ-нутрициологом». */
   readonly label: string;
+  readonly assistantId: AssistantId;
   readonly workspace: AssistantWorkspaceResponse | null;
   readonly canWrite: boolean;
   readonly isLoading: boolean;
@@ -21,6 +23,7 @@ interface AssistantRailProps {
 /** The rail of one assistant's conversations, newest first, with the create form. */
 export function AssistantRail({
   label,
+  assistantId,
   workspace,
   canWrite,
   isLoading,
@@ -126,6 +129,13 @@ export function AssistantRail({
           );
         })}
       </ul>
+      {workspace !== null ? (
+        <AssistantOutcomes
+          assistantId={assistantId}
+          summary={workspace.outcomes}
+          onOpenConversation={onSelectConversation}
+        />
+      ) : null}
     </aside>
   );
 }

@@ -20,9 +20,10 @@
     "db:rollback": "tsx src/database/migrations.ts down",
     "dev:api": "tsx watch src/server.ts",
     "dev:worker": "tsx watch src/worker.ts",
+    "eval:assistants": "tsx eval/assistants/run.ts",
     "start:api": "node dist/src/server.js",
     "start:worker": "node dist/src/worker.js",
-    "test": "tsx --test \"src/**/*.test.ts\"",
+    "test": "tsx --test \"src/**/*.test.ts\" \"eval/**/*.test.ts\"",
     "test:integration": "tsx --test --test-concurrency=1 \"test/**/*.integration.test.ts\"",
     "typecheck": "tsc --noEmit",
     "verify:evidence-bundle": "tsx src/documents/verify-evidence-bundle.ts"

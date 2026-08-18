@@ -18,7 +18,7 @@ test("the nutrition assistant: its own room, diet blocks verified like any answe
 
     const empty = await app.inject({ method: "GET", url: path, headers: { cookie: owner.cookie } });
     assert.equal(empty.statusCode, 200, empty.body);
-    assert.equal(empty.json().contractVersion, "assistant/v6");
+    assert.equal(empty.json().contractVersion, "assistant/v7");
     assert.equal(empty.json().assistantId, "nutritionist");
     assert.deepEqual(empty.json().consiliumPanel, [], "the консилиум is the physician's alone");
     const unknown = await app.inject({

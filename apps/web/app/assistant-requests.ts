@@ -1,6 +1,7 @@
 import {
   ASSISTANT_EGRESS_ACKNOWLEDGEMENT,
   type AssistantConversationPurpose,
+  type AssistantOutcomeRequest,
   type AssistantSpecialty,
   type AssistantWorkspaceResponse,
 } from "@veylta/contracts";
@@ -77,5 +78,19 @@ export function conveneRequest(
       headers: { "Idempotency-Key": key },
       body: JSON.stringify({ question }),
     },
+  );
+}
+
+/** The clinician's word on one block of one answer; the same block again replaces the mark. */
+export function recordOutcomeRequest(
+  endpoint: string,
+  conversationId: string,
+  messageId: string,
+  blockIndex: number,
+  request: AssistantOutcomeRequest,
+) {
+  return apiRequest<AssistantWorkspaceResponse>(
+    `${endpoint}/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/blocks/${blockIndex}/outcome`,
+    { method: "PUT", body: JSON.stringify(request) },
   );
 }

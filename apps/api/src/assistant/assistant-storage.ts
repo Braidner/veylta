@@ -11,6 +11,7 @@ import type { DatabaseClient } from "../database/pool.js";
 import { ResourceNotFoundError, type SessionActor } from "../family/family-service.js";
 import type { ProfileScope } from "../family/profile-access.js";
 import { loadMessages } from "./assistant-messages.js";
+import { outcomeSummary } from "./assistant-outcomes.js";
 import { consiliumPanel } from "./consilium-panel.js";
 import { loadAssistantEvidence } from "./evidence.js";
 
@@ -123,7 +124,8 @@ export async function workspaceResponse(
     messages:
       selectedConversationId === null
         ? []
-        : await loadMessages(client, scope, selectedConversationId, canWrite),
+        : await loadMessages(client, scope, assistantId, selectedConversationId, canWrite),
+    outcomes: await outcomeSummary(client, scope, assistantId),
   };
 }
 
@@ -133,6 +135,7 @@ export async function audit(
     actor: SessionActor;
     scope: ProfileScope;
     action: string;
+    resourceType?: "AssistantConversation" | "AssistantOutcome";
     resourceId: string;
     correlationId: string;
     now: Date;
@@ -142,12 +145,13 @@ export async function audit(
     `INSERT INTO audit_events
        (id, family_id, actor_user_id, action, resource_type, resource_id, result,
         correlation_id, metadata, created_at)
-     VALUES ($1, $2, $3, $4, 'AssistantConversation', $5, 'success', $6, $7, $8)`,
+     VALUES ($1, $2, $3, $4, $5, $6, 'success', $7, $8, $9)`,
     [
       randomUUID(),
       input.scope.familyId,
       input.actor.userId,
       input.action,
+      input.resourceType ?? "AssistantConversation",
       input.resourceId,
       input.correlationId,
       { contractVersion: ASSISTANT_CONTRACT_VERSION },

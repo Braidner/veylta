@@ -13,6 +13,7 @@ import {
   requireTrustedOrigin,
 } from "../http/route-helpers.js";
 import type { AssistantService } from "./assistant-service.js";
+import { registerAssistantOutcomeRoutes } from "./outcome-routes.js";
 import {
   type AssistantParams,
   base,
@@ -133,4 +134,5 @@ export function registerAssistantRoutes(
   );
 
   registerAssistantTurnRoutes(app, family, service, origins);
+  registerAssistantOutcomeRoutes(app, family, service, origins);
 }

@@ -37,6 +37,17 @@ check-ins (migration 0036) — one mark per accepted activity or nutrition item 
 skipped with a note, shown as a four-week strip under the item and read by every assistant as
 `adherence`, so the trainer progresses on what was actually done. Deferred: a structured
 programme (weeks × sessions), heart-rate zones, dossier `?ask=` into the regimen rooms.
+**Slice 6 (outcome log + evaluation) delivered on 2026-08-18**: the clinician's word on any
+block an answer asks to confirm — confirmed / rejected / modified, dated by the person, optionally
+tied to a confirmed clinician record — append-only (`assistant_outcomes`, migration 0037,
+`assistant/v7`), shown under the block as one line and in the room's rail as «Исходы» (counts,
+the сверка's agree / differs / cannot-assess counts, the marked cases with a way back) — never a
+rating of a named doctor; and the vignette harness `pnpm eval:assistants` — 30 synthetic cases
+(24 physician, 3 nutritionist, 3 trainer) with expected urgency bounds, expected names and
+specialties, forbidden phrases and expected `missing`, run through the very same turn (persona,
+schema, parser, checker) against the local Codex CLI or, with `--fake` inside `pnpm test`, against
+the scripted runtime for plumbing. Deferred: «what later evidence showed» as a longitudinal view,
+agreement rates over documents, a guideline pack (decision 6).
 Revision 1 framed the assistants as
 navigators and secretaries; the owner's intent is different and this revision follows it:
 
@@ -46,7 +57,7 @@ navigators and secretaries; the owner's intent is different and this revision fo
 > clinician for confirmation. The main goal is to see how well clinicians choose diagnoses and
 > treatment.
 
-Slices 1–5 are delivered; the decisions at the end were taken as recommended.
+Slices 1–6 are delivered; the decisions at the end were taken as recommended.
 
 ## What changes in the product, deliberately
 
@@ -234,8 +245,8 @@ the cases, never as a rating of a named doctor.
   `assistant_id`), `assistant_exchanges` (raw turn, checker verdict, reason),
   `medical_profile` + `medical_profile_entries` (typed, dated, revisioned),
   `clinician_records` (slice 2, bound to page + fragment, reviewed like facts),
-  `assistant_outcomes` (slice 5).
-- **Contracts**: `assistant/v6` (`ASSISTANT_IDS` physician | nutritionist | trainer; conversation with an optional dossier `purpose`, urgency, blocks incl. `clinician_check`, the diet and the activity blocks, reasons, the record index), `home-care-plan/v2` (check-ins), `medical-profile/v2`,
+  `assistant_outcomes` (slice 6, delivered).
+- **Contracts**: `assistant/v7` (`ASSISTANT_IDS` physician | nutritionist | trainer; conversation with an optional dossier `purpose`, urgency, blocks incl. `clinician_check`, the diet and the activity blocks, reasons, the record index, the outcome log), `home-care-plan/v2` (check-ins), `medical-profile/v2`,
   `clinician-record/v1`; care-plan provenance gains `conversationTurnId`, `clinicianRecordId`.
 - **Extraction**: clinician records reuse `codex-intelligence/` — closed schema, per-item
   verification through `SourceText`, human review — a second target next to laboratory facts.
@@ -277,7 +288,10 @@ the cases, never as a rating of a named doctor.
    progresses; the room refuses personas and the консилиум.
 6. **Outcome log and evaluation.** Confirmed / rejected / modified per item, dated, linked to
    the confirming document; the agreement view; the vignette eval harness with a first set of
-   30 synthetic cases and its report.
+   30 synthetic cases and its report. Acceptance (delivered): a mark on a hypothesis shows under
+   the block and in the room's log with its date and record; the same block again replaces the
+   standing mark and keeps the earlier row; a question takes no mark; the harness runs all 30
+   vignettes through the real turn and reports plumbing and clinical checks apart.
 
 ## Open decisions (owner's call, with a recommendation)
 

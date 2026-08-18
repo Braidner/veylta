@@ -15,6 +15,7 @@ import type {
   AssistantRejectionReason,
   AssistantSpecialty,
 } from "./assistant.js";
+import type { AssistantOutcome, AssistantOutcomeSummary } from "./assistant-outcomes.js";
 
 /** One raw attempt, kept for the owner exactly like a processing run's exchange. */
 export interface AssistantExchange {
@@ -85,6 +86,8 @@ export type AssistantMessage =
       /** Present when this answer is the therapist's synthesis of a консилиум. */
       readonly consilium: AssistantConsilium | null;
       readonly provenance: { readonly modelId: string; readonly runtimeVersion: string };
+      /** The clinician's word on this answer's blocks as the person recorded it, latest per block. */
+      readonly outcomes: readonly AssistantOutcome[];
       /** Owner-only diagnostics; null for a reader. */
       readonly exchanges: readonly AssistantExchange[] | null;
       readonly createdAt: string;
@@ -121,6 +124,8 @@ export interface AssistantWorkspaceResponse {
   readonly conversations: readonly AssistantConversationSummary[];
   readonly selectedConversationId: string | null;
   readonly messages: readonly AssistantMessage[];
+  /** The room's outcome log at a glance — counts and cases, never a rating. */
+  readonly outcomes: AssistantOutcomeSummary;
 }
 
 export interface AssistantConversationCreateRequest {

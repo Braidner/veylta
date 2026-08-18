@@ -20,7 +20,7 @@ test("the physician assistant: disclosure gate, evidence-bound turns, replay and
     assert.equal(empty.statusCode, 200, empty.body);
     assert.equal(empty.headers["cache-control"], "no-store");
     assert.deepEqual(empty.json(), {
-      contractVersion: "assistant/v6",
+      contractVersion: "assistant/v7",
       profileId: owner.body.profile.id,
       assistantId: "physician",
       canWrite: true,
@@ -33,6 +33,11 @@ test("the physician assistant: disclosure gate, evidence-bound turns, replay and
       conversations: [],
       selectedConversationId: null,
       messages: [],
+      outcomes: {
+        counts: { confirmed: 0, rejected: 0, modified: 0 },
+        checks: { agree: 0, differs: 0, cannot_assess: 0 },
+        entries: [],
+      },
     });
 
     const createKey = `create-${randomUUID()}`;

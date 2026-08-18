@@ -5,10 +5,12 @@ import type {
   AssistantExchange,
   AssistantId,
   AssistantMessage,
+  AssistantOutcomeRequest,
 } from "@veylta/contracts";
 import { AlertTriangle, Bot, ClipboardCheck, ShieldCheck, Users } from "lucide-react";
 import { useState } from "react";
 import { refusalCopy, speakerLabel, specialtyLabel, urgencyCopy } from "../assistant";
+import { takesOutcome } from "../assistant-outcomes";
 import { isReferral, type ReferralBlock } from "../assistant-referrals";
 import { formatDate } from "../format-moment";
 import {
@@ -21,6 +23,7 @@ import {
   SourceRefs,
 } from "./assistant-blocks";
 import { AssistantConsiliumView } from "./assistant-consilium";
+import { AssistantOutcomeControl } from "./assistant-outcome-control";
 
 type AssistantReply = Extract<AssistantMessage, { role: "assistant" }>;
 
@@ -43,6 +46,13 @@ interface AssistantAnswerProps {
   readonly acceptedReferrals: ReadonlySet<string>;
   readonly pendingReferral: string | null;
   readonly onAcceptReferral: (key: string, block: ReferralBlock) => void;
+  /** Which block (`${messageId}:${index}`) is being marked with the clinician's word right now. */
+  readonly pendingOutcome: string | null;
+  readonly onRecordOutcome: (
+    messageId: string,
+    blockIndex: number,
+    request: AssistantOutcomeRequest,
+  ) => Promise<boolean>;
 }
 
 /** One assistant reply: fixed urgency copy first, then the typed blocks each bound to sources. */
@@ -57,7 +67,10 @@ export function AssistantAnswer({
   acceptedReferrals,
   pendingReferral,
   onAcceptReferral,
+  pendingOutcome,
+  onRecordOutcome,
 }: AssistantAnswerProps) {
+  const outcomes = new Map(message.outcomes.map((outcome) => [outcome.blockIndex, outcome]));
   const [journalOpen, setJournalOpen] = useState(false);
   const verdicts = new Map(message.checker.map((verdict) => [verdict.blockIndex, verdict]));
 
@@ -113,6 +126,15 @@ export function AssistantAnswer({
                         accepted={acceptedReferrals.has(key)}
                         pending={pendingReferral === key}
                         onAccept={() => onAcceptReferral(key, block)}
+                      />
+                    ) : null}
+                    {takesOutcome(block) && (canWrite || outcomes.has(index)) ? (
+                      <AssistantOutcomeControl
+                        outcome={outcomes.get(index) ?? null}
+                        records={records}
+                        canWrite={canWrite}
+                        pending={pendingOutcome === key}
+                        onRecord={(request) => onRecordOutcome(message.id, index, request)}
                       />
                     ) : null}
                   </div>

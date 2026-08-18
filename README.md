@@ -122,6 +122,12 @@ the opposite stance:
   Under each accepted activity or nutrition item the person marks their days — done or skipped,
   with a note — and every assistant reads those marks, so progression follows what was actually
   done.
+- **The outcome log.** After the visit, the person records what the clinician said about any
+  block an assistant asked to confirm — confirmed, rejected or modified, dated, optionally tied to
+  the confirmed clinician record that documents it. The room's rail counts the marks and the
+  сверка's positions and lists the cases with a way back to each answer — counts and cases, never
+  a rating of a named doctor. `pnpm eval:assistants` runs 30 synthetic vignettes through the very
+  same turn against the local Codex CLI and reports where the model drifts.
 - **Family and access.** An owner, adults with their own profiles, caregivers with a single
   revocable per-profile grant; reversible profile archiving that deletes nothing.
 - **Evidence over time.** Versioned, evidence-backed health summaries; a household care plan whose

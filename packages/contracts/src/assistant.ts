@@ -3,9 +3,10 @@
  * of typed, evidence-bound blocks with an urgency tier — never free prose. See
  * docs/assistants.md for the model; the server refuses anything that does not fit it.
  */
-export const ASSISTANT_CONTRACT_VERSION = "assistant/v6" as const;
+export const ASSISTANT_CONTRACT_VERSION = "assistant/v7" as const;
 export * from "./analytes.js";
 export * from "./assistant-blocks.js";
+export * from "./assistant-outcomes.js";
 export * from "./assistant-workspace.js";
 
 /** The assistants of the same kind: one conversation surface each, the same evidence and gate. */
