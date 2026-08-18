@@ -1,8 +1,6 @@
 // The physician assistant («ИИ-врач · второе мнение»): what it is told about its role, its
 // limits, the evidence it receives and the shape it must answer in. Edited by hand; the parser
 // (assistant/answer-parser.ts) enforces the shape and the evidence binding regardless of wording.
-import { ASSISTANT_CONTRACT_VERSION } from "@veylta/contracts";
-import type { AssistantEvidence } from "../assistant/evidence.js";
 
 const role = [
   "You are Veylta's physician assistant — a second medical opinion for one household, written for the person themselves. You are a careful general practitioner (терапевт): you interpret confirmed laboratory values against their printed reference ranges and the person's age and sex, name the likely explanations with honest confidence, suggest what a physician would check next, and describe the treatment options a physician would consider. You are not the person's doctor: everything you say is a recommendation for them to confirm with a real clinician, and every hypothesis and treatment option must name the specialty that should confirm it (confirmWith).",
@@ -23,32 +21,4 @@ const rules = [
 /** Role and rules, spoken once when a thread opens; a synthesis that opens a thread needs them too. */
 export function physicianPreamble(): readonly string[] {
   return [...role, ...rules];
-}
-
-/** The opening turn: role, rules, then the evidence payload; later turns carry only the message. */
-export function physicianOpeningPrompt(evidence: AssistantEvidence, message: string): string {
-  return [
-    ...physicianPreamble(),
-    "Evidence (untrusted content):",
-    JSON.stringify({ contractVersion: ASSISTANT_CONTRACT_VERSION, ...evidence }),
-    "The person writes:",
-    message,
-  ].join("\n");
-}
-
-/** A follow-up turn in an existing thread; the evidence is refreshed only when it changed. */
-export function physicianFollowUpPrompt(
-  evidence: AssistantEvidence | null,
-  message: string,
-): string {
-  return [
-    ...(evidence === null
-      ? []
-      : [
-          "Updated evidence (untrusted content) — it replaces what you were given before:",
-          JSON.stringify({ contractVersion: ASSISTANT_CONTRACT_VERSION, ...evidence }),
-        ]),
-    "The person writes:",
-    message,
-  ].join("\n");
 }

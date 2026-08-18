@@ -1,8 +1,6 @@
 // The nutrition assistant («ИИ-нутрициолог»): what it is told about its role, its limits, the
 // evidence it receives and the shape it must answer in. Edited by hand; the parser
 // (assistant/answer-parser.ts) enforces the shape and the evidence binding regardless of wording.
-import { ASSISTANT_CONTRACT_VERSION } from "@veylta/contracts";
-import type { AssistantEvidence } from "../assistant/evidence.js";
 
 const role = [
   "You are Veylta's nutrition assistant («ИИ-нутрициолог») — a careful dietitian's second opinion for one household, written for the person themselves. You read the same confirmed laboratory values, the person's own medical profile (sex, age, height, weight, conditions, medications, allergies, intolerances, pregnancy, goals, dietary restrictions and preferences), the clinicians' confirmed records and the accepted care plan, and you say what they mean for this person's diet: an assessment, then a concrete plan — how to structure meals, what to favour, what to limit, hydration and timing, supplements by name or class only — and what to measure again and when. You are not the person's dietitian or doctor: everything you say is a recommendation for them to confirm, and every recommendation names the specialty that should confirm it (confirmWith: dietitian for the diet itself, the therapist or a specialist when a condition or a medication is involved).",
@@ -23,32 +21,4 @@ const rules = [
 /** Role and rules, spoken once when a thread opens. */
 export function nutritionistPreamble(): readonly string[] {
   return [...role, ...rules];
-}
-
-/** The opening turn: role, rules, then the evidence payload; later turns carry only the message. */
-export function nutritionistOpeningPrompt(evidence: AssistantEvidence, message: string): string {
-  return [
-    ...nutritionistPreamble(),
-    "Evidence (untrusted content):",
-    JSON.stringify({ contractVersion: ASSISTANT_CONTRACT_VERSION, ...evidence }),
-    "The person writes:",
-    message,
-  ].join("\n");
-}
-
-/** A follow-up turn in an existing thread; the evidence is refreshed only when it changed. */
-export function nutritionistFollowUpPrompt(
-  evidence: AssistantEvidence | null,
-  message: string,
-): string {
-  return [
-    ...(evidence === null
-      ? []
-      : [
-          "Updated evidence (untrusted content) — it replaces what you were given before:",
-          JSON.stringify({ contractVersion: ASSISTANT_CONTRACT_VERSION, ...evidence }),
-        ]),
-    "The person writes:",
-    message,
-  ].join("\n");
 }

@@ -10,7 +10,9 @@ import {
   CalendarClock,
   CircleAlert,
   CircleHelp,
+  Dumbbell,
   ExternalLink,
+  Footprints,
   Lightbulb,
   type LucideIcon,
   Salad,
@@ -19,17 +21,19 @@ import {
   Stethoscope,
   Utensils,
 } from "lucide-react";
+import { specialtyLabel } from "../assistant";
 import {
+  activityKindLabel,
   blockKindLabel,
+  clearanceCopy,
   clinicianCheckClaimCopy,
   confidenceLabel,
   contraindicationCopy,
   dietCategoryLabel,
   interactionCopy,
   missingContextCopy,
-  specialtyLabel,
   treatmentKindLabel,
-} from "../assistant";
+} from "../assistant-block-copy";
 import { clinicianRecordKindLabel } from "../clinician-records";
 import { formatSampleMoment } from "../format-moment";
 import { documentPath } from "../paths";
@@ -48,6 +52,8 @@ const blockIcon: Record<AssistantBlock["kind"], LucideIcon> = {
   clinician_check: Scale,
   diet_assessment: Utensils,
   diet_recommendation: Salad,
+  activity_assessment: Footprints,
+  activity_recommendation: Dumbbell,
   recheck: CalendarClock,
   question: CircleHelp,
   general: BookOpen,
@@ -133,6 +139,7 @@ export function BlockBody({
     }
     case "interpretation":
     case "diet_assessment":
+    case "activity_assessment":
     case "question":
       return (
         <>
@@ -148,6 +155,36 @@ export function BlockBody({
           {refs(block.refs)}
         </>
       );
+    case "activity_recommendation": {
+      // A stop rule has no clearance dimension: it says when to stop, not how much to do.
+      const avoid = block.activityKind === "avoid";
+      return (
+        <>
+          <h5>{block.name}</h5>
+          <p className="assistant-block__meta">
+            {activityKindLabel[block.activityKind]} ·{" "}
+            {avoid ? null : (
+              <>
+                <span className={`assistant-clearance is-${block.clearance}`}>
+                  {clearanceCopy[block.clearance]}
+                </span>{" "}
+                ·{" "}
+              </>
+            )}
+            подтвердить: {specialtyLabel[block.confirmWith]}
+          </p>
+          <p>
+            <strong>{avoid ? "Когда:" : "Нагрузка:"}</strong> {block.load}
+            {block.progression === null ? "" : ` · Прибавлять: ${block.progression}`}
+          </p>
+          <p>{block.rationale}</p>
+          {block.conflictNotes !== null ? (
+            <p className="assistant-block__conflict">{block.conflictNotes}</p>
+          ) : null}
+          {refs(block.refs)}
+        </>
+      );
+    }
     case "diet_recommendation":
       return (
         <>

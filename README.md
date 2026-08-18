@@ -114,6 +114,14 @@ the opposite stance:
   each read against the recorded conditions and medications with the interaction named and a
   specialty to confirm it, and what to measure again with the assistant's own phrase for when. An
   accepted recommendation becomes a «питание» item, a recheck an «анализы» item.
+- **ИИ-тренер and the person's own diary.** A third room: what the confirmed values, the recorded
+  constraints and the clinician's clearance say about physical activity — what to do, how much and
+  how often, how to progress, what to avoid and when to stop, in the assistant's own words, each
+  activity stating whether it sits within the recorded clearance and who confirms it. An accepted
+  activity becomes an «активность» item; one that needs clearance becomes the visit that gives it.
+  Under each accepted activity or nutrition item the person marks their days — done or skipped,
+  with a note — and every assistant reads those marks, so progression follows what was actually
+  done.
 - **Family and access.** An owner, adults with their own profiles, caregivers with a single
   revocable per-profile grant; reversible profile archiving that deletes nothing.
 - **Evidence over time.** Versioned, evidence-backed health summaries; a household care plan whose

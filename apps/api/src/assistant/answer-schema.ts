@@ -1,8 +1,10 @@
 // The closed JSON schema the physician answers in, and the checker's. Mirrors answer-parser.ts:
 // the schema keeps the model on the shape, the parser verifies every block against the evidence.
 import {
+  ASSISTANT_ACTIVITY_KINDS,
   ASSISTANT_AGREEMENT_VERDICTS,
   ASSISTANT_CHECKER_VERDICTS,
+  ASSISTANT_CLEARANCE_STATES,
   ASSISTANT_CLINICIAN_CHECK_CLAIMS,
   ASSISTANT_CONFIDENCE_LEVELS,
   ASSISTANT_CONTRAINDICATION_STATES,
@@ -142,6 +144,48 @@ export const nutritionistAnswerSchema = {
             rationale: russian(800),
             refs,
             interaction: { type: "string", enum: ASSISTANT_CONTRAINDICATION_STATES },
+            conflictNotes: { anyOf: [russian(500), { type: "null" }] },
+            confirmWith: specialty,
+          }),
+          blockOf("recheck", { text: russian(300), when: russian(100), refs }),
+          blockOf("question", { text: russian(500), refs }),
+          blockOf("general", { text: russian(800) }),
+          blockOf("missing", { context: { type: "string", enum: ASSISTANT_MISSING_CONTEXTS } }),
+        ],
+      },
+    },
+  },
+} as const;
+
+/** The training assistant's blocks: assessment, activities with load and clearance, rechecks. */
+export const trainerAnswerSchema = {
+  ...physicianAnswerSchema,
+  properties: {
+    ...physicianAnswerSchema.properties,
+    blocks: {
+      type: "array",
+      maxItems: MAX_ASSISTANT_BLOCKS,
+      items: {
+        anyOf: [
+          blockOf("activity_assessment", { text: russian(800), refs }),
+          blockOf("activity_recommendation", {
+            name: russian(200),
+            activityKind: {
+              type: "string",
+              enum: ASSISTANT_ACTIVITY_KINDS,
+              description:
+                "aerobic, strength, mobility, recovery — what to do; avoid — what not to do and when to stop and seek care.",
+            },
+            load: russian(200),
+            progression: { anyOf: [russian(300), { type: "null" }] },
+            rationale: russian(800),
+            refs,
+            clearance: {
+              type: "string",
+              enum: ASSISTANT_CLEARANCE_STATES,
+              description:
+                "within: the recorded clearance covers it or nothing calls for one; needs_clearance: a value, condition, symptom or medication asks for a clinician's word first; unknown: the profile says too little.",
+            },
             conflictNotes: { anyOf: [russian(500), { type: "null" }] },
             confirmWith: specialty,
           }),

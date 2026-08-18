@@ -103,7 +103,7 @@ test("a profile care plan is actionable, replay-safe, and profile-authorized", a
     assert.equal(initial.statusCode, 200, initial.body);
     assert.equal(initial.headers["cache-control"], "no-store");
     assert.deepEqual(initial.json(), {
-      contractVersion: "home-care-plan/v1",
+      contractVersion: "home-care-plan/v2",
       profileId: owner.body.profile.id,
       canWrite: true,
       evidence: {

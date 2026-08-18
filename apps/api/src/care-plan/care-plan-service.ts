@@ -1,18 +1,16 @@
 import { randomUUID } from "node:crypto";
 import {
-  CARE_PLAN_CATEGORIES,
-  CARE_PLAN_ITEM_STATES,
   type CarePlanCategory,
+  type CarePlanCheckinRequest,
   type CarePlanItem,
   type CarePlanItemCreateRequest,
   type CarePlanItemResponse,
-  type CarePlanItemState,
   type CarePlanItemStateRequest,
   type CarePlanProposalResponse,
   type CarePlanResponse,
   HOME_CARE_PLAN_CONTRACT_VERSION,
 } from "@veylta/contracts";
-import type { Database, QueryResult } from "../database/pool.js";
+import type { Database } from "../database/pool.js";
 import {
   DomainConflictError,
   DomainValidationError,
@@ -24,6 +22,26 @@ import {
   profileAccess,
   requireProfileWrite,
 } from "../family/profile-access.js";
+import { checkinsByItem, itemWithCheckins, recordCheckin } from "./care-plan-checkins.js";
+import {
+  boundedText,
+  canonicalItemId,
+  categorySet,
+  count,
+  localDate,
+  optionalText,
+  storedStringArray,
+  timestamp,
+} from "./care-plan-fields.js";
+import {
+  auditCarePlan,
+  type CarePlanItemRow,
+  type CarePlanScope,
+  carePlanItem,
+  itemById,
+  itemSelect,
+  type Queryable,
+} from "./care-plan-items.js";
 import type {
   CarePlanGeneratorEvidence,
   CarePlanGeneratorResult,
@@ -42,10 +60,7 @@ export class CarePlanProposalGenerationError extends Error {
   }
 }
 
-export interface CarePlanScope {
-  familyId: string;
-  profileId: string;
-}
+export type { CarePlanScope } from "./care-plan-items.js";
 
 export interface CarePlanService {
   get(actor: SessionActor, scope: CarePlanScope, correlationId: string): Promise<CarePlanResponse>;
@@ -63,37 +78,20 @@ export interface CarePlanService {
     input: CarePlanItemStateRequest,
     correlationId: string,
   ): Promise<CarePlanItemResponse>;
+  /** The person's mark for one day of an accepted regimen item; the same day again replaces it. */
+  recordCheckin(
+    actor: SessionActor,
+    scope: CarePlanScope,
+    itemId: string,
+    date: string,
+    input: CarePlanCheckinRequest,
+    correlationId: string,
+  ): Promise<{ created: boolean; response: CarePlanItemResponse }>;
   generateProposals(
     actor: SessionActor,
     scope: CarePlanScope,
     correlationId: string,
   ): Promise<CarePlanProposalResponse>;
-}
-
-interface Queryable {
-  query<T extends object>(sql: string, values?: readonly unknown[]): Promise<QueryResult<T>>;
-}
-
-interface CarePlanItemRow {
-  id: string;
-  category: string;
-  title: string;
-  note: string | null;
-  scheduled_for: string | null;
-  state: string;
-  origin: string;
-  revision: number;
-  health_summary_id: string | null;
-  health_summary_version: number | null;
-  source_observation_id: string | null;
-  rule_version: string | null;
-  missing_context: string;
-  proposal_run_id: string | null;
-  proposal_model_id: string | null;
-  proposal_run_state: string | null;
-  proposal_runtime_version: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 interface ProposalRunRow {
@@ -111,237 +109,6 @@ interface ProposalSummaryRow {
   id: string;
   version: number;
   missing_data: string;
-}
-
-const canonicalUuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
-const localDatePattern = /^\d{4}-\d{2}-\d{2}$/;
-const categorySet = new Set<string>(CARE_PLAN_CATEGORIES);
-const stateSet = new Set<string>(CARE_PLAN_ITEM_STATES);
-
-function canonicalItemId(value: string): string {
-  const id = value.toLowerCase();
-  if (!canonicalUuidPattern.test(id)) throw new DomainValidationError();
-  return id;
-}
-
-function timestamp(value: string): string {
-  const parsed = new Date(value);
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== value) {
-    throw new DomainValidationError();
-  }
-  return value;
-}
-
-function localDate(value: string | null): string | null {
-  if (value === null) return null;
-  if (!localDatePattern.test(value)) throw new DomainValidationError();
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
-    throw new DomainValidationError();
-  }
-  return value;
-}
-
-function boundedText(value: string, maximum: number): string {
-  const normalized = value.trim();
-  if (normalized.length === 0 || normalized.length > maximum) throw new DomainValidationError();
-  return normalized;
-}
-
-function optionalText(value: string | null, maximum: number): string | null {
-  return value === null ? null : boundedText(value, maximum);
-}
-
-function count(value: number, label: string): number {
-  if (!Number.isSafeInteger(value) || value < 0) {
-    throw new Error(`Stored ${label} is invalid`);
-  }
-  return value;
-}
-
-function missingContext(value: string): readonly string[] {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (
-      !Array.isArray(parsed) ||
-      parsed.some(
-        (item) =>
-          typeof item !== "string" ||
-          !/^[a-z0-9_]{1,120}$/.test(item) ||
-          parsed.indexOf(item) !== parsed.lastIndexOf(item),
-      )
-    ) {
-      throw new Error("invalid");
-    }
-    return parsed;
-  } catch {
-    throw new Error("Stored care plan context is invalid");
-  }
-}
-
-function storedStringArray(value: string): readonly string[] {
-  try {
-    const parsed: unknown = JSON.parse(value);
-    if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== "string")) {
-      throw new Error("invalid");
-    }
-    return parsed;
-  } catch {
-    throw new Error("Stored health summary context is invalid");
-  }
-}
-
-function carePlanItem(row: CarePlanItemRow): CarePlanItem {
-  if (
-    !canonicalUuidPattern.test(row.id) ||
-    !categorySet.has(row.category) ||
-    !stateSet.has(row.state) ||
-    !["user", "codex"].includes(row.origin) ||
-    !Number.isSafeInteger(row.revision) ||
-    row.revision < 1
-  ) {
-    throw new Error("Stored care plan item is invalid");
-  }
-  const title = boundedText(row.title, 120);
-  const note = optionalText(row.note, 500);
-  const scheduledFor = localDate(row.scheduled_for);
-  const createdAt = timestamp(row.created_at);
-  const updatedAt = timestamp(row.updated_at);
-  const context = missingContext(row.missing_context);
-  const provenance =
-    row.origin === "user"
-      ? (() => {
-          if (
-            row.proposal_run_id !== null ||
-            row.proposal_model_id !== null ||
-            row.proposal_run_state !== null ||
-            row.proposal_runtime_version !== null ||
-            row.health_summary_id !== null ||
-            row.health_summary_version !== null ||
-            row.source_observation_id !== null ||
-            row.rule_version !== null ||
-            context.length !== 0 ||
-            row.state === "proposed"
-          ) {
-            throw new Error("Stored user care plan item is invalid");
-          }
-          return null;
-        })()
-      : (() => {
-          if (
-            row.health_summary_id === null ||
-            !canonicalUuidPattern.test(row.health_summary_id) ||
-            row.health_summary_version === null ||
-            !Number.isSafeInteger(row.health_summary_version) ||
-            row.health_summary_version < 1 ||
-            row.rule_version === null ||
-            row.proposal_run_id === null ||
-            !canonicalUuidPattern.test(row.proposal_run_id) ||
-            row.proposal_model_id === null ||
-            !/^[a-z0-9][a-z0-9._-]{1,79}$/i.test(row.proposal_model_id) ||
-            row.proposal_run_state !== "completed" ||
-            row.proposal_runtime_version === null ||
-            row.proposal_runtime_version.length === 0 ||
-            row.proposal_runtime_version.length > 120 ||
-            row.rule_version.length === 0 ||
-            row.rule_version.length > 120 ||
-            (row.source_observation_id !== null &&
-              !canonicalUuidPattern.test(row.source_observation_id))
-          ) {
-            throw new Error("Stored proposed care plan item is invalid");
-          }
-          return {
-            proposalRunId: row.proposal_run_id,
-            healthSummary: { id: row.health_summary_id, version: row.health_summary_version },
-            sourceObservationId: row.source_observation_id,
-            modelId: row.proposal_model_id,
-            runtimeVersion: row.proposal_runtime_version,
-            ruleVersion: row.rule_version,
-            missingContext: context,
-          };
-        })();
-
-  return {
-    id: row.id,
-    category: row.category as CarePlanCategory,
-    title,
-    note,
-    scheduledFor,
-    state: row.state as CarePlanItemState,
-    origin: row.origin as "user" | "codex",
-    revision: row.revision,
-    provenance,
-    createdAt,
-    updatedAt,
-  };
-}
-
-async function audit(
-  client: Queryable,
-  input: {
-    actor: SessionActor;
-    scope: CarePlanScope;
-    action: string;
-    resourceType: "CarePlanItem" | "PatientProfile";
-    resourceId: string;
-    correlationId: string;
-    now: Date;
-  },
-): Promise<void> {
-  await client.query(
-    `INSERT INTO audit_events
-       (id, family_id, actor_user_id, action, resource_type, resource_id, result,
-        correlation_id, metadata, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, 'success', $7, $8, $9)`,
-    [
-      randomUUID(),
-      input.scope.familyId,
-      input.actor.userId,
-      input.action,
-      input.resourceType,
-      input.resourceId,
-      input.correlationId,
-      { contractVersion: HOME_CARE_PLAN_CONTRACT_VERSION },
-      input.now,
-    ],
-  );
-}
-
-const itemSelect = `SELECT item.id, item.category, item.title, item.note, item.scheduled_for,
-                           item.state, item.origin, item.revision, item.health_summary_id,
-                           summary.version AS health_summary_version,
-                           item.source_observation_id, item.rule_version, item.missing_context,
-                           provenance.proposal_run_id,
-                           proposal_run.model_id AS proposal_model_id,
-                           proposal_run.state AS proposal_run_state,
-                           proposal_run.runtime_version AS proposal_runtime_version,
-                           item.created_at, item.updated_at
-                      FROM care_plan_items item
-                 LEFT JOIN health_summaries summary
-                        ON summary.family_id = item.family_id
-                       AND summary.id = item.health_summary_id
-                 LEFT JOIN care_plan_codex_provenance provenance
-                        ON provenance.family_id = item.family_id
-                       AND provenance.patient_profile_id = item.patient_profile_id
-                       AND provenance.care_plan_item_id = item.id
-                 LEFT JOIN care_plan_proposal_runs proposal_run
-                        ON proposal_run.family_id = provenance.family_id
-                       AND proposal_run.patient_profile_id = provenance.patient_profile_id
-                       AND proposal_run.id = provenance.proposal_run_id`;
-
-async function itemById(
-  client: Queryable,
-  scope: CarePlanScope,
-  itemId: string,
-): Promise<CarePlanItemRow | undefined> {
-  return (
-    await client.query<CarePlanItemRow>(
-      `${itemSelect}
-       WHERE item.family_id = $1 AND item.patient_profile_id = $2 AND item.id = $3`,
-      [scope.familyId, scope.profileId, itemId],
-    )
-  ).rows[0];
 }
 
 function sameCreate(item: CarePlanItem, input: CarePlanItemCreateRequest): boolean {
@@ -436,7 +203,7 @@ async function completedProposalResponse(
     profileId: scope.profileId,
     replayed,
     run,
-    items: items.rows.map(carePlanItem),
+    items: items.rows.map((row) => carePlanItem(row)),
   };
 }
 
@@ -516,7 +283,8 @@ export function createCarePlanService(
           [scope.familyId, scope.profileId],
         );
         const now = new Date();
-        await audit(client, {
+        const checkins = await checkinsByItem(client, scope, now);
+        await auditCarePlan(client, {
           actor,
           scope,
           action: "profile.care_plan.opened",
@@ -545,7 +313,7 @@ export function createCarePlanService(
                     createdAt: timestamp(evidence.summary_created_at ?? ""),
                   },
           },
-          items: items.rows.map(carePlanItem),
+          items: items.rows.map((row) => carePlanItem(row, checkins.get(row.id) ?? [])),
         };
       });
     },
@@ -565,9 +333,9 @@ export function createCarePlanService(
         const existing = await itemById(client, scope, itemId);
         const now = new Date();
         if (existing !== undefined) {
-          const item = carePlanItem(existing);
+          const item = await itemWithCheckins(client, scope, existing, now);
           if (!sameCreate(item, input)) throw new DomainConflictError();
-          await audit(client, {
+          await auditCarePlan(client, {
             actor,
             scope,
             action: "profile.care_plan.item_replayed",
@@ -604,7 +372,7 @@ export function createCarePlanService(
         );
         const stored = await itemById(client, scope, itemId);
         if (stored === undefined) throw new Error("Created care plan item is unavailable");
-        await audit(client, {
+        await auditCarePlan(client, {
           actor,
           scope,
           action: "profile.care_plan.item_created",
@@ -650,7 +418,7 @@ export function createCarePlanService(
           before.state === input.state &&
           before.scheduledFor === input.scheduledFor
         ) {
-          await audit(client, {
+          await auditCarePlan(client, {
             actor,
             scope,
             action: "profile.care_plan.state_replayed",
@@ -688,7 +456,7 @@ export function createCarePlanService(
         if (updated.rowCount !== 1) throw new DomainConflictError();
         const stored = await itemById(client, scope, itemId);
         if (stored === undefined) throw new Error("Updated care plan item is unavailable");
-        await audit(client, {
+        await auditCarePlan(client, {
           actor,
           scope,
           action: `profile.care_plan.item_${input.state}`,
@@ -700,8 +468,19 @@ export function createCarePlanService(
         return {
           contractVersion: HOME_CARE_PLAN_CONTRACT_VERSION,
           profileId: scope.profileId,
-          item: carePlanItem(stored),
+          item: await itemWithCheckins(client, scope, stored, now),
         };
+      });
+    },
+
+    recordCheckin(actor, requestedScope, itemId, date, input, correlationId) {
+      return recordCheckin(database, {
+        actor,
+        scope: requestedScope,
+        itemId,
+        date,
+        input,
+        correlationId,
       });
     },
 
@@ -840,7 +619,7 @@ export function createCarePlanService(
         return database.transaction(async (client) => {
           await requireProfileWrite(client, actor, scope);
           const response = await completedProposalResponse(client, scope, claimed.runId, true);
-          await audit(client, {
+          await auditCarePlan(client, {
             actor,
             scope,
             action: "profile.care_plan.proposals_replayed",
@@ -875,7 +654,7 @@ export function createCarePlanService(
               WHERE family_id = $3 AND id = $4 AND state = 'generating'`,
             [code, new Date(), scope.familyId, claimed.runId],
           );
-          await audit(client, {
+          await auditCarePlan(client, {
             actor,
             scope,
             action: "profile.care_plan.proposals_failed",
@@ -906,7 +685,7 @@ export function createCarePlanService(
               WHERE family_id = $2 AND id = $3 AND state = 'generating'`,
             [now, scope.familyId, claimed.runId],
           );
-          await audit(client, {
+          await auditCarePlan(client, {
             actor,
             scope,
             action: "profile.care_plan.proposals_failed",
@@ -973,7 +752,7 @@ export function createCarePlanService(
           [generated.runtimeVersion, generated.items.length, now, scope.familyId, claimed.runId],
         );
         if (completed.rowCount !== 1) throw new DomainConflictError();
-        await audit(client, {
+        await auditCarePlan(client, {
           actor,
           scope,
           action: "profile.care_plan.proposals_completed",

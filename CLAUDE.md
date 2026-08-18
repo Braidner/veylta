@@ -173,16 +173,21 @@ is a new dated entry after the previous is archived, so the passport can show th
 optimistic on `revision`. `interpretationReady` is true once sex and birth year exist — the
 assistants refuse to interpret values without them.
 
-**Assistants** (`assistant/v5`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
+**Assistants** (`assistant/v6`, `apps/api/src/assistant/`, docs/assistants.md). «ИИ-врач ·
 второе мнение» is a profile-scoped conversation at
 `/v1/families/:f/profiles/:p/assistants/physician` (web route `…/assistants/physician`, entered
-from the overview card); `ASSISTANT_IDS` also names `nutritionist` (see below), each id its own
-room — a conversation id under the other assistant's route is a 404. `evidence.ts` is the only thing that leaves the machine — medical
-profile, bounded confirmed observations with printed ranges, care plan — and the same loader
-feeds both the prompt and the workspace's `evidenceCount`/`evidence` index, so the egress
-disclosure never describes something other than what is sent. A conversation must be
+from the overview card); `ASSISTANT_IDS` also names `nutritionist` and `trainer` (see below), each
+id its own room — a conversation id under another assistant's route is a 404. The block union
+lives in `packages/contracts/src/assistant-blocks.ts`, the vocabularies in `assistant.ts`. `evidence.ts` (types in `evidence-types.ts`) is the only thing that leaves the machine — medical
+profile, bounded confirmed observations with printed ranges, confirmed clinician records, the care
+plan with the person's check-ins over the last 28 days (`adherence` per item: done, skipped, the
+last notes) — and the same loader feeds both the prompt and the workspace's
+`evidenceCount`/`evidence` index, so the egress disclosure never describes something other than
+what is sent. A conversation must be
 acknowledged (`PUT …/acknowledgement`, `send_confirmed_evidence_to_codex`) before its first
-message (409 `ACKNOWLEDGEMENT_REQUIRED` otherwise). `assistant-turn.ts` runs one turn:
+message (409 `ACKNOWLEDGEMENT_REQUIRED` otherwise). `assistant-turn.ts` runs one turn (`runAssistantTurn(runtime, assistantId, …)` over a
+`ThreadPersona` lookup — preamble + schema per room; the thread shape itself is
+`prompts/assistant-thread.prompt.ts`, the persona files hold only their preambles):
 `codex exec` / `exec resume` on the conversation's thread (`codex-assistant-runtime.ts`: the
 dialogue model at `assistantReasoningEffort`, a settings field defaulting to high; web search
 off), `answer-parser.ts` verifies every block against the evidence (`answer-refs.ts` binds refs,
@@ -280,11 +285,42 @@ rationale carries a dose refuses the block as `prescriptive_dose`), `recheck` (`
 assistant's own phrase, never a date Veylta computes —, bound refs), plus question / general /
 missing (`height_weight`, `dietary_restrictions`, `goals` join the contexts). Personas and the
 консилиум are the physician's alone: `addressee` or `POST …/consilium` in this room is a 422 and
-`consiliumPanel` is `[]`. `assistant-turn.ts` runs both rooms through one `ThreadPersona`
-(`runPhysicianTurn`, `runNutritionistTurn`). Web: `referralItem` files a recommendation into the
+`consiliumPanel` is `[]`. Web: `referralItem` files a recommendation into the
 `nutrition` lane («В план: питание») and a recheck into `laboratory` («В план: повторить анализ»).
-The fakes (`apps/api/test/assistant-scripts.ts`, `scripts/fake-codex-assistant.mjs`) tell the
-nutritionist by its schema, since a follow-up turn carries no preamble.
+The fakes (`apps/api/test/assistant-scripts.ts` + `assistant-scripts-regimen.ts`,
+`scripts/fake-codex-assistant.mjs` + `fake-codex-regimen.mjs`) tell a room by the first block kind
+of its schema, since a follow-up turn carries no preamble.
+
+**ИИ-тренер** (`assistantId = trainer`; web route `…/assistants/trainer` from the overview card
+«Открыть активность»). The same evidence, gate, journal and checker; its own prompt
+(`prompts/assistant-trainer.prompt.ts`) and closed schema (`trainerAnswerSchema`):
+`activity_assessment` (bound), `activity_recommendation` (`name`, `activityKind` in
+`ASSISTANT_ACTIVITY_KINDS` — aerobic / strength / mobility / recovery / avoid, the last being what
+not to do and when to stop —, `load` and `progression` as the assistant's own phrases, never a
+schedule or a heart-rate number Veylta computes, `rationale`, `refs` may rest on the profile,
+`clearance` in `ASSISTANT_CLEARANCE_STATES` — within / needs_clearance / unknown — with
+`conflictNotes` naming the recorded constraint or clearance the load touches, `confirmWith`),
+`recheck`, plus question / general / missing (`clearance`, `activity_constraints` join the
+contexts). Progression is built on the check-ins the evidence carries; the checker refutes a load
+beyond a recorded clearance or against the marks. Web: an activity `within`/`unknown` files into
+the `activity` lane («В план: активность»), one that `needs_clearance` files as the visit that
+gives it into `clinician` («В план: получить допуск (кардиолог)»); an `avoid` block stays in view
+and never files. `app/assistant-block-copy.ts` holds the block labels (`activityKindLabel`,
+`clearanceCopy`, …).
+
+**Check-ins** (`home-care-plan/v2`, migration 0036 `care_plan_item_checkins`): the person's own
+mark for one day of an accepted item on a regimen lane (`CARE_PLAN_CHECKIN_CATEGORIES` = activity,
+nutrition) — `PUT …/care-plan/items/:id/checkins/:date` with `status` done | skipped and a note
+≤200 (201 first, 200 when the same day is marked again — the diary is theirs to correct); another
+lane is a 422, an item no longer accepted a 409, a day outside [−60 d, +1 d] a 422; audited
+payload-free as `care_plan.checkin.recorded`. `CarePlanItem.checkins` carries the last
+`CARE_PLAN_CHECKIN_DAYS` (28) oldest first. Modules: `care-plan/care-plan-fields.ts` (primitives),
+`care-plan-items.ts` (row → item, `itemSelect`, `itemById`, `auditCarePlan`),
+`care-plan-checkins.ts` (`checkinsByItem`, `itemWithCheckins`, `recordCheckin`),
+`care-plan-route-schemas.ts`. Web: `app/care-plan-checkins.ts` (`checkinGrid` — the window as a
+strip of days ending on the browser's local day, `checkinSummaryCopy`, `takesCheckins`) and
+`components/care-plan-checkins.tsx` under each accepted regimen item in the plan lane («Сегодня:
+Сделал / Пропустил» + a note); the assistants read the marks as `adherence`.
 
 **Analyte catalog.** `analyte_catalog` + `analyte_aliases` (migrations 0017 and 0028) hold
 household codes (`hemoglobin`, `cholesterol.ldl`, `tsh`, …), a canonical unit each and the
@@ -372,7 +408,9 @@ YOU MUST NOT relax these to make a feature easier.
   verified output: every hypothesis and treatment option names `confirmWith`, every answer
   carries an urgency tier rendered as fixed copy that a later block cannot lower, no
   medication or supplement is ever proposed with a dose, a diet recommendation is read against
-  the recorded conditions and medications and names who confirms it, `general` text may not
+  the recorded conditions and medications and names who confirms it, an activity names its load
+  and progression as phrases and whether it sits within the recorded clearance — a load beyond a
+  recorded clearance or against a recorded constraint is never kept —, `general` text may not
   quote the person's values,
   an unbound block is dropped, a fully refuted answer is refused with a closed reason. Nothing
   of either grade becomes a plan item, an observation, or a record without a human action. Sex

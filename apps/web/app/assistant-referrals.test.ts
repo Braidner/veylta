@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { ASSISTANT_DIET_CATEGORIES, ASSISTANT_MISSING_CONTEXTS } from "@veylta/contracts";
-import { dietCategoryLabel, missingContextCopy } from "./assistant";
+import { dietCategoryLabel, missingContextCopy } from "./assistant-block-copy";
 import { isReferral, referralActionCopy, referralItem, referralsOf } from "./assistant-referrals";
 
 const recommendation = {
@@ -83,4 +83,56 @@ test("every diet category and missing context has fixed Russian copy", () => {
     assert.match(missingContextCopy[context], /[а-яё]/i);
   }
   assert.match(dietCategoryLabel.supplement, /без дозы/);
+});
+
+const activity = {
+  kind: "activity_recommendation" as const,
+  name: "Быстрая ходьба",
+  activityKind: "aerobic" as const,
+  load: "3 раза в неделю по 30 минут в разговорном темпе",
+  progression: "через 4 недели добавить 5–10 минут",
+  rationale: "Умеренная аэробная нагрузка при таком значении A обычно уместна.",
+  refs: [],
+  clearance: "within" as const,
+  conflictNotes: null,
+  confirmWith: "physiotherapist" as const,
+};
+
+test("an activity within clearance goes into the activity lane with its load and progression", () => {
+  assert.deepEqual(referralItem(activity), {
+    category: "activity",
+    title: "Быстрая ходьба",
+    note: "Нагрузка: 3 раза в неделю по 30 минут в разговорном темпе. Прибавлять: через 4 недели добавить 5–10 минут. Подтвердить: физиотерапевт.",
+    scheduledFor: null,
+  });
+  assert.deepEqual(referralActionCopy(activity), {
+    label: "В план: активность",
+    accepted: "Добавлено в план активности.",
+  });
+});
+
+test("an activity that needs clearance becomes the visit that gives one, in the clinician lane", () => {
+  const strength = {
+    ...activity,
+    name: "Силовые упражнения",
+    activityKind: "strength" as const,
+    progression: null,
+    clearance: "needs_clearance" as const,
+    conflictNotes: "В профиле нет записанного допуска к силовой нагрузке.",
+    confirmWith: "cardiologist" as const,
+  };
+  const item = referralItem(strength);
+  assert.equal(item.category, "clinician");
+  assert.equal(item.title, "Получить допуск к нагрузке (кардиолог): Силовые упражнения");
+  assert.match(item.note ?? "", /нет записанного допуска/);
+  assert.deepEqual(referralActionCopy(strength), {
+    label: "В план: получить допуск (кардиолог)",
+    accepted: "Добавлено в план: получить допуск.",
+  });
+  assert.equal(isReferral(strength), true);
+  assert.equal(
+    isReferral({ ...activity, activityKind: "avoid", progression: null }),
+    false,
+    "a stop rule is kept in view, never filed",
+  );
 });

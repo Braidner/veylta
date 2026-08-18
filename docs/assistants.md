@@ -26,6 +26,17 @@ date Veylta computed) — a recommendation files into the `nutrition` lane, a re
 `laboratory`; supplements are named or classed, a dose refuses the block (`prescriptive_dose`,
 decision 3 (a) — (b) still waits for a real need); personas and the консилиум stay the physician's
 (422 elsewhere). The nutritionist reads no dossier `?ask=` yet.
+**Slice 5 (ИИ-тренер) delivered on 2026-08-18**: a third room at `/assistants/trainer`
+(`assistant/v6`), the same evidence, gate, journal and checker; its own prompt and closed schema —
+`activity_assessment`, `activity_recommendation` (aerobic / strength / mobility / recovery / avoid;
+`load` and `progression` as the assistant's own phrases; `clearance` within / needs_clearance /
+unknown with the recorded constraint or clearance named; `confirmWith`), `recheck` — an activity
+within clearance files into the `activity` lane, one that needs clearance files as the visit that
+gives it into `clinician`, a stop rule stays in view. The adherence log: `home-care-plan/v2`
+check-ins (migration 0036) — one mark per accepted activity or nutrition item and day, done or
+skipped with a note, shown as a four-week strip under the item and read by every assistant as
+`adherence`, so the trainer progresses on what was actually done. Deferred: a structured
+programme (weeks × sessions), heart-rate zones, dossier `?ask=` into the regimen rooms.
 Revision 1 framed the assistants as
 navigators and secretaries; the owner's intent is different and this revision follows it:
 
@@ -35,7 +46,7 @@ navigators and secretaries; the owner's intent is different and this revision fo
 > clinician for confirmation. The main goal is to see how well clinicians choose diagnoses and
 > treatment.
 
-Slices 1–4 are delivered; the decisions at the end were taken as recommended.
+Slices 1–5 are delivered; the decisions at the end were taken as recommended.
 
 ## What changes in the product, deliberately
 
@@ -224,7 +235,7 @@ the cases, never as a rating of a named doctor.
   `medical_profile` + `medical_profile_entries` (typed, dated, revisioned),
   `clinician_records` (slice 2, bound to page + fragment, reviewed like facts),
   `assistant_outcomes` (slice 5).
-- **Contracts**: `assistant/v5` (`ASSISTANT_IDS` physician | nutritionist; conversation with an optional dossier `purpose`, urgency, blocks incl. `clinician_check` and the diet blocks, reasons, the record index), `medical-profile/v2`,
+- **Contracts**: `assistant/v6` (`ASSISTANT_IDS` physician | nutritionist | trainer; conversation with an optional dossier `purpose`, urgency, blocks incl. `clinician_check`, the diet and the activity blocks, reasons, the record index), `home-care-plan/v2` (check-ins), `medical-profile/v2`,
   `clinician-record/v1`; care-plan provenance gains `conversationTurnId`, `clinicianRecordId`.
 - **Extraction**: clinician records reuse `codex-intelligence/` — closed schema, per-item
   verification through `SourceText`, human review — a second target next to laboratory facts.
@@ -259,7 +270,11 @@ the cases, never as a rating of a named doctor.
    when; a supplement with a dose is refused by name; the answer files into `nutrition` and
    `laboratory`; the room refuses personas and the консилиум.
 5. **ИИ-тренер.** Activity assessment and programme into `activity` with progression and an
-   adherence log; clearance handling.
+   adherence log; clearance handling. Acceptance (delivered): a ready profile with a confirmed
+   value yields an assessment bound to it, activities with kind, load, progression and clearance
+   state; one that needs clearance files as the visit that gives it; the person's marks on an
+   accepted item reach the next turn as adherence and decide whether the scripted trainer
+   progresses; the room refuses personas and the консилиум.
 6. **Outcome log and evaluation.** Confirmed / rejected / modified per item, dated, linked to
    the confirming document; the agreement view; the vignette eval harness with a first set of
    30 synthetic cases and its report.

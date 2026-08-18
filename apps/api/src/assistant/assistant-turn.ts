@@ -3,20 +3,21 @@ import type {
   AssistantCheckerVerdictRecord,
   AssistantConsilium,
   AssistantExchange,
+  AssistantId,
   AssistantRejectionReason,
   AssistantSpecialty,
 } from "@veylta/contracts";
-import {
-  nutritionistFollowUpPrompt,
-  nutritionistOpeningPrompt,
-} from "../prompts/assistant-nutritionist.prompt.js";
-import {
-  physicianFollowUpPrompt,
-  physicianOpeningPrompt,
-} from "../prompts/assistant-physician.prompt.js";
+import { nutritionistPreamble } from "../prompts/assistant-nutritionist.prompt.js";
+import { physicianPreamble } from "../prompts/assistant-physician.prompt.js";
 import { specialistOpeningPrompt } from "../prompts/assistant-specialist.prompt.js";
+import { threadFollowUpPrompt, threadOpeningPrompt } from "../prompts/assistant-thread.prompt.js";
+import { trainerPreamble } from "../prompts/assistant-trainer.prompt.js";
 import { parseAssistantAnswer } from "./answer-parser.js";
-import { nutritionistAnswerSchema, physicianAnswerSchema } from "./answer-schema.js";
+import {
+  nutritionistAnswerSchema,
+  physicianAnswerSchema,
+  trainerAnswerSchema,
+} from "./answer-schema.js";
 import {
   type AssistantRuntime,
   AssistantRuntimeError,
@@ -94,23 +95,16 @@ async function answerAndCheck(
   return { ...base, ...checked, exchanges: [first, ...checked.exchanges] };
 }
 
-/** How one assistant of the same kind opens and continues its own thread. */
+/** How one assistant of the same kind speaks on its own thread: its preamble and its schema. */
 interface ThreadPersona {
-  readonly opening: (evidence: AssistantEvidence, message: string) => string;
-  readonly followUp: (evidence: AssistantEvidence | null, message: string) => string;
+  readonly preamble: () => readonly string[];
   readonly schema: object;
 }
 
-const physicianPersona: ThreadPersona = {
-  opening: physicianOpeningPrompt,
-  followUp: physicianFollowUpPrompt,
-  schema: physicianAnswerSchema,
-};
-
-const nutritionistPersona: ThreadPersona = {
-  opening: nutritionistOpeningPrompt,
-  followUp: nutritionistFollowUpPrompt,
-  schema: nutritionistAnswerSchema,
+const threadPersonas: Record<AssistantId, ThreadPersona> = {
+  physician: { preamble: physicianPreamble, schema: physicianAnswerSchema },
+  nutritionist: { preamble: nutritionistPreamble, schema: nutritionistAnswerSchema },
+  trainer: { preamble: trainerPreamble, schema: trainerAnswerSchema },
 };
 
 /**
@@ -124,8 +118,8 @@ async function runThreadTurn(
 ): Promise<AssistantTurnOutcome> {
   const prompt =
     input.threadId === null
-      ? persona.opening(input.evidence, input.message)
-      : persona.followUp(input.evidenceChanged ? input.evidence : null, input.message);
+      ? threadOpeningPrompt(persona.preamble(), input.evidence, input.message)
+      : threadFollowUpPrompt(input.evidenceChanged ? input.evidence : null, input.message);
   let result: AssistantRuntimeResult;
   try {
     result = await runtime.run({ threadId: input.threadId, prompt, schema: persona.schema });
@@ -142,19 +136,13 @@ async function runThreadTurn(
   );
 }
 
-export function runPhysicianTurn(
+/** The room's own assistant on the conversation's thread — physician, nutritionist or trainer. */
+export function runAssistantTurn(
   runtime: AssistantRuntime,
+  assistantId: AssistantId,
   input: AssistantTurnInput,
 ): Promise<AssistantTurnOutcome> {
-  return runThreadTurn(runtime, physicianPersona, input);
-}
-
-/** The nutrition assistant on its own conversation's thread, verified and refuted the same way. */
-export function runNutritionistTurn(
-  runtime: AssistantRuntime,
-  input: AssistantTurnInput,
-): Promise<AssistantTurnOutcome> {
-  return runThreadTurn(runtime, nutritionistPersona, input);
+  return runThreadTurn(runtime, threadPersonas[assistantId], input);
 }
 
 /**

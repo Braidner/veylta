@@ -1,16 +1,9 @@
 import type {
   AssistantAgreementVerdict,
-  AssistantBlock,
   AssistantCheckerVerdict,
-  AssistantClinicianCheckClaim,
-  AssistantConfidence,
-  AssistantContraindicationState,
-  AssistantDietCategory,
   AssistantId,
-  AssistantMissingContext,
   AssistantRejectionReason,
   AssistantSpecialty,
-  AssistantTreatmentKind,
   AssistantUrgencyTier,
 } from "@veylta/contracts";
 import { countCopy } from "./russian-plural";
@@ -45,6 +38,15 @@ export const assistantIdentity: Record<
     rule: "Оценивает рацион по подтверждённым значениям и профилю: что усилить, что ограничить, что сверить с врачом. Добавки — по названию, без доз; каждый пункт подтверждает диетолог или врач.",
     hint: "Читает подтверждённые значения, ваш профиль (лекарства, диагнозы, аллергии, ограничения, цели) и принятый план; каждый пункт — рекомендация, не назначение.",
     placeholder: "Например: как мне питаться при таких значениях?",
+  },
+  trainer: {
+    title: "ИИ-тренер · нагрузка по вашим данным",
+    name: "ИИ-тренер",
+    dative: "ИИ-тренеру",
+    instrumental: "ИИ-тренером",
+    rule: "Оценивает нагрузку по подтверждённым значениям, ограничениям, допуску и вашим отметкам в плане: что делать, сколько, как прибавлять и когда остановиться. Каждый пункт подтверждает физиотерапевт или врач.",
+    hint: "Читает подтверждённые значения, ваш профиль (диагнозы, лекарства, ограничения по нагрузке, допуск, цели), принятый план и ваши отметки по нему; каждый пункт — рекомендация, не назначение.",
+    placeholder: "Например: как мне тренироваться при таких значениях?",
   },
 };
 
@@ -118,57 +120,6 @@ export const specialtyLabel: Record<AssistantSpecialty, string> = {
   other: "профильный специалист",
 };
 
-export const confidenceLabel: Record<AssistantConfidence, string> = {
-  low: "низкая уверенность",
-  moderate: "умеренная уверенность",
-  high: "высокая уверенность",
-};
-
-export const treatmentKindLabel: Record<AssistantTreatmentKind, string> = {
-  lifestyle: "образ жизни",
-  medication_class: "класс препаратов",
-  medication: "препарат",
-  procedure: "процедура",
-  referral: "направление",
-};
-
-export const contraindicationCopy: Record<AssistantContraindicationState, string> = {
-  checked_clear: "сверено с профилем: противопоказаний не найдено",
-  checked_conflict: "сверено с профилем: есть конфликт",
-  unknown: "в профиле не хватает данных для проверки",
-};
-
-/** The same three states for a diet recommendation, read against conditions and medications. */
-export const interactionCopy: Record<AssistantContraindicationState, string> = {
-  checked_clear: "сверено с профилем: взаимодействий не найдено",
-  checked_conflict: "сверено с профилем: есть взаимодействие",
-  unknown: "в профиле не хватает данных для проверки",
-};
-
-export const missingContextCopy: Record<AssistantMissingContext, string> = {
-  sex: "Укажите пол в медицинском профиле — без него интерпретация не проводится.",
-  birth_year: "Укажите год рождения в медицинском профиле — без него интерпретация не проводится.",
-  medications: "Добавьте в профиль принимаемые лекарства — ответ учитывал бы их.",
-  conditions: "Добавьте в профиль известные диагнозы — ответ учитывал бы их.",
-  allergies: "Добавьте в профиль аллергии — ответ учитывал бы их.",
-  symptoms: "Опишите в профиле жалобы и симптомы — ответ учитывал бы их.",
-  recent_values: "Не хватает свежих значений: загрузите и подтвердите более новый анализ.",
-  height_weight: "Укажите рост и вес в досье — без них план питания остаётся общим.",
-  dietary_restrictions:
-    "Добавьте в профиль ограничения в питании — диету, непереносимости, предпочтения; ответ учитывал бы их.",
-  goals: "Добавьте в профиль цели — ответ учитывал бы их.",
-};
-
-/** The nutritionist's recommendation kinds — what a plan item is about, never how much. */
-export const dietCategoryLabel: Record<AssistantDietCategory, string> = {
-  structure: "структура рациона",
-  favour: "добавить в рацион",
-  limit: "ограничить",
-  supplement: "добавка — без дозы",
-  hydration: "питьевой режим",
-  timing: "режим приёмов пищи",
-};
-
 export const checkerVerdictLabel: Record<AssistantCheckerVerdict, string> = {
   supported: "подтверждено",
   overreach: "уверенность снижена",
@@ -190,29 +141,6 @@ export function speakerLabel(
   return `ИИ-${specialtyLabel[specialty]}`;
 }
 
-export const blockKindLabel: Record<AssistantBlock["kind"], string> = {
-  interpretation: "Что показывают значения",
-  hypothesis: "Вероятное объяснение",
-  treatment_option: "Что обычно рассматривает врач",
-  clinician_check: "Сверка с записью врача",
-  diet_assessment: "Что значения говорят о питании",
-  diet_recommendation: "Рекомендация по питанию",
-  recheck: "Что измерить снова",
-  question: "Вопрос врачу",
-  general: "Общая справка",
-  missing: "Не хватает данных",
-};
-
-/** How the assistant's read stands to the clinician's record — a position, never a grade. */
-export const clinicianCheckClaimCopy: Record<
-  AssistantClinicianCheckClaim,
-  { readonly label: string; readonly tone: "calm" | "watch" | "muted" }
-> = {
-  agree: { label: "Согласен с врачом", tone: "calm" },
-  differs: { label: "Расходится — вопрос к визиту", tone: "watch" },
-  cannot_assess: { label: "Не могу оценить по данным", tone: "muted" },
-};
-
 /** What the egress notice promises — the same items the server's evidence loader sends. */
 export function egressDisclosure(input: {
   readonly evidenceCount: number;
@@ -229,6 +157,6 @@ export function egressDisclosure(input: {
     input.interpretationReady
       ? "записи медицинского профиля: пол, год рождения и всё, что вы добавили"
       : "записи медицинского профиля (пол и год рождения пока не указаны — интерпретации не будет)",
-    "принятые и предложенные пункты плана",
+    "принятые и предложенные пункты плана и ваши отметки по ним за последние 4 недели",
   ];
 }

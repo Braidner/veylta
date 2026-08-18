@@ -1,5 +1,5 @@
-/** The household care plan: lanes, items and Codex proposal provenance. */
-export const HOME_CARE_PLAN_CONTRACT_VERSION = "home-care-plan/v1" as const;
+/** The household care plan: lanes, items, the person's own check-ins and Codex proposal provenance. */
+export const HOME_CARE_PLAN_CONTRACT_VERSION = "home-care-plan/v2" as const;
 export const CARE_PLAN_CATEGORIES = [
   "laboratory",
   "clinician",
@@ -8,9 +8,29 @@ export const CARE_PLAN_CATEGORIES = [
   "reminder",
 ] as const;
 export const CARE_PLAN_ITEM_STATES = ["proposed", "accepted", "completed", "dismissed"] as const;
+/** The lanes whose accepted items are a regimen the person keeps day by day. */
+export const CARE_PLAN_CHECKIN_CATEGORIES = ["activity", "nutrition"] as const;
+export const CARE_PLAN_CHECKIN_STATUSES = ["done", "skipped"] as const;
+/** How far back the plan carries check-ins — the window the assistants read adherence over. */
+export const CARE_PLAN_CHECKIN_DAYS = 28;
+export const MAX_CARE_PLAN_CHECKIN_NOTE_LENGTH = 200;
 
 export type CarePlanCategory = (typeof CARE_PLAN_CATEGORIES)[number];
 export type CarePlanItemState = (typeof CARE_PLAN_ITEM_STATES)[number];
+export type CarePlanCheckinCategory = (typeof CARE_PLAN_CHECKIN_CATEGORIES)[number];
+export type CarePlanCheckinStatus = (typeof CARE_PLAN_CHECKIN_STATUSES)[number];
+
+/**
+ * One day of an accepted regimen item as the person marked it: done or skipped, with a note in
+ * their own words. One per item and day; a later mark for the same day replaces the earlier.
+ */
+export interface CarePlanCheckin {
+  /** Local calendar date in canonical YYYY-MM-DD form, chosen by the person's browser. */
+  readonly date: string;
+  readonly status: CarePlanCheckinStatus;
+  readonly note: string | null;
+  readonly recordedAt: string;
+}
 
 /**
  * Source binding for an agent/rule proposal. User-authored actions have null
@@ -39,6 +59,8 @@ export interface CarePlanItem {
   readonly origin: "user" | "codex";
   readonly revision: number;
   readonly provenance: CarePlanProvenance | null;
+  /** The last `CARE_PLAN_CHECKIN_DAYS` of marks, oldest first; empty outside the regimen lanes. */
+  readonly checkins: readonly CarePlanCheckin[];
   readonly createdAt: string;
   readonly updatedAt: string;
 }
@@ -72,6 +94,12 @@ export interface CarePlanItemStateRequest {
   readonly revision: number;
   readonly state: "accepted" | "completed" | "dismissed";
   readonly scheduledFor: string | null;
+}
+
+/** `PUT …/items/:itemId/checkins/:date` — the mark for one day of an accepted regimen item. */
+export interface CarePlanCheckinRequest {
+  readonly status: CarePlanCheckinStatus;
+  readonly note: string | null;
 }
 
 export interface CarePlanItemResponse {

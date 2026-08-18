@@ -23,8 +23,7 @@ import {
 import { audit, loadConversation, persistTurn, workspaceResponse } from "./assistant-storage.js";
 import {
   type AssistantTurnOutcome,
-  runNutritionistTurn,
-  runPhysicianTurn,
+  runAssistantTurn,
   runSpecialistTurn,
 } from "./assistant-turn.js";
 import type { AssistantRuntime } from "./codex-assistant-runtime.js";
@@ -142,15 +141,8 @@ export async function sendAssistantTurn(
       specialty: request.addressee,
       message: request.message,
     });
-  } else if (assistantId === "nutritionist") {
-    outcome = await runNutritionistTurn(runtime, {
-      threadId,
-      evidence,
-      evidenceChanged,
-      message: request.message,
-    });
   } else {
-    outcome = await runPhysicianTurn(runtime, {
+    outcome = await runAssistantTurn(runtime, assistantId, {
       threadId,
       evidence,
       evidenceChanged,

@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { type AssistantId, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import type { FastifyInstance } from "fastify";
 import { buildApp } from "../src/app.js";
 import { createAssistantService } from "../src/assistant/assistant-service.js";
@@ -11,6 +11,8 @@ import {
   type AssistantRuntimeTurn,
 } from "../src/assistant/codex-assistant-runtime.js";
 import { registerAssistantRoutes } from "../src/assistant/routes.js";
+import { createCarePlanService } from "../src/care-plan/care-plan-service.js";
+import { registerCarePlanRoutes } from "../src/care-plan/routes.js";
 import { createClinicianRecordService } from "../src/clinician-records/clinician-record-service.js";
 import { registerClinicianRecordRoutes } from "../src/clinician-records/routes.js";
 import { migrateUp } from "../src/database/migrations.js";
@@ -63,14 +65,15 @@ export function scriptedRuntime(): ScriptedRuntime {
   };
 }
 
-export function assistantPath(
-  identity: Identity,
-  assistantId: "physician" | "nutritionist" = "physician",
-): string {
+export function assistantPath(identity: Identity, assistantId: AssistantId = "physician"): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/assistants/${assistantId}`;
 }
 
-/** Family, documents, medical profile and the physician assistant over a scripted runtime. */
+export function carePlanPath(identity: Identity): string {
+  return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/care-plan`;
+}
+
+/** Family, documents, medical profile, care plan and the assistants over a scripted runtime. */
 export async function startAssistantApp(): Promise<{
   app: FastifyInstance;
   database: Database;
@@ -104,6 +107,9 @@ export async function startAssistantApp(): Promise<{
     allowedMutationOrigins: [webOrigin],
   });
   registerClinicianRecordRoutes(app, family, createClinicianRecordService(database), {
+    allowedMutationOrigins: [webOrigin],
+  });
+  registerCarePlanRoutes(app, family, createCarePlanService(database), {
     allowedMutationOrigins: [webOrigin],
   });
   const scripted = scriptedRuntime();

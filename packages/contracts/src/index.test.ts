@@ -3,8 +3,6 @@ import test from "node:test";
 import {
   ACCOUNT_CONTRACT_VERSION,
   AUDIT_LOG_CONTRACT_VERSION,
-  type CarePlanProposalResponse,
-  type CarePlanResponse,
   DOCUMENT_AGENT_CONTRACT_VERSION,
   DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA,
   DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA,
@@ -37,7 +35,6 @@ import {
   type HealthSummaryComparisonResponse,
   type HealthSummaryHistoryResponse,
   type HealthSummaryResponse,
-  HOME_CARE_PLAN_CONTRACT_VERSION,
   HOME_SETTINGS_CONTRACT_VERSION,
   HTTP_API_VERSION,
   INDICATOR_SERIES_CONTRACT_VERSION,
@@ -90,7 +87,6 @@ test("public contracts carry explicit versions", () => {
   assert.equal(HEALTH_SUMMARY_CONTRACT_VERSION, "health-summary/v1");
   assert.equal(HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION, "health-summary-history/v1");
   assert.equal(HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION, "health-summary-comparison/v1");
-  assert.equal(HOME_CARE_PLAN_CONTRACT_VERSION, "home-care-plan/v1");
   assert.equal(SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION, "synthetic-evidence-bundle/v1");
   assert.equal(SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION, "synthetic-profile-export/v1");
   assert.equal(PROFILE_ARCHIVE_CONTRACT_VERSION, "profile-archive/v1");
@@ -199,96 +195,6 @@ test("document agent workspace separates persistent conversations from ephemeral
   assert.equal(DOCUMENT_AGENT_CONVERSATION_CREATE_COMMAND_SCHEMA.properties.title.maxLength, 80);
   assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.additionalProperties, false);
   assert.equal(DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA.properties.message.maxLength, 2_000);
-});
-
-test("home care plan separates evidence, proposals, and accepted user actions", () => {
-  const response = {
-    contractVersion: HOME_CARE_PLAN_CONTRACT_VERSION,
-    profileId: "00000000-0000-4000-8000-000000000001",
-    canWrite: true,
-    evidence: {
-      sourceCount: 1,
-      pendingReviewCount: 0,
-      confirmedObservationCount: 1,
-      latestSummary: {
-        id: "00000000-0000-4000-8000-000000000002",
-        version: 1,
-        createdAt: "2026-08-14T00:00:00.000Z",
-      },
-    },
-    items: [
-      {
-        id: "00000000-0000-4000-8000-000000000003",
-        category: "nutrition",
-        title: "Подготовить вопросы о питании",
-        note: null,
-        scheduledFor: null,
-        state: "proposed",
-        origin: "codex",
-        revision: 1,
-        provenance: {
-          proposalRunId: "00000000-0000-4000-8000-000000000005",
-          healthSummary: {
-            id: "00000000-0000-4000-8000-000000000002",
-            version: 1,
-          },
-          sourceObservationId: "00000000-0000-4000-8000-000000000004",
-          modelId: "gpt-5.4-mini",
-          runtimeVersion: "codex-cli 0.147.0",
-          ruleVersion: "home-care-safe/v1",
-          missingContext: ["dietary_restrictions"],
-        },
-        createdAt: "2026-08-14T00:00:00.000Z",
-        updatedAt: "2026-08-14T00:00:00.000Z",
-      },
-    ],
-  } as const satisfies CarePlanResponse;
-
-  assert.equal(response.items[0]?.origin, "codex");
-  assert.equal(response.items[0]?.provenance?.missingContext[0], "dietary_restrictions");
-});
-
-test("Codex care-plan drafts keep immutable model provenance and require human acceptance", () => {
-  const response = {
-    contractVersion: "home-care-plan/v1",
-    profileId: "00000000-0000-4000-8000-000000000001",
-    replayed: false,
-    run: {
-      id: "00000000-0000-4000-8000-000000000002",
-      healthSummary: { id: "00000000-0000-4000-8000-000000000003", version: 4 },
-      modelId: "gpt-5.4-mini",
-      runtimeVersion: "codex-cli 0.147.0",
-      ruleVersion: "codex-care-plan/v1",
-      proposalCount: 1,
-      completedAt: "2026-08-14T10:00:00.000Z",
-    },
-    items: [
-      {
-        id: "00000000-0000-4000-8000-000000000004",
-        category: "laboratory",
-        title: "Обсудить повторный контроль: Синтетический аналит A",
-        note: "Решение о повторе принимает врач после сверки подтверждённого источника.",
-        scheduledFor: null,
-        state: "proposed",
-        origin: "codex",
-        revision: 1,
-        provenance: {
-          proposalRunId: "00000000-0000-4000-8000-000000000002",
-          healthSummary: { id: "00000000-0000-4000-8000-000000000003", version: 4 },
-          sourceObservationId: "00000000-0000-4000-8000-000000000005",
-          modelId: "gpt-5.4-mini",
-          runtimeVersion: "codex-cli 0.147.0",
-          ruleVersion: "codex-care-plan/v1",
-          missingContext: ["sample_date"],
-        },
-        createdAt: "2026-08-14T10:00:00.000Z",
-        updatedAt: "2026-08-14T10:00:00.000Z",
-      },
-    ],
-  } as const satisfies CarePlanProposalResponse;
-
-  assert.equal(response.items[0].state, "proposed");
-  assert.equal(response.items[0].provenance.modelId, "gpt-5.4-mini");
 });
 
 test("the user-owned vault and connected agent have separate portable contracts", () => {

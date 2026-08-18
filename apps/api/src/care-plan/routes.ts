@@ -1,49 +1,29 @@
-import type {
-  CarePlanItemCreateRequest,
-  CarePlanItemStateRequest,
-  CarePlanProposalRequest,
+import {
+  CARE_PLAN_CHECKIN_STATUSES,
+  type CarePlanCheckinRequest,
+  type CarePlanItemCreateRequest,
+  type CarePlanItemStateRequest,
+  type CarePlanProposalRequest,
+  MAX_CARE_PLAN_CHECKIN_NOTE_LENGTH,
 } from "@veylta/contracts";
 import type { FastifyInstance } from "fastify";
 import type { FamilyService } from "../family/family-service.js";
 import {
-  canonicalUuidSchema,
   privateResponse,
   requireActor,
   requireTrustedOrigin,
   sendDomainError,
 } from "../http/route-helpers.js";
+import {
+  type CheckinParams,
+  checkinParamsSchema,
+  type ItemParams,
+  itemParamsSchema,
+  localDateSchema,
+  type ProfileParams,
+  profileParamsSchema,
+} from "./care-plan-route-schemas.js";
 import { CarePlanProposalGenerationError, type CarePlanService } from "./care-plan-service.js";
-
-interface ProfileParams {
-  familyId: string;
-  profileId: string;
-}
-
-interface ItemParams extends ProfileParams {
-  itemId: string;
-}
-
-const profileParamsSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["familyId", "profileId"],
-  properties: { familyId: canonicalUuidSchema, profileId: canonicalUuidSchema },
-} as const;
-
-const itemParamsSchema = {
-  type: "object",
-  additionalProperties: false,
-  required: ["familyId", "profileId", "itemId"],
-  properties: {
-    familyId: canonicalUuidSchema,
-    profileId: canonicalUuidSchema,
-    itemId: canonicalUuidSchema,
-  },
-} as const;
-
-const localDateSchema = {
-  anyOf: [{ type: "null" }, { type: "string", pattern: "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" }],
-} as const;
 
 export function registerCarePlanRoutes(
   app: FastifyInstance,
@@ -185,6 +165,48 @@ export function registerCarePlanRoutes(
             request.id,
           ),
         );
+      } catch (error) {
+        if (!sendDomainError(error, request, reply)) throw error;
+      }
+    },
+  );
+
+  app.put<{ Params: CheckinParams; Body: CarePlanCheckinRequest }>(
+    "/v1/families/:familyId/profiles/:profileId/care-plan/items/:itemId/checkins/:date",
+    {
+      schema: {
+        params: checkinParamsSchema,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["status", "note"],
+          properties: {
+            status: { type: "string", enum: [...CARE_PLAN_CHECKIN_STATUSES] },
+            note: {
+              anyOf: [
+                { type: "null" },
+                { type: "string", minLength: 1, maxLength: MAX_CARE_PLAN_CHECKIN_NOTE_LENGTH },
+              ],
+            },
+          },
+        },
+      },
+    },
+    async (request, reply) => {
+      privateResponse(reply);
+      if (!requireTrustedOrigin(origins, request, reply)) return;
+      const actor = await requireActor(family, request, reply);
+      if (actor === null) return;
+      try {
+        const result = await service.recordCheckin(
+          actor,
+          request.params,
+          request.params.itemId,
+          request.params.date,
+          request.body,
+          request.id,
+        );
+        reply.code(result.created ? 201 : 200).send(result.response);
       } catch (error) {
         if (!sendDomainError(error, request, reply)) throw error;
       }

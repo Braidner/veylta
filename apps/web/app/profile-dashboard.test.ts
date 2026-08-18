@@ -117,6 +117,7 @@ test("nutrition and movement assistants stay honest when context is absent", () 
   assert.match(model.assistants[1]?.action.href ?? "", /\/assistants\/nutritionist$/);
   assert.equal(model.assistants[2]?.id, "movement");
   assert.match(model.assistants[2]?.message ?? "", /ограничения/i);
+  assert.match(model.assistants[2]?.action.href ?? "", /\/assistants\/trainer$/);
   assert.equal(model.signals.sources.value, "0");
   assert.equal(model.signals.confirmed.value, "0");
 });

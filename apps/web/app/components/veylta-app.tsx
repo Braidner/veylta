@@ -101,6 +101,7 @@ import {
 import { adminSetupError, canOpenSettings, validateAdminSetup } from "../account-access";
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { assistantIdentity } from "../assistant";
+import { takesCheckins } from "../care-plan-checkins";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
   documentResultStatusCopy,
@@ -134,6 +135,7 @@ import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
 import { AssistantHeader } from "./assistant-header";
 import { AssistantWorkspace } from "./assistant-workspace";
+import { CarePlanCheckins } from "./care-plan-checkins";
 import { ClinicianRecordsPanel } from "./clinician-records-panel";
 import { DocumentAgentPanel } from "./document-agent-panel";
 import { DocumentHero } from "./document-hero";
@@ -4224,6 +4226,14 @@ function CarePlanPanel({
                                 Отклонить
                               </button>
                             </div>
+                          ) : null}
+                          {item.state === "accepted" && takesCheckins(item.category) ? (
+                            <CarePlanCheckins
+                              itemPath={`${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}`}
+                              checkins={item.checkins}
+                              canWrite={canWrite}
+                              onRecorded={load}
+                            />
                           ) : null}
                           {canWrite && item.state === "accepted" ? (
                             <button

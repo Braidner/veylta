@@ -155,7 +155,18 @@ The full first slice remains deliberately narrow:
     specialty to confirm it, and what to measure again with the assistant's own
     phrase for when; an accepted recommendation becomes a `nutrition` item, a
     recheck a `laboratory` item; personas and the консилиум stay the physician's
-    (docs/assistants.md slice 4, delivered).
+    (docs/assistants.md slice 4, delivered);
+25. open the ИИ-тренер — its own room over the same disclosed evidence, gate,
+    checker and journal: an activity assessment bound to the confirmed values,
+    activities by kind (aerobic, strength, mobility, recovery, and what to avoid
+    and when to stop) with the load and progression in the assistant's own words,
+    each stating whether it sits within the recorded clearance and naming the
+    constraint it touches and the specialty that confirms it; an activity within
+    clearance becomes an `activity` item, one that needs clearance the visit that
+    gives it; and mark each accepted activity or nutrition item day by day —
+    done or skipped, with a note — as a four-week strip the assistants read as
+    adherence, so progression follows what was actually done
+    (docs/assistants.md slice 5, delivered).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

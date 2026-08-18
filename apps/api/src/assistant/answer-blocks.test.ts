@@ -144,3 +144,85 @@ test("the nutritionist's interpretive blocks need sex and birth year like the ph
   );
   assert.deepEqual(parsed.blocks, [{ kind: "missing", context: "height_weight" }]);
 });
+
+const activity = {
+  kind: "activity_recommendation",
+  name: "Быстрая ходьба",
+  activityKind: "aerobic",
+  load: "3 раза в неделю по 30 минут в разговорном темпе",
+  progression: "через 4 недели добавить 5–10 минут",
+  rationale: "Умеренная аэробная нагрузка при таком значении A обычно уместна.",
+  refs: [{ observationId: observationA }],
+  clearance: "within",
+  conflictNotes: null,
+  confirmWith: "physiotherapist",
+};
+
+test("the trainer's blocks pass with their kind, load, progression and clearance state", () => {
+  const parsed = parseAssistantAnswer(
+    answer([
+      {
+        kind: "activity_assessment",
+        text: "Значение A выше напечатанного диапазона — нагрузку стоит наращивать осторожно.",
+        refs: [{ observationId: observationA }],
+      },
+      activity,
+      {
+        ...activity,
+        name: "Силовые упражнения с отягощением",
+        activityKind: "strength",
+        clearance: "needs_clearance",
+        conflictNotes: "В профиле записано ограничение по нагрузке — обсудите его с врачом.",
+        confirmWith: "cardiologist",
+      },
+      {
+        ...activity,
+        name: "Прекратить при боли в груди или головокружении",
+        activityKind: "avoid",
+        load: "при любой нагрузке",
+        progression: null,
+      },
+    ]),
+    context,
+  );
+  assert.deepEqual(
+    parsed.blocks.map((block) => block.kind),
+    [
+      "activity_assessment",
+      "activity_recommendation",
+      "activity_recommendation",
+      "activity_recommendation",
+    ],
+  );
+  const strength = parsed.blocks[2];
+  assert.ok(strength?.kind === "activity_recommendation");
+  assert.equal(strength.clearance, "needs_clearance");
+  assert.equal(strength.confirmWith, "cardiologist");
+  const avoid = parsed.blocks[3];
+  assert.ok(avoid?.kind === "activity_recommendation");
+  assert.equal(avoid.progression, null);
+});
+
+test("an activity recommendation may rest on the profile alone; an assessment must resolve; not ready → refused", () => {
+  const stranger = "00000000-0000-4000-8000-0000000000ff";
+  const parsed = parseAssistantAnswer(
+    answer([
+      { ...activity, refs: [] },
+      {
+        kind: "activity_assessment",
+        text: "Оценка без опоры.",
+        refs: [{ observationId: stranger }],
+      },
+    ]),
+    context,
+  );
+  assert.deepEqual(
+    parsed.blocks.map((block) => block.kind),
+    ["activity_recommendation"],
+  );
+  assert.throws(
+    () => parseAssistantAnswer(answer([activity]), { ...context, interpretationReady: false }),
+    (error: unknown) =>
+      error instanceof AssistantAnswerError && error.reason === "profile_not_ready",
+  );
+});

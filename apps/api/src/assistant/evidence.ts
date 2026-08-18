@@ -1,100 +1,46 @@
-import type {
-  AssistantEvidenceItem,
-  AssistantEvidenceRecordItem,
-  MedicalProfileEntryKind,
+import {
+  type AssistantEvidenceItem,
+  CARE_PLAN_CHECKIN_DAYS,
+  type MedicalProfileEntryKind,
 } from "@veylta/contracts";
+import { checkinsByItem } from "../care-plan/care-plan-checkins.js";
 import type { DatabaseClient } from "../database/pool.js";
 import type { ProfileScope } from "../family/profile-access.js";
+import type {
+  AssistantEvidence,
+  AssistantEvidenceBundle,
+  AssistantObservation,
+  ObservationRow,
+  RecordRow,
+} from "./evidence-types.js";
 
-/**
- * What one assistant turn is allowed to see, and exactly what the egress notice names: confirmed
- * observations with their printed ranges, the person's own profile, and the care plan. Never an
- * unconfirmed extraction, never a document, never an identifier beyond the observation ids the
- * answer must cite.
- */
-export interface AssistantEvidence {
-  readonly medicalProfile: {
-    readonly interpretationReady: boolean;
-    readonly entries: readonly {
-      readonly kind: MedicalProfileEntryKind;
-      readonly value: string;
-      readonly recordedOn: string | null;
-    }[];
-  };
-  readonly observations: readonly AssistantObservation[];
-  /** The clinicians' own confirmed statements — what the сверка sets the assistant's read against. */
-  readonly clinicianRecords: readonly AssistantClinicianRecord[];
-  readonly carePlan: readonly {
-    readonly category: string;
-    readonly title: string;
-    readonly state: string;
-    readonly scheduledFor: string | null;
-  }[];
-}
-
-export interface AssistantObservation {
-  readonly observationId: string;
-  readonly code: string | null;
-  readonly name: string;
-  readonly value: string;
-  readonly unit: string;
-  readonly referenceRange: {
-    readonly text: string | null;
-    readonly low: string | null;
-    readonly high: string | null;
-    readonly laboratoryFlag: boolean | null;
-  } | null;
-  readonly sampledAt: string | null;
-  readonly laboratory: string | null;
-}
-
-export interface AssistantClinicianRecord {
-  readonly recordId: string;
-  readonly kind: string;
-  readonly label: string;
-  readonly detail: string | null;
-  readonly documentDate: string | null;
-}
-
-interface RecordRow {
-  id: string;
-  kind: string;
-  label: string;
-  detail: string | null;
-  document_date: string | null;
-  document_id: string;
-  page_number: number;
-}
-
-interface ObservationRow {
-  id: string;
-  canonical_code: string | null;
-  source_name: string;
-  source_value: string;
-  source_unit: string;
-  sampled_at: string | null;
-  resulted_at: string | null;
-  uploaded_at: string;
-  laboratory: string | null;
-  reference_text: string | null;
-  reference_low: string | null;
-  reference_high: string | null;
-  reference_flag: number | null;
-  document_id: string;
-  page_number: number;
-}
-
-/** The evidence as the model sees it, and the source index the UI needs to resolve its refs. */
-export interface AssistantEvidenceBundle {
-  readonly evidence: AssistantEvidence;
-  readonly sources: readonly AssistantEvidenceItem[];
-  readonly records: readonly AssistantEvidenceRecordItem[];
-}
+export type {
+  AssistantClinicianRecord,
+  AssistantEvidence,
+  AssistantEvidenceBundle,
+  AssistantObservation,
+  AssistantPlanItem,
+} from "./evidence-types.js";
 
 /** Bounded so one profile's whole history cannot blow the prompt: the newest per analyte first. */
 const maximumObservations = 200;
 const maximumPerAnalyte = 4;
 const maximumRecords = 100;
+const maximumAdherenceNotes = 5;
+
+/** What the person did with one regimen item over the window: counts and their last few notes. */
+function adherenceOf(marks: readonly { status: string; note: string | null }[] | undefined) {
+  if (marks === undefined || marks.length === 0) return {};
+  const notes = marks.flatMap((mark) => (mark.note === null ? [] : [mark.note]));
+  return {
+    adherence: {
+      days: CARE_PLAN_CHECKIN_DAYS,
+      done: marks.filter((mark) => mark.status === "done").length,
+      skipped: marks.filter((mark) => mark.status === "skipped").length,
+      notes: notes.slice(-maximumAdherenceNotes),
+    },
+  };
+}
 
 export async function loadAssistantEvidence(
   client: DatabaseClient,
@@ -173,17 +119,28 @@ export async function loadAssistantEvidence(
     [scope.familyId, scope.profileId],
   );
   const plan = await client.query<{
+    id: string;
     category: string;
     title: string;
     state: string;
     scheduled_for: string | null;
   }>(
-    `SELECT category, title, state, scheduled_for FROM care_plan_items
+    `SELECT id, category, title, state, scheduled_for FROM care_plan_items
       WHERE family_id = $1 AND patient_profile_id = $2 AND state IN ('proposed', 'accepted')
       ORDER BY created_at DESC LIMIT 50`,
     [scope.familyId, scope.profileId],
   );
+  const marks = await checkinsByItem(client, scope, new Date());
   const kinds = new Set(entries.rows.map((entry) => entry.kind));
+  const recordItems = records.rows.map((row) => ({
+    recordId: row.id,
+    kind: row.kind,
+    label: row.label,
+    detail: row.detail,
+    documentDate: row.document_date,
+    documentId: row.document_id,
+    pageNumber: row.page_number,
+  }));
   return {
     evidence: {
       medicalProfile: {
@@ -195,30 +152,17 @@ export async function loadAssistantEvidence(
         })),
       },
       observations: kept,
-      clinicianRecords: records.rows.map((row) => ({
-        recordId: row.id,
-        kind: row.kind,
-        label: row.label,
-        detail: row.detail,
-        documentDate: row.document_date,
-      })),
+      clinicianRecords: recordItems.map(({ documentId: _d, pageNumber: _p, ...record }) => record),
       carePlan: plan.rows.map((item) => ({
         category: item.category,
         title: item.title,
         state: item.state,
         scheduledFor: item.scheduled_for,
+        ...adherenceOf(marks.get(item.id)),
       })),
     },
     sources,
-    records: records.rows.map((row) => ({
-      recordId: row.id,
-      kind: row.kind,
-      label: row.label,
-      detail: row.detail,
-      documentDate: row.document_date,
-      documentId: row.document_id,
-      pageNumber: row.page_number,
-    })),
+    records: recordItems,
   };
 }
 

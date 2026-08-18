@@ -1,4 +1,6 @@
 import {
+  ASSISTANT_ACTIVITY_KINDS,
+  ASSISTANT_CLEARANCE_STATES,
   ASSISTANT_CLINICIAN_CHECK_CLAIMS,
   ASSISTANT_CONFIDENCE_LEVELS,
   ASSISTANT_CONTRAINDICATION_STATES,
@@ -32,6 +34,8 @@ const interpretiveKinds = new Set([
   "clinician_check",
   "diet_assessment",
   "diet_recommendation",
+  "activity_assessment",
+  "activity_recommendation",
   "recheck",
 ]);
 
@@ -50,6 +54,8 @@ export function block(value: unknown, context: AnswerContext): AssistantBlock {
   if (!context.interpretationReady && interpretiveKinds.has(kind)) refuse("profile_not_ready");
   switch (kind) {
     case "interpretation":
+    case "diet_assessment":
+    case "activity_assessment":
       exactKeys(proposed, ["kind", "text", "refs"]);
       return {
         kind,
@@ -130,12 +136,32 @@ export function block(value: unknown, context: AnswerContext): AssistantBlock {
         confirmWith: member(proposed.confirmWith, ASSISTANT_SPECIALTIES),
       };
     }
-    case "diet_assessment":
-      exactKeys(proposed, ["kind", "text", "refs"]);
+    case "activity_recommendation":
+      exactKeys(proposed, [
+        "kind",
+        "name",
+        "activityKind",
+        "load",
+        "progression",
+        "rationale",
+        "refs",
+        "clearance",
+        "conflictNotes",
+        "confirmWith",
+      ]);
+      // A programme rests on the values or on the profile — goals, constraints, clearance — alone.
       return {
         kind,
-        text: russianText(proposed.text, 800),
-        refs: boundRefs(proposed.refs, context),
+        name: russianText(proposed.name, 200),
+        activityKind: member(proposed.activityKind, ASSISTANT_ACTIVITY_KINDS),
+        load: russianText(proposed.load, 200),
+        progression: proposed.progression === null ? null : russianText(proposed.progression, 300),
+        rationale: russianText(proposed.rationale, 800),
+        refs: refs(proposed.refs, context),
+        clearance: member(proposed.clearance, ASSISTANT_CLEARANCE_STATES),
+        conflictNotes:
+          proposed.conflictNotes === null ? null : russianText(proposed.conflictNotes, 500),
+        confirmWith: member(proposed.confirmWith, ASSISTANT_SPECIALTIES),
       };
     case "diet_recommendation": {
       exactKeys(proposed, [

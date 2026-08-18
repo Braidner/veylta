@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { needsChecker, runPhysicianTurn } from "./assistant-turn.js";
+import { needsChecker, runAssistantTurn } from "./assistant-turn.js";
 import {
   type AssistantRuntime,
   AssistantRuntimeError,
@@ -92,7 +92,7 @@ test("an answer is verified, refuted by the checker and kept where it survives",
       urgency: "soon",
     }),
   ]);
-  const outcome = await runPhysicianTurn(runtime, {
+  const outcome = await runAssistantTurn(runtime, "physician", {
     threadId: null,
     evidence,
     evidenceChanged: true,
@@ -119,8 +119,18 @@ test("a follow-up resumes the thread and re-sends the evidence only when it chan
     JSON.stringify({ urgency: { tier: "none", reasons: [] }, blocks: [] }),
     JSON.stringify({ urgency: { tier: "none", reasons: [] }, blocks: [] }),
   ]);
-  await runPhysicianTurn(runtime, { threadId, evidence, evidenceChanged: false, message: "Ещё" });
-  await runPhysicianTurn(runtime, { threadId, evidence, evidenceChanged: true, message: "Ещё" });
+  await runAssistantTurn(runtime, "physician", {
+    threadId,
+    evidence,
+    evidenceChanged: false,
+    message: "Ещё",
+  });
+  await runAssistantTurn(runtime, "physician", {
+    threadId,
+    evidence,
+    evidenceChanged: true,
+    message: "Ещё",
+  });
   assert.equal(turns[0]?.threadId, threadId);
   assert.doesNotMatch(turns[0]?.prompt ?? "", /Updated evidence/);
   assert.match(turns[1]?.prompt ?? "", /Updated evidence/);
@@ -128,7 +138,7 @@ test("a follow-up resumes the thread and re-sends the evidence only when it chan
 
 test("a model failure is a refusal with its exchange, never an exception", async () => {
   const { runtime } = scripted([new AssistantRuntimeError("gpt-test", 5, new Error("down"))]);
-  const outcome = await runPhysicianTurn(runtime, {
+  const outcome = await runAssistantTurn(runtime, "physician", {
     threadId: null,
     evidence,
     evidenceChanged: true,
@@ -151,7 +161,7 @@ test("an answer the checker refutes entirely is refused as checker_unsafe", asyn
       urgency: "none",
     }),
   ]);
-  const outcome = await runPhysicianTurn(runtime, {
+  const outcome = await runAssistantTurn(runtime, "physician", {
     threadId: null,
     evidence,
     evidenceChanged: true,
@@ -176,7 +186,7 @@ test("a missing-only answer for an unready profile skips the checker", async () 
       ],
     }),
   ]);
-  const outcome = await runPhysicianTurn(runtime, {
+  const outcome = await runAssistantTurn(runtime, "physician", {
     threadId: null,
     evidence: unready,
     evidenceChanged: true,
@@ -193,7 +203,7 @@ test("a missing-only answer for an unready profile skips the checker", async () 
 
 test("a shape the parser refuses becomes that closed reason", async () => {
   const { runtime } = scripted(["not json"]);
-  const outcome = await runPhysicianTurn(runtime, {
+  const outcome = await runAssistantTurn(runtime, "physician", {
     threadId: null,
     evidence,
     evidenceChanged: true,

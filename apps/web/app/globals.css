@@ -2364,6 +2364,104 @@ h3 {
   font-weight: 750;
 }
 
+/* The person's diary on a regimen item: four weeks of days as a strip, today's mark below. */
+.care-plan-checkins {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.care-plan__lane .care-plan-checkins__grid {
+  display: grid;
+  grid-template-columns: repeat(28, minmax(0, 1fr));
+  gap: 3px;
+  max-width: 320px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Nested in the lane's own list, so its item styling is undone here. */
+.care-plan__lane .care-plan-checkins__cell {
+  aspect-ratio: 1;
+  min-height: 0;
+  padding: 0;
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 3px;
+}
+
+.care-plan-checkins__cell.is-done {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.care-plan-checkins__cell.is-skipped {
+  background:
+    linear-gradient(
+      135deg,
+      transparent 42%,
+      var(--color-warning) 42%,
+      var(--color-warning) 58%,
+      transparent 58%
+    ),
+    var(--color-surface);
+  border-color: var(--color-warning);
+}
+
+.care-plan-checkins__cell.is-today {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+.care-plan-checkins__summary {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.care-plan-checkins__today {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 8px;
+  align-items: center;
+  font-size: 0.75rem;
+}
+
+.care-plan-checkins__today > span {
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.care-plan-checkins__mark {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 30px;
+  padding: 4px 10px;
+  color: var(--color-ink);
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.care-plan-checkins__mark.is-active {
+  color: oklch(0.99 0.005 255);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.care-plan-checkins__note {
+  flex: 1 1 160px;
+  min-height: 30px;
+  padding: 4px 10px;
+  border: 1px solid var(--color-line);
+  border-radius: 8px;
+  font-size: 0.75rem;
+}
+
 .profile-overview__export {
   display: flex;
   flex-wrap: wrap;
@@ -9101,6 +9199,26 @@ body:has(.upload-dialog[open]) {
   color: var(--color-muted);
   background: var(--color-surface);
   border-color: var(--color-line);
+}
+
+/* Whether an activity's load sits within the person's clearance — a state, never a permission. */
+.assistant-clearance {
+  padding: 1px 7px;
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.assistant-clearance.is-within {
+  color: oklch(0.32 0.07 160);
+  background: oklch(0.96 0.03 160);
+  border-color: oklch(0.86 0.06 160);
+}
+
+.assistant-clearance.is-needs_clearance {
+  color: oklch(0.36 0.1 72);
+  background: oklch(0.97 0.04 78);
+  border-color: oklch(0.86 0.08 78);
 }
 
 .assistant-check__theirs {
