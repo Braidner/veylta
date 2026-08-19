@@ -21,7 +21,12 @@ export function effectiveDocumentDate(input: {
   return { value: new Date(input.uploadedAt).toISOString().slice(0, 10), source: "upload" };
 }
 
-/** The same rule as SQL, for ordering and paging in the timeline query; `alias` is the documents alias. */
+/**
+ * The same rule as SQL, for ordering and paging in the timeline query; `alias` is the documents
+ * alias. `substr(uploaded_at, 1, 10)` is the UTC calendar day because every writer stores a
+ * `Z`-suffixed ISO timestamp, and the column's own DEFAULT is
+ * `strftime('%Y-%m-%dT%H:%M:%fZ', 'now')` — there is no offset to account for.
+ */
 export function effectiveDateSql(alias: string, intelligenceAlias: string): string {
   return `COALESCE(${alias}.document_date_override, ${intelligenceAlias}.document_date, substr(${alias}.uploaded_at, 1, 10))`;
 }

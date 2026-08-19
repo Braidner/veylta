@@ -3,7 +3,7 @@ import test from "node:test";
 import type { DocumentDetailResponse, ProfileOverviewResponse } from "@veylta/contracts";
 import { startAssistantApp } from "./assistant-app.js";
 import { confirmSyntheticReport } from "./confirmed-observations.js";
-import { register } from "./medical-profile-app.js";
+import { register, webOrigin } from "./medical-profile-app.js";
 import { analyseSyntheticNote } from "./synthetic-note.js";
 
 /**
@@ -75,7 +75,7 @@ test("every document summary carries its effective date, and the overview counts
     assert.equal(overview.statusCode, 200, overview.body);
     const body = overview.json() as ProfileOverviewResponse;
     assert.equal(body.contractVersion, "profile-overview/v3");
-    assert.equal(body.documentCount, 2, "both documents count, deleted ones would not");
+    assert.equal(body.documentCount, 2, "both documents count");
     assert.equal(body.documentCount, body.recentDocuments.length);
     const overviewNote = body.recentDocuments.find((document) => document.id === noteId);
     const overviewReport = body.recentDocuments.find((document) => document.id === reportId);
@@ -84,6 +84,30 @@ test("every document summary carries its effective date, and the overview counts
       value: overviewReport?.uploadedAt.slice(0, 10),
       source: "upload",
     });
+
+    // documentCount excludes deleted documents: it must drop when one is removed, not just hold steady.
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `${profilePath}/documents/${reportId}`,
+      headers: {
+        cookie: owner.cookie,
+        origin: webOrigin,
+        "idempotency-key": "delete-effective-date-report-1",
+      },
+    });
+    assert.equal(deleted.statusCode, 200, deleted.body);
+    const afterDelete = await app.inject({
+      method: "GET",
+      url: `${profilePath}/overview`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(afterDelete.statusCode, 200, afterDelete.body);
+    const afterBody = afterDelete.json() as ProfileOverviewResponse;
+    assert.equal(
+      afterBody.documentCount,
+      body.documentCount - 1,
+      "the deleted document leaves the count",
+    );
   } finally {
     await close();
   }

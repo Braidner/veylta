@@ -16,6 +16,7 @@ import { createClinicianRecordService } from "./clinician-records/clinician-reco
 import { registerClinicianRecordRoutes } from "./clinician-records/routes.js";
 import { loadConfig } from "./config.js";
 import { createDatabase, databaseReadiness } from "./database/pool.js";
+import { registerDocumentDateRoutes } from "./documents/document-date-routes.js";
 import { createDocumentService } from "./documents/document-service.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
@@ -114,6 +115,9 @@ registerCarePlanRoutes(
 registerDocumentRoutes(app, familyService, documentService, {
   allowedMutationOrigins: config.webOrigins,
   maxDocumentBytes: config.maxDocumentBytes,
+});
+registerDocumentDateRoutes(app, familyService, database, {
+  allowedMutationOrigins: config.webOrigins,
 });
 registerDocumentAgentRoutes(app, familyService, documentAgentService, {
   allowedMutationOrigins: config.webOrigins,

@@ -1282,7 +1282,7 @@ function profileOverviewReviewDocument(
   if (needsAttentionFactCount > pendingFactCount) {
     throw new ObjectStorageIntegrityError("Stored overview attention count is invalid");
   }
-  const document = summary(row, profileOverviewProcessing(row));
+  const document = summary(row, profileOverviewProcessing(row), profileOverviewIntelligence(row));
   return {
     id: document.id,
     originalFilename: document.originalFilename,

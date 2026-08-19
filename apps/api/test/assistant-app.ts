@@ -17,6 +17,7 @@ import { createClinicianRecordService } from "../src/clinician-records/clinician
 import { registerClinicianRecordRoutes } from "../src/clinician-records/routes.js";
 import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
+import { registerDocumentDateRoutes } from "../src/documents/document-date-routes.js";
 import { createDocumentService } from "../src/documents/document-service.js";
 import { registerDocumentRoutes } from "../src/documents/routes.js";
 import { createFamilyService } from "../src/family/family-service.js";
@@ -103,6 +104,7 @@ export async function startAssistantApp(): Promise<{
     }),
     { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES },
   );
+  registerDocumentDateRoutes(app, family, database, { allowedMutationOrigins: [webOrigin] });
   registerMedicalProfileRoutes(app, family, createMedicalProfileService(database), {
     allowedMutationOrigins: [webOrigin],
   });
