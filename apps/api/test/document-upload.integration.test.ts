@@ -4,11 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import {
-  type DemoRegistrationResponse,
-  DOCUMENT_CONTRACT_VERSION,
-  MAX_SYNTHETIC_PDF_BYTES,
-} from "@veylta/contracts";
+import { type DemoRegistrationResponse, MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../src/app.js";
 import { migrateUp } from "../src/database/migrations.js";
@@ -250,7 +246,11 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
       documentId: null,
       profileId: null,
     });
-    assert.equal(first.json().contractVersion, DOCUMENT_CONTRACT_VERSION);
+    assert.equal(first.json().contractVersion, "document/v8");
+    assert.deepEqual(first.json().document.effectiveDate, {
+      value: first.json().document.uploadedAt.slice(0, 10),
+      source: "upload",
+    });
     assert.equal(first.json().document.familyId, owner.body.family.id);
     assert.equal(first.json().document.profileId, owner.body.profile.id);
     assert.equal(first.json().document.originalFilename, "synthetic-result.pdf");

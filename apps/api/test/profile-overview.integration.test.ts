@@ -7,7 +7,6 @@ import test from "node:test";
 import {
   type DemoRegistrationResponse,
   MAX_SYNTHETIC_DOCUMENT_BYTES,
-  PROFILE_OVERVIEW_CONTRACT_VERSION,
   type ProfileOverviewResponse,
 } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
@@ -143,11 +142,10 @@ async function uploadAndExtract(context: TestContext, owner: Identity): Promise<
   });
   assert.equal(uploaded.statusCode, 202);
   const documentId = uploaded.json().document.id as string;
-  const processor = createDocumentExtractionProcessor({
+  const processed = await createDocumentExtractionProcessor({
     database: context.database,
     storage: createLocalObjectStorage(context.storageRoot),
-  });
-  const processed = await processor.processNext({
+  }).processNext({
     workerId: `overview-worker-${randomUUID()}`,
     leaseDurationMs: 60_000,
     retryDelayMs: 1,
@@ -169,7 +167,7 @@ test("profile overview is source-first, bounded, and payload-free audited", asyn
     assert.equal(response.statusCode, 200, response.rawPayload.toString());
     assert.equal(response.headers["cache-control"], "no-store");
     const overview = response.json() as ProfileOverviewResponse;
-    assert.equal(overview.contractVersion, PROFILE_OVERVIEW_CONTRACT_VERSION);
+    assert.equal(overview.contractVersion, "profile-overview/v3");
     assert.equal(overview.profile.id, owner.body.profile.id);
     assert.equal(overview.reviewQueue.documentCount, 1);
     assert.equal(overview.reviewQueue.pendingFactCount, 2);
@@ -192,16 +190,18 @@ test("profile overview is source-first, bounded, and payload-free audited", asyn
         },
       ],
     );
-    assert.equal(overview.recentDocuments.length, 1);
-    assert.deepEqual(overview.recentDocuments[0], {
+    assert.deepEqual([overview.documentCount, overview.recentDocuments.length], [1, 1]);
+    const recent = overview.recentDocuments[0];
+    assert.deepEqual(recent, {
       id: documentId,
       originalFilename: "overview-synthetic.pdf",
       contentType: "application/pdf",
-      uploadedAt: overview.recentDocuments[0]?.uploadedAt,
-      processing: overview.recentDocuments[0]?.processing,
+      uploadedAt: recent?.uploadedAt,
+      effectiveDate: { value: recent?.uploadedAt.slice(0, 10), source: "upload" },
+      processing: recent?.processing,
       intelligence: null,
     });
-    assert.equal(overview.recentDocuments[0]?.processing.state, "awaiting_review");
+    assert.equal(recent?.processing.state, "awaiting_review");
     assert.deepEqual(overview.recentObservations, []);
 
     const audit = await context.database.query<{ action: string; metadata: string }>(
@@ -214,7 +214,7 @@ test("profile overview is source-first, bounded, and payload-free audited", asyn
     );
     assert.equal(audit.rows.length, 1);
     assert.deepEqual(JSON.parse(audit.rows[0]?.metadata ?? "{}"), {
-      contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
+      contractVersion: "profile-overview/v3",
     });
     assert.equal(JSON.stringify(audit.rows).includes("overview-synthetic.pdf"), false);
     assert.equal(JSON.stringify(audit.rows).includes("AMBIGUOUS_UNIT"), false);

@@ -87,6 +87,7 @@ import {
   ObjectStorageSizeLimitError,
   type StagedObjectMetadata,
 } from "../storage/object-storage.js";
+import { effectiveDocumentDate } from "./document-date.js";
 import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
 import { overviewDocumentsSql } from "./overview-documents-query.js";
 import { reviewedAnalyte } from "./reviewed-analyte.js";
@@ -301,6 +302,7 @@ interface DocumentRow {
   status: "uploaded";
   original_filename: string;
   uploaded_at: string;
+  document_date_override: string | null;
   duplicate_of_document_id: string | null;
   duplicate_profile_id: string | null;
   content_type: SyntheticDocumentContentType;
@@ -1263,6 +1265,7 @@ function profileOverviewDocument(
     originalFilename: document.originalFilename,
     contentType: document.contentType,
     uploadedAt: document.uploadedAt,
+    effectiveDate: document.effectiveDate,
     processing: document.processing,
     intelligence: document.intelligence,
   };
@@ -1347,6 +1350,11 @@ function summary(
     byteSize: byteSize(row.byte_size),
     sha256: row.sha256,
     uploadedAt: new Date(row.uploaded_at).toISOString(),
+    effectiveDate: effectiveDocumentDate({
+      override: row.document_date_override,
+      documentDate: intelligence?.documentDate ?? null,
+      uploadedAt: row.uploaded_at,
+    }),
     duplicate: {
       possible: row.duplicate_of_document_id !== null,
       documentId: row.duplicate_of_document_id,
@@ -1725,7 +1733,7 @@ async function documentRow(
             d.patient_profile_id,
             d.status,
             d.original_filename,
-            d.uploaded_at,
+            d.uploaded_at, d.document_date_override,
             duplicate.id AS duplicate_of_document_id,
             duplicate.patient_profile_id AS duplicate_profile_id,
             COALESCE(bt.content_type, b.content_type) AS content_type,
@@ -2782,7 +2790,7 @@ export function createDocumentService(
                 d.patient_profile_id,
                 d.status,
                 d.original_filename,
-                d.uploaded_at,
+                d.uploaded_at, d.document_date_override,
                 duplicate.id AS duplicate_of_document_id,
                 duplicate.patient_profile_id AS duplicate_profile_id,
                 COALESCE(blob_type.content_type, b.content_type) AS content_type,
@@ -3222,6 +3230,7 @@ export function createDocumentService(
                 status: "uploaded",
                 original_filename: staged.originalFilename,
                 uploaded_at: uploadedAt,
+                document_date_override: null,
                 duplicate_of_document_id: duplicateRow?.id ?? null,
                 duplicate_profile_id: duplicateRow?.patient_profile_id ?? null,
                 content_type: blob.content_type,
@@ -3621,6 +3630,14 @@ export function createDocumentService(
         ).rows[0];
         if (profile === undefined) throw new ResourceNotFoundError();
 
+        const documentCount = (
+          await client.query<{ document_count: number }>(
+            `SELECT COUNT(*) AS document_count FROM documents
+              WHERE family_id = $1 AND patient_profile_id = $2 AND deleted_at IS NULL`,
+            [scope.familyId, scope.profileId],
+          )
+        ).rows[0];
+
         const recentDocuments = await client.query<ProfileOverviewDocumentRow>(
           overviewDocumentsSql({ onlyAwaitingReview: false, limit: 50 }),
           [scope.familyId, scope.profileId],
@@ -3709,6 +3726,7 @@ export function createDocumentService(
         const response: ProfileOverviewResponse = {
           contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
           profile: profileOverviewProfile(profile),
+          documentCount: asCount(documentCount?.document_count ?? -1, "overview document count"),
           recentDocuments: recentDocuments.rows.map(profileOverviewDocument),
           reviewQueue: {
             documentCount: asCount(reviewQueue.document_count, "overview review document count"),

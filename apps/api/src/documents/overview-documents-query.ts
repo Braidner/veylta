@@ -33,7 +33,7 @@ export function overviewDocumentsSql(options: {
                  d.patient_profile_id,
                  d.status,
                  d.original_filename,
-                 d.uploaded_at,
+                 d.uploaded_at, d.document_date_override,
                  duplicate.id AS duplicate_of_document_id,
                  duplicate.patient_profile_id AS duplicate_profile_id,
                  COALESCE(blob_type.content_type, b.content_type) AS content_type,
@@ -100,7 +100,7 @@ export function overviewDocumentsSql(options: {
               ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
            WHERE d.family_id = $1 AND d.patient_profile_id = $2 AND d.deleted_at IS NULL
            GROUP BY d.id, d.family_id, d.patient_profile_id, d.status, d.original_filename,
-                    d.uploaded_at, duplicate.id, duplicate.patient_profile_id,
+                    d.uploaded_at, d.document_date_override, duplicate.id, duplicate.patient_profile_id,
                     blob_type.content_type, b.content_type, b.byte_size, b.sha256, b.storage_key,
                     v.id, j.id, j.state, j.current_stage, j.last_error_code, j.updated_at,
                     r.id, r.status, intelligence.provider, intelligence.model_id,

@@ -18,7 +18,7 @@ export interface ReadinessProbe {
 
 type ConstraintKind = "check" | "foreign-key" | "not-null" | "trigger" | "unique";
 
-const requiredSchemaMigration = "0038_profile_handles";
+const requiredSchemaMigration = "0039_document_date_override";
 
 const constraintCodes: Record<ConstraintKind, ReadonlySet<number>> = {
   check: new Set([275]),
