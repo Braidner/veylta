@@ -36,8 +36,8 @@ existing blocks, regrouped:
 
 - **«Пользователь»** (default): this person and their family — profile name and handle (part 2
   adds the handle field with its rule and availability check), the family's «Профили и доступ»
-  block focused on this person (profiles, invitations, `profile.read` grants, archiving), the
-  account block (role, password change).
+  block focused on this person (profiles, invitations, `profile.read` grants, archiving), and who
+  is signed in (name, login, role).
 - **«Приложение»** (admins only): server readiness (the dot and «API и база данных готовы»),
   Codex (model, efforts, the assistants' reasoning), storage, server accounts — today's admin
   blocks unchanged.
@@ -59,12 +59,16 @@ switcher is reflected in the URL (`/settings` vs `/settings/app` before part 2;
 
 ### Data
 
-- Migration 0038: `patient_profiles.handle TEXT NOT NULL COLLATE NOCASE` and
-  `handle_set_by TEXT NOT NULL CHECK (handle_set_by IN ('auto', 'person'))`, unique index
+- Migration 0038: `patient_profiles.handle TEXT COLLATE NOCASE` (nullable in SQL, since `ALTER
+  TABLE ADD COLUMN` cannot add a unique NOT NULL column; every write path sets it and the
+  provisional fill leaves no NULL) and `handle_set_by TEXT NOT NULL DEFAULT 'auto' CHECK
+  (handle_set_by IN ('auto', 'person'))`, unique index
   server-wide (`patient_profiles_handle_unique ON patient_profiles (handle COLLATE NOCASE)`),
-  CHECK: 3–30 characters, `[a-z0-9][a-z0-9-]*`, no trailing hyphen, lower-case. The migration fills
-  existing rows by the default rule below (`auto`); rollback drops the columns (table rebuild, as
-  0035 did). An archived profile keeps its handle — it stays taken, and restoring needs no new one.
+  CHECK: 3–30 characters, `[a-z0-9][a-z0-9-]*`, no trailing hyphen, lower-case. The migration
+  gives existing rows a provisional `p-<12 hex of the id>` (`auto`), and `pnpm db:migrate` then
+  rewrites provisional handles by the default rule below in code (migrations are SQL files; the
+  rule lives in TypeScript and is tested there); rollback drops the columns. An archived profile
+  keeps its handle — it stays taken, and restoring needs no new one.
 - **Default rule** (`apps/api/src/family/profile-handle.ts`, pure, tested):
   1. a profile linked to an account (`linked_user_id`) takes the account's username,
      normalised to the handle alphabet (`.` and `_` → `-`, truncated to 30);
@@ -76,9 +80,9 @@ switcher is reflected in the URL (`/settings` vs `/settings/app` before part 2;
   API and the web): `login`, `logout`, `settings`, `families`, `profiles`, `profile`, `health-api`,
   `api`, `docs`, `documents`, `history`, `dossier`, `plan`, `assistants`, `app`, `admin`, `static`,
   `_next`, `manifest.webmanifest`, `favicon.ico`, `robots.txt`.
-- The server sets the handle on profile creation and re-derives it from the username when a
-  profile is linked to an account **only if** the person never set one by hand (a `handle_set_by`
-  column `auto | person` keeps that fact).
+- The server sets the handle on profile creation (every insert goes through one helper); a
+  `handle_set_by` column `auto | person` records whether a person chose it, so the backfill that
+  rewrites provisional handles never touches one a person set.
 - Contracts (`family-profile/v3`): `PatientProfileSummary.handle`, `SessionFamily.profiles[].handle`,
   the profile-create and demo-registration responses carry `handle`;
   `PUT /v1/families/:familyId/profiles/:profileId/handle` with `{ handle }` — owner or linked adult
@@ -124,8 +128,8 @@ switcher is reflected in the URL (`/settings` vs `/settings/app` before part 2;
 - Pure: the default rule (username, transliteration, reserved, collision suffix), the reserved
   list, `paths.ts`.
 - Integration: migration 0038 up/down with existing profiles (handles filled, unique), `PUT
-  …/handle` (owner 200, linked adult 200, grantee 404, outsider 404, reserved 422, taken 409,
-  case-insensitive uniqueness), a person-set handle survives linking, audit payload-free.
+  …/handle` (owner 200, outsider 404, reserved and malformed 422, taken 409 regardless of case,
+  the same handle again a no-op), audit payload-free.
 - e2e: sign in at `/login` → lands on `/<handle>`; the owner changes the handle in settings and
   the address follows; an old `/families/…` link redirects.
 
