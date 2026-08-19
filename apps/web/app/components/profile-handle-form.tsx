@@ -1,6 +1,10 @@
 "use client";
 
-import type { PatientProfileSummary, ProfileHandleResponse } from "@veylta/contracts";
+import {
+  MAX_PROFILE_HANDLE_LENGTH,
+  type PatientProfileSummary,
+  type ProfileHandleResponse,
+} from "@veylta/contracts";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useId, useState } from "react";
 import { apiRequest } from "../api-client";
@@ -65,7 +69,7 @@ export function ProfileHandleForm({
         <input
           id={`${id}-handle`}
           value={value}
-          maxLength={30}
+          maxLength={MAX_PROFILE_HANDLE_LENGTH}
           autoComplete="off"
           spellCheck={false}
           aria-invalid={fieldError !== null}

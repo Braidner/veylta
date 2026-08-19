@@ -546,7 +546,7 @@ export function VeyltaApp({
   const focusableTab = focusableWorkspaceTab(activeTab);
   const pageTitle = pageTitleFor(requestedSettings, requestedSettingsSection, context?.profile);
   /** Which of the shell's surfaces is on screen — one mounted app shows them all in turn. */
-  const surfaceKey = `${activeTab}:${requestedDocumentId ?? ""}:${requestedAssistantId ?? ""}`;
+  const surfaceKey = `${requestedHandle ?? ""}:${activeTab}:${requestedSettingsSection}:${requestedDocumentId ?? ""}:${requestedAssistantId ?? ""}`;
   const shownSurface = useRef(surfaceKey);
 
   useEffect(() => {
