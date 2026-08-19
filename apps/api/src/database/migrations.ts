@@ -66,6 +66,7 @@ async function run(): Promise<void> {
   const database = createDatabase(loadConfig().databasePath);
   try {
     const result = direction === "up" ? await migrateUp(database) : await migrateDown(database);
+    // The only call site for backfillProfileHandles — test suites call the function directly.
     const backfilled = direction === "up" ? await backfillProfileHandles(database) : 0;
     console.log(JSON.stringify({ service: "migrations", direction, result, backfilled }));
   } finally {

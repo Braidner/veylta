@@ -71,6 +71,7 @@ import {
   ResourceNotFoundError,
   type SessionActor,
 } from "../family/family-service.js";
+import { provisionalHandleSql } from "../family/patient-profiles.js";
 import { resolveAnalyteMapping } from "../processing/analyte-mapping.js";
 import {
   appendProcessingEventInTransaction,
@@ -3584,7 +3585,7 @@ export function createDocumentService(
                     p.family_id,
                     p.display_name,
                     p.kind,
-                    p.created_at, COALESCE(p.handle, 'p-' || lower(substr(replace(p.id, '-', ''), 1, 12))) AS handle,
+                    p.created_at, COALESCE(p.handle, ${provisionalHandleSql("p.")}) AS handle,
                     CASE
                       WHEN m.role = 'owner' THEN 'owner'
                       WHEN m.role = 'adult_member' AND p.linked_user_id = m.user_id THEN 'self'

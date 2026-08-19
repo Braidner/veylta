@@ -27,7 +27,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname.startsWith("/health-api/") || url.pathname.includes("/documents/")) {
+  if (url.pathname.startsWith("/health-api/")) {
     return;
   }
 

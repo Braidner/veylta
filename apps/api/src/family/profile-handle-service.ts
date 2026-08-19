@@ -26,7 +26,7 @@ export async function setProfileHandle(
     const current = await client.query<{ handle: string }>(
       // A row a raw insert (old tests, a pre-backfill migration state) left without a handle
       // must not 500 here — fall back to the same provisional expression every read path uses.
-      `SELECT COALESCE(handle, ${provisionalHandleSql}) AS handle
+      `SELECT COALESCE(handle, ${provisionalHandleSql()}) AS handle
          FROM patient_profiles WHERE family_id = $1 AND id = $2`,
       [scope.familyId, scope.profileId],
     );

@@ -371,7 +371,7 @@ async function profilesFor(
 ): Promise<PatientProfileSummary[]> {
   const result = await client.query<ProfileRow>(
     `SELECT id, family_id, display_name, kind, 'owner' AS access, created_at,
-            COALESCE(handle, ${provisionalHandleSql}) AS handle
+            COALESCE(handle, ${provisionalHandleSql()}) AS handle
      FROM patient_profiles
      WHERE family_id = $1 AND archived_at IS NULL
      ORDER BY CASE WHEN linked_user_id = $2 THEN 0 ELSE 1 END, created_at, id`,
@@ -392,7 +392,7 @@ async function profilesForGrantedUser(
             p.kind,
             CASE WHEN p.linked_user_id = $2 THEN 'self' ELSE 'granted_read' END AS access,
             p.created_at,
-            COALESCE(p.handle, 'p-' || lower(substr(replace(p.id, '-', ''), 1, 12))) AS handle
+            COALESCE(p.handle, ${provisionalHandleSql("p.")}) AS handle
        FROM patient_profiles p
        LEFT JOIN profile_consent_grants g
          ON g.family_id = p.family_id

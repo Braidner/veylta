@@ -287,6 +287,7 @@ pnpm license:check
 ```
 
 `pnpm db:rollback` reverses the latest migration; `pnpm db:migrate` reapplies it.
+Rolling 0038 back and re-applying it re-derives every handle, including the ones a person chose.
 On first launch, <http://127.0.0.1:4300> creates the only bootstrap administrator
 and signs them into their linked profile. Later visits show the local sign-in
 screen. The active profile stays explicit in both the route and heading. The

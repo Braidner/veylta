@@ -22,7 +22,15 @@ function segmentsAfterHandle(pathname: string): readonly (string | undefined)[] 
     .split("/")
     .filter((part) => part.length > 0)
     .slice(1)
-    .map((part) => decodeURIComponent(part));
+    .map((part) => {
+      // A malformed escape (a lone `%`) must not throw during a client layout render — the raw
+      // segment flows on instead.
+      try {
+        return decodeURIComponent(part);
+      } catch {
+        return part;
+      }
+    });
 }
 
 /**

@@ -39,6 +39,8 @@ pnpm test:e2e e2e/document-review.spec.ts
   scripts have `pre*` hooks that do this; a direct `pnpm --filter …` call does not.
 - `pnpm exec playwright install chromium` once before the first e2e run.
 - `pnpm db:rollback` reverses the newest migration. CI runs migrate → rollback → migrate.
+  Rolling 0038 back and re-applying it re-derives every handle, including the ones a person
+  chose.
 
 # Workflow
 

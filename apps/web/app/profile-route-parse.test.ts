@@ -67,3 +67,7 @@ test("the handle comes from the route, never from the pathname's own spelling", 
   const route = parseProfileRoute("anna", "/Anna/docs/d%201", new URLSearchParams());
   assert.deepEqual(route, { requestedHandle: "anna", requestedDocumentId: "d 1" });
 });
+
+test("a malformed percent-escape does not throw; the raw segment flows through", () => {
+  assert.deepEqual(at("/anna/docs/%"), { requestedHandle: "anna", requestedDocumentId: "%" });
+});

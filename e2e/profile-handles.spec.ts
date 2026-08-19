@@ -35,10 +35,11 @@ test("the profile lives at its handle, the owner renames it, and old links follo
   const field = page.getByLabel("Адрес");
   await field.fill("login");
   await expect(page.getByText("Это слово занято системой.")).toBeVisible();
-  await field.fill("Anna-Test");
+  const renamed = `t-${crypto.randomUUID().slice(0, 8)}`;
+  await field.fill(renamed.toUpperCase());
   await page.getByRole("button", { name: "Сохранить адрес" }).click();
-  await expect(page).toHaveURL(/\/anna-test\/settings$/);
-  await page.goto("/anna-test");
+  await expect(page).toHaveURL(new RegExp(`/${renamed}/settings$`));
+  await page.goto(`/${renamed}`);
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
   await page.goto(`/${handle}`);
   await expect(page.getByRole("heading", { level: 1, name: "Профиль недоступен" })).toBeVisible();
@@ -48,7 +49,7 @@ test("the profile lives at its handle, the owner renames it, and old links follo
     headers: { origin: webOrigin },
   });
   expect(signOut.status()).toBe(204);
-  await page.goto("/anna-test/docs");
+  await page.goto(`/${renamed}/docs`);
   await expect(page).toHaveURL(/\/login$/);
   // Which door depends on whether this stand already has an administrator; both live at /login.
   await expect(

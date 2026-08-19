@@ -3,7 +3,9 @@ import type { Database, DatabaseClient } from "../database/pool.js";
 import { defaultHandle, withSuffix } from "./profile-handle.js";
 
 /** The provisional handle migration 0038 gives a row that has none yet — the same expression. */
-export const provisionalHandleSql = "'p-' || lower(substr(replace(id, '-', ''), 1, 12))";
+export function provisionalHandleSql(alias = ""): string {
+  return `'p-' || lower(substr(replace(${alias}id, '-', ''), 1, 12))`;
+}
 
 // `withSuffix` clips a long base before appending `-2` … `-9999` (`"-9999"` is the longest
 // possible suffix) so the result still fits the handle length bound.
