@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { loadConfig } from "../config.js";
+import { backfillProfileHandles } from "../family/patient-profiles.js";
 import { createDatabase, type Database } from "./pool.js";
 
 const defaultDirectory = fileURLToPath(new URL("../../../../db/migrations/", import.meta.url));
@@ -65,7 +66,8 @@ async function run(): Promise<void> {
   const database = createDatabase(loadConfig().databasePath);
   try {
     const result = direction === "up" ? await migrateUp(database) : await migrateDown(database);
-    console.log(JSON.stringify({ service: "migrations", direction, result }));
+    const backfilled = direction === "up" ? await backfillProfileHandles(database) : 0;
+    console.log(JSON.stringify({ service: "migrations", direction, result, backfilled }));
   } finally {
     await database.close();
   }

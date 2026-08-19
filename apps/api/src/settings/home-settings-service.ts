@@ -13,6 +13,7 @@ import {
   type ManagedAccountCreateResponse,
   type StorageRelocationResponse,
 } from "@veylta/contracts";
+import { normalizeUsername, validateAccountFields } from "../accounts/account-fields.js";
 import { hashPassword } from "../accounts/password.js";
 import type { Database, DatabaseClient } from "../database/pool.js";
 import {
@@ -21,6 +22,7 @@ import {
   ResourceNotFoundError,
   type SessionActor,
 } from "../family/family-service.js";
+import { createPatientProfile } from "../family/patient-profiles.js";
 import type { StorageController } from "../storage/storage-controller.js";
 import type { CodexPreferencesStore } from "./codex-preferences.js";
 
@@ -58,8 +60,6 @@ export interface HomeSettingsService {
 
 export class CodexCatalogUnavailableError extends Error {}
 export class CodexPreferenceUnsupportedError extends Error {}
-
-const usernamePattern = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 
 function requireAdministrator(actor: SessionActor): void {
   if (actor.accountRole !== "admin") throw new ResourceNotFoundError();
@@ -153,19 +153,10 @@ export function createHomeSettingsService(
 
     async createAccount(actor, input, correlationId) {
       requireAdministrator(actor);
-      const username = input.username.trim().toLowerCase();
+      const username = normalizeUsername(input.username);
       const displayName = input.displayName.trim();
-      if (
-        !usernamePattern.test(username) ||
-        displayName.length === 0 ||
-        displayName.length > 120 ||
-        input.password.length < 12 ||
-        input.password.length > 128 ||
-        Buffer.byteLength(input.password, "utf8") > 256 ||
-        !["admin", "user"].includes(input.role)
-      ) {
-        throw new DomainValidationError();
-      }
+      validateAccountFields({ username, displayName, password: input.password });
+      if (!["admin", "user"].includes(input.role)) throw new DomainValidationError();
       const passwordHash = await hashPassword(input.password);
       const ids = { user: randomUUID(), membership: randomUUID(), profile: randomUUID() };
       const now = new Date();
@@ -207,12 +198,16 @@ export function createHomeSettingsService(
             now,
           ],
         );
-        await client.query(
-          `INSERT INTO patient_profiles
-             (id, family_id, display_name, kind, linked_user_id, created_by_user_id, created_at)
-           VALUES ($1, $2, $3, 'adult', $4, $5, $6)`,
-          [ids.profile, family.family_id, displayName, ids.user, actor.userId, now],
-        );
+        await createPatientProfile(client, {
+          id: ids.profile,
+          familyId: family.family_id,
+          displayName,
+          kind: "adult",
+          linkedUserId: ids.user,
+          createdByUserId: actor.userId,
+          createdAt: now.toISOString(),
+          username,
+        });
         await audit(client, {
           familyId: null,
           actorUserId: actor.userId,

@@ -29,12 +29,8 @@ import {
   type ProfileRestoreResponse,
   type SessionResponse,
 } from "@veylta/contracts";
-import {
-  type Database,
-  type DatabaseClient,
-  isSqliteConstraintError,
-  type QueryResult,
-} from "../database/pool.js";
+import { type Database, type DatabaseClient, isSqliteConstraintError } from "../database/pool.js";
+import { createPatientProfile } from "./patient-profiles.js";
 
 export class ResourceNotFoundError extends Error {}
 export class DomainConflictError extends Error {}
@@ -54,15 +50,14 @@ export interface FamilyServiceOptions {
   sessionTtlSeconds: number;
 }
 
-export interface DemoRegistrationResult {
-  response: DemoRegistrationResponse;
+/** An entry that opens a session answers with the response and the cookie that carries it. */
+export interface SessionResult<T> {
+  response: T;
   cookie: string;
 }
 
-export interface DemoInvitationAcceptResult {
-  response: DemoInvitationAcceptResponse;
-  cookie: string;
-}
+export type DemoRegistrationResult = SessionResult<DemoRegistrationResponse>;
+export type DemoInvitationAcceptResult = SessionResult<DemoInvitationAcceptResponse>;
 
 export interface FamilyAuditLogQuery {
   limit?: string;
@@ -200,10 +195,6 @@ interface InvitationRow {
   expires_at: string;
 }
 
-interface Queryable {
-  query<T extends object>(queryText: string, values?: readonly unknown[]): Promise<QueryResult<T>>;
-}
-
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -322,13 +313,6 @@ function consentGrant(row: ConsentGrantRow): ProfileConsentGrant {
   };
 }
 
-async function inTransaction<T>(
-  database: Database,
-  operation: (client: DatabaseClient) => Promise<T>,
-): Promise<T> {
-  return database.transaction(operation);
-}
-
 function cookieValue(header: string | undefined, name: string): string | null {
   if (header === undefined) return null;
   for (const part of header.split(";")) {
@@ -342,7 +326,7 @@ function cookieValue(header: string | undefined, name: string): string | null {
 }
 
 async function audit(
-  client: Queryable,
+  client: DatabaseClient,
   event: {
     familyId: string | null;
     actorUserId: string;
@@ -374,7 +358,7 @@ async function audit(
 }
 
 async function requireOwner(
-  client: Queryable,
+  client: DatabaseClient,
   actor: SessionActor,
   familyId: string,
 ): Promise<void> {
@@ -390,7 +374,7 @@ async function requireOwner(
 }
 
 async function profilesFor(
-  client: Queryable,
+  client: DatabaseClient,
   familyId: string,
   userId: string,
 ): Promise<PatientProfileSummary[]> {
@@ -405,7 +389,7 @@ async function profilesFor(
 }
 
 async function profilesForGrantedUser(
-  client: Queryable,
+  client: DatabaseClient,
   familyId: string,
   userId: string,
 ): Promise<PatientProfileSummary[]> {
@@ -483,7 +467,7 @@ export function createFamilyService(
       const displayName = input.displayName.trim();
       if (displayName.length === 0) throw new DomainValidationError();
       const now = new Date();
-      const created = await inTransaction(database, async (client) => {
+      const created = await database.transaction(async (client) => {
         await requireOwner(client, actor, familyId);
         const row: ProfileRow = {
           id: randomUUID(),
@@ -493,12 +477,16 @@ export function createFamilyService(
           access: "owner",
           created_at: now.toISOString(),
         };
-        await client.query(
-          `INSERT INTO patient_profiles
-             (id, family_id, display_name, kind, linked_user_id, created_by_user_id, created_at)
-           VALUES ($1, $2, $3, $4, NULL, $5, $6)`,
-          [row.id, row.family_id, row.display_name, row.kind, actor.userId, row.created_at],
-        );
+        await createPatientProfile(client, {
+          id: row.id,
+          familyId,
+          displayName: row.display_name,
+          kind: row.kind,
+          linkedUserId: null,
+          createdByUserId: actor.userId,
+          createdAt: row.created_at,
+          username: null,
+        });
         await audit(client, {
           familyId,
           actorUserId: actor.userId,
@@ -519,7 +507,7 @@ export function createFamilyService(
         profileId: requestedScope.profileId.toLowerCase(),
       };
       const now = new Date();
-      return inTransaction(database, async (client) => {
+      return database.transaction(async (client) => {
         await requireOwner(client, actor, scope.familyId);
         const target = await client.query<{ id: string }>(
           `SELECT id
@@ -578,7 +566,7 @@ export function createFamilyService(
         role: input.role,
         expiresAt: expiresAt.toISOString(),
       };
-      await inTransaction(database, async (client) => {
+      await database.transaction(async (client) => {
         await requireOwner(client, actor, normalizedFamilyId);
         await client.query(
           `INSERT INTO family_invitations
@@ -620,7 +608,7 @@ export function createFamilyService(
       const now = new Date();
       const grantId = randomUUID();
       try {
-        const grant = await inTransaction(database, async (client) => {
+        const grant = await database.transaction(async (client) => {
           await requireOwner(client, actor, scope.familyId);
           const profile = await client.query<{ id: string }>(
             `SELECT id
@@ -697,7 +685,7 @@ export function createFamilyService(
         profile: randomUUID(),
         session: randomUUID(),
       };
-      const result = await inTransaction(database, async (client) => {
+      const result = await database.transaction(async (client) => {
         const invitation = (
           await client.query<InvitationRow>(
             `SELECT id, family_id, role, expires_at
@@ -728,12 +716,16 @@ export function createFamilyService(
           [ids.membership, invitation.family_id, ids.user, invitation.role, now],
         );
         if (invitation.role === "adult_member") {
-          await client.query(
-            `INSERT INTO patient_profiles
-               (id, family_id, display_name, kind, linked_user_id, created_by_user_id, created_at)
-             VALUES ($1, $2, $3, 'adult', $4, $4, $5)`,
-            [ids.profile, invitation.family_id, profileName, ids.user, now],
-          );
+          await createPatientProfile(client, {
+            id: ids.profile,
+            familyId: invitation.family_id,
+            displayName: profileName ?? "",
+            kind: "adult",
+            linkedUserId: ids.user,
+            createdByUserId: ids.user,
+            createdAt: now.toISOString(),
+            username: null,
+          });
         }
         const consumed = await client.query(
           `UPDATE family_invitations
@@ -794,7 +786,7 @@ export function createFamilyService(
     },
 
     async getSession(actor) {
-      return inTransaction(database, async (client) => {
+      return database.transaction(async (client) => {
         const memberships = await client.query<MembershipRow>(
           `SELECT f.id, f.display_name, m.role, f.created_at
            FROM family_memberships m
@@ -834,7 +826,7 @@ export function createFamilyService(
     async getAuditLog(actor, familyId, query, correlationId) {
       const normalizedFamilyId = familyId.toLowerCase();
       const limit = auditLogLimit(query.limit);
-      return inTransaction(database, async (client) => {
+      return database.transaction(async (client) => {
         await requireOwner(client, actor, normalizedFamilyId);
         const cursor = decodeAuditLogCursor(query.cursor);
         const result = await client.query<AuditLogRow>(
@@ -878,7 +870,7 @@ export function createFamilyService(
 
     async getArchivedProfiles(actor, familyId, correlationId) {
       const normalizedFamilyId = familyId.toLowerCase();
-      return inTransaction(database, async (client) => {
+      return database.transaction(async (client) => {
         await requireOwner(client, actor, normalizedFamilyId);
         const profiles = await client.query<ArchivedProfileRow>(
           `SELECT id, family_id, display_name, kind, archived_at
@@ -910,7 +902,7 @@ export function createFamilyService(
         familyId: requestedScope.familyId.toLowerCase(),
         profileId: requestedScope.profileId.toLowerCase(),
       };
-      return inTransaction(database, async (client) => {
+      return database.transaction(async (client) => {
         await requireOwner(client, actor, scope.familyId);
         const profile = await client.query<{ id: string }>(
           `SELECT id
@@ -962,7 +954,7 @@ export function createFamilyService(
 
     async listConsentMembers(actor, familyId, correlationId) {
       const normalizedFamilyId = familyId.toLowerCase();
-      return inTransaction(database, async (client) => {
+      return database.transaction(async (client) => {
         await requireOwner(client, actor, normalizedFamilyId);
         const members = await client.query<ConsentMemberRow>(
           `SELECT u.id, u.display_name, m.role
@@ -994,7 +986,7 @@ export function createFamilyService(
     },
 
     async listProfiles(actor, familyId) {
-      return inTransaction(database, async (client) => {
+      return database.transaction(async (client) => {
         const memberships = await client.query<{ role: FamilyRole }>(
           `SELECT role
              FROM family_memberships
@@ -1011,7 +1003,7 @@ export function createFamilyService(
     },
 
     async logout(actor, correlationId) {
-      await inTransaction(database, async (client) => {
+      await database.transaction(async (client) => {
         const revokedAt = new Date();
         const revoked = await client.query<{ user_id: string }>(
           `UPDATE sessions
@@ -1039,7 +1031,7 @@ export function createFamilyService(
         profileId: requestedScope.profileId.toLowerCase(),
         grantId: requestedScope.grantId.toLowerCase(),
       };
-      await inTransaction(database, async (client) => {
+      await database.transaction(async (client) => {
         await requireOwner(client, actor, scope.familyId);
         const now = new Date();
         const revoked = await client.query(
@@ -1072,7 +1064,7 @@ export function createFamilyService(
       };
       const now = new Date();
       try {
-        return await inTransaction(database, async (client) => {
+        return await database.transaction(async (client) => {
           await requireOwner(client, actor, scope.familyId);
           const restored = await client.query<{ id: string }>(
             `UPDATE patient_profiles
@@ -1127,7 +1119,7 @@ export function createFamilyService(
       };
 
       try {
-        await inTransaction(database, async (client) => {
+        await database.transaction(async (client) => {
           await client.query(
             "INSERT INTO users (id, display_name, created_at) VALUES ($1, $2, $3)",
             [ids.user, displayName, now],
@@ -1148,12 +1140,16 @@ export function createFamilyService(
              VALUES ($1, $2, $3, 'owner', 'active', $4)`,
             [ids.membership, ids.family, ids.user, now],
           );
-          await client.query(
-            `INSERT INTO patient_profiles
-               (id, family_id, display_name, kind, linked_user_id, created_by_user_id, created_at)
-             VALUES ($1, $2, $3, 'adult', $4, $4, $5)`,
-            [ids.profile, ids.family, profileName, ids.user, now],
-          );
+          await createPatientProfile(client, {
+            id: ids.profile,
+            familyId: ids.family,
+            displayName: profileName,
+            kind: "adult",
+            linkedUserId: ids.user,
+            createdByUserId: ids.user,
+            createdAt: now.toISOString(),
+            username: null,
+          });
           await audit(client, {
             familyId: null,
             actorUserId: ids.user,

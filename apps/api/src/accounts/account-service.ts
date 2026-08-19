@@ -9,7 +9,9 @@ import {
   type SetupStatusResponse,
 } from "@veylta/contracts";
 import type { Database, DatabaseClient } from "../database/pool.js";
-import { DomainConflictError, DomainValidationError } from "../family/family-service.js";
+import { DomainConflictError } from "../family/family-service.js";
+import { createPatientProfile } from "../family/patient-profiles.js";
+import { isValidUsername, normalizeUsername, validateAccountFields } from "./account-fields.js";
 import { hashPassword, verifyPassword } from "./password.js";
 
 export class InvalidCredentialsError extends Error {}
@@ -37,21 +39,10 @@ export interface AccountService {
   ): Promise<AuthenticatedAccountResult<AdminSetupResponse>>;
 }
 
-const usernamePattern = /^[a-z0-9][a-z0-9._-]{2,31}$/;
 const dummyPasswordHash = hashPassword(randomBytes(32).toString("base64url"));
 
 function sha256(value: string): string {
   return createHash("sha256").update(value).digest("hex");
-}
-
-function normalizeUsername(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function validatePassword(value: string): void {
-  if (value.length < 12 || value.length > 128 || Buffer.byteLength(value, "utf8") > 256) {
-    throw new DomainValidationError();
-  }
 }
 
 async function insertAudit(
@@ -114,7 +105,7 @@ export function createAccountService(
 
     async login(input, correlationId) {
       const username = normalizeUsername(input.username);
-      const account = usernamePattern.test(username)
+      const account = isValidUsername(username)
         ? (
             await database.query<{
               user_id: string;
@@ -170,10 +161,7 @@ export function createAccountService(
     async setupAdmin(input, correlationId) {
       const username = normalizeUsername(input.username);
       const displayName = input.displayName.trim();
-      if (!usernamePattern.test(username) || displayName.length === 0 || displayName.length > 120) {
-        throw new DomainValidationError();
-      }
-      validatePassword(input.password);
+      validateAccountFields({ username, displayName, password: input.password });
       const existingAccounts = await database.query<{ count: number }>(
         "SELECT count(*) AS count FROM app_accounts",
       );
@@ -212,12 +200,16 @@ export function createAccountService(
              VALUES ($1, $2, $3, 'owner', 'active', $4)`,
           [ids.membership, ids.family, ids.user, session.now],
         );
-        await client.query(
-          `INSERT INTO patient_profiles
-               (id, family_id, display_name, kind, linked_user_id, created_by_user_id, created_at)
-             VALUES ($1, $2, $3, 'adult', $4, $4, $5)`,
-          [ids.profile, ids.family, displayName, ids.user, session.now],
-        );
+        await createPatientProfile(client, {
+          id: ids.profile,
+          familyId: ids.family,
+          displayName,
+          kind: "adult",
+          linkedUserId: ids.user,
+          createdByUserId: ids.user,
+          createdAt: session.now.toISOString(),
+          username,
+        });
         await client.query(
           `INSERT INTO sessions (id, user_id, token_hash, expires_at, created_at)
              VALUES ($1, $2, $3, $4, $5)`,

@@ -1,5 +1,4 @@
 import {
-  isValidProfileHandle,
   MAX_PROFILE_HANDLE_LENGTH,
   MIN_PROFILE_HANDLE_LENGTH,
   RESERVED_PROFILE_HANDLES,
@@ -52,27 +51,27 @@ export function transliterate(value: string): string {
 
 const fallback = "profile";
 
-function clip(value: string): string {
-  return value.slice(0, MAX_PROFILE_HANDLE_LENGTH).replace(/-+$/, "");
+/** Within the length bound, no trailing hyphen, and long enough to be a handle at all. */
+function finalize(cleaned: string): string {
+  const clipped = cleaned.slice(0, MAX_PROFILE_HANDLE_LENGTH).replace(/-+$/, "");
+  return clipped.length < MIN_PROFILE_HANDLE_LENGTH ? fallback : clipped;
 }
 
 /** The first word of a name in the handle alphabet; too short or empty → `profile`. */
 export function handleFromName(displayName: string): string {
   const first = transliterate(displayName).trim().split(/\s+/)[0] ?? "";
-  const cleaned = clip(first.replace(/[^a-z0-9-]/g, "").replace(/^-+/, ""));
-  return cleaned.length < MIN_PROFILE_HANDLE_LENGTH ? fallback : cleaned;
+  return finalize(first.replace(/[^a-z0-9-]/g, "").replace(/^-+/, ""));
 }
 
 /** A username (`[a-z0-9._-]`) in the handle alphabet: dots and underscores become hyphens. */
 export function handleFromUsername(username: string): string {
-  const cleaned = clip(
+  return finalize(
     username
       .toLowerCase()
       .replace(/[._]/g, "-")
       .replace(/[^a-z0-9-]/g, "")
       .replace(/^-+/, ""),
   );
-  return cleaned.length < MIN_PROFILE_HANDLE_LENGTH ? fallback : cleaned;
 }
 
 /** `base`, `base-2`, `base-3`, … — the first one `taken` does not know, within the bound. */
@@ -96,8 +95,5 @@ export function defaultHandle(input: { username: string | null; displayName: str
     input.username === null
       ? handleFromName(input.displayName)
       : handleFromUsername(input.username);
-  return withSuffix(
-    base,
-    (candidate) => !isValidProfileHandle(candidate) && RESERVED_PROFILE_HANDLES.includes(candidate),
-  );
+  return withSuffix(base, (candidate) => RESERVED_PROFILE_HANDLES.includes(candidate));
 }

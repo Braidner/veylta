@@ -54,3 +54,7 @@ test("a taken handle gets the next free suffix within the length bound", () => {
   assert.equal(result.length, 30);
   assert.equal(result, `${"a".repeat(28)}-2`);
 });
+
+test("a base with no free suffix at all refuses rather than returning a taken handle", () => {
+  assert.throws(() => withSuffix("x", () => true), /No free profile handle/);
+});
