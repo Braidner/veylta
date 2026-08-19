@@ -15,8 +15,6 @@ import {
 
 interface AssistantConsiliumProps {
   readonly consilium: AssistantConsilium;
-  readonly familyId: string;
-  readonly profileId: string;
   readonly evidence: EvidenceIndex;
   readonly records: RecordIndex;
 }
@@ -26,13 +24,7 @@ interface AssistantConsiliumProps {
  * verified blocks or its refusal, never averaged — then where the synthesis found them agreeing
  * or differing. Each specialist card names the observations that convened them.
  */
-export function AssistantConsiliumView({
-  consilium,
-  familyId,
-  profileId,
-  evidence,
-  records,
-}: AssistantConsiliumProps) {
+export function AssistantConsiliumView({ consilium, evidence, records }: AssistantConsiliumProps) {
   const reasons = new Map(consilium.invitations.map((item) => [item.specialty, item]));
   return (
     <section
@@ -61,13 +53,7 @@ export function AssistantConsiliumView({
                     : invitationCopy(invitation, evidence)}
                 </span>
               </header>
-              <OpinionBody
-                opinion={opinion}
-                familyId={familyId}
-                profileId={profileId}
-                evidence={evidence}
-                records={records}
-              />
+              <OpinionBody opinion={opinion} evidence={evidence} records={records} />
             </li>
           );
         })}
@@ -95,8 +81,6 @@ export function AssistantConsiliumView({
 
 function OpinionBody({
   opinion,
-  familyId,
-  profileId,
   evidence,
   records,
 }: { readonly opinion: AssistantOpinion } & Omit<AssistantConsiliumProps, "consilium">) {
@@ -116,24 +100,13 @@ function OpinionBody({
           <li key={`${opinion.specialty}:${index}`} className="assistant-block">
             <BlockKind kind={block.kind} />
             <div className="assistant-block__body">
-              <BlockBody
-                block={block}
-                familyId={familyId}
-                profileId={profileId}
-                evidence={evidence}
-                records={records}
-              />
+              <BlockBody block={block} evidence={evidence} records={records} />
               <CheckerNote verdict={verdicts.get(index)} />
             </div>
           </li>
         ))}
       </ol>
-      <SourceRefs
-        refs={opinion.answer.urgency.reasons}
-        familyId={familyId}
-        profileId={profileId}
-        evidence={evidence}
-      />
+      <SourceRefs refs={opinion.answer.urgency.reasons} evidence={evidence} />
     </>
   );
 }

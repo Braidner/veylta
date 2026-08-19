@@ -50,7 +50,7 @@ test("medical navigator leads with the real review queue and source action", () 
 
   assert.equal(model.assistants[0]?.id, "physician");
   assert.match(model.assistants[0]?.message ?? "", /2 значения/);
-  assert.match(model.assistants[0]?.action.href ?? "", /documents\/.*0003$/);
+  assert.match(model.assistants[0]?.action.href ?? "", /^\/ivan\/docs\/.*0003$/);
   assert.equal(model.signals.pendingReview.value, "2");
   assert.equal(model.signals.pendingReview.tone, "attention");
 });

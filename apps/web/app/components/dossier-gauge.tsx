@@ -6,13 +6,12 @@ import { type DossierSeries, seriesAssessment } from "../dossier";
 import { dossierAreaLabel, readersCopy } from "../dossier-areas";
 import { gaugeScale } from "../dossier-scale";
 import { formatSampleMoment } from "../format-moment";
-import { profileTabPath } from "../paths";
+import { historyPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { countCopy } from "../russian-plural";
 import { DossierSparkline } from "./dossier-sparkline";
 
 interface GaugeCardProps {
-  readonly familyId: string;
-  readonly profileId: string;
   readonly series: DossierSeries;
   /** In the whole-record views a card also says which area it belongs to and who reads it. */
   readonly showArea?: boolean;
@@ -96,11 +95,10 @@ function ScaleTrack({ series }: { readonly series: DossierSeries }) {
  * reference as a scale with the value on it, the change since last time, and the way to its
  * history. Colour appears only where the source's own reference puts the value outside.
  */
-export function GaugeCard({ familyId, profileId, series, showArea = false }: GaugeCardProps) {
+export function GaugeCard({ series, showArea = false }: GaugeCardProps) {
+  const handle = useProfileHandle();
   const assessment = seriesAssessment(series);
-  const history = profileTabPath(familyId, profileId, "history");
-  const href =
-    series.code === null ? history : `${history}&canonicalCode=${encodeURIComponent(series.code)}`;
+  const href = series.code === null ? historyPath(handle) : historyPath(handle, series.code);
   return (
     <li
       className={`dossier-gauge is-${assessment.tone} is-${series.status}`}

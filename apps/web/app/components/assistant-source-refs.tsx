@@ -3,21 +3,19 @@
 import type { AssistantEvidenceItem, AssistantEvidenceRef } from "@veylta/contracts";
 import { ExternalLink } from "lucide-react";
 import { documentPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 
 export type EvidenceIndex = ReadonlyMap<string, AssistantEvidenceItem>;
 
 /** Every ref opens the page the value was confirmed from; an unknown id is shown, not hidden. */
 export function SourceRefs({
   refs,
-  familyId,
-  profileId,
   evidence,
 }: {
   readonly refs: readonly AssistantEvidenceRef[];
-  readonly familyId: string;
-  readonly profileId: string;
   readonly evidence: EvidenceIndex;
 }) {
+  const handle = useProfileHandle();
   if (refs.length === 0) return null;
   return (
     <ul className="assistant-refs" aria-label="Источники">
@@ -33,7 +31,7 @@ export function SourceRefs({
         }
         return (
           <li key={ref.observationId}>
-            <a href={documentPath(familyId, profileId, item.documentId)}>
+            <a href={documentPath(handle, item.documentId)}>
               <span>
                 {item.name} {item.value} {item.unit}
               </span>

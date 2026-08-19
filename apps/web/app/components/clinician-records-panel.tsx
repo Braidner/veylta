@@ -12,6 +12,7 @@ import { apiRequest } from "../api-client";
 import { checkQuestion, recordCounts, recordCountsLine } from "../clinician-records";
 import { stashDossierAsk } from "../dossier-ask";
 import { assistantAskPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { type RecordDecision, RecordRow } from "./clinician-record-row";
 
 interface ClinicianRecordsPanelProps {
@@ -42,6 +43,7 @@ export function ClinicianRecordsPanel({
   canWrite,
   refreshKey,
 }: ClinicianRecordsPanelProps) {
+  const handle = useProfileHandle();
   const [response, setResponse] = useState<ClinicianRecordsResponse | null>(null);
   const [failed, setFailed] = useState(false);
   const [pending, setPending] = useState<string | null>(null);
@@ -140,7 +142,7 @@ export function ClinicianRecordsPanel({
           </p>
           <Link
             className="button button--secondary"
-            href={assistantAskPath(familyId, profileId, "therapist")}
+            href={assistantAskPath(handle, "therapist")}
             onClick={() =>
               stashDossierAsk(window.sessionStorage, profileId, {
                 ask: "therapist",

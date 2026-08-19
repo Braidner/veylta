@@ -10,6 +10,7 @@ import { ContactRound, ShieldAlert } from "lucide-react";
 import type { FormEvent, RefObject } from "react";
 import { assistantIdentity, specialtyLabel } from "../assistant";
 import { profileTabPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { countCopy } from "../russian-plural";
 import type { Recipient } from "../use-assistant-composer";
 import { AssistantAnswer } from "./assistant-answer";
@@ -21,8 +22,6 @@ import { AssistantRail } from "./assistant-rail";
 
 interface AssistantPanelProps {
   readonly assistantId: AssistantId;
-  readonly familyId: string;
-  readonly profileId: string;
   readonly workspace: AssistantWorkspaceResponse | null;
   readonly evidence: EvidenceIndex;
   readonly records: RecordIndex;
@@ -58,7 +57,8 @@ interface AssistantPanelProps {
 
 /** One assistant's room: a rail of conversations, the stream with the egress gate, a composer. */
 export function AssistantPanel(props: AssistantPanelProps) {
-  const { workspace, familyId, profileId, assistantId } = props;
+  const handle = useProfileHandle();
+  const { workspace, assistantId } = props;
   const identity = assistantIdentity[assistantId];
   const selected =
     workspace?.conversations.find((item) => item.id === workspace.selectedConversationId) ?? null;
@@ -126,8 +126,7 @@ export function AssistantPanel(props: AssistantPanelProps) {
               <ShieldAlert size={17} strokeWidth={1.8} aria-hidden="true" />
               <p>
                 <strong>Интерпретации не будет:</strong> в медицинском профиле нет пола или года
-                рождения.{" "}
-                <a href={profileTabPath(familyId, profileId, "dossier")}>Заполнить досье</a>
+                рождения. <a href={profileTabPath(handle, "dossier")}>Заполнить досье</a>
               </p>
             </div>
           ) : null}
@@ -228,8 +227,6 @@ function ConversationItem({
     <AssistantAnswer
       message={item}
       assistantId={panel.assistantId}
-      familyId={panel.familyId}
-      profileId={panel.profileId}
       evidence={panel.evidence}
       records={panel.records}
       canWrite={panel.workspace?.canWrite ?? false}

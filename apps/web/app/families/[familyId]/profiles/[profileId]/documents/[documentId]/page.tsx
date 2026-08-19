@@ -1,16 +1,11 @@
-import { VeyltaApp } from "../../../../../../components/veylta-app";
+import { LegacyRedirect } from "../../../../../../components/legacy-redirect";
 
-interface DocumentPageProps {
+/** The old id-based document link; the same source now lives at `/<handle>/docs/<documentId>`. */
+export default async function LegacyDocumentPage({
+  params,
+}: {
   params: Promise<{ familyId: string; profileId: string; documentId: string }>;
-}
-
-export default async function DocumentPage({ params }: DocumentPageProps) {
+}) {
   const { familyId, profileId, documentId } = await params;
-  return (
-    <VeyltaApp
-      requestedFamilyId={familyId}
-      requestedProfileId={profileId}
-      requestedDocumentId={documentId}
-    />
-  );
+  return <LegacyRedirect target={{ familyId, profileId, documentId }} />;
 }

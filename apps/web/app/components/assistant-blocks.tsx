@@ -37,6 +37,7 @@ import {
 import { clinicianRecordKindLabel } from "../clinician-records";
 import { formatSampleMoment } from "../format-moment";
 import { documentPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { type EvidenceIndex, SourceRefs } from "./assistant-source-refs";
 
 export type { ReferralBlock } from "../assistant-referrals";
@@ -72,8 +73,6 @@ export function BlockKind({ kind }: { readonly kind: AssistantBlock["kind"] }) {
 }
 
 interface SourceContext {
-  readonly familyId: string;
-  readonly profileId: string;
   readonly evidence: EvidenceIndex;
   readonly records: RecordIndex;
 }
@@ -81,10 +80,9 @@ interface SourceContext {
 /** The clinician's record a сверка speaks to, with the way back to the document it came from. */
 function TheirRecord({
   recordId,
-  familyId,
-  profileId,
   records,
-}: { readonly recordId: string } & Pick<SourceContext, "familyId" | "profileId" | "records">) {
+}: { readonly recordId: string } & Pick<SourceContext, "records">) {
+  const handle = useProfileHandle();
   const record = records.get(recordId);
   if (record === undefined) {
     return (
@@ -95,7 +93,7 @@ function TheirRecord({
   return (
     <p className="assistant-check__theirs">
       <span>Врач · {kind ?? record.kind}</span>
-      <a href={documentPath(familyId, profileId, record.documentId)}>
+      <a href={documentPath(handle, record.documentId)}>
         {record.label}
         {record.detail === null ? "" : ` · ${record.detail}`}
         {record.documentDate === null ? "" : ` · ${formatSampleMoment(record.documentDate)}`}
@@ -107,13 +105,11 @@ function TheirRecord({
 
 export function BlockBody({
   block,
-  familyId,
-  profileId,
   evidence,
   records,
 }: SourceContext & { readonly block: AssistantBlock }) {
   const refs = (list: readonly AssistantEvidenceRef[]) => (
-    <SourceRefs refs={list} familyId={familyId} profileId={profileId} evidence={evidence} />
+    <SourceRefs refs={list} evidence={evidence} />
   );
   switch (block.kind) {
     case "clinician_check": {
@@ -121,12 +117,7 @@ export function BlockBody({
       return (
         <>
           <span className={`assistant-check__claim is-${claim.tone}`}>{claim.label}</span>
-          <TheirRecord
-            recordId={block.theirs.recordId}
-            familyId={familyId}
-            profileId={profileId}
-            records={records}
-          />
+          <TheirRecord recordId={block.theirs.recordId} records={records} />
           <p>
             <strong>ИИ-врач:</strong> {block.ours}
           </p>

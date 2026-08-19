@@ -48,7 +48,7 @@ function countCopy(count: number, one: string, few: string, many: string): strin
 function physician(overview: ProfileOverviewResponse): DashboardAssistant {
   const label = "ИИ-врач · второе мнение";
   const role = "Второе мнение по подтверждённым данным";
-  const { familyId, id: profileId } = overview.profile;
+  const { handle } = overview.profile;
   const firstReview = overview.reviewQueue.documents[0];
   const activeDocument = overview.recentDocuments.find(
     (document) => !["completed", "failed", "awaiting_review"].includes(document.processing.state),
@@ -67,7 +67,7 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
       meta: "Рекомендации для разговора с врачом, не диагноз",
       action: {
         label: "Открыть второе мнение",
-        href: assistantPath(familyId, profileId, "physician"),
+        href: assistantPath(handle, "physician"),
       },
     };
   }
@@ -86,8 +86,8 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
         label: "Проверить значения",
         href:
           firstReview === undefined
-            ? `${profileTabPath(familyId, profileId, "documents")}#overview-review-title`
-            : documentPath(familyId, profileId, firstReview.id),
+            ? `${profileTabPath(handle, "documents")}#overview-review-title`
+            : documentPath(handle, firstReview.id),
       },
     };
   }
@@ -102,7 +102,7 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
       meta: "Документ ещё не стал подтверждённой записью",
       action: {
         label: "Открыть обработку",
-        href: documentPath(familyId, profileId, activeDocument.id),
+        href: documentPath(handle, activeDocument.id),
       },
     };
   }
@@ -141,7 +141,7 @@ export function buildProfileDashboardModel(
         meta: "Добавки — по названию, без доз; каждый пункт подтверждает диетолог или врач",
         action: {
           label: "Открыть питание",
-          href: assistantPath(overview.profile.familyId, overview.profile.id, "nutritionist"),
+          href: assistantPath(overview.profile.handle, "nutritionist"),
         },
       },
       {
@@ -155,7 +155,7 @@ export function buildProfileDashboardModel(
         meta: "Не заменяет тренера или врача; каждый пункт подтверждает физиотерапевт или врач",
         action: {
           label: "Открыть активность",
-          href: assistantPath(overview.profile.familyId, overview.profile.id, "trainer"),
+          href: assistantPath(overview.profile.handle, "trainer"),
         },
       },
     ],

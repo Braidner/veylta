@@ -37,8 +37,6 @@ const exchangeLabel: Record<AssistantExchange["stage"], string> = {
 interface AssistantAnswerProps {
   readonly message: AssistantReply;
   readonly assistantId: AssistantId;
-  readonly familyId: string;
-  readonly profileId: string;
   readonly evidence: EvidenceIndex;
   readonly records: RecordIndex;
   readonly canWrite: boolean;
@@ -59,8 +57,6 @@ interface AssistantAnswerProps {
 export function AssistantAnswer({
   message,
   assistantId,
-  familyId,
-  profileId,
   evidence,
   records,
   canWrite,
@@ -101,8 +97,6 @@ export function AssistantAnswer({
           <UrgencyBanner
             tier={message.answer.urgency.tier}
             reasons={message.answer.urgency.reasons}
-            familyId={familyId}
-            profileId={profileId}
             evidence={evidence}
           />
           <ol className="assistant-answer__blocks">
@@ -112,13 +106,7 @@ export function AssistantAnswer({
                 <li key={key} className={`assistant-block assistant-block--${block.kind}`}>
                   <BlockKind kind={block.kind} />
                   <div className="assistant-block__body">
-                    <BlockBody
-                      block={block}
-                      familyId={familyId}
-                      profileId={profileId}
-                      evidence={evidence}
-                      records={records}
-                    />
+                    <BlockBody block={block} evidence={evidence} records={records} />
                     <CheckerNote verdict={verdicts.get(index)} />
                     {isReferral(block) && canWrite ? (
                       <ReferralAction
@@ -148,8 +136,6 @@ export function AssistantAnswer({
       {message.consilium !== null ? (
         <AssistantConsiliumView
           consilium={message.consilium}
-          familyId={familyId}
-          profileId={profileId}
           evidence={evidence}
           records={records}
         />
@@ -196,14 +182,10 @@ export function AssistantAnswer({
 function UrgencyBanner({
   tier,
   reasons,
-  familyId,
-  profileId,
   evidence,
 }: {
   readonly tier: keyof typeof urgencyCopy;
   readonly reasons: readonly AssistantEvidenceRef[];
-  readonly familyId: string;
-  readonly profileId: string;
   readonly evidence: EvidenceIndex;
 }) {
   const copy = urgencyCopy[tier];
@@ -221,7 +203,7 @@ function UrgencyBanner({
       <div>
         <strong>{copy.label}</strong>
         <p>{copy.copy}</p>
-        <SourceRefs refs={reasons} familyId={familyId} profileId={profileId} evidence={evidence} />
+        <SourceRefs refs={reasons} evidence={evidence} />
       </div>
     </div>
   );

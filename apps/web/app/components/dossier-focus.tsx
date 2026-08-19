@@ -13,6 +13,7 @@ import {
 } from "../dossier-areas";
 import { askQuestion, stashDossierAsk } from "../dossier-ask";
 import { assistantAskPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { countCopy } from "../russian-plural";
 import { DossierAttention } from "./dossier-attention";
 import { GaugeCard } from "./dossier-gauge";
@@ -67,6 +68,7 @@ export function DossierFocus({
   onSelect,
   onPlanned,
 }: DossierFocusProps) {
+  const handle = useProfileHandle();
   const shown = selection === "all" ? series : series.filter((item) => item.area === selection);
   const counts = statusCounts(shown);
   const summary = selection === "all" ? null : summaries.find((item) => item.area === selection);
@@ -92,7 +94,7 @@ export function DossierFocus({
           {selection === "all" && !loading && series.length > 0 ? (
             <Link
               className="button button--secondary dossier-focus__consilium"
-              href={assistantAskPath(familyId, profileId, "consilium")}
+              href={assistantAskPath(handle, "consilium")}
               onClick={() =>
                 stashDossierAsk(window.sessionStorage, profileId, {
                   ask: "consilium",
@@ -164,7 +166,7 @@ export function DossierFocus({
           </div>
           <ul className="dossier-gauges">
             {rest.map((item) => (
-              <GaugeCard key={item.key} familyId={familyId} profileId={profileId} series={item} />
+              <GaugeCard key={item.key} series={item} />
             ))}
           </ul>
         </section>

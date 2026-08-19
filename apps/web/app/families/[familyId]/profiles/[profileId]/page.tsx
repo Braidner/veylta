@@ -1,22 +1,26 @@
-import { VeyltaApp } from "../../../../components/veylta-app";
+import { LegacyRedirect } from "../../../../components/legacy-redirect";
+import { definedOnly } from "../../../../legacy-destination";
 
-interface ProfilePageProps {
+const first = (value: string | string[] | undefined) => (Array.isArray(value) ? value[0] : value);
+
+/** The old id-based profile link; the same person and surface now live at `/<handle>`. */
+export default async function LegacyProfilePage({
+  params,
+  searchParams,
+}: {
   params: Promise<{ familyId: string; profileId: string }>;
-  searchParams: Promise<{
-    tab?: string | string[];
-    canonicalCode?: string | string[];
-  }>;
-}
-
-export default async function ProfilePage({ params, searchParams }: ProfilePageProps) {
+  searchParams: Promise<{ tab?: string | string[]; canonicalCode?: string | string[] }>;
+}) {
   const { familyId, profileId } = await params;
   const { tab, canonicalCode } = await searchParams;
   return (
-    <VeyltaApp
-      requestedFamilyId={familyId}
-      requestedProfileId={profileId}
-      requestedTab={Array.isArray(tab) ? tab[0] : tab}
-      requestedCanonicalCode={Array.isArray(canonicalCode) ? canonicalCode[0] : canonicalCode}
+    <LegacyRedirect
+      target={definedOnly({
+        familyId,
+        profileId,
+        tab: first(tab),
+        canonicalCode: first(canonicalCode),
+      })}
     />
   );
 }

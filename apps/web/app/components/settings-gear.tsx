@@ -13,16 +13,16 @@ import { settingsPath } from "../paths";
  */
 export function SettingsGear({
   session,
-  profileId,
+  handle,
 }: {
   readonly session: SessionResponse;
-  readonly profileId: string | undefined;
+  readonly handle: string;
 }) {
   if (!canOpenSettings(session)) return null;
   return (
     <Link
       className="workspace-icon-action workspace-gear"
-      href={settingsPath("user", profileId)}
+      href={settingsPath(handle, "user")}
       aria-label="Настройки"
       title="Настройки"
       data-testid="settings-gear"

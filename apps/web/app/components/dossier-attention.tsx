@@ -9,6 +9,7 @@ import { specialtyLabel } from "../assistant";
 import type { AttentionGroup } from "../dossier";
 import { askQuestion, type DossierAsk, stashDossierAsk } from "../dossier-ask";
 import { assistantAskPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { countCopy } from "../russian-plural";
 import { GaugeCard } from "./dossier-gauge";
 
@@ -71,6 +72,7 @@ export function DossierAttention({
   showArea,
   onPlanned,
 }: DossierAttentionProps) {
+  const handle = useProfileHandle();
   const visits = useVisitPlanning(familyId, profileId, onPlanned);
   const outside = groups.reduce((sum, group) => sum + group.series.length, 0);
   return (
@@ -133,7 +135,7 @@ export function DossierAttention({
                   ) : null}
                   <Link
                     className="dossier-attention__ask"
-                    href={assistantAskPath(familyId, profileId, ask)}
+                    href={assistantAskPath(handle, ask)}
                     onClick={() =>
                       stashDossierAsk(window.sessionStorage, profileId, {
                         ask,
@@ -148,13 +150,7 @@ export function DossierAttention({
               </div>
               <ul className="dossier-gauges">
                 {group.series.map((item) => (
-                  <GaugeCard
-                    key={item.key}
-                    familyId={familyId}
-                    profileId={profileId}
-                    series={item}
-                    showArea={showArea}
-                  />
+                  <GaugeCard key={item.key} series={item} showArea={showArea} />
                 ))}
               </ul>
             </li>

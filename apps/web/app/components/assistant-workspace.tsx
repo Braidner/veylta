@@ -19,6 +19,7 @@ import {
   takeDossierAsk,
 } from "../dossier-ask";
 import { assistantPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { type Attempt, attemptFor, useAssistantComposer } from "../use-assistant-composer";
 import { useEvidenceIndexes } from "../use-evidence-indexes";
 import { useOutcomeRecording } from "../use-outcome-recording";
@@ -51,6 +52,7 @@ export function AssistantWorkspace({
   requestedConversationId,
   ask,
 }: AssistantWorkspaceProps) {
+  const handle = useProfileHandle();
   const router = useRouter();
   const [state, setState] = useState<WorkspaceState>({ kind: "loading" });
   const [isSwitching, setIsSwitching] = useState(false);
@@ -97,9 +99,7 @@ export function AssistantWorkspace({
   function show(response: AssistantWorkspaceResponse): void {
     shownConversation.current = response.selectedConversationId;
     setState({ kind: "ready", workspace: response });
-    router.replace(
-      assistantPath(familyId, profileId, assistantId, response.selectedConversationId),
-    );
+    router.replace(assistantPath(handle, assistantId, response.selectedConversationId));
   }
 
   async function mutate<T>(operation: () => Promise<T>): Promise<T> {
@@ -119,7 +119,7 @@ export function AssistantWorkspace({
     setIsSwitching(true);
     composer.reset();
     shownConversation.current = conversationId;
-    router.replace(assistantPath(familyId, profileId, assistantId, conversationId));
+    router.replace(assistantPath(handle, assistantId, conversationId));
     await load(conversationId);
     setIsSwitching(false);
   }
@@ -183,7 +183,7 @@ export function AssistantWorkspace({
       try {
         if (existing !== undefined) {
           shownConversation.current = existing.id;
-          router.replace(assistantPath(familyId, profileId, assistantId, existing.id));
+          router.replace(assistantPath(handle, assistantId, existing.id));
           await load(existing.id);
         } else {
           const attempt = attemptFor(createAttempt.current, purpose);
@@ -205,8 +205,6 @@ export function AssistantWorkspace({
   return (
     <AssistantPanel
       assistantId={assistantId}
-      familyId={familyId}
-      profileId={profileId}
       workspace={state.kind === "ready" ? state.workspace : null}
       evidence={evidence}
       records={records}

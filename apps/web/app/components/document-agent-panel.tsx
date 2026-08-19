@@ -7,12 +7,12 @@ import type {
 } from "@veylta/contracts";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
-import { documentPath } from "../paths";
+import { documentApiPath } from "../paths";
 import { WorkspaceRequests } from "../workspace-requests";
 import { DocumentAgentWorkspace } from "./document-agent-workspace";
 
 function documentAgentPath(familyId: string, profileId: string, documentId: string): string {
-  return `/v1${documentPath(familyId, profileId, documentId)}/agent`;
+  return `${documentApiPath(familyId, profileId, documentId)}/agent`;
 }
 
 type DocumentAgentState =
@@ -226,7 +226,7 @@ export function DocumentAgentPanel(props: DocumentAgentPanelProps) {
       workspace={state.kind === "ready" ? state.workspace : null}
       documentName={props.documentName}
       documentUploadedAt={props.documentUploadedAt}
-      documentContentHref={`${apiPrefix}/v1${documentPath(familyId, profileId, documentId)}/content`}
+      documentContentHref={`${apiPrefix}${documentApiPath(familyId, profileId, documentId)}/content`}
       isLoading={state.kind === "loading"}
       isSwitching={isSwitching}
       loadError={state.kind === "error"}

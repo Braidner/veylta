@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { apiRequest } from "../api-client";
 import { identityChips, passportOf } from "../dossier-passport";
 import { profileTabPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 import { medicalProfilePath } from "./medical-profile-controls";
 
 interface IdentityChipsProps {
@@ -19,6 +20,7 @@ interface IdentityChipsProps {
  * the dossier, where the passport asks for them.
  */
 export function IdentityChips({ familyId, profileId }: IdentityChipsProps) {
+  const handle = useProfileHandle();
   const [profile, setProfile] = useState<MedicalProfileResponse | null>(null);
 
   useEffect(() => {
@@ -48,7 +50,7 @@ export function IdentityChips({ familyId, profileId }: IdentityChipsProps) {
       {passport.ready ? null : (
         <Link
           className="profile-heading__identity profile-heading__identity--missing"
-          href={profileTabPath(familyId, profileId, "dossier")}
+          href={profileTabPath(handle, "dossier")}
         >
           Указать пол и год рождения
         </Link>

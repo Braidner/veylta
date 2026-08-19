@@ -14,15 +14,7 @@ test("a family owner opens the user section only; an admin both; a member none",
   assert.deepEqual(settingsSections(member), []);
 });
 
-test("the settings path carries the section and, when given, the profile to manage first", () => {
-  assert.equal(settingsPath("user"), "/settings");
-  assert.equal(settingsPath("app"), "/settings/app");
-  assert.equal(
-    settingsPath("user", "00000000-0000-4000-8000-000000000001"),
-    "/settings?profile=00000000-0000-4000-8000-000000000001",
-  );
-  assert.equal(
-    settingsPath("app", "00000000-0000-4000-8000-000000000001"),
-    "/settings/app?profile=00000000-0000-4000-8000-000000000001",
-  );
+test("settings is a page of the person the handle names; the section is the last segment", () => {
+  assert.equal(settingsPath("anna", "user"), "/anna/settings");
+  assert.equal(settingsPath("anna", "app"), "/anna/settings/app");
 });

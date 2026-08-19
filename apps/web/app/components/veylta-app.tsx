@@ -123,13 +123,18 @@ import { parseAsk } from "../dossier-ask";
 import { formatBytes } from "../format-bytes";
 import { formatDate, formatSampleMoment } from "../format-moment";
 import {
+  documentApiPath,
   documentPath,
-  normalizeProfileTab,
+  historyPath,
+  loginPath,
   type ProfileTab,
   parseAssistantId,
+  profileApiPath,
   profilePath,
   profileTabPath,
 } from "../paths";
+import { ProfileRouteProvider, useProfileHandle } from "../profile-route";
+import { entryRedirect, findProfileByHandle } from "../profile-route-resolution";
 import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
 import { type SettingsSection, settingsSections } from "../settings-sections";
@@ -178,28 +183,18 @@ function firstProfile(session: SessionResponse): PatientProfileSummary | undefin
   return session.families.flatMap((family) => family.profiles)[0];
 }
 
-function findProfileContext(
-  session: SessionResponse,
-  familyId: string,
-  profileId: string,
-): { family: SessionFamily; profile: PatientProfileSummary } | undefined {
-  const family = session.families.find((candidate) => candidate.id === familyId);
-  const profile = family?.profiles.find((candidate) => candidate.id === profileId);
-  return family === undefined || profile === undefined ? undefined : { family, profile };
-}
-
 function documentProcessingPath(
   familyId: string,
   profileId: string,
   documentId: string,
   runId: string | null = null,
 ): string {
-  const base = `/v1${documentPath(familyId, profileId, documentId)}/processing`;
+  const base = `${documentApiPath(familyId, profileId, documentId)}/processing`;
   return runId === null ? base : `${base}?runId=${encodeURIComponent(runId)}`;
 }
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
-  return `/v1${documentPath(familyId, profileId, documentId)}/facts`;
+  return `${documentApiPath(familyId, profileId, documentId)}/facts`;
 }
 
 export function buildDocumentSearchPath(
@@ -208,7 +203,7 @@ export function buildDocumentSearchPath(
   query: string,
 ): string {
   const params = new URLSearchParams({ q: query.trim() });
-  return `/v1${profilePath(familyId, profileId)}/documents?${params.toString()}`;
+  return `${profileApiPath(familyId, profileId)}/documents?${params.toString()}`;
 }
 
 function isDocumentSummary(value: unknown): value is DocumentSummary {
@@ -234,15 +229,15 @@ export function normalizeDocumentSearchResponse(response: unknown): readonly Doc
 }
 
 function profileOverviewPath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/overview`;
+  return `${profileApiPath(familyId, profileId)}/overview`;
 }
 
 function healthSummaryPath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/health-summary`;
+  return `${profileApiPath(familyId, profileId)}/health-summary`;
 }
 
 function carePlanPath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/care-plan`;
+  return `${profileApiPath(familyId, profileId)}/care-plan`;
 }
 
 function healthSummaryHistoryPath(familyId: string, profileId: string): string {
@@ -254,15 +249,15 @@ function healthSummaryComparisonPath(familyId: string, profileId: string): strin
 }
 
 function evidenceBundlePath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/evidence-bundle`;
+  return `${profileApiPath(familyId, profileId)}/evidence-bundle`;
 }
 
 function portableProfileExportPath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/portable-export`;
+  return `${profileApiPath(familyId, profileId)}/portable-export`;
 }
 
 function observationHistoryPath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/observations`;
+  return `${profileApiPath(familyId, profileId)}/observations`;
 }
 
 export function buildIndicatorHistoryPath(
@@ -287,7 +282,7 @@ export function documentResultMissingFields(result: {
 }
 
 function indicatorsPath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/indicators`;
+  return `${profileApiPath(familyId, profileId)}/indicators`;
 }
 
 /** The settings page shows the journal a screen at a time; «Показать ещё» walks the cursor. */
@@ -302,7 +297,7 @@ function familyConsentMembersPath(familyId: string): string {
 }
 
 function profileConsentGrantsPath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/consent-grants`;
+  return `${profileApiPath(familyId, profileId)}/consent-grants`;
 }
 
 function archivedProfilesPath(familyId: string): string {
@@ -310,25 +305,27 @@ function archivedProfilesPath(familyId: string): string {
 }
 
 function profileArchivePath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/archive`;
+  return `${profileApiPath(familyId, profileId)}/archive`;
 }
 
 function profileRestorePath(familyId: string, profileId: string): string {
-  return `/v1${profilePath(familyId, profileId)}/restore`;
+  return `${profileApiPath(familyId, profileId)}/restore`;
 }
 
 interface VeyltaAppProps {
-  requestedFamilyId?: string;
-  requestedProfileId?: string;
+  /** The person this page is about: `/<handle>`. Absent at `/` and `/login`. */
+  requestedHandle?: string | undefined;
+  /** `/login` — the sign-in page; a session here opens its first profile instead. */
+  requestedLogin?: boolean;
+  /** An old `?tab=` on `/<handle>`; the tab has a segment of its own now. */
+  legacyTab?: string | undefined;
   requestedDocumentId?: string;
   /** The assistant view (`/assistants/:assistantId`), optionally pinned to one conversation. */
   requestedAssistantId?: string | undefined;
   requestedConversationId?: string | undefined;
   /** `?ask=<specialty|consilium>`: the dossier asks to open the conversation kept for that addressee. */
   requestedAssistantAsk?: string | undefined;
-  requestedTab?: string | undefined;
-  /** The profile settings should manage first; set when settings is opened from a profile. */
-  requestedSettingsProfileId?: string | undefined;
+  requestedTab?: ProfileTab | undefined;
   requestedCanonicalCode?: string | undefined;
   requestedSettings?: boolean;
   /** Which settings section `/settings[/app]` asked for; the user section by default. */
@@ -336,8 +333,9 @@ interface VeyltaAppProps {
 }
 
 export function VeyltaApp({
-  requestedFamilyId,
-  requestedProfileId,
+  requestedHandle,
+  requestedLogin = false,
+  legacyTab,
   requestedDocumentId,
   requestedAssistantId,
   requestedConversationId,
@@ -346,18 +344,13 @@ export function VeyltaApp({
   requestedCanonicalCode,
   requestedSettings = false,
   requestedSettingsSection = "user",
-  requestedSettingsProfileId,
 }: VeyltaAppProps) {
   const router = useRouter();
   const [screen, setScreen] = useState<ScreenState>({ kind: "loading" });
   const [action, setAction] = useState<"setup" | "login" | "add-profile" | "logout" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
-  const requestedContext =
-    requestedFamilyId !== undefined && requestedProfileId !== undefined
-      ? { familyId: requestedFamilyId, profileId: requestedProfileId }
-      : undefined;
-  const hasRequestedProfile = requestedContext !== undefined;
+  const hasRequestedProfile = requestedHandle !== undefined;
 
   useEffect(() => {
     let active = true;
@@ -365,21 +358,18 @@ export function VeyltaApp({
     Promise.all([readSession(), readSetupStatus()])
       .then(([session, setup]) => {
         if (!active) return;
-
-        if (session === null) {
-          setScreen({ kind: setup.setupRequired ? "setup" : "login" });
-          if (hasRequestedProfile) router.replace("/");
-          return;
-        }
-
-        setScreen({ kind: "authenticated", session });
-        const profile = firstProfile(session);
-        if (!hasRequestedProfile && !requestedSettings && profile !== undefined) {
-          router.replace(profilePath(profile.familyId, profile.id));
-        }
-        if (hasRequestedProfile && profile === undefined) {
-          router.replace("/");
-        }
+        setScreen(
+          session === null
+            ? { kind: setup.setupRequired ? "setup" : "login" }
+            : { kind: "authenticated", session },
+        );
+        const destination = entryRedirect({
+          session,
+          requestedHandle,
+          requestedLogin,
+          legacyTab,
+        });
+        if (destination !== null) router.replace(destination);
       })
       .catch(() => {
         if (active) setScreen({ kind: "error" });
@@ -388,7 +378,7 @@ export function VeyltaApp({
     return () => {
       active = false;
     };
-  }, [hasRequestedProfile, requestedSettings, router]);
+  }, [legacyTab, requestedHandle, requestedLogin, router]);
 
   async function handleSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -420,7 +410,7 @@ export function VeyltaApp({
       const session = await readSession();
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
-      router.replace(profilePath(setup.family.id, setup.profile.id));
+      router.replace(profilePath(setup.profile.handle));
     } catch (error) {
       setActionError(
         error instanceof ApiError
@@ -450,9 +440,7 @@ export function VeyltaApp({
       if (session === null) throw new Error("Session was not created");
       setScreen({ kind: "authenticated", session });
       const profile = firstProfile(session);
-      if (!requestedSettings) {
-        router.replace(profile === undefined ? "/" : profilePath(profile.familyId, profile.id));
-      }
+      if (profile !== undefined) router.replace(profilePath(profile.handle));
     } catch {
       setActionError("Неверный логин или пароль.");
     } finally {
@@ -481,7 +469,7 @@ export function VeyltaApp({
       if (session === null) throw new Error("Session expired");
       setScreen({ kind: "authenticated", session });
       setAddProfileOpen(false);
-      router.push(profilePath(created.profile.familyId, created.profile.id));
+      router.push(profilePath(created.profile.handle));
     } catch {
       setActionError("Не удалось добавить профиль. Проверьте имя и попробуйте ещё раз.");
     } finally {
@@ -496,7 +484,7 @@ export function VeyltaApp({
       await apiRequest<void>("/v1/session", { method: "DELETE" });
       setScreen({ kind: "loading" });
       setAddProfileOpen(false);
-      router.replace("/");
+      router.replace(loginPath);
     } catch {
       setAddProfileOpen(false);
       setActionError("Не удалось завершить сессию. Попробуйте ещё раз.");
@@ -509,19 +497,19 @@ export function VeyltaApp({
     const refreshed = await readSession();
     if (refreshed === null) {
       setScreen({ kind: "login" });
-      router.replace("/");
+      router.replace(loginPath);
       return;
     }
     setScreen({ kind: "authenticated", session: refreshed });
     const fallback = firstProfile(refreshed);
-    router.replace(fallback === undefined ? "/" : profilePath(fallback.familyId, fallback.id));
+    router.replace(fallback === undefined ? "/" : profilePath(fallback.handle));
   }
 
   async function refreshSessionAfterProfileRestore(): Promise<void> {
     const refreshed = await readSession();
     if (refreshed === null) {
       setScreen({ kind: "login" });
-      router.replace("/");
+      router.replace(loginPath);
       return;
     }
     setScreen({ kind: "authenticated", session: refreshed });
@@ -531,7 +519,7 @@ export function VeyltaApp({
     const refreshed = await readSession();
     if (refreshed === null) {
       setScreen({ kind: "login" });
-      router.replace("/");
+      router.replace(loginPath);
       return;
     }
     setScreen({ kind: "authenticated", session: refreshed });
@@ -539,9 +527,9 @@ export function VeyltaApp({
 
   const session = screen.kind === "authenticated" ? screen.session : undefined;
   const context =
-    session !== undefined && requestedContext !== undefined
-      ? findProfileContext(session, requestedContext.familyId, requestedContext.profileId)
-      : undefined;
+    session === undefined || requestedHandle === undefined
+      ? undefined
+      : findProfileByHandle(session, requestedHandle);
   const redirectProfile = session === undefined ? undefined : firstProfile(session);
   const navigationProfile = context?.profile ?? redirectProfile;
   const activeTab: WorkspaceTab = requestedSettings
@@ -550,10 +538,9 @@ export function VeyltaApp({
       ? "documents"
       : requestedAssistantId !== undefined
         ? "overview"
-        : normalizeProfileTab(requestedTab);
+        : (requestedTab ?? "overview");
   const focusableTab = focusableWorkspaceTab(activeTab);
   const pageTitle = pageTitleFor(requestedSettings, requestedSettingsSection, context?.profile);
-  const gearProfileId = requestedSettingsProfileId ?? navigationProfile?.id;
 
   useEffect(() => {
     document.title = pageTitle;
@@ -602,7 +589,7 @@ export function VeyltaApp({
             <Link
               id="workspace-tab-overview"
               className={`workspace-primary-nav__item ${activeTab === "overview" ? "workspace-primary-nav__item--active" : ""}`}
-              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "overview")}
+              href={profileTabPath(navigationProfile.handle, "overview")}
               role="tab"
               aria-selected={activeTab === "overview"}
               aria-controls="workspace-panel-overview"
@@ -614,7 +601,7 @@ export function VeyltaApp({
             <Link
               id="workspace-tab-documents"
               className={`workspace-primary-nav__item ${activeTab === "documents" ? "workspace-primary-nav__item--active" : ""}`}
-              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "documents")}
+              href={profileTabPath(navigationProfile.handle, "documents")}
               role="tab"
               aria-selected={activeTab === "documents"}
               aria-controls="workspace-panel-documents"
@@ -626,7 +613,7 @@ export function VeyltaApp({
             <Link
               id="workspace-tab-history"
               className={`workspace-primary-nav__item ${activeTab === "history" ? "workspace-primary-nav__item--active" : ""}`}
-              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "history")}
+              href={profileTabPath(navigationProfile.handle, "history")}
               role="tab"
               aria-selected={activeTab === "history"}
               aria-controls="workspace-panel-history"
@@ -638,7 +625,7 @@ export function VeyltaApp({
             <Link
               id="workspace-tab-dossier"
               className={`workspace-primary-nav__item ${activeTab === "dossier" ? "workspace-primary-nav__item--active" : ""}`}
-              href={profileTabPath(navigationProfile.familyId, navigationProfile.id, "dossier")}
+              href={profileTabPath(navigationProfile.handle, "dossier")}
               role="tab"
               aria-selected={activeTab === "dossier"}
               aria-controls="workspace-panel-dossier"
@@ -652,7 +639,7 @@ export function VeyltaApp({
         {navigationProfile !== undefined ? (
           <Link
             className="workspace-search"
-            href={`${profileTabPath(navigationProfile.familyId, navigationProfile.id, "history")}#indicator-catalog`}
+            href={`${historyPath(navigationProfile.handle)}#indicator-catalog`}
             aria-label="Поиск по архиву"
           >
             <Search size={18} aria-hidden="true" />
@@ -665,8 +652,8 @@ export function VeyltaApp({
               <span aria-hidden="true" />
               Домашний сервер
             </span>
-          ) : (
-            <SettingsGear session={session} profileId={gearProfileId} />
+          ) : navigationProfile === undefined ? null : (
+            <SettingsGear session={session} handle={navigationProfile.handle} />
           )}
           {session !== undefined ? (
             <span className="workspace-identity">
@@ -697,7 +684,7 @@ export function VeyltaApp({
       <main id="main-content">
         {screen.kind === "loading" ? <LoadingScreen /> : null}
         {screen.kind === "error" ? <ErrorScreen onRetry={() => window.location.reload()} /> : null}
-        {(screen.kind === "setup" || screen.kind === "login") && !hasRequestedProfile ? (
+        {(screen.kind === "setup" || screen.kind === "login") && requestedLogin ? (
           <AccountAccessScreen
             mode={screen.kind}
             error={actionError}
@@ -705,64 +692,58 @@ export function VeyltaApp({
             onSubmit={screen.kind === "setup" ? handleSetup : handleLogin}
           />
         ) : null}
-        {(screen.kind === "setup" || screen.kind === "login") && hasRequestedProfile ? (
-          <LoadingScreen copy="Возвращаем к началу…" />
+        {(screen.kind === "setup" || screen.kind === "login") && !requestedLogin ? (
+          <LoadingScreen copy="Открываем вход…" />
         ) : null}
-        {session !== undefined && requestedSettings ? (
-          <HomeSettingsScreen
-            session={session}
-            onSessionRefresh={refreshSession}
-            initialProfileId={requestedSettingsProfileId}
-            section={requestedSettingsSection}
-            profileManagement={{
-              addProfileOpen,
-              action,
-              error: actionError,
-              onAddProfileToggle: () => {
-                setActionError(null);
-                setAddProfileOpen((open) => !open);
-              },
-              onAddProfile: handleAddProfile,
-              onProfileArchived: refreshSessionAfterProfileArchive,
-              onProfileRestored: refreshSessionAfterProfileRestore,
-            }}
-          />
-        ) : null}
-        {session !== undefined &&
-        !requestedSettings &&
-        !hasRequestedProfile &&
-        redirectProfile !== undefined ? (
+        {session !== undefined && !hasRequestedProfile && redirectProfile !== undefined ? (
           <LoadingScreen copy="Открываем профиль…" />
         ) : null}
-        {session !== undefined &&
-        !requestedSettings &&
-        !hasRequestedProfile &&
-        redirectProfile === undefined ? (
+        {session !== undefined && !hasRequestedProfile && redirectProfile === undefined ? (
           <NoAuthorizedProfilesScreen />
         ) : null}
-        {session !== undefined &&
-        !requestedSettings &&
-        hasRequestedProfile &&
-        context === undefined ? (
+        {session !== undefined && hasRequestedProfile && context === undefined ? (
           <MissingProfileScreen fallbackProfile={redirectProfile} />
         ) : null}
-        {session !== undefined && !requestedSettings && context !== undefined ? (
-          <ProfileWorkspace
-            session={session}
-            family={context.family}
-            profile={context.profile}
-            requestedDocumentId={requestedDocumentId}
-            requestedAssistantId={parseAssistantId(requestedAssistantId)}
-            requestedConversationId={requestedConversationId}
-            requestedAssistantAsk={requestedAssistantAsk}
-            activeTab={focusableTab}
-            requestedCanonicalCode={requestedCanonicalCode}
-            error={actionError}
-            onProfileChange={(familyId, profileId) => {
-              setActionError(null);
-              router.push(profilePath(familyId, profileId));
-            }}
-          />
+        {session !== undefined && context !== undefined ? (
+          <ProfileRouteProvider handle={context.profile.handle}>
+            {requestedSettings ? (
+              <HomeSettingsScreen
+                session={session}
+                onSessionRefresh={refreshSession}
+                initialProfileId={context.profile.id}
+                section={requestedSettingsSection}
+                profileManagement={{
+                  addProfileOpen,
+                  action,
+                  error: actionError,
+                  onAddProfileToggle: () => {
+                    setActionError(null);
+                    setAddProfileOpen((open) => !open);
+                  },
+                  onAddProfile: handleAddProfile,
+                  onProfileArchived: refreshSessionAfterProfileArchive,
+                  onProfileRestored: refreshSessionAfterProfileRestore,
+                }}
+              />
+            ) : (
+              <ProfileWorkspace
+                session={session}
+                family={context.family}
+                profile={context.profile}
+                requestedDocumentId={requestedDocumentId}
+                requestedAssistantId={parseAssistantId(requestedAssistantId)}
+                requestedConversationId={requestedConversationId}
+                requestedAssistantAsk={requestedAssistantAsk}
+                activeTab={focusableTab}
+                requestedCanonicalCode={requestedCanonicalCode}
+                error={actionError}
+                onProfileChange={(profile) => {
+                  setActionError(null);
+                  router.push(profilePath(profile.handle));
+                }}
+              />
+            )}
+          </ProfileRouteProvider>
         ) : null}
       </main>
     </>
@@ -1046,7 +1027,7 @@ function HomeSettingsScreen({
           </div>
         ) : null}
       </div>
-      <SettingsSectionSwitch sections={sections} current={section} profileId={initialProfileId} />
+      <SettingsSectionSwitch sections={sections} current={section} />
       {section === "user" ? (
         <SettingsUserSection session={session}>
           <ProfileManagementSettings
@@ -1744,10 +1725,7 @@ function MissingProfileScreen({
         Профиля нет или у этой сессии нет к нему доступа. Мы не раскрываем дополнительные сведения.
       </p>
       {fallbackProfile !== undefined ? (
-        <Link
-          className="button button--primary"
-          href={profilePath(fallbackProfile.familyId, fallbackProfile.id)}
-        >
+        <Link className="button button--primary" href={profilePath(fallbackProfile.handle)}>
           Открыть доступный профиль
         </Link>
       ) : (
@@ -1937,7 +1915,7 @@ interface ProfileWorkspaceProps {
   activeTab: ProfileTab;
   requestedCanonicalCode?: string | undefined;
   error: string | null;
-  onProfileChange: (familyId: string, profileId: string) => void;
+  onProfileChange: (profile: PatientProfileSummary) => void;
 }
 
 function ProfileWorkspace({
@@ -2147,8 +2125,8 @@ function ProfileWorkspace({
         setUploadOpen(false);
         const destination =
           singleDocumentId === null
-            ? profileTabPath(family.id, profile.id, "documents")
-            : documentPath(family.id, profile.id, singleDocumentId);
+            ? profileTabPath(profile.handle, "documents")
+            : documentPath(profile.handle, singleDocumentId);
         const reusedDestination =
           reusedDocumentCount === 0
             ? destination
@@ -2230,7 +2208,7 @@ function ProfileWorkspace({
                 value={profile.id}
                 onChange={(event) => {
                   const selected = profiles.find((item) => item.id === event.target.value);
-                  if (selected !== undefined) onProfileChange(selected.familyId, selected.id);
+                  if (selected !== undefined) onProfileChange(selected);
                 }}
               >
                 {profiles.map((item) => (
@@ -2380,11 +2358,7 @@ function ProfileWorkspace({
           aria-labelledby="workspace-tab-overview"
           aria-label={assistantIdentity[requestedAssistantId].title}
         >
-          <AssistantHeader
-            assistantId={requestedAssistantId}
-            familyId={family.id}
-            profileId={profile.id}
-          />
+          <AssistantHeader assistantId={requestedAssistantId} />
           <AssistantWorkspace
             key={`assistant:${family.id}:${profile.id}`}
             familyId={family.id}
@@ -3220,21 +3194,18 @@ type ArchiveActionState =
  */
 function ArchiveRows({
   rows,
-  familyId,
-  profileId,
   canWrite,
   action,
   onConfirm,
   onRestart,
 }: {
   rows: readonly ArchiveRow[];
-  familyId: string;
-  profileId: string;
   canWrite: boolean;
   action: ArchiveActionState;
   onConfirm: (entry: ProfileOverviewReviewDocument) => void;
   onRestart: (document: ProfileOverviewDocument) => void;
 }) {
+  const handle = useProfileHandle();
   return (
     <ol className="archive-list">
       {rows.map(({ document, queue }) => {
@@ -3323,7 +3294,7 @@ function ArchiveRows({
               ) : null}
               <Link
                 className="button button--secondary archive-list__action"
-                href={documentPath(familyId, profileId, document.id)}
+                href={documentPath(handle, document.id)}
                 aria-label={`${queue === null ? "Открыть источник" : "Открыть проверку"} ${title}`}
               >
                 {queue === null ? "Открыть источник" : "Открыть проверку"}
@@ -3729,8 +3700,6 @@ function ProfileOverviewPanel({
                 {searchState.kind === "idle" && state.overview.recentDocuments.length > 0 ? (
                   <ArchiveRows
                     rows={archiveRows(state.overview)}
-                    familyId={familyId}
-                    profileId={profileId}
                     canWrite={canWriteProfile}
                     action={archiveAction}
                     onConfirm={(entry) => void confirmDocuments([entry])}
@@ -3743,8 +3712,6 @@ function ProfileOverviewPanel({
                       ...state.overview,
                       recentDocuments: searchState.documents,
                     })}
-                    familyId={familyId}
-                    profileId={profileId}
                     canWrite={canWriteProfile}
                     action={archiveAction}
                     onConfirm={(entry) => void confirmDocuments([entry])}
@@ -4305,6 +4272,7 @@ function missingDataCopy(value: HealthSummaryMissingData): string {
 }
 
 function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profileId: string }) {
+  const handle = useProfileHandle();
   const [state, setState] = useState<HealthSummaryState>({ kind: "loading" });
 
   const loadSummary = useCallback(
@@ -4498,7 +4466,7 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
             Сводка появится после завершения проверки хотя бы одного документа: все извлечённые
             значения должны получить явное решение.
           </p>
-          <Link className="text-link" href={profileTabPath(familyId, profileId, "documents")}>
+          <Link className="text-link" href={profileTabPath(handle, "documents")}>
             Добавить или проверить источник
           </Link>
         </div>
@@ -4604,7 +4572,7 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
                           </strong>
                           <Link
                             className="text-link"
-                            href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                            href={documentPath(handle, observation.sourceDocument.id)}
                           >
                             Открыть источник
                           </Link>
@@ -4629,7 +4597,7 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
                           </strong>
                           <Link
                             className="text-link"
-                            href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                            href={documentPath(handle, observation.sourceDocument.id)}
                           >
                             Открыть источник
                           </Link>
@@ -4666,7 +4634,7 @@ function HealthSummaryPanel({ familyId, profileId }: { familyId: string; profile
                     </div>
                     <Link
                       className="text-link"
-                      href={documentPath(familyId, profileId, observation.sourceDocument.id)}
+                      href={documentPath(handle, observation.sourceDocument.id)}
                     >
                       Открыть источник
                     </Link>
@@ -5791,7 +5759,7 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
         </p>
         <Link
           className="button button--secondary"
-          href={profileTabPath(family.id, profile.id, "documents")}
+          href={profileTabPath(profile.handle, "documents")}
         >
           Вернуться в профиль
         </Link>
@@ -5864,7 +5832,7 @@ function DocumentView({ family, profile, documentId, canWriteProfile }: Document
         headers: { "Idempotency-Key": commandKey },
       });
       deleteKey.current = null;
-      router.push(profileTabPath(family.id, profile.id, "documents"));
+      router.push(profileTabPath(profile.handle, "documents"));
       router.refresh();
     } catch (error) {
       if (error instanceof ApiError && error.status < 500) deleteKey.current = null;
@@ -7302,6 +7270,7 @@ function DocumentIndicatorHistory({
   canonicalCode: string;
   displayName: string;
 }) {
+  const handle = useProfileHandle();
   const [state, setState] = useState<DocumentIndicatorHistoryState>({ kind: "loading" });
 
   useEffect(() => {
@@ -7327,9 +7296,7 @@ function DocumentIndicatorHistory({
           <h5>История показателя</h5>
           <span>{displayName}</span>
         </div>
-        <Link
-          href={`${profileTabPath(familyId, profileId, "history")}&canonicalCode=${encodeURIComponent(canonicalCode)}#observation-history`}
-        >
+        <Link href={`${historyPath(handle, canonicalCode)}#observation-history`}>
           Открыть всю историю
         </Link>
       </div>

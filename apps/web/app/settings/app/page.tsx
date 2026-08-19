@@ -1,17 +1,13 @@
-import { VeyltaApp } from "../../components/veylta-app";
+import { LegacyRedirect } from "../../components/legacy-redirect";
+import { definedOnly } from "../../legacy-destination";
 
-interface SettingsAppPageProps {
+/** The old server-settings link; «Приложение» is a page of a person now — `/<handle>/settings/app`. */
+export default async function LegacySettingsAppPage({
+  searchParams,
+}: {
   searchParams: Promise<{ profile?: string | string[] }>;
-}
-
-/** «Приложение»: the server an administrator runs — Codex, storage, accounts. */
-export default async function SettingsAppPage({ searchParams }: SettingsAppPageProps) {
+}) {
   const { profile } = await searchParams;
-  return (
-    <VeyltaApp
-      requestedSettings
-      requestedSettingsSection="app"
-      requestedSettingsProfileId={Array.isArray(profile) ? profile[0] : profile}
-    />
-  );
+  const profileId = Array.isArray(profile) ? profile[0] : profile;
+  return <LegacyRedirect target={definedOnly({ profileId, settings: "app" as const })} />;
 }

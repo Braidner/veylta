@@ -5,20 +5,14 @@ import { ArrowLeft, Bot, ContactRound } from "lucide-react";
 import Link from "next/link";
 import { assistantIdentity } from "../assistant";
 import { profileTabPath } from "../paths";
+import { useProfileHandle } from "../profile-route";
 
 /**
  * The assistant page opens on the conversation, not on a banner: one line names the surface and
  * its rule, the two ways out sit on the right. The gradient stays with the primary action.
  */
-export function AssistantHeader({
-  assistantId,
-  familyId,
-  profileId,
-}: {
-  readonly assistantId: AssistantId;
-  readonly familyId: string;
-  readonly profileId: string;
-}) {
+export function AssistantHeader({ assistantId }: { readonly assistantId: AssistantId }) {
+  const handle = useProfileHandle();
   const identity = assistantIdentity[assistantId];
   return (
     <header className="assistant-header" data-testid="assistant-header">
@@ -32,16 +26,10 @@ export function AssistantHeader({
         </div>
       </div>
       <nav className="assistant-header__actions" aria-label="Переходы">
-        <Link
-          className="button button--secondary"
-          href={profileTabPath(familyId, profileId, "overview")}
-        >
+        <Link className="button button--secondary" href={profileTabPath(handle, "overview")}>
           <ArrowLeft size={16} aria-hidden="true" />К обзору
         </Link>
-        <Link
-          className="button button--secondary"
-          href={profileTabPath(familyId, profileId, "dossier")}
-        >
+        <Link className="button button--secondary" href={profileTabPath(handle, "dossier")}>
           <ContactRound size={16} aria-hidden="true" />
           Досье
         </Link>
