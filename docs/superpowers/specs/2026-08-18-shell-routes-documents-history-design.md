@@ -57,6 +57,11 @@ switcher is reflected in the URL (`/settings` vs `/settings/app` before part 2;
 
 ## Part 2 — handles and routes
 
+Status: delivered on 2026-08-19. Two decisions made during execution: the handle stays out of the
+synthetic evidence bundle and the profile export (`Omit<PatientProfileSummary, "access" |
+"handle">`, both contracts unchanged at v1), and `[handle]/layout.tsx` keeps the shell mounted
+across tabs.
+
 ### Data
 
 - Migration 0038: `patient_profiles.handle TEXT COLLATE NOCASE` (nullable in SQL, since `ALTER

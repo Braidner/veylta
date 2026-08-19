@@ -178,6 +178,9 @@ The full first slice remains deliberately narrow:
 27. open settings from a gear in the header instead of a tab, in two sections —
     «Пользователь» (the signed-in account and the family's profiles and access)
     and «Приложение» (server readiness, Codex, storage, accounts; administrators).
+28. reach a person at `/<handle>` — the login, or the name — with the tabs as
+    path segments and sign-in at `/login`; an owner renames the handle in
+    settings; old `/families/…` links redirect.
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

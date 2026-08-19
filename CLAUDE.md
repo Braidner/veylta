@@ -383,11 +383,14 @@ checksum, never user filenames.
 
 **Settings serves two audiences, in two sections.** The page opens from a gear in the header
 (`components/settings-gear.tsx`, shown when `canOpenSettings`; the «Домашний сервер» chip stays
-only while nobody is signed in). `/settings` is «Пользователь» — who is signed in and the family's
-«Профили и доступ» (any family owner; never calls `/v1/settings`); `/settings/app` is «Приложение»
-— the readiness line, Codex, storage, server accounts (admin only). `app/settings-sections.ts`
-decides the sections a session may open; `settingsPath(section, profileId?)` builds the link and
-`?profile=` opens management on that person. Profile management is not on the documents tab.
+only while nobody is signed in). `/<handle>/settings` is «Пользователь» — who is signed in and the
+family's «Профили и доступ» for that person (any family owner; never calls `/v1/settings`);
+`/<handle>/settings/app` is «Приложение» — the readiness line, Codex, storage, server accounts
+(admin only). `app/settings-sections.ts` decides the sections a session may open;
+`settingsPath(handle, section)` builds the link, opening management on that person directly. The
+old bare `/settings[?profile=]` form only redirects (`legacyDestination`, resolving `?profile=`
+against the session) to the same page on that person. Profile management is not on the documents
+tab.
 
 **One hero.** `components/page-hero.tsx` is the shell for both the document detail page and
 the documents archive; the two wrappers stay thin. On those tabs the profile heading steps
@@ -395,7 +398,17 @@ aside, so the tab-level `padding-top` is removed for `.profile-shell--documents`
 
 **Web ↔ API.** The browser never calls port 4301; `next.config.ts` rewrites
 `/health-api/:path*` to `API_INTERNAL_URL`. Session state is an opaque token in an HttpOnly
-cookie; SQLite stores only its SHA-256 digest.
+cookie; SQLite stores only its SHA-256 digest. Browser routes address a person by handle
+(`patient_profiles.handle`, server-unique, migration
+0038; `apps/api/src/family/profile-handle.ts` is the default rule — username, then the
+transliterated name, suffixed when taken; `patient-profiles.ts` `createPatientProfile` is the one
+insert; `pnpm db:migrate` backfills provisional `p-<hex>` handles): `/<handle>`, `/<handle>/docs`,
+`/<handle>/docs/:id`, `/<handle>/history?code=`, `/<handle>/dossier`, `/<handle>/assistants/:id`,
+`/<handle>/settings[/app]`, `/login`; `app/paths.ts` is the only place that builds them and
+`useProfileHandle()` (`app/profile-route.tsx`) hands the handle to components. Old
+`/families/:f/profiles/:p…` and `/settings` links redirect through `components/legacy-redirect.tsx`.
+API paths keep `/v1/families/:f/profiles/:p/…`; `PUT …/profiles/:p/handle` renames (owner or the
+linked adult; 422 invalid/reserved, 409 taken; audited payload-free).
 
 # Domain invariants
 

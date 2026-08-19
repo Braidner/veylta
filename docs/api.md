@@ -307,9 +307,9 @@ Creates an adult or dependent profile within an authorized family.
 }
 ```
 
-Response `201` contains the `family-profile/v2` contract version and a profile
-with `id`, `familyId`, display name, kind, access, and `createdAt`. Additional adult
-profiles are not implicitly linked to the owner identity.
+Response `201` contains the `family-profile/v3` contract version and a profile
+with `id`, `familyId`, display name, kind, access, handle, and `createdAt`.
+Additional adult profiles are not implicitly linked to the owner identity.
 
 ### `GET /v1/families/{familyId}/profiles`
 
@@ -319,6 +319,23 @@ active family profiles; an invited adult receives their linked profile plus
 each currently granted `profile.read` profile, marked as `granted_read`; a
 caregiver receives only those explicitly granted profiles. Both remain
 default-deny for every other profile.
+
+### `PUT /v1/families/{familyId}/profiles/{profileId}/handle`
+
+Renames a profile's browser address (`/<handle>` on the web).
+
+```json
+{ "handle": "anna" }
+```
+
+Requires the owner or the profile's linked adult (`requireProfileWrite`). The
+handle is lower-cased before validation; a value outside the allowed pattern or
+on the reserved-word list returns `422`, one already taken by another profile
+(any case) `409`, a profile the session may not write the usual non-disclosing
+`404`. Setting the profile's current handle again is a no-op and writes no
+audit row; otherwise the change writes a payload-free `profile.handle.changed`
+event and the response carries the `family-profile/v3` contract version,
+`profileId`, and the new `handle`.
 
 ### Profile archive and restore
 
