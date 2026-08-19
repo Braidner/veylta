@@ -233,13 +233,6 @@ textarea:focus-visible {
   justify-self: end;
 }
 
-.workspace-bar--profile .environment {
-  width: 38px;
-  padding: 0;
-  justify-content: center;
-  font-size: 0;
-}
-
 .workspace-primary-nav__item {
   display: inline-flex;
   gap: 8px;
@@ -666,6 +659,39 @@ h3 {
 
 .settings-heading__identity strong {
   font-size: 0.95rem;
+}
+
+.settings-sections {
+  display: inline-flex;
+  gap: 4px;
+  margin: 0 0 18px;
+  padding: 4px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+}
+
+.settings-sections__item {
+  min-height: 34px;
+  padding: 6px 14px;
+  color: var(--color-muted);
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 650;
+  line-height: 22px;
+  text-decoration: none;
+}
+
+.settings-sections__item.is-current {
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.08);
+}
+
+.settings-identity .settings-section-heading p {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
 }
 
 .settings-notice {

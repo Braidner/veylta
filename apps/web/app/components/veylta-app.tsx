@@ -97,7 +97,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { adminSetupError, canOpenSettings, validateAdminSetup } from "../account-access";
+import { adminSetupError, validateAdminSetup } from "../account-access";
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { assistantIdentity } from "../assistant";
 import { takesCheckins } from "../care-plan-checkins";
@@ -132,7 +132,7 @@ import {
 } from "../paths";
 import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
-import type { SettingsSection } from "../settings-sections";
+import { type SettingsSection, settingsSections } from "../settings-sections";
 import { AssistantHeader } from "./assistant-header";
 import { AssistantWorkspace } from "./assistant-workspace";
 import { CarePlanCheckins } from "./care-plan-checkins";
@@ -144,6 +144,8 @@ import { DossierPanel } from "./dossier-panel";
 import { IdentityChips } from "./identity-chips";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SettingsGear } from "./settings-gear";
+import { SettingsSectionSwitch } from "./settings-section-switch";
+import { SettingsUserSection } from "./settings-user-section";
 import { SystemStatus } from "./system-status";
 import { VeyltaMark } from "./veylta-mark";
 
@@ -982,56 +984,37 @@ function HomeSettingsScreen({
     }
   }
 
-  const isAdmin = session.user.role === "admin";
-  if (!isAdmin) {
-    if (!canOpenSettings(session)) return <MissingSettingsScreen />;
-    return (
-      <section
-        id="workspace-panel-settings"
-        className="settings-shell workspace-tab-panel workspace-tab-panel--settings"
-        role="tabpanel"
-        aria-labelledby="workspace-tab-settings settings-title"
-        aria-label="Настройки"
-      >
-        <div className="settings-heading">
-          <div>
-            <p className="context-line">Семья</p>
-            <h1 id="settings-title">Настройки</h1>
-            <p className="lede">
-              Профили семьи, архив и доступ участников. Серверные настройки — Codex, хранилище,
-              учётные записи — доступны только администратору.
-            </p>
-          </div>
-        </div>
-        <ProfileManagementSettings
-          session={session}
-          initialProfileId={initialProfileId}
-          {...profileManagement}
-        />
-      </section>
-    );
-  }
-  if (loadState === "loading") return <LoadingScreen copy="Проверяем домашний сервер…" />;
-  if (loadState === "denied") return <MissingSettingsScreen />;
-  if (loadState === "error" || settings === null) {
-    return <ErrorScreen onRetry={() => void load()} />;
+  // The sections this session may open are the rule; «Приложение» is an administrator's alone.
+  const sections = settingsSections(session);
+  if (!sections.includes(section)) return <MissingSettingsScreen />;
+  if (section === "app") {
+    if (loadState === "loading") return <LoadingScreen copy="Проверяем домашний сервер…" />;
+    if (loadState === "denied") return <MissingSettingsScreen />;
+    if (loadState === "error") return <ErrorScreen onRetry={() => void load()} />;
   }
 
-  const codexState = !settings.codex.installed
-    ? "CLI не установлен"
-    : !settings.codex.authenticated
-      ? "Требуется вход"
-      : settings.codex.daemonRunning
-        ? "Агент готов"
-        : "Готов к запуску";
+  // Only «Приложение» reads the server settings, so everything derived from them stays empty here.
+  const codex = settings === null ? null : settings.codex;
+  const codexState =
+    codex === null
+      ? null
+      : !codex.installed
+        ? "CLI не установлен"
+        : !codex.authenticated
+          ? "Требуется вход"
+          : codex.daemonRunning
+            ? "Агент готов"
+            : "Готов к запуску";
   const subscriptionConnected =
-    settings.codex.authenticated && settings.codex.authenticationMode === "chatgpt";
+    codex?.authenticated === true && codex.authenticationMode === "chatgpt";
   const selectedModel =
-    settings.codex.models.find((model) => model.id === modelId) ?? settings.codex.models[0];
+    codex === null
+      ? undefined
+      : (codex.models.find((model) => model.id === modelId) ?? codex.models[0]);
   const selectedDocumentModel =
     documentModelId === null
       ? selectedModel
-      : (settings.codex.models.find((model) => model.id === documentModelId) ?? selectedModel);
+      : (codex?.models.find((model) => model.id === documentModelId) ?? selectedModel);
   const reasoningLabels: Record<CodexReasoningEffort, string> = {
     low: "Низкий",
     medium: "Средний",
@@ -1045,576 +1028,595 @@ function HomeSettingsScreen({
     <section
       id="workspace-panel-settings"
       className="settings-shell workspace-tab-panel workspace-tab-panel--settings"
-      role="tabpanel"
-      aria-labelledby="workspace-tab-settings settings-title"
+      aria-labelledby="settings-title"
       aria-label="Настройки"
     >
       <div className="settings-heading">
         <div>
-          <p className="context-line">Управление домашним контуром</p>
-          <h1 id="settings-title">Настройки сервера</h1>
+          <p className="context-line">
+            {section === "app" ? "Управление домашним контуром" : "Семья"}
+          </p>
+          <h1 id="settings-title">{section === "app" ? "Настройки сервера" : "Настройки"}</h1>
           <p className="lede">
-            Здесь администратор управляет локальным агентом, местом хранения и доступом людей.
-            Оригиналы остаются в выбранном домашнем хранилище. Только подтверждённая выжимка
-            отправляется в Codex после отдельного согласия владельца.
+            {section === "app"
+              ? "Здесь администратор управляет локальным агентом, местом хранения и доступом людей. Оригиналы остаются в выбранном домашнем хранилище. Только подтверждённая выжимка отправляется в Codex после отдельного согласия владельца."
+              : "Профили семьи, архив и доступ участников. Серверные настройки — Codex, хранилище, учётные записи — в разделе «Приложение», доступном администратору."}
           </p>
         </div>
-        <div className="settings-heading__identity">
-          <span>Администратор</span>
-          <strong>{session.user.displayName}</strong>
-          <small>@{session.user.username}</small>
-        </div>
+        {section === "app" ? (
+          <div className="settings-heading__identity">
+            <span>Администратор</span>
+            <strong>{session.user.displayName}</strong>
+            <small>@{session.user.username}</small>
+          </div>
+        ) : null}
       </div>
-
-      {notice !== null ? (
-        <p className="settings-notice" role="status">
-          {notice}
-        </p>
-      ) : null}
-
-      <div className="settings-console">
-        <section className="codex-console" aria-labelledby="codex-settings-title">
-          <div className="codex-console__topline">
-            <span
-              className={`status-dot ${settings.codex.daemonRunning ? "status-dot--ready" : ""}`}
-            />
-            <span>{codexState}</span>
-            <span className="codex-console__mode">
-              {subscriptionConnected ? "ChatGPT подписка" : "Локальный Codex"}
-            </span>
-          </div>
-          <div className="codex-console__body">
-            <div>
-              <p className="section-label">Codex runtime</p>
-              <h2 id="codex-settings-title">Локальный агент без API-ключа</h2>
-              <p className="codex-console__copy">
-                Veylta запускает узкие задания через установленный Codex CLI, а app-server daemon
-                показывает готовность runtime. Авторизацией владеет сам Codex; приложение не читает
-                и не копирует OAuth-токены.
-              </p>
-            </div>
-            <dl className="runtime-facts">
-              <div>
-                <dt>CLI</dt>
-                <dd>{settings.codex.cliVersion ?? "Не найден"}</dd>
-              </div>
-              <div>
-                <dt>Авторизация</dt>
-                <dd>
-                  {subscriptionConnected
-                    ? "ChatGPT / Codex"
-                    : settings.codex.authenticated
-                      ? "Другой режим"
-                      : "Не выполнена"}
-                </dd>
-              </div>
-              <div>
-                <dt>Профиль</dt>
-                <dd>
-                  {selectedModel?.displayName ?? settings.codex.preference.modelId} ·{" "}
-                  {reasoningLabels[settings.codex.preference.reasoningEffort]} · разбор:{" "}
-                  {settings.codex.preference.documentModelId === null
-                    ? ""
-                    : `${
-                        settings.codex.models.find(
-                          (model) => model.id === settings.codex.preference.documentModelId,
-                        )?.displayName ?? settings.codex.preference.documentModelId
-                      } · `}
-                  {reasoningLabels[settings.codex.preference.documentReasoningEffort]} · ассистенты:{" "}
-                  {reasoningLabels[settings.codex.preference.assistantReasoningEffort]}
-                </dd>
-              </div>
-            </dl>
-          </div>
-          {settings.codex.models.length > 0 ? (
-            <form
-              className="codex-profile"
-              onSubmit={saveCodexPreference}
-              aria-busy={pending === "preference"}
-            >
-              <div className="codex-profile__fields">
-                <label className="field">
-                  <span>Модель</span>
-                  <select
-                    name="modelId"
-                    value={modelId}
-                    disabled={pending !== null}
-                    onChange={(event) => {
-                      const nextModel = settings.codex.models.find(
-                        (model) => model.id === event.currentTarget.value,
-                      );
-                      if (nextModel === undefined) return;
-                      setDraftPreference((current) => {
-                        // The document effort follows the document model, which may differ.
-                        const documentModel =
-                          current.documentModelId === null
-                            ? nextModel
-                            : (settings.codex.models.find(
-                                (model) => model.id === current.documentModelId,
-                              ) ?? nextModel);
-                        return {
-                          modelId: nextModel.id,
-                          documentModelId: current.documentModelId,
-                          reasoningEffort: nextModel.supportedReasoningEfforts.includes(
-                            current.reasoningEffort,
-                          )
-                            ? current.reasoningEffort
-                            : nextModel.defaultReasoningEffort,
-                          documentReasoningEffort: documentModel.supportedReasoningEfforts.includes(
-                            current.documentReasoningEffort,
-                          )
-                            ? current.documentReasoningEffort
-                            : "low",
-                          assistantReasoningEffort: nextModel.supportedReasoningEfforts.includes(
-                            current.assistantReasoningEffort,
-                          )
-                            ? current.assistantReasoningEffort
-                            : "high",
-                          serviceTier: nextModel.supportsFastMode
-                            ? current.serviceTier
-                            : "standard",
-                        };
-                      });
-                    }}
-                  >
-                    {settings.codex.models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.displayName}
-                        {model.isDefault ? " · рекомендуется" : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Рассуждения в диалогах и плане</span>
-                  <select
-                    name="reasoningEffort"
-                    value={reasoningEffort}
-                    disabled={pending !== null}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value as CodexReasoningEffort;
-                      setDraftPreference((current) => ({
-                        ...current,
-                        reasoningEffort: value,
-                      }));
-                    }}
-                  >
-                    {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
-                      <option key={effort} value={effort}>
-                        {reasoningLabels[effort]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="field">
-                  <span>Рассуждения ассистентов</span>
-                  <select
-                    name="assistantReasoningEffort"
-                    value={assistantReasoningEffort}
-                    disabled={pending !== null}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value as CodexReasoningEffort;
-                      setDraftPreference((current) => ({
-                        ...current,
-                        assistantReasoningEffort: value,
-                      }));
-                    }}
-                  >
-                    {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
-                      <option key={effort} value={effort}>
-                        {reasoningLabels[effort]}
-                      </option>
-                    ))}
-                  </select>
-                  <small>
-                    ИИ-врач и его проверяющий запуск: второе мнение — это рассуждение над
-                    доказательствами, поэтому по умолчанию высокий уровень.
-                  </small>
-                </label>
-                <label className="field">
-                  <span>Модель для разбора документов</span>
-                  <select
-                    name="documentModelId"
-                    value={documentModelId ?? ""}
-                    disabled={pending !== null}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value;
-                      const nextModel =
-                        value === ""
-                          ? selectedModel
-                          : settings.codex.models.find((model) => model.id === value);
-                      setDraftPreference((current) => ({
-                        ...current,
-                        documentModelId: value === "" ? null : value,
-                        documentReasoningEffort: nextModel?.supportedReasoningEfforts.includes(
-                          current.documentReasoningEffort,
-                        )
-                          ? current.documentReasoningEffort
-                          : "low",
-                      }));
-                    }}
-                  >
-                    <option value="">Та же, что для диалогов</option>
-                    {settings.codex.models.map((model) => (
-                      <option key={model.id} value={model.id}>
-                        {model.displayName}
-                      </option>
-                    ))}
-                  </select>
-                  <small>
-                    У отдельной модели — свой лимит использования: разбор не расходует квоту
-                    диалогов.
-                  </small>
-                </label>
-                <label className="field">
-                  <span>Рассуждения при разборе документов</span>
-                  <select
-                    name="documentReasoningEffort"
-                    value={documentReasoningEffort}
-                    disabled={pending !== null}
-                    onChange={(event) => {
-                      const value = event.currentTarget.value as CodexReasoningEffort;
-                      setDraftPreference((current) => ({
-                        ...current,
-                        documentReasoningEffort: value,
-                      }));
-                    }}
-                  >
-                    {(selectedDocumentModel?.supportedReasoningEfforts ?? []).map((effort) => (
-                      <option key={effort} value={effort}>
-                        {reasoningLabels[effort]}
-                      </option>
-                    ))}
-                  </select>
-                  <small>
-                    Разбор — это переписывание под строгую схему: коды берутся из каталога,
-                    диапазоны считает Veylta. Низкий уровень в несколько раз быстрее.
-                  </small>
-                </label>
-              </div>
-              <fieldset className="codex-speed">
-                <legend>Режим выполнения</legend>
-                <label data-active={serviceTier === "standard"}>
-                  <input
-                    type="radio"
-                    name="serviceTier"
-                    value="standard"
-                    checked={serviceTier === "standard"}
-                    disabled={pending !== null}
-                    onChange={() =>
-                      setDraftPreference((current) => ({ ...current, serviceTier: "standard" }))
-                    }
-                  />
-                  <span>
-                    <strong>Стандартный</strong>
-                    <small>Обычный расход лимита</small>
-                  </span>
-                </label>
-                <label
-                  data-active={serviceTier === "fast"}
-                  data-disabled={!selectedModel?.supportsFastMode}
-                >
-                  <input
-                    type="radio"
-                    name="serviceTier"
-                    value="fast"
-                    checked={serviceTier === "fast"}
-                    disabled={pending !== null || !selectedModel?.supportsFastMode}
-                    onChange={() =>
-                      setDraftPreference((current) => ({ ...current, serviceTier: "fast" }))
-                    }
-                  />
-                  <span>
-                    <strong>Fast · 1,5× быстрее</strong>
-                    <small>
-                      {selectedModel?.supportsFastMode
-                        ? "Расходует лимит подписки быстрее"
-                        : "Недоступен для этой модели"}
-                    </small>
-                  </span>
-                </label>
-              </fieldset>
-              <output className="codex-profile__preview" aria-live="polite">
-                Новые задания: {selectedModel?.displayName ?? modelId} ·{" "}
-                {reasoningLabels[reasoningEffort]} ·{" "}
-                {serviceTier === "fast" ? "Fast" : "Стандартный"}
-              </output>
-              {selectedModel?.upgradeModelId === null || selectedModel === undefined ? null : (
-                <p className="codex-profile__upgrade">
-                  Codex рекомендует перейти на {selectedModel.upgradeModelId}.
-                </p>
-              )}
-              <button
-                className="button button--secondary codex-profile__save"
-                type="submit"
-                disabled={
-                  pending !== null ||
-                  (modelId === settings.codex.preference.modelId &&
-                    reasoningEffort === settings.codex.preference.reasoningEffort &&
-                    serviceTier === settings.codex.preference.serviceTier)
-                }
-              >
-                {pending === "preference" ? "Сохраняем…" : "Сохранить профиль"}
-              </button>
-            </form>
-          ) : settings.codex.authenticated ? (
-            <p className="codex-console__instruction">
-              Codex не сообщил доступные модели. Обновите CLI или проверьте вход через ChatGPT.
+      <SettingsSectionSwitch sections={sections} current={section} profileId={initialProfileId} />
+      {section === "user" ? (
+        <SettingsUserSection session={session}>
+          <ProfileManagementSettings
+            session={session}
+            initialProfileId={initialProfileId}
+            {...profileManagement}
+          />
+        </SettingsUserSection>
+      ) : settings === null ? null : (
+        <>
+          <SystemStatus />
+          {notice !== null ? (
+            <p className="settings-notice" role="status">
+              {notice}
             </p>
           ) : null}
-          <section className="codex-usage" aria-labelledby="codex-usage-title">
-            <div className="codex-usage__heading">
-              <h3 id="codex-usage-title">Лимиты подписки</h3>
-              <span>Данные Codex</span>
-            </div>
-            {settings.codex.usageLimits.length === 0 ? (
-              <p>Codex не сообщил текущий лимит.</p>
-            ) : (
-              <ul>
-                {settings.codex.usageLimits.map((limit) => (
-                  <li key={`${limit.name}-${limit.resetsAt}`}>
-                    <div className="codex-usage__line">
-                      <strong>{limit.name}</strong>
-                      <span>Осталось {limit.remainingPercent}%</span>
-                    </div>
-                    <progress
-                      max={100}
-                      value={limit.usedPercent}
-                      aria-label={`${limit.name}: использовано ${limit.usedPercent}%`}
+          <div className="settings-console">
+            <section className="codex-console" aria-labelledby="codex-settings-title">
+              <div className="codex-console__topline">
+                <span
+                  className={`status-dot ${settings.codex.daemonRunning ? "status-dot--ready" : ""}`}
+                />
+                <span>{codexState}</span>
+                <span className="codex-console__mode">
+                  {subscriptionConnected ? "ChatGPT подписка" : "Локальный Codex"}
+                </span>
+              </div>
+              <div className="codex-console__body">
+                <div>
+                  <p className="section-label">Codex runtime</p>
+                  <h2 id="codex-settings-title">Локальный агент без API-ключа</h2>
+                  <p className="codex-console__copy">
+                    Veylta запускает узкие задания через установленный Codex CLI, а app-server
+                    daemon показывает готовность runtime. Авторизацией владеет сам Codex; приложение
+                    не читает и не копирует OAuth-токены.
+                  </p>
+                </div>
+                <dl className="runtime-facts">
+                  <div>
+                    <dt>CLI</dt>
+                    <dd>{settings.codex.cliVersion ?? "Не найден"}</dd>
+                  </div>
+                  <div>
+                    <dt>Авторизация</dt>
+                    <dd>
+                      {subscriptionConnected
+                        ? "ChatGPT / Codex"
+                        : settings.codex.authenticated
+                          ? "Другой режим"
+                          : "Не выполнена"}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt>Профиль</dt>
+                    <dd>
+                      {selectedModel?.displayName ?? settings.codex.preference.modelId} ·{" "}
+                      {reasoningLabels[settings.codex.preference.reasoningEffort]} · разбор:{" "}
+                      {settings.codex.preference.documentModelId === null
+                        ? ""
+                        : `${
+                            settings.codex.models.find(
+                              (model) => model.id === settings.codex.preference.documentModelId,
+                            )?.displayName ?? settings.codex.preference.documentModelId
+                          } · `}
+                      {reasoningLabels[settings.codex.preference.documentReasoningEffort]} ·
+                      ассистенты:{" "}
+                      {reasoningLabels[settings.codex.preference.assistantReasoningEffort]}
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+              {settings.codex.models.length > 0 ? (
+                <form
+                  className="codex-profile"
+                  onSubmit={saveCodexPreference}
+                  aria-busy={pending === "preference"}
+                >
+                  <div className="codex-profile__fields">
+                    <label className="field">
+                      <span>Модель</span>
+                      <select
+                        name="modelId"
+                        value={modelId}
+                        disabled={pending !== null}
+                        onChange={(event) => {
+                          const nextModel = settings.codex.models.find(
+                            (model) => model.id === event.currentTarget.value,
+                          );
+                          if (nextModel === undefined) return;
+                          setDraftPreference((current) => {
+                            // The document effort follows the document model, which may differ.
+                            const documentModel =
+                              current.documentModelId === null
+                                ? nextModel
+                                : (settings.codex.models.find(
+                                    (model) => model.id === current.documentModelId,
+                                  ) ?? nextModel);
+                            return {
+                              modelId: nextModel.id,
+                              documentModelId: current.documentModelId,
+                              reasoningEffort: nextModel.supportedReasoningEfforts.includes(
+                                current.reasoningEffort,
+                              )
+                                ? current.reasoningEffort
+                                : nextModel.defaultReasoningEffort,
+                              documentReasoningEffort:
+                                documentModel.supportedReasoningEfforts.includes(
+                                  current.documentReasoningEffort,
+                                )
+                                  ? current.documentReasoningEffort
+                                  : "low",
+                              assistantReasoningEffort:
+                                nextModel.supportedReasoningEfforts.includes(
+                                  current.assistantReasoningEffort,
+                                )
+                                  ? current.assistantReasoningEffort
+                                  : "high",
+                              serviceTier: nextModel.supportsFastMode
+                                ? current.serviceTier
+                                : "standard",
+                            };
+                          });
+                        }}
+                      >
+                        {settings.codex.models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.displayName}
+                            {model.isDefault ? " · рекомендуется" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Рассуждения в диалогах и плане</span>
+                      <select
+                        name="reasoningEffort"
+                        value={reasoningEffort}
+                        disabled={pending !== null}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value as CodexReasoningEffort;
+                          setDraftPreference((current) => ({
+                            ...current,
+                            reasoningEffort: value,
+                          }));
+                        }}
+                      >
+                        {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                          <option key={effort} value={effort}>
+                            {reasoningLabels[effort]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Рассуждения ассистентов</span>
+                      <select
+                        name="assistantReasoningEffort"
+                        value={assistantReasoningEffort}
+                        disabled={pending !== null}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value as CodexReasoningEffort;
+                          setDraftPreference((current) => ({
+                            ...current,
+                            assistantReasoningEffort: value,
+                          }));
+                        }}
+                      >
+                        {(selectedModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                          <option key={effort} value={effort}>
+                            {reasoningLabels[effort]}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        ИИ-врач и его проверяющий запуск: второе мнение — это рассуждение над
+                        доказательствами, поэтому по умолчанию высокий уровень.
+                      </small>
+                    </label>
+                    <label className="field">
+                      <span>Модель для разбора документов</span>
+                      <select
+                        name="documentModelId"
+                        value={documentModelId ?? ""}
+                        disabled={pending !== null}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value;
+                          const nextModel =
+                            value === ""
+                              ? selectedModel
+                              : settings.codex.models.find((model) => model.id === value);
+                          setDraftPreference((current) => ({
+                            ...current,
+                            documentModelId: value === "" ? null : value,
+                            documentReasoningEffort: nextModel?.supportedReasoningEfforts.includes(
+                              current.documentReasoningEffort,
+                            )
+                              ? current.documentReasoningEffort
+                              : "low",
+                          }));
+                        }}
+                      >
+                        <option value="">Та же, что для диалогов</option>
+                        {settings.codex.models.map((model) => (
+                          <option key={model.id} value={model.id}>
+                            {model.displayName}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        У отдельной модели — свой лимит использования: разбор не расходует квоту
+                        диалогов.
+                      </small>
+                    </label>
+                    <label className="field">
+                      <span>Рассуждения при разборе документов</span>
+                      <select
+                        name="documentReasoningEffort"
+                        value={documentReasoningEffort}
+                        disabled={pending !== null}
+                        onChange={(event) => {
+                          const value = event.currentTarget.value as CodexReasoningEffort;
+                          setDraftPreference((current) => ({
+                            ...current,
+                            documentReasoningEffort: value,
+                          }));
+                        }}
+                      >
+                        {(selectedDocumentModel?.supportedReasoningEfforts ?? []).map((effort) => (
+                          <option key={effort} value={effort}>
+                            {reasoningLabels[effort]}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        Разбор — это переписывание под строгую схему: коды берутся из каталога,
+                        диапазоны считает Veylta. Низкий уровень в несколько раз быстрее.
+                      </small>
+                    </label>
+                  </div>
+                  <fieldset className="codex-speed">
+                    <legend>Режим выполнения</legend>
+                    <label data-active={serviceTier === "standard"}>
+                      <input
+                        type="radio"
+                        name="serviceTier"
+                        value="standard"
+                        checked={serviceTier === "standard"}
+                        disabled={pending !== null}
+                        onChange={() =>
+                          setDraftPreference((current) => ({ ...current, serviceTier: "standard" }))
+                        }
+                      />
+                      <span>
+                        <strong>Стандартный</strong>
+                        <small>Обычный расход лимита</small>
+                      </span>
+                    </label>
+                    <label
+                      data-active={serviceTier === "fast"}
+                      data-disabled={!selectedModel?.supportsFastMode}
+                    >
+                      <input
+                        type="radio"
+                        name="serviceTier"
+                        value="fast"
+                        checked={serviceTier === "fast"}
+                        disabled={pending !== null || !selectedModel?.supportsFastMode}
+                        onChange={() =>
+                          setDraftPreference((current) => ({ ...current, serviceTier: "fast" }))
+                        }
+                      />
+                      <span>
+                        <strong>Fast · 1,5× быстрее</strong>
+                        <small>
+                          {selectedModel?.supportsFastMode
+                            ? "Расходует лимит подписки быстрее"
+                            : "Недоступен для этой модели"}
+                        </small>
+                      </span>
+                    </label>
+                  </fieldset>
+                  <output className="codex-profile__preview" aria-live="polite">
+                    Новые задания: {selectedModel?.displayName ?? modelId} ·{" "}
+                    {reasoningLabels[reasoningEffort]} ·{" "}
+                    {serviceTier === "fast" ? "Fast" : "Стандартный"}
+                  </output>
+                  {selectedModel?.upgradeModelId === null || selectedModel === undefined ? null : (
+                    <p className="codex-profile__upgrade">
+                      Codex рекомендует перейти на {selectedModel.upgradeModelId}.
+                    </p>
+                  )}
+                  <button
+                    className="button button--secondary codex-profile__save"
+                    type="submit"
+                    disabled={
+                      pending !== null ||
+                      (modelId === settings.codex.preference.modelId &&
+                        reasoningEffort === settings.codex.preference.reasoningEffort &&
+                        serviceTier === settings.codex.preference.serviceTier)
+                    }
+                  >
+                    {pending === "preference" ? "Сохраняем…" : "Сохранить профиль"}
+                  </button>
+                </form>
+              ) : settings.codex.authenticated ? (
+                <p className="codex-console__instruction">
+                  Codex не сообщил доступные модели. Обновите CLI или проверьте вход через ChatGPT.
+                </p>
+              ) : null}
+              <section className="codex-usage" aria-labelledby="codex-usage-title">
+                <div className="codex-usage__heading">
+                  <h3 id="codex-usage-title">Лимиты подписки</h3>
+                  <span>Данные Codex</span>
+                </div>
+                {settings.codex.usageLimits.length === 0 ? (
+                  <p>Codex не сообщил текущий лимит.</p>
+                ) : (
+                  <ul>
+                    {settings.codex.usageLimits.map((limit) => (
+                      <li key={`${limit.name}-${limit.resetsAt}`}>
+                        <div className="codex-usage__line">
+                          <strong>{limit.name}</strong>
+                          <span>Осталось {limit.remainingPercent}%</span>
+                        </div>
+                        <progress
+                          max={100}
+                          value={limit.usedPercent}
+                          aria-label={`${limit.name}: использовано ${limit.usedPercent}%`}
+                        />
+                        <small>
+                          Обновится{" "}
+                          {new Intl.DateTimeFormat("ru-RU", {
+                            day: "numeric",
+                            month: "short",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }).format(new Date(limit.resetsAt))}
+                        </small>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+              {!settings.codex.installed ? (
+                <p className="codex-console__instruction">
+                  Установите CLI на домашнем сервере: <code>npm install -g @openai/codex</code>
+                </p>
+              ) : !settings.codex.authenticated ? (
+                <p className="codex-console__instruction">
+                  В терминале выполните <code>codex login</code> и войдите через ChatGPT.
+                </p>
+              ) : !settings.codex.daemonRunning ? (
+                <button
+                  className="button codex-console__action"
+                  type="button"
+                  onClick={startCodex}
+                  disabled={pending !== null}
+                >
+                  {pending === "codex" ? "Запускаем…" : "Запустить Codex runtime"}
+                </button>
+              ) : (
+                <p className="codex-console__instruction codex-console__instruction--ready">
+                  Агент подключён. Он получает только явно поставленные Veylta задания.
+                </p>
+              )}
+              {codexError !== null ? (
+                <p className="form-error" role="alert">
+                  {codexError}
+                </p>
+              ) : null}
+              <p className="codex-console__footnote">
+                Экспериментальный адаптер · расходуются лимиты вашей подписки Codex, отдельной
+                оплаты за API-токены нет.
+              </p>
+            </section>
+
+            <section className="storage-settings" aria-labelledby="storage-settings-title">
+              <div className="settings-section-heading">
+                <div>
+                  <p className="section-label">Локальные данные</p>
+                  <h2 id="storage-settings-title">Точка хранения</h2>
+                </div>
+                <span className="storage-generation">Поколение {settings.storage.generation}</span>
+              </div>
+              <dl className="storage-current">
+                <div>
+                  <dt>Драйвер</dt>
+                  <dd>
+                    {settings.storage.driver === "local" ? "Локальная папка" : "S3-совместимый"}
+                  </dd>
+                </div>
+                <div>
+                  <dt>Активный путь</dt>
+                  <dd>
+                    <code>{settings.storage.rootPath ?? "Настраивается вне интерфейса"}</code>
+                  </dd>
+                </div>
+              </dl>
+              {settings.storage.relocationSupported ? (
+                <form
+                  className="storage-relocation"
+                  onSubmit={relocateStorage}
+                  aria-busy={pending === "storage"}
+                >
+                  <label className="field">
+                    <span>Новая папка</span>
+                    <input
+                      name="rootPath"
+                      type="text"
+                      required
+                      minLength={2}
+                      maxLength={2048}
+                      placeholder="/Volumes/Health/Veylta"
+                      autoComplete="off"
+                      spellCheck={false}
+                      disabled={pending !== null}
                     />
-                    <small>
-                      Обновится{" "}
-                      {new Intl.DateTimeFormat("ru-RU", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      }).format(new Date(limit.resetsAt))}
-                    </small>
+                  </label>
+                  <label className="confirmation-field">
+                    <input name="confirmed" type="checkbox" required disabled={pending !== null} />
+                    <span>
+                      Скопировать и проверить все объекты перед переключением. Старую папку не
+                      удалять.
+                    </span>
+                  </label>
+                  <button
+                    className="button button--secondary"
+                    type="submit"
+                    disabled={pending !== null}
+                  >
+                    {pending === "storage" ? "Проверяем копию…" : "Перенести хранилище"}
+                  </button>
+                  {storageError !== null ? (
+                    <p className="form-error" role="alert">
+                      {storageError}
+                    </p>
+                  ) : null}
+                </form>
+              ) : (
+                <p className="form-note">
+                  Для этого драйвера перенос выполняется в конфигурации сервера.
+                </p>
+              )}
+            </section>
+          </div>
+
+          <section className="account-settings" aria-labelledby="account-settings-title">
+            <div className="settings-section-heading account-settings__heading">
+              <div>
+                <p className="section-label">Доступ к сервису</p>
+                <h2 id="account-settings-title">Учётные записи</h2>
+              </div>
+              <p>{settings.accounts.length} на домашнем сервере</p>
+            </div>
+            <div className="account-settings__body">
+              <ul className="account-register" aria-label="Учётные записи">
+                {settings.accounts.map((account) => (
+                  <li className="account-register__row" key={account.id}>
+                    <span className="account-avatar" aria-hidden="true">
+                      {account.displayName.slice(0, 1).toLocaleUpperCase("ru")}
+                    </span>
+                    <span className="account-register__identity">
+                      <strong>{account.displayName}</strong>
+                      <small>@{account.username}</small>
+                    </span>
+                    <span className="account-register__role">
+                      {account.role === "admin" ? "Администратор" : "Пользователь"}
+                    </span>
+                    <span
+                      className={`account-register__status account-register__status--${account.status}`}
+                    >
+                      {account.status === "active" ? "Активна" : "Отключена"}
+                    </span>
                   </li>
                 ))}
               </ul>
-            )}
-          </section>
-          {!settings.codex.installed ? (
-            <p className="codex-console__instruction">
-              Установите CLI на домашнем сервере: <code>npm install -g @openai/codex</code>
-            </p>
-          ) : !settings.codex.authenticated ? (
-            <p className="codex-console__instruction">
-              В терминале выполните <code>codex login</code> и войдите через ChatGPT.
-            </p>
-          ) : !settings.codex.daemonRunning ? (
-            <button
-              className="button codex-console__action"
-              type="button"
-              onClick={startCodex}
-              disabled={pending !== null}
-            >
-              {pending === "codex" ? "Запускаем…" : "Запустить Codex runtime"}
-            </button>
-          ) : (
-            <p className="codex-console__instruction codex-console__instruction--ready">
-              Агент подключён. Он получает только явно поставленные Veylta задания.
-            </p>
-          )}
-          {codexError !== null ? (
-            <p className="form-error" role="alert">
-              {codexError}
-            </p>
-          ) : null}
-          <p className="codex-console__footnote">
-            Экспериментальный адаптер · расходуются лимиты вашей подписки Codex, отдельной оплаты за
-            API-токены нет.
-          </p>
-        </section>
 
-        <section className="storage-settings" aria-labelledby="storage-settings-title">
-          <div className="settings-section-heading">
-            <div>
-              <p className="section-label">Локальные данные</p>
-              <h2 id="storage-settings-title">Точка хранения</h2>
-            </div>
-            <span className="storage-generation">Поколение {settings.storage.generation}</span>
-          </div>
-          <dl className="storage-current">
-            <div>
-              <dt>Драйвер</dt>
-              <dd>{settings.storage.driver === "local" ? "Локальная папка" : "S3-совместимый"}</dd>
-            </div>
-            <div>
-              <dt>Активный путь</dt>
-              <dd>
-                <code>{settings.storage.rootPath ?? "Настраивается вне интерфейса"}</code>
-              </dd>
-            </div>
-          </dl>
-          {settings.storage.relocationSupported ? (
-            <form
-              className="storage-relocation"
-              onSubmit={relocateStorage}
-              aria-busy={pending === "storage"}
-            >
-              <label className="field">
-                <span>Новая папка</span>
-                <input
-                  name="rootPath"
-                  type="text"
-                  required
-                  minLength={2}
-                  maxLength={2048}
-                  placeholder="/Volumes/Health/Veylta"
-                  autoComplete="off"
-                  spellCheck={false}
-                  disabled={pending !== null}
-                />
-              </label>
-              <label className="confirmation-field">
-                <input name="confirmed" type="checkbox" required disabled={pending !== null} />
-                <span>
-                  Скопировать и проверить все объекты перед переключением. Старую папку не удалять.
-                </span>
-              </label>
-              <button
-                className="button button--secondary"
-                type="submit"
-                disabled={pending !== null}
+              <form
+                className="account-create"
+                onSubmit={createAccount}
+                aria-busy={pending === "account"}
               >
-                {pending === "storage" ? "Проверяем копию…" : "Перенести хранилище"}
-              </button>
-              {storageError !== null ? (
-                <p className="form-error" role="alert">
-                  {storageError}
+                <div className="form-heading">
+                  <p>Новый доступ</p>
+                  <h3>Создать учётную запись</h3>
+                </div>
+                <label className="field">
+                  <span>Имя человека</span>
+                  <input
+                    name="displayName"
+                    type="text"
+                    required
+                    minLength={1}
+                    maxLength={120}
+                    autoComplete="off"
+                    disabled={pending !== null}
+                  />
+                </label>
+                <label className="field">
+                  <span>Логин</span>
+                  <input
+                    name="username"
+                    type="text"
+                    required
+                    minLength={3}
+                    maxLength={32}
+                    pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
+                    autoCapitalize="none"
+                    autoComplete="off"
+                    spellCheck={false}
+                    disabled={pending !== null}
+                  />
+                </label>
+                <label className="field">
+                  <span>Роль</span>
+                  <select name="role" defaultValue="user" disabled={pending !== null}>
+                    <option value="user">Пользователь</option>
+                    <option value="admin">Администратор</option>
+                  </select>
+                </label>
+                <label className="field">
+                  <span>Временный пароль</span>
+                  <input
+                    name="password"
+                    type="password"
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    autoComplete="new-password"
+                    disabled={pending !== null}
+                  />
+                </label>
+                <label className="field">
+                  <span>Повторите временный пароль</span>
+                  <input
+                    name="passwordConfirmation"
+                    type="password"
+                    required
+                    minLength={12}
+                    maxLength={128}
+                    autoComplete="new-password"
+                    disabled={pending !== null}
+                  />
+                </label>
+                <p className="form-note">
+                  Вместе с учёткой создаётся личная взрослая карточка. Роль определяет системные
+                  права, доступ к чужим карточкам проверяется отдельно.
                 </p>
-              ) : null}
-            </form>
-          ) : (
-            <p className="form-note">
-              Для этого драйвера перенос выполняется в конфигурации сервера.
-            </p>
-          )}
-        </section>
-      </div>
-
-      <ProfileManagementSettings
-        session={session}
-        initialProfileId={initialProfileId}
-        {...profileManagement}
-      />
-
-      <section className="account-settings" aria-labelledby="account-settings-title">
-        <div className="settings-section-heading account-settings__heading">
-          <div>
-            <p className="section-label">Доступ к сервису</p>
-            <h2 id="account-settings-title">Учётные записи</h2>
-          </div>
-          <p>{settings.accounts.length} на домашнем сервере</p>
-        </div>
-        <div className="account-settings__body">
-          <ul className="account-register" aria-label="Учётные записи">
-            {settings.accounts.map((account) => (
-              <li className="account-register__row" key={account.id}>
-                <span className="account-avatar" aria-hidden="true">
-                  {account.displayName.slice(0, 1).toLocaleUpperCase("ru")}
-                </span>
-                <span className="account-register__identity">
-                  <strong>{account.displayName}</strong>
-                  <small>@{account.username}</small>
-                </span>
-                <span className="account-register__role">
-                  {account.role === "admin" ? "Администратор" : "Пользователь"}
-                </span>
-                <span
-                  className={`account-register__status account-register__status--${account.status}`}
+                {accountError !== null ? (
+                  <p className="form-error" role="alert">
+                    {accountError}
+                  </p>
+                ) : null}
+                <button
+                  className="button button--primary"
+                  type="submit"
+                  disabled={pending !== null}
                 >
-                  {account.status === "active" ? "Активна" : "Отключена"}
-                </span>
-              </li>
-            ))}
-          </ul>
-
-          <form
-            className="account-create"
-            onSubmit={createAccount}
-            aria-busy={pending === "account"}
-          >
-            <div className="form-heading">
-              <p>Новый доступ</p>
-              <h3>Создать учётную запись</h3>
+                  {pending === "account" ? "Создаём…" : "Создать учётную запись"}
+                </button>
+              </form>
             </div>
-            <label className="field">
-              <span>Имя человека</span>
-              <input
-                name="displayName"
-                type="text"
-                required
-                minLength={1}
-                maxLength={120}
-                autoComplete="off"
-                disabled={pending !== null}
-              />
-            </label>
-            <label className="field">
-              <span>Логин</span>
-              <input
-                name="username"
-                type="text"
-                required
-                minLength={3}
-                maxLength={32}
-                pattern="[A-Za-z0-9][A-Za-z0-9._-]{2,31}"
-                autoCapitalize="none"
-                autoComplete="off"
-                spellCheck={false}
-                disabled={pending !== null}
-              />
-            </label>
-            <label className="field">
-              <span>Роль</span>
-              <select name="role" defaultValue="user" disabled={pending !== null}>
-                <option value="user">Пользователь</option>
-                <option value="admin">Администратор</option>
-              </select>
-            </label>
-            <label className="field">
-              <span>Временный пароль</span>
-              <input
-                name="password"
-                type="password"
-                required
-                minLength={12}
-                maxLength={128}
-                autoComplete="new-password"
-                disabled={pending !== null}
-              />
-            </label>
-            <label className="field">
-              <span>Повторите временный пароль</span>
-              <input
-                name="passwordConfirmation"
-                type="password"
-                required
-                minLength={12}
-                maxLength={128}
-                autoComplete="new-password"
-                disabled={pending !== null}
-              />
-            </label>
-            <p className="form-note">
-              Вместе с учёткой создаётся личная взрослая карточка. Роль определяет системные права,
-              доступ к чужим карточкам проверяется отдельно.
-            </p>
-            {accountError !== null ? (
-              <p className="form-error" role="alert">
-                {accountError}
-              </p>
-            ) : null}
-            <button className="button button--primary" type="submit" disabled={pending !== null}>
-              {pending === "account" ? "Создаём…" : "Создать учётную запись"}
-            </button>
-          </form>
-        </div>
-      </section>
+          </section>
+        </>
+      )}
     </section>
   );
 }
