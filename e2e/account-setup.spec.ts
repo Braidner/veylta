@@ -31,16 +31,17 @@ test("first launch creates the administrator, opens their profile, and later log
   ).toBeVisible();
   await expect(page.getByText("Администратор системы")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Настройки" }).click();
+  await expect(page.getByRole("tab", { name: "Настройки" })).toHaveCount(0);
+  await page.getByTestId("settings-gear").click();
   // Opened from a profile, settings carries that profile so family management starts on it.
-  await expect(page).toHaveURL(/\/settings(?:\?profile=[0-9a-f-]{36})?$/);
+  await expect(page).toHaveURL(/\/settings\?profile=[0-9a-f-]{36}$/);
+  await expect(page.getByRole("heading", { level: 1, name: "Настройки" })).toBeVisible();
+  await expect(page.getByTestId("profile-settings")).toBeVisible();
+  await page.getByRole("link", { name: "Приложение" }).click();
+  await expect(page).toHaveURL(/\/settings\/app\?profile=[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { level: 1, name: "Настройки сервера" })).toBeVisible();
+  await expect(page.getByText("API и база данных готовы")).toBeVisible();
   await expect(page.locator(".workspace-bar--profile")).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Настройки" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  );
-  await expect(page.getByRole("tabpanel", { name: "Настройки" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Локальный агент без API-ключа" })).toBeVisible();
   await expect(page.getByText("отдельной оплаты за API-токены нет")).toBeVisible();
   await expect(page.locator('select[name="modelId"]')).toHaveValue("gpt-5.6-sol");
@@ -137,6 +138,9 @@ test("first launch creates the administrator, opens their profile, and later log
   await expect(page.getByRole("heading", { level: 1, name: "Настройки недоступны" })).toBeVisible();
   await expect(page.getByText("Домашний администратор")).toHaveCount(0);
   await expect(page.getByText("Точка хранения")).toHaveCount(0);
+
+  await page.goto("/settings/app");
+  await expect(page.getByRole("heading", { level: 1, name: "Настройки недоступны" })).toBeVisible();
 
   await page.getByRole("button", { name: "Выйти" }).click();
   await expect(page.getByRole("heading", { level: 1, name: "Войдите в Veylta" })).toBeVisible();

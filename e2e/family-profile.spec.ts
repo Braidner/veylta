@@ -38,10 +38,10 @@ async function registerDemoFamily(page: Page) {
   return names;
 }
 
-/** Family profiles and access are administration, so they live under «Настройки». */
+/** Family profiles and access live in the user section of settings, behind the gear. */
 async function openProfileManagement(page: Page): Promise<void> {
-  await page.getByRole("tab", { name: "Настройки" }).click();
-  await expect(page.getByRole("tabpanel", { name: "Настройки" })).toBeVisible();
+  await page.getByTestId("settings-gear").click();
+  await expect(page).toHaveURL(/\/settings/);
   await expect(page.getByTestId("profile-settings")).toBeVisible();
 }
 
@@ -65,6 +65,13 @@ test("a synthetic family session survives reload and keeps the active profile in
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
 
   await openProfileManagement(page);
+
+  // The gear reaches settings, but the application section stays administrator-only.
+  await page.goto("/settings/app");
+  await expect(page.getByRole("heading", { level: 1, name: "Настройки недоступны" })).toBeVisible();
+  await page.goBack();
+  await expect(page.getByTestId("profile-settings")).toBeVisible();
+
   await page.getByRole("button", { name: "Добавить профиль" }).click();
   await page.getByLabel("Имя нового профиля").fill(names.dependent);
   await page.getByRole("button", { name: "Создать профиль" }).click();
