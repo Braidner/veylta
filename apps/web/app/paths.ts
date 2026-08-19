@@ -46,3 +46,9 @@ export function assistantPath(
 export function assistantAskPath(familyId: string, profileId: string, ask: string): string {
   return `${assistantPath(familyId, profileId, "physician")}?ask=${encodeURIComponent(ask)}`;
 }
+
+/** Settings as a page of their own: the section in the path, the profile to manage first in the query. */
+export function settingsPath(section: "user" | "app", profileId?: string): string {
+  const base = section === "app" ? "/settings/app" : "/settings";
+  return profileId === undefined ? base : `${base}?profile=${encodeURIComponent(profileId)}`;
+}
