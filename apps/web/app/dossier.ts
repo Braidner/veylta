@@ -3,13 +3,16 @@ import {
   type AssistantSpecialty,
   analyteArea,
   analyteSpecialty,
+  isOutsideRange,
   type ObservationHistoryItem,
+  type PointStatus,
+  pointStatus,
 } from "@veylta/contracts";
 import { specialtyLabel } from "./assistant";
 import { numberOf, type PrintedDelta, printedDelta } from "./dossier-numbers";
 
 /** Where a value stands against the source's own reference; a comparison value has no number. */
-export type PointStatus = "above" | "below" | "within" | "flagged" | "unknown";
+export type { PointStatus };
 
 export interface SeriesPoint {
   readonly observationId: string;
@@ -43,24 +46,6 @@ export interface DossierSeries {
   readonly streak: number;
 }
 
-function statusOf(item: ObservationHistoryItem, value: number | null): PointStatus {
-  const range = item.referenceRange;
-  if (range === null) return "unknown";
-  const low = numberOf(range.sourceLow);
-  const high = numberOf(range.sourceHigh);
-  if (value !== null && (low !== null || high !== null)) {
-    if (low !== null && value < low) return "below";
-    if (high !== null && value > high) return "above";
-    return "within";
-  }
-  if (range.laboratoryOutOfRange === true) return "flagged";
-  if (range.laboratoryOutOfRange === false) return "within";
-  return "unknown";
-}
-
-const outside = (status: PointStatus): boolean =>
-  status === "above" || status === "below" || status === "flagged";
-
 function pointOf(item: ObservationHistoryItem): SeriesPoint {
   const value = numberOf(item.source.value);
   return {
@@ -68,7 +53,7 @@ function pointOf(item: ObservationHistoryItem): SeriesPoint {
     at: item.timelineAt,
     printed: item.source.value,
     value,
-    status: statusOf(item, value),
+    status: pointStatus(value, item.referenceRange),
     rangeText: item.referenceRange?.sourceText ?? null,
     low: numberOf(item.referenceRange?.sourceLow),
     high: numberOf(item.referenceRange?.sourceHigh),
@@ -113,7 +98,7 @@ export function buildDossierSeries(
       let streak = 0;
       for (
         let index = points.length - 1;
-        index >= 0 && outside(points[index]?.status ?? "unknown");
+        index >= 0 && isOutsideRange(points[index]?.status ?? "unknown");
         index -= 1
       ) {
         streak += 1;
@@ -178,7 +163,7 @@ export function seriesAssessment(series: DossierSeries): SeriesAssessmentCopy {
     within: `В пределах референса${range}`,
     unknown: "Референс не напечатан — оценить нельзя",
   };
-  if (!outside(series.status)) {
+  if (!isOutsideRange(series.status)) {
     return { tone: "calm", headline: headlines[series.status], movement, repeat, nextStep: null };
   }
   const who =
@@ -204,7 +189,7 @@ export interface AttentionGroup {
 export function attentionBySpecialty(series: readonly DossierSeries[]): AttentionGroup[] {
   const groups = new Map<AssistantSpecialty | null, DossierSeries[]>();
   for (const item of series) {
-    if (!outside(item.status)) continue;
+    if (!isOutsideRange(item.status)) continue;
     groups.set(item.specialty, [...(groups.get(item.specialty) ?? []), item]);
   }
   return [...groups.entries()]

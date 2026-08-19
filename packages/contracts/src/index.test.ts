@@ -72,7 +72,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(HTTP_API_VERSION, "v1");
   assert.equal(ACCOUNT_CONTRACT_VERSION, "account/v1");
   assert.equal(HOME_SETTINGS_CONTRACT_VERSION, "home-settings/v5");
-  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v7");
+  assert.equal(DOCUMENT_CONTRACT_VERSION, "document/v8");
   assert.equal(DOCUMENT_INTELLIGENCE_CONTRACT_VERSION, "document-intelligence/v2");
   assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
   assert.equal(DOCUMENT_LIFECYCLE_CONTRACT_VERSION, "document-lifecycle/v1");
@@ -83,7 +83,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
   assert.equal(AUDIT_LOG_CONTRACT_VERSION, "audit-log/v1");
   assert.equal(PROFILE_CONSENT_CONTRACT_VERSION, "profile-consent/v2");
-  assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v2");
+  assert.equal(PROFILE_OVERVIEW_CONTRACT_VERSION, "profile-overview/v3");
   assert.equal(HEALTH_SUMMARY_CONTRACT_VERSION, "health-summary/v1");
   assert.equal(HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION, "health-summary-history/v1");
   assert.equal(HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION, "health-summary-comparison/v1");
@@ -558,6 +558,7 @@ test("document v4 embeds discriminated processing status without changing origin
       byteSize: 128,
       sha256: "a".repeat(64),
       uploadedAt: "2026-08-12T12:00:00.000Z",
+      effectiveDate: { value: "2026-08-12", source: "upload" },
       duplicate: { possible: false, documentId: null, profileId: null },
       intelligence: {
         contractVersion: DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
@@ -578,7 +579,6 @@ test("document v4 embeds discriminated processing status without changing origin
       },
     },
   } satisfies DocumentResponse;
-
   assert.equal(response.document.status, "uploaded");
   assert.deepEqual(DOCUMENT_CATEGORIES, [
     "laboratory",

@@ -5,7 +5,7 @@ import { buildProfileDashboardModel } from "./profile-dashboard";
 
 function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOverviewResponse {
   return {
-    contractVersion: "profile-overview/v2",
+    contractVersion: "profile-overview/v3",
     profile: {
       id: "00000000-0000-4000-8000-000000000002",
       familyId: "00000000-0000-4000-8000-000000000001",
@@ -15,6 +15,7 @@ function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOver
       access: "owner",
       createdAt: "2026-08-01T09:00:00.000Z",
     },
+    documentCount: 0,
     recentDocuments: [],
     reviewQueue: {
       documentCount: 0,

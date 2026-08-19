@@ -3,6 +3,7 @@ import type {
   DocumentIntelligenceResultStatus,
   DocumentIntelligenceStructuredResultType,
 } from "./document-intelligence-results.js";
+import type { DocumentEffectiveDate } from "./document-timeline.js";
 
 export const HTTP_API_VERSION = "v1" as const;
 export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
@@ -15,10 +16,12 @@ export * from "./care-plan.js";
 export * from "./clinician-record.js";
 export * from "./codex.js";
 export * from "./document-intelligence-results.js";
+export * from "./document-timeline.js";
 export * from "./medical-profile.js";
+export * from "./observation-status.js";
 export * from "./profile-handle.js";
 export * from "./profile-responses.js";
-export const DOCUMENT_CONTRACT_VERSION = "document/v7" as const;
+export const DOCUMENT_CONTRACT_VERSION = "document/v8" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
 export const DOCUMENT_LIFECYCLE_CONTRACT_VERSION = "document-lifecycle/v1" as const;
@@ -28,7 +31,7 @@ export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
-export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v2" as const;
+export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v3" as const;
 export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
 export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
 export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
@@ -649,6 +652,7 @@ export interface DocumentSummary {
   byteSize: number;
   sha256: string;
   uploadedAt: string;
+  readonly effectiveDate: DocumentEffectiveDate;
   duplicate: {
     possible: boolean;
     documentId: string | null;
@@ -848,6 +852,7 @@ export interface ProfileOverviewDocument {
   readonly originalFilename: string;
   readonly contentType: SyntheticDocumentContentType;
   readonly uploadedAt: string;
+  readonly effectiveDate: DocumentEffectiveDate;
   readonly intelligence: DocumentIntelligenceSummary | null;
   readonly processing: DocumentProcessingStatus;
 }
@@ -865,6 +870,8 @@ export interface ProfileOverviewReviewDocument {
 export interface ProfileOverviewResponse {
   readonly contractVersion: typeof PROFILE_OVERVIEW_CONTRACT_VERSION;
   readonly profile: PatientProfileSummary;
+  /** Active documents of the profile — the «всего» of the documents page; `recentDocuments` is capped. */
+  readonly documentCount: number;
   /** Newest first; bounded to fifty immutable source documents. */
   readonly recentDocuments: readonly ProfileOverviewDocument[];
   readonly reviewQueue: {

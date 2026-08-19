@@ -272,7 +272,7 @@ rewrites `/health-api/*`), the API owns writes through serialised `BEGIN IMMEDIA
 and the worker polls the same file for durable, idempotent, leased jobs. Object storage sits behind
 a versioned `ObjectStorage/v1` contract; the model sits behind a provider-neutral
 `DocumentIntelligenceProvider` whose Codex implementation is the only path to a model. Public
-boundaries carry explicit versions (`document/v7`, `document-agent/v2`, `home-settings/v4`, …).
+boundaries carry explicit versions (`document/v8`, `document-agent/v2`, `home-settings/v4`, …).
 
 Read more:
 

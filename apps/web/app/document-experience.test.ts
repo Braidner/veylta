@@ -78,6 +78,7 @@ const document = {
   byteSize: 1_024,
   sha256: "a".repeat(64),
   uploadedAt: "2026-08-14T12:16:00.000Z",
+  effectiveDate: { value: "2026-08-14", source: "upload" },
   duplicate: { possible: false, documentId: null, profileId: null },
   intelligence: null,
   processing: { state: "completed", updatedAt: "2026-08-14T12:17:00.000Z", factCount: 3 },

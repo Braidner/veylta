@@ -39,6 +39,7 @@ function overviewDocument(
     originalFilename: "synthetic.pdf",
     contentType: "application/pdf",
     uploadedAt: "2026-08-15T10:00:00.000Z",
+    effectiveDate: { value: "2026-08-15", source: "upload" },
     intelligence: null,
     processing,
   };
@@ -94,6 +95,7 @@ test("restart is offered only where the server would accept it", () => {
 
 test("the archive hero totals the whole queue, not the visible rows", () => {
   const overview = {
+    documentCount: 2,
     reviewQueue: {
       documentCount: 7,
       pendingFactCount: 82,
@@ -165,6 +167,7 @@ test("one list: sources awaiting a decision come first, each carrying its queue 
     id: "00000000-0000-4000-8000-00000000000c",
   };
   const overview = {
+    documentCount: 3,
     // Newest first, as the API returns them; the waiting one is deliberately not first here.
     recentDocuments: [done, waiting, failed],
     reviewQueue: {

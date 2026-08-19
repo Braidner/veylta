@@ -171,7 +171,7 @@ test("a restart command reuses its idempotency key after a transient browser fai
       await route.fulfill({
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v7",
+          contractVersion: "document/v8",
           documentId,
           processing,
           activityRunId: "3f2c9a41-5c0b-4a1e-8f7d-2b6c9d0e1a34",
@@ -196,7 +196,7 @@ test("a restart command reuses its idempotency key after a transient browser fai
         status: 202,
         contentType: "application/json",
         body: JSON.stringify({
-          contractVersion: "document/v7",
+          contractVersion: "document/v8",
           documentId,
           processing: { state: "queued", updatedAt: "2026-08-12T12:00:01.000Z" },
         }),

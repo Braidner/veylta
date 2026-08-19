@@ -1,17 +1,9 @@
 /** Number reading and delta printing shared by the dossier's series and the passport's measurements. */
+export { numberOf } from "@veylta/contracts";
 
 export interface PrintedDelta {
   readonly value: string;
   readonly direction: "increased" | "decreased" | "unchanged";
-}
-
-/** «6,8» → 6.8; anything that is not one plain number («< 0,1», «отр.») → null. */
-export function numberOf(value: string | null | undefined): number | null {
-  if (value === null || value === undefined) return null;
-  const normalized = value.trim().replace(",", ".");
-  if (!/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)$/.test(normalized)) return null;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 const decimalsOf = (printed: string): number => {
