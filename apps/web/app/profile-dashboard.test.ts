@@ -10,6 +10,7 @@ function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOver
       id: "00000000-0000-4000-8000-000000000002",
       familyId: "00000000-0000-4000-8000-000000000001",
       displayName: "Иван",
+      handle: "ivan",
       kind: "adult",
       access: "owner",
       createdAt: "2026-08-01T09:00:00.000Z",

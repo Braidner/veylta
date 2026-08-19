@@ -509,6 +509,7 @@ interface DocumentIntelligenceRow extends DocumentIntelligenceSummaryRow {
 
 interface ProfileOverviewProfileRow extends EvidenceBundleProfileRow {
   access: string;
+  handle: string;
 }
 
 interface ProfileOverviewQueueRow {
@@ -523,7 +524,6 @@ interface EvidenceBundleProfileRow {
   display_name: string;
   kind: string;
   created_at: string;
-  handle: string;
 }
 
 interface EvidenceBundleDocumentRow extends DocumentRow {}
@@ -1298,7 +1298,6 @@ function evidenceBundleProfile(
     id: requiredCanonicalUuid(row.id, "export profile"),
     familyId: requiredCanonicalUuid(row.family_id, "export family"),
     displayName: requiredBoundedString(row.display_name, 120, "export profile name"),
-    handle: requiredBoundedString(row.handle, 30, "export profile handle"),
     kind: row.kind,
     createdAt: canonicalTimestamp(row.created_at),
   };
@@ -2768,7 +2767,7 @@ export function createDocumentService(
       await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
       const profile = (
         await client.query<EvidenceBundleProfileRow>(
-          `SELECT id, family_id, display_name, kind, created_at, COALESCE(handle, 'p-' || lower(substr(replace(id, '-', ''), 1, 12))) AS handle
+          `SELECT id, family_id, display_name, kind, created_at
              FROM patient_profiles
             WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
           [scope.familyId, scope.profileId],

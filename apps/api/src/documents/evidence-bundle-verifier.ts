@@ -1,15 +1,11 @@
 import { createHash } from "node:crypto";
 import {
-  MAX_PROFILE_HANDLE_LENGTH,
   MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
 } from "@veylta/contracts";
-
-export { EvidenceBundleVerificationError } from "./evidence-bundle-field-parsers.js";
-
 import {
   fail,
   hasExactKeys,
@@ -321,14 +317,13 @@ function verifyManifest(bundle: Buffer): VerifiedManifest {
   requiredTimestamp(parsed.exportedAt);
   if (
     !isRecord(parsed.profile) ||
-    !hasExactKeys(parsed.profile, ["createdAt", "displayName", "familyId", "handle", "id", "kind"])
+    !hasExactKeys(parsed.profile, ["createdAt", "displayName", "familyId", "id", "kind"])
   ) {
     fail();
   }
   requiredCanonicalUuid(parsed.profile.id);
   requiredCanonicalUuid(parsed.profile.familyId);
   requiredString(parsed.profile.displayName, 120);
-  requiredString(parsed.profile.handle, MAX_PROFILE_HANDLE_LENGTH);
   if (parsed.profile.kind !== "adult" && parsed.profile.kind !== "dependent") fail();
   requiredTimestamp(parsed.profile.createdAt);
   if (

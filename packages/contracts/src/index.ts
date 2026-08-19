@@ -1015,7 +1015,7 @@ export type SyntheticEvidenceBundleObservation = Omit<ObservationHistoryItem, "s
 export interface SyntheticEvidenceBundleManifest {
   readonly contractVersion: typeof SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION;
   readonly exportedAt: string;
-  readonly profile: Omit<PatientProfileSummary, "access">;
+  readonly profile: Omit<PatientProfileSummary, "access" | "handle">;
   readonly documents: readonly SyntheticEvidenceBundleDocument[];
   readonly observations: readonly SyntheticEvidenceBundleObservation[];
 }
@@ -1028,7 +1028,7 @@ export interface SyntheticEvidenceBundleManifest {
 export interface SyntheticProfileExportManifest {
   readonly contractVersion: typeof SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION;
   readonly exportedAt: string;
-  readonly profile: Omit<PatientProfileSummary, "access">;
+  readonly profile: Omit<PatientProfileSummary, "access" | "handle">;
   readonly documents: readonly SyntheticEvidenceBundleDocument[];
   readonly observations: readonly SyntheticEvidenceBundleObservation[];
 }

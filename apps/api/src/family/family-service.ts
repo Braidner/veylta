@@ -678,7 +678,6 @@ export function createFamilyService(
         profile: randomUUID(),
         session: randomUUID(),
       };
-      let profileHandle: string | null = null;
       const result = await database.transaction(async (client) => {
         const invitation = (
           await client.query<InvitationRow>(
@@ -709,18 +708,19 @@ export function createFamilyService(
            VALUES ($1, $2, $3, $4, 'active', $5)`,
           [ids.membership, invitation.family_id, ids.user, invitation.role, now],
         );
-        if (invitation.role === "adult_member") {
-          profileHandle = await createPatientProfile(client, {
-            id: ids.profile,
-            familyId: invitation.family_id,
-            displayName: profileName ?? "",
-            kind: "adult",
-            linkedUserId: ids.user,
-            createdByUserId: ids.user,
-            createdAt: now.toISOString(),
-            username: null,
-          });
-        }
+        const profileHandle =
+          invitation.role === "adult_member"
+            ? await createPatientProfile(client, {
+                id: ids.profile,
+                familyId: invitation.family_id,
+                displayName: profileName ?? "",
+                kind: "adult",
+                linkedUserId: ids.user,
+                createdByUserId: ids.user,
+                createdAt: now.toISOString(),
+                username: null,
+              })
+            : null;
         const consumed = await client.query(
           `UPDATE family_invitations
               SET accepted_by_user_id = $1, accepted_at = $2
@@ -753,7 +753,7 @@ export function createFamilyService(
           )
         ).rows[0];
         if (family === undefined) throw new ResourceNotFoundError();
-        return { family, role: invitation.role };
+        return { family, role: invitation.role, profileHandle };
       });
       if (result.family === undefined) throw new ResourceNotFoundError();
       const family: FamilySummary = {
@@ -763,12 +763,12 @@ export function createFamilyService(
         createdAt: new Date(result.family.created_at).toISOString(),
       };
       const profile: PatientProfileSummary | null =
-        result.role === "adult_member"
+        result.role === "adult_member" && result.profileHandle !== null
           ? {
               id: ids.profile,
               familyId: result.family.id,
               displayName: profileName ?? "",
-              handle: profileHandle ?? "",
+              handle: result.profileHandle,
               kind: "adult",
               access: "self",
               createdAt: now.toISOString(),
@@ -1113,9 +1113,9 @@ export function createFamilyService(
         session: randomUUID(),
       };
 
-      let profileHandle = "";
+      let profileHandle: string;
       try {
-        await database.transaction(async (client) => {
+        profileHandle = await database.transaction(async (client) => {
           await client.query(
             "INSERT INTO users (id, display_name, created_at) VALUES ($1, $2, $3)",
             [ids.user, displayName, now],
@@ -1136,7 +1136,7 @@ export function createFamilyService(
              VALUES ($1, $2, $3, 'owner', 'active', $4)`,
             [ids.membership, ids.family, ids.user, now],
           );
-          profileHandle = await createPatientProfile(client, {
+          const handle = await createPatientProfile(client, {
             id: ids.profile,
             familyId: ids.family,
             displayName: profileName,
@@ -1173,6 +1173,7 @@ export function createFamilyService(
             correlationId,
             createdAt: now,
           });
+          return handle;
         });
       } catch (error) {
         if (isSqliteConstraintError(error, "unique")) {

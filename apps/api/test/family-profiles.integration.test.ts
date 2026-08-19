@@ -10,6 +10,7 @@ import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database, isSqliteConstraintError } from "../src/database/pool.js";
 import { createFamilyService } from "../src/family/family-service.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
+import { errorShape } from "./error-shape.js";
 
 const webOrigin = "http://127.0.0.1:4300";
 
@@ -22,18 +23,6 @@ function cookieFrom(response: {
   const pair = header.split(";", 1)[0];
   assert.ok(pair);
   return { header, pair };
-}
-
-function errorShape(response: { json(): unknown; statusCode: number }): unknown {
-  const body = response.json() as {
-    error: { code: string; details: unknown[]; message: string; requestId: string };
-  };
-  return {
-    statusCode: response.statusCode,
-    code: body.error.code,
-    message: body.error.message,
-    details: body.error.details,
-  };
 }
 
 function createTestApp(database: Database, demoRegistrationEnabled = true): FastifyInstance {
@@ -942,12 +931,13 @@ test("an owner can issue a one-time local adult invitation without granting anot
     assert.equal(accepted.statusCode, 201);
     const joined = accepted.json() as {
       family: { id: string; role: string };
-      profile: { id: string; familyId: string; kind: string };
+      profile: { id: string; familyId: string; kind: string; handle: string };
     };
     assert.equal(joined.family.id, owner.family.id);
     assert.equal(joined.family.role, "adult_member");
     assert.equal(joined.profile.familyId, owner.family.id);
     assert.equal(joined.profile.kind, "adult");
+    assert.match(joined.profile.handle, /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/);
     const memberCookie = cookieFrom(accepted).pair;
 
     const memberSession = await app.inject({

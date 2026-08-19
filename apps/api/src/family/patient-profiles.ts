@@ -1,9 +1,13 @@
-import type { PatientProfileKind } from "@veylta/contracts";
+import { MAX_PROFILE_HANDLE_LENGTH, type PatientProfileKind } from "@veylta/contracts";
 import type { Database, DatabaseClient } from "../database/pool.js";
 import { defaultHandle, withSuffix } from "./profile-handle.js";
 
 /** The provisional handle migration 0038 gives a row that has none yet — the same expression. */
 export const provisionalHandleSql = "'p-' || lower(substr(replace(id, '-', ''), 1, 12))";
+
+// `withSuffix` clips a long base before appending `-2` … `-9999` (`"-9999"` is the longest
+// possible suffix) so the result still fits the handle length bound.
+const maxClippedBaseLength = MAX_PROFILE_HANDLE_LENGTH - "-9999".length;
 
 export function isProvisionalHandle(handle: string): boolean {
   return /^p-[0-9a-f]{12}$/.test(handle);
@@ -22,15 +26,13 @@ export interface NewPatientProfile {
 }
 
 async function takenHandles(client: DatabaseClient, base: string): Promise<Set<string>> {
-  // `withSuffix` clips a long base before appending `-2` … `-9999`, so a stored handle may share
-  // only the first 25 characters of `base` (30 - the longest possible suffix). Matching that
-  // clipped prefix too keeps a long base's taken set complete; it may be a superset, never short.
+  // One prefix match covers the exact base, every `-n` sibling, and every clipped-suffix sibling
+  // (a stored handle may share only `base`'s first `maxClippedBaseLength` characters once
+  // `withSuffix` has clipped it) — the taken set may be a superset of what is truly taken, never
+  // short of it.
   const rows = await client.query<{ handle: string }>(
-    `SELECT handle FROM patient_profiles
-      WHERE handle = $1 COLLATE NOCASE
-         OR handle LIKE $2
-         OR handle LIKE substr($1, 1, 25) || '%'`,
-    [base, `${base}-%`],
+    "SELECT handle FROM patient_profiles WHERE handle LIKE $1 || '%'",
+    [base.slice(0, maxClippedBaseLength)],
   );
   return new Set(rows.rows.map((row) => row.handle.toLowerCase()));
 }

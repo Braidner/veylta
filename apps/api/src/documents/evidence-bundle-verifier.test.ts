@@ -6,8 +6,8 @@ import type {
   SyntheticEvidenceBundleManifest,
 } from "@veylta/contracts";
 import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
+import { EvidenceBundleVerificationError } from "./evidence-bundle-field-parsers.js";
 import {
-  EvidenceBundleVerificationError,
   verifySyntheticEvidenceBundle,
   verifySyntheticProfileArchive,
 } from "./evidence-bundle-verifier.js";
@@ -17,7 +17,6 @@ function syntheticProfile(): SyntheticEvidenceBundleManifest["profile"] {
     id: "00000000-0000-4000-8000-000000000001",
     familyId: "00000000-0000-4000-8000-000000000002",
     displayName: "Synthetic profile",
-    handle: "synthetic-profile",
     kind: "adult",
     createdAt: "2026-08-12T00:00:00.000Z",
   };

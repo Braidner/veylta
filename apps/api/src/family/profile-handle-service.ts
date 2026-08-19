@@ -6,6 +6,7 @@ import {
 } from "@veylta/contracts";
 import type { Database } from "../database/pool.js";
 import { DomainConflictError, DomainValidationError, type SessionActor } from "./family-service.js";
+import { provisionalHandleSql } from "./patient-profiles.js";
 import { canonicalProfileScope, type ProfileScope, requireProfileWrite } from "./profile-access.js";
 
 /**
@@ -23,7 +24,10 @@ export async function setProfileHandle(
   return database.transaction(async (client) => {
     await requireProfileWrite(client, input.actor, scope);
     const current = await client.query<{ handle: string }>(
-      `SELECT handle FROM patient_profiles WHERE family_id = $1 AND id = $2`,
+      // A row a raw insert (old tests, a pre-backfill migration state) left without a handle
+      // must not 500 here — fall back to the same provisional expression every read path uses.
+      `SELECT COALESCE(handle, ${provisionalHandleSql}) AS handle
+         FROM patient_profiles WHERE family_id = $1 AND id = $2`,
       [scope.familyId, scope.profileId],
     );
     if (current.rows[0]?.handle.toLowerCase() === handle) {
