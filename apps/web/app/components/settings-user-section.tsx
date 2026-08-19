@@ -1,9 +1,9 @@
 "use client";
 
-import type { SessionResponse } from "@veylta/contracts";
+import type { AppAccountRole, SessionResponse } from "@veylta/contracts";
 import type { ReactNode } from "react";
 
-const roleCopy: Record<string, string> = {
+const roleCopy: Record<AppAccountRole, string> = {
   admin: "Администратор системы",
   user: "Пользователь системы",
 };
@@ -29,7 +29,7 @@ export function SettingsUserSection({
           </div>
           <p>
             {session.user.username === null ? "демо-сессия" : `@${session.user.username}`} ·{" "}
-            {roleCopy[session.user.role ?? "user"] ?? "Пользователь системы"}
+            {roleCopy[session.user.role ?? "user"]}
           </p>
         </div>
       </section>

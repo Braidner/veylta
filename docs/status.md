@@ -175,6 +175,9 @@ The full first slice remains deliberately narrow:
     30 synthetic cases through the real turn (or the fake, in CI) and reports
     plumbing and clinical expectations apart (docs/assistants.md slice 6,
     delivered).
+27. open settings from a gear in the header instead of a tab, in two sections —
+    «Пользователь» (the signed-in account and the family's profiles and access)
+    and «Приложение» (server readiness, Codex, storage, accounts; administrators).
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

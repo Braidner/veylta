@@ -381,10 +381,13 @@ runtime port for api and worker. Uploads stream through SHA-256; controlled read
 bounded checksum-verified snapshot before returning bytes. Keys derive from trusted IDs +
 checksum, never user filenames.
 
-**Settings serves two audiences.** Server administration (Codex, storage, accounts) is
-admin-only; family profiles and access («Профили и доступ») are for any family owner and never
-call `/v1/settings`. `canOpenSettings` gates the tab; a link from a profile carries
-`?profile=` so management opens on that person. Profile management is not on the documents tab.
+**Settings serves two audiences, in two sections.** The page opens from a gear in the header
+(`components/settings-gear.tsx`, shown when `canOpenSettings`; the «Домашний сервер» chip stays
+only while nobody is signed in). `/settings` is «Пользователь» — who is signed in and the family's
+«Профили и доступ» (any family owner; never calls `/v1/settings`); `/settings/app` is «Приложение»
+— the readiness line, Codex, storage, server accounts (admin only). `app/settings-sections.ts`
+decides the sections a session may open; `settingsPath(section, profileId?)` builds the link and
+`?profile=` opens management on that person. Profile management is not on the documents tab.
 
 **One hero.** `components/page-hero.tsx` is the shell for both the document detail page and
 the documents archive; the two wrappers stay thin. On those tabs the profile heading steps

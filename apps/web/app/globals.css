@@ -5217,10 +5217,6 @@ body:has(.upload-dialog[open]) {
     display: none;
   }
 
-  .workspace-bar--profile .environment {
-    display: none;
-  }
-
   .workspace-bar .workspace-actions {
     gap: 8px;
   }

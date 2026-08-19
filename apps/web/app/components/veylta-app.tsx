@@ -1026,10 +1026,8 @@ function HomeSettingsScreen({
 
   return (
     <section
-      id="workspace-panel-settings"
       className="settings-shell workspace-tab-panel workspace-tab-panel--settings"
       aria-labelledby="settings-title"
-      aria-label="Настройки"
     >
       <div className="settings-heading">
         <div>
