@@ -59,11 +59,7 @@ import type {
   SetupStatusResponse,
   StorageRelocationResponse,
 } from "@veylta/contracts";
-import {
-  type DOCUMENT_CATEGORIES,
-  MAX_SYNTHETIC_DOCUMENT_BYTES,
-  REVIEW_BLOCKING_VALIDATION_ISSUES,
-} from "@veylta/contracts";
+import { type DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import {
   ArrowRight,
   Bot,
@@ -102,6 +98,7 @@ import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { assistantIdentity } from "../assistant";
 import { takesCheckins } from "../care-plan-checkins";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
+import { queueRows } from "../document-queue";
 import {
   documentResultStatusCopy,
   documentResultTypeCopy,
@@ -113,9 +110,12 @@ import {
   archiveRows,
   archiveValueCountCopy,
   awaitingReviewVerb,
+  buildDocumentSearchPath,
   buildDocumentsArchiveHero,
   bulkConfirmableCount,
+  canBulkConfirmFact,
   isRestartable,
+  normalizeDocumentSearchResponse,
   restartTargets,
   uploadButtonCopy,
 } from "../documents-archive";
@@ -196,37 +196,6 @@ function documentProcessingPath(
 
 function documentFactsPath(familyId: string, profileId: string, documentId: string): string {
   return `${documentApiPath(familyId, profileId, documentId)}/facts`;
-}
-
-export function buildDocumentSearchPath(
-  familyId: string,
-  profileId: string,
-  query: string,
-): string {
-  const params = new URLSearchParams({ q: query.trim() });
-  return `${profileApiPath(familyId, profileId)}/documents?${params.toString()}`;
-}
-
-function isDocumentSummary(value: unknown): value is DocumentSummary {
-  if (typeof value !== "object" || value === null) return false;
-  const candidate = value as Partial<DocumentSummary>;
-  return (
-    typeof candidate.id === "string" &&
-    typeof candidate.originalFilename === "string" &&
-    typeof candidate.uploadedAt === "string" &&
-    typeof candidate.processing === "object" &&
-    candidate.processing !== null
-  );
-}
-
-export function normalizeDocumentSearchResponse(response: unknown): readonly DocumentSummary[] {
-  const candidates = Array.isArray(response)
-    ? response
-    : typeof response === "object" && response !== null
-      ? ((response as { documents?: unknown; items?: unknown }).documents ??
-        (response as { items?: unknown }).items)
-      : null;
-  return Array.isArray(candidates) ? candidates.filter(isDocumentSummary) : [];
 }
 
 function profileOverviewPath(familyId: string, profileId: string): string {
@@ -3576,7 +3545,7 @@ function ProfileOverviewPanel({
           <>
             <DocumentsHero
               canWrite={canWriteProfile}
-              summary={buildDocumentsArchiveHero(state.overview)}
+              summary={buildDocumentsArchiveHero(state.overview, queueRows(state.overview).length)}
               bulkConfirmPending={archiveAction.kind === "confirming"}
               bulkConfirmProgress={
                 archiveAction.kind === "confirming" && archiveAction.documentId === null
@@ -6411,19 +6380,6 @@ type BulkReviewState =
 
 function isPendingReview(status: ReviewFactStatus): boolean {
   return status === "extracted" || status === "needs_review";
-}
-
-const reviewBlockingIssues: ReadonlySet<string> = new Set(REVIEW_BLOCKING_VALIDATION_ISSUES);
-
-/** Mirrors the API's review-status rule: only a doubtful reading needs a hand on it. */
-export function canBulkConfirmFact(fact: {
-  readonly reviewStatus: ExtractedFactReviewStatus;
-  readonly validationIssues: readonly string[];
-}): boolean {
-  return (
-    fact.reviewStatus === "extracted" &&
-    !fact.validationIssues.some((issue) => reviewBlockingIssues.has(issue))
-  );
 }
 
 export function documentResultAvailabilityCopy(

@@ -11,6 +11,7 @@ import {
   awaitingReviewVerb,
   buildDocumentsArchiveHero,
   bulkConfirmableCount,
+  heroCountsCopy,
   isRestartable,
   restartTargets,
   sourceCountCopy,
@@ -113,7 +114,9 @@ test("the archive hero totals the whole queue, not the visible rows", () => {
     ],
   } as unknown as ProfileOverviewResponse;
 
-  assert.deepEqual(buildDocumentsArchiveHero(overview), {
+  assert.deepEqual(buildDocumentsArchiveHero(overview, 5), {
+    documentCount: 2,
+    queueCount: 5,
     sourceCount: 2,
     pendingDocumentCount: 7,
     pendingFactCount: 82,
@@ -122,6 +125,17 @@ test("the archive hero totals the whole queue, not the visible rows", () => {
     restartableCount: 1,
     bulkConfirmableCount: 76,
   });
+});
+
+test("the hero line counts the record, the queue and the review", () => {
+  assert.equal(
+    heroCountsCopy({ documentCount: 12, queueCount: 3, pendingDocumentCount: 2 } as never),
+    "12 всего · 3 в очереди · 2 ждут проверки",
+  );
+  assert.equal(
+    heroCountsCopy({ documentCount: 1, queueCount: 0, pendingDocumentCount: 1 } as never),
+    "1 всего · 0 в очереди · 1 ждёт проверки",
+  );
 });
 
 test("Russian counts agree with their nouns", () => {

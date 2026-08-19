@@ -2,13 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { DocumentIntelligenceStructuredResult, DocumentSummary } from "@veylta/contracts";
 import {
-  buildDocumentSearchPath,
   buildIndicatorHistoryPath,
-  canBulkConfirmFact,
   documentResultAvailabilityCopy,
   documentResultMatchesFact,
   documentResultMissingFields,
-  normalizeDocumentSearchResponse,
 } from "./components/veylta-app";
 import {
   documentResultStatusCopy,
@@ -16,6 +13,11 @@ import {
   documentResultTypeCopy,
   prioritizeDocumentResults,
 } from "./document-results";
+import {
+  buildDocumentSearchPath,
+  canBulkConfirmFact,
+  normalizeDocumentSearchResponse,
+} from "./documents-archive";
 
 test("generic measurements reuse their review fact by exact source provenance", () => {
   const fact = {

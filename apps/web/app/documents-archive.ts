@@ -1,11 +1,19 @@
-import type {
-  ProfileOverviewDocument,
-  ProfileOverviewResponse,
-  ProfileOverviewReviewDocument,
+import {
+  type DocumentSummary,
+  type ExtractedFactReviewStatus,
+  type ProfileOverviewDocument,
+  type ProfileOverviewResponse,
+  type ProfileOverviewReviewDocument,
+  REVIEW_BLOCKING_VALIDATION_ISSUES,
 } from "@veylta/contracts";
+import { profileApiPath } from "./paths";
 import { countCopy, pluralForm } from "./russian-plural";
 
 export interface DocumentsArchiveHero {
+  /** Active documents of the profile — the archive's «всего». */
+  readonly documentCount: number;
+  /** Documents the machine has not finished, or that still hold a fact awaiting a decision. */
+  readonly queueCount: number;
   readonly sourceCount: number;
   readonly pendingDocumentCount: number;
   readonly pendingFactCount: number;
@@ -36,9 +44,15 @@ export function bulkConfirmableCount(document: ProfileOverviewReviewDocument): n
   return Math.max(0, document.pendingFactCount - document.needsAttentionFactCount);
 }
 
-export function buildDocumentsArchiveHero(overview: ProfileOverviewResponse): DocumentsArchiveHero {
+/** `queueCount` comes from `queueRows(overview).length` — one rule, kept in `document-queue.ts`. */
+export function buildDocumentsArchiveHero(
+  overview: ProfileOverviewResponse,
+  queueCount: number,
+): DocumentsArchiveHero {
   const { reviewQueue, recentDocuments } = overview;
   return {
+    documentCount: overview.documentCount,
+    queueCount,
     sourceCount: recentDocuments.length,
     pendingDocumentCount: reviewQueue.documentCount,
     pendingFactCount: reviewQueue.pendingFactCount,
@@ -111,4 +125,59 @@ export function restartTargets(
       isRestartable(document) &&
       (document.processing.state === "awaiting_review" || document.processing.state === "failed"),
   );
+}
+
+/** «12 всего · 3 в очереди · 2 ждут проверки» — the hero's one line. */
+export function heroCountsCopy(summary: DocumentsArchiveHero): string {
+  return [
+    `${summary.documentCount} всего`,
+    `${summary.queueCount} в очереди`,
+    `${summary.pendingDocumentCount} ${awaitingReviewVerb(summary.pendingDocumentCount)}`,
+  ].join(" · ");
+}
+
+const reviewBlockingIssues: ReadonlySet<string> = new Set(REVIEW_BLOCKING_VALIDATION_ISSUES);
+
+/** Mirrors the API's review-status rule: only a doubtful reading needs a hand on it. (From `veylta-app.tsx`.) */
+export function canBulkConfirmFact(fact: {
+  readonly reviewStatus: ExtractedFactReviewStatus;
+  readonly validationIssues: readonly string[];
+}): boolean {
+  return (
+    fact.reviewStatus === "extracted" &&
+    !fact.validationIssues.some((issue) => reviewBlockingIssues.has(issue))
+  );
+}
+
+/** The search endpoint: `GET …/documents?q=` — the only list the API offers. (From `veylta-app.tsx`.) */
+export function buildDocumentSearchPath(
+  familyId: string,
+  profileId: string,
+  query: string,
+): string {
+  const params = new URLSearchParams({ q: query.trim() });
+  return `${profileApiPath(familyId, profileId)}/documents?${params.toString()}`;
+}
+
+function isDocumentSummary(value: unknown): value is DocumentSummary {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Partial<DocumentSummary>;
+  return (
+    typeof candidate.id === "string" &&
+    typeof candidate.originalFilename === "string" &&
+    typeof candidate.uploadedAt === "string" &&
+    typeof candidate.processing === "object" &&
+    candidate.processing !== null
+  );
+}
+
+/** A search answer read defensively: `{ documents }`, `{ items }` or a bare array. (From `veylta-app.tsx`.) */
+export function normalizeDocumentSearchResponse(response: unknown): readonly DocumentSummary[] {
+  const candidates = Array.isArray(response)
+    ? response
+    : typeof response === "object" && response !== null
+      ? ((response as { documents?: unknown; items?: unknown }).documents ??
+        (response as { items?: unknown }).items)
+      : null;
+  return Array.isArray(candidates) ? candidates.filter(isDocumentSummary) : [];
 }
