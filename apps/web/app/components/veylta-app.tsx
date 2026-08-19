@@ -79,7 +79,6 @@ import {
   LogOut,
   RefreshCw,
   Search,
-  Settings,
   ShieldCheck,
   Trash2,
   X,
@@ -144,6 +143,7 @@ import { DocumentsHero } from "./documents-hero";
 import { DossierPanel } from "./dossier-panel";
 import { IdentityChips } from "./identity-chips";
 import { ProfileDashboard } from "./profile-dashboard";
+import { SettingsGear } from "./settings-gear";
 import { SystemStatus } from "./system-status";
 import { VeyltaMark } from "./veylta-mark";
 
@@ -648,24 +648,6 @@ export function VeyltaApp({
               <ContactRound size={17} aria-hidden="true" />
               Досье
             </Link>
-            {session !== undefined && canOpenSettings(session) ? (
-              <Link
-                id="workspace-tab-settings"
-                className={`workspace-primary-nav__item ${activeTab === "settings" ? "workspace-primary-nav__item--active" : ""}`}
-                href={
-                  navigationProfile === undefined
-                    ? "/settings"
-                    : `/settings?profile=${encodeURIComponent(navigationProfile.id)}`
-                }
-                role="tab"
-                aria-selected={activeTab === "settings"}
-                aria-controls="workspace-panel-settings"
-                tabIndex={activeTab === "settings" ? 0 : -1}
-              >
-                <Settings size={17} aria-hidden="true" />
-                Настройки
-              </Link>
-            ) : null}
           </div>
         ) : null}
         {navigationProfile !== undefined ? (
@@ -679,10 +661,14 @@ export function VeyltaApp({
           </Link>
         ) : null}
         <div className="workspace-actions">
-          <span className="environment">
-            <span aria-hidden="true" />
-            Домашний сервер
-          </span>
+          {session === undefined ? (
+            <span className="environment">
+              <span aria-hidden="true" />
+              Домашний сервер
+            </span>
+          ) : (
+            <SettingsGear session={session} profileId={navigationProfile?.id} />
+          )}
           {session !== undefined ? (
             <span className="workspace-identity">
               <span aria-hidden="true">{session.user.displayName.slice(0, 2).toUpperCase()}</span>

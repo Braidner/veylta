@@ -289,6 +289,15 @@ textarea:focus-visible {
   transform: translateY(-1px);
 }
 
+.workspace-gear {
+  color: var(--color-muted);
+  text-decoration: none;
+}
+
+.workspace-gear:hover {
+  color: var(--color-ink);
+}
+
 .workspace-identity {
   display: inline-flex;
   gap: 10px;
