@@ -41,7 +41,7 @@ async function registerDemoFamily(page: Page) {
 /** Family profiles and access live in the user section of settings, behind the gear. */
 async function openProfileManagement(page: Page): Promise<void> {
   await page.getByTestId("settings-gear").click();
-  await expect(page).toHaveURL(/\/settings/);
+  await expect(page).toHaveURL(/\/settings(\?|$)/);
   await expect(page.getByTestId("profile-settings")).toBeVisible();
 }
 

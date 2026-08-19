@@ -133,6 +133,7 @@ import {
 import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
 import { type SettingsSection, settingsSections } from "../settings-sections";
+import { focusableWorkspaceTab, pageTitleFor, type WorkspaceTab } from "../workspace-header";
 import { AssistantHeader } from "./assistant-header";
 import { AssistantWorkspace } from "./assistant-workspace";
 import { CarePlanCheckins } from "./care-plan-checkins";
@@ -186,8 +187,6 @@ function findProfileContext(
   const profile = family?.profiles.find((candidate) => candidate.id === profileId);
   return family === undefined || profile === undefined ? undefined : { family, profile };
 }
-
-type WorkspaceTab = ProfileTab | "settings";
 
 function documentProcessingPath(
   familyId: string,
@@ -552,11 +551,9 @@ export function VeyltaApp({
       : requestedAssistantId !== undefined
         ? "overview"
         : normalizeProfileTab(requestedTab);
-  const pageTitle = requestedSettings
-    ? "Настройки — Veylta"
-    : context === undefined
-      ? "Veylta"
-      : `${context.profile.displayName} — Veylta`;
+  const focusableTab = focusableWorkspaceTab(activeTab);
+  const pageTitle = pageTitleFor(requestedSettings, requestedSettingsSection, context?.profile);
+  const gearProfileId = requestedSettingsProfileId ?? navigationProfile?.id;
 
   useEffect(() => {
     document.title = pageTitle;
@@ -609,7 +606,7 @@ export function VeyltaApp({
               role="tab"
               aria-selected={activeTab === "overview"}
               aria-controls="workspace-panel-overview"
-              tabIndex={activeTab === "overview" ? 0 : -1}
+              tabIndex={focusableTab === "overview" ? 0 : -1}
             >
               <House size={17} aria-hidden="true" />
               Обзор
@@ -621,7 +618,7 @@ export function VeyltaApp({
               role="tab"
               aria-selected={activeTab === "documents"}
               aria-controls="workspace-panel-documents"
-              tabIndex={activeTab === "documents" ? 0 : -1}
+              tabIndex={focusableTab === "documents" ? 0 : -1}
             >
               <Files size={17} aria-hidden="true" />
               Документы
@@ -633,7 +630,7 @@ export function VeyltaApp({
               role="tab"
               aria-selected={activeTab === "history"}
               aria-controls="workspace-panel-history"
-              tabIndex={activeTab === "history" ? 0 : -1}
+              tabIndex={focusableTab === "history" ? 0 : -1}
             >
               <History size={17} aria-hidden="true" />
               История
@@ -645,7 +642,7 @@ export function VeyltaApp({
               role="tab"
               aria-selected={activeTab === "dossier"}
               aria-controls="workspace-panel-dossier"
-              tabIndex={activeTab === "dossier" ? 0 : -1}
+              tabIndex={focusableTab === "dossier" ? 0 : -1}
             >
               <ContactRound size={17} aria-hidden="true" />
               Досье
@@ -669,7 +666,7 @@ export function VeyltaApp({
               Домашний сервер
             </span>
           ) : (
-            <SettingsGear session={session} profileId={navigationProfile?.id} />
+            <SettingsGear session={session} profileId={gearProfileId} />
           )}
           {session !== undefined ? (
             <span className="workspace-identity">
@@ -758,7 +755,7 @@ export function VeyltaApp({
             requestedAssistantId={parseAssistantId(requestedAssistantId)}
             requestedConversationId={requestedConversationId}
             requestedAssistantAsk={requestedAssistantAsk}
-            activeTab={activeTab === "settings" ? "overview" : activeTab}
+            activeTab={focusableTab}
             requestedCanonicalCode={requestedCanonicalCode}
             error={actionError}
             onProfileChange={(familyId, profileId) => {

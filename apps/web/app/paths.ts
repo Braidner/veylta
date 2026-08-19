@@ -1,4 +1,5 @@
 import { ASSISTANT_IDS, type AssistantId } from "@veylta/contracts";
+import type { SettingsSection } from "./settings-sections";
 
 /** The browser routes of a profile; one place, so no surface spells a URL by hand. */
 export const profileTabs = ["overview", "documents", "history", "dossier"] as const;
@@ -48,7 +49,7 @@ export function assistantAskPath(familyId: string, profileId: string, ask: strin
 }
 
 /** Settings as a page of their own: the section in the path, the profile to manage first in the query. */
-export function settingsPath(section: "user" | "app", profileId?: string): string {
+export function settingsPath(section: SettingsSection, profileId?: string): string {
   const base = section === "app" ? "/settings/app" : "/settings";
   return profileId === undefined ? base : `${base}?profile=${encodeURIComponent(profileId)}`;
 }

@@ -682,10 +682,14 @@ h3 {
   text-decoration: none;
 }
 
+.settings-sections__item:hover {
+  color: var(--color-ink);
+}
+
 .settings-sections__item.is-current {
   color: var(--color-ink);
   background: var(--color-canvas);
-  box-shadow: 0 1px 2px oklch(0 0 0 / 0.08);
+  box-shadow: 0 1px 4px oklch(0.3 0.03 270 / 8%);
 }
 
 .settings-identity .settings-section-heading p {

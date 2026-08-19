@@ -35,7 +35,9 @@ test("first launch creates the administrator, opens their profile, and later log
   await page.getByTestId("settings-gear").click();
   // Opened from a profile, settings carries that profile so family management starts on it.
   await expect(page).toHaveURL(/\/settings\?profile=[0-9a-f-]{36}$/);
-  await expect(page.getByRole("heading", { level: 1, name: "Настройки" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Настройки", exact: true }),
+  ).toBeVisible();
   await expect(page.getByTestId("profile-settings")).toBeVisible();
   await page.getByRole("link", { name: "Приложение" }).click();
   await expect(page).toHaveURL(/\/settings\/app\?profile=[0-9a-f-]{36}$/);
