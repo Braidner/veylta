@@ -47,9 +47,7 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
 
   await uploadPdf(page, filename, bytes);
 
-  await expect(page).toHaveURL(
-    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
-  );
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
   const firstDocumentUrl = page.url();
   await expect(page.locator("#document-title")).toBeVisible();
   await expect(
@@ -80,7 +78,7 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   expect(download.suggestedFilename()).toBe(filename);
 
   await page.getByRole("tab", { name: "Документы", exact: true }).click();
-  await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
+  await expect(page).toHaveURL(`${profileUrl}/docs`);
   const overview = page.getByRole("region", { name: "Архив документов" });
   // One list: the source awaiting a decision sits at the top with its two counts.
   await expect(overview.getByRole("region", { name: "Документы", exact: true })).toBeVisible();
@@ -99,7 +97,7 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   );
   await uploadPdf(page, filename, bytes);
 
-  await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}\?upload=already_exists$/);
+  await expect(page).toHaveURL(/\/docs\/[0-9a-f-]{36}\?upload=already_exists$/);
   expect(new URL(page.url()).pathname).toBe(new URL(firstDocumentUrl).pathname);
   await expect(
     page.getByText("Этот файл уже есть в архиве — открываем существующий документ."),
@@ -132,7 +130,7 @@ test("a direct synthetic PNG is accepted, OCRed, and downloaded with its origina
     "image/png",
   );
 
-  await expect(page).toHaveURL(/\/documents\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/docs\/[0-9a-f-]{36}$/);
   await expect(page.locator("#document-title")).toBeVisible();
   await expect(page.locator(".page-hero__meta")).toContainText("PNG");
   await expect(
@@ -150,10 +148,8 @@ test("a restart command reuses its idempotency key after a transient browser fai
 }) => {
   await registerDemoFamily(page);
   await uploadPdf(page, "retry-ui.pdf", syntheticLabBytes);
-  await expect(page).toHaveURL(
-    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
-  );
-  const documentId = page.url().match(/\/documents\/([0-9a-f-]{36})$/)?.[1];
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
+  const documentId = page.url().match(/\/docs\/([0-9a-f-]{36})$/)?.[1];
   if (documentId === undefined) throw new Error("Expected a document URL");
 
   const idempotencyKeys: string[] = [];
@@ -237,7 +233,7 @@ test("document archive searches summaries and deletion requires an explicit conf
   ).toBeVisible();
 
   await page.getByRole("tab", { name: "Документы", exact: true }).click();
-  await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
+  await expect(page).toHaveURL(`${profileUrl}/docs`);
   const archive = page.getByRole("region", { name: "Архив документов" });
   const search = archive.getByPlaceholder("Поиск по саммари и результатам");
   await search.fill("лабораторные результаты");
@@ -259,7 +255,7 @@ test("document archive searches summaries and deletion requires an explicit conf
     .getByRole("dialog", { name: "Удалить документ из Veylta?" })
     .getByRole("button", { name: "Удалить документ" })
     .click();
-  await expect(page).toHaveURL(`${profileUrl}?tab=documents`);
+  await expect(page).toHaveURL(`${profileUrl}/docs`);
   await expect(page.getByText(filename, { exact: true })).toHaveCount(0);
 });
 
@@ -289,7 +285,7 @@ test("another family session cannot see a document or its filename", async ({ pa
   const foreignDocumentUrl = page.url();
 
   await page.getByRole("button", { name: "Выйти" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/login$/);
   await registerDemoFamily(page);
 
   await page.goto(foreignDocumentUrl);

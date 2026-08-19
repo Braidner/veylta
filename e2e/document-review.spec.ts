@@ -306,9 +306,9 @@ test("missing critical fields can be handed to Codex and a mapped indicator show
   await expect(history.getByText("Синтетический аналит A", { exact: true })).toBeVisible();
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
   const fullHistory = history.getByRole("link", { name: "Открыть всю историю" });
-  await expect(fullHistory).toHaveAttribute("href", /canonicalCode=synthetic-analyte-a/);
+  await expect(fullHistory).toHaveAttribute("href", /\/history\?code=synthetic-analyte-a/);
   await fullHistory.click();
-  await expect(page).toHaveURL(/tab=history&canonicalCode=synthetic-analyte-a/);
+  await expect(page).toHaveURL(/\/history\?code=synthetic-analyte-a/);
   await expect(
     page.getByRole("heading", { name: "История подтверждённых значений" }),
   ).toBeVisible();

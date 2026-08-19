@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { profileHandleUrl } from "./support/urls";
 
 test("first launch creates the administrator, opens their profile, and later logs back in", async ({
   page,
@@ -24,7 +25,7 @@ test("first launch creates the administrator, opens their profile, and later log
   await page.getByLabel("Логин").fill("home-admin");
   await page.getByRole("button", { name: "Создать администратора" }).click();
 
-  await expect(page).toHaveURL(/\/families\/[0-9a-f-]+\/profiles\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(profileHandleUrl);
   const administratorProfileUrl = page.url();
   await expect(
     page.getByRole("heading", { level: 1, name: "Домашний администратор" }),
@@ -33,14 +34,14 @@ test("first launch creates the administrator, opens their profile, and later log
 
   await expect(page.getByRole("tab", { name: "Настройки" })).toHaveCount(0);
   await page.getByTestId("settings-gear").click();
-  // Opened from a profile, settings carries that profile so family management starts on it.
-  await expect(page).toHaveURL(/\/settings\?profile=[0-9a-f-]{36}$/);
+  // Settings is a page of this person, so family management starts on them.
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/settings$/);
   await expect(
     page.getByRole("heading", { level: 1, name: "Настройки", exact: true }),
   ).toBeVisible();
   await expect(page.getByTestId("profile-settings")).toBeVisible();
   await page.getByRole("link", { name: "Приложение" }).click();
-  await expect(page).toHaveURL(/\/settings\/app\?profile=[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/settings\/app$/);
   await expect(page.getByRole("heading", { level: 1, name: "Настройки сервера" })).toBeVisible();
   await expect(page.getByText("API и база данных готовы")).toBeVisible();
   await expect(page.locator(".workspace-bar--profile")).toBeVisible();
@@ -126,7 +127,7 @@ test("first launch creates the administrator, opens their profile, and later log
   await page.getByLabel("Пароль").fill("another correct local password");
   await page.getByRole("button", { name: "Войти" }).click();
 
-  await expect(page).toHaveURL(/\/families\/[0-9a-f-]+\/profiles\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(profileHandleUrl);
   const userProfileUrl = page.url();
   await expect(page.getByRole("heading", { level: 1, name: "Пользователь семьи" })).toBeVisible();
   await expect(page.getByText("Пользователь системы")).toBeVisible();
@@ -136,12 +137,12 @@ test("first launch creates the administrator, opens their profile, and later log
   await expect(page.getByRole("heading", { level: 1, name: "Профиль недоступен" })).toBeVisible();
   await expect(page.getByText("Домашний администратор")).toHaveCount(0);
 
-  await page.goto("/settings");
+  await page.goto(`${userProfileUrl}/settings`);
   await expect(page.getByRole("heading", { level: 1, name: "Настройки недоступны" })).toBeVisible();
   await expect(page.getByText("Домашний администратор")).toHaveCount(0);
   await expect(page.getByText("Точка хранения")).toHaveCount(0);
 
-  await page.goto("/settings/app");
+  await page.goto(`${userProfileUrl}/settings/app`);
   await expect(page.getByRole("heading", { level: 1, name: "Настройки недоступны" })).toBeVisible();
 
   await page.getByRole("button", { name: "Выйти" }).click();
@@ -151,7 +152,7 @@ test("first launch creates the administrator, opens their profile, and later log
   await page.getByLabel("Пароль").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Войти" }).click();
 
-  await expect(page).toHaveURL(/\/families\/[0-9a-f-]+\/profiles\/[0-9a-f-]+$/);
+  await expect(page).toHaveURL(profileHandleUrl);
   await expect(
     page.getByRole("heading", { level: 1, name: "Домашний администратор" }),
   ).toBeVisible();

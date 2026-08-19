@@ -17,7 +17,7 @@ test("the physician assistant gates egress, binds every block to a source and re
     "Подтверждено пользователем",
   );
 
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
   await page.goto(profileUrl);
   const physicianCard = page.locator('[data-assistant="physician"]');
   await expect(physicianCard).toContainText("ИИ-врач · второе мнение");
@@ -76,7 +76,7 @@ test("the physician assistant gates egress, binds every block to a source and re
   const source = answer.getByRole("list", { name: "Источники" }).first().getByRole("link");
   await expect(source).toContainText("СИНТЕТИЧЕСКИЙ АНАЛИТ A 7.0 synthetic-unit");
   await expect(source).toContainText("стр. 1");
-  await expect(source).toHaveAttribute("href", /\/documents\/[0-9a-f-]{36}$/);
+  await expect(source).toHaveAttribute("href", /\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
   await expect(answer.getByRole("button", { name: "Журнал обмена" })).toBeVisible();
 
   await answer
@@ -85,7 +85,7 @@ test("the physician assistant gates egress, binds every block to a source and re
     .click();
   await expect(answer.getByText("Добавлено в план: подтвердить у врача.")).toBeVisible();
 
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   const plan = page.getByRole("region", { name: "План заботы" });
   await expect(
     plan.getByText("Подтвердить у специалиста (терапевт): Синтетическое состояние A"),

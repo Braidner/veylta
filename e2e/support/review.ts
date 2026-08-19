@@ -35,9 +35,7 @@ export async function openReview(page: Page) {
     mimeType: "application/pdf",
     buffer: distinctSyntheticDocument(syntheticLabBytes, filename),
   });
-  await expect(page).toHaveURL(
-    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
-  );
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
   return names;
 }

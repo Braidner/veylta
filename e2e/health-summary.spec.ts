@@ -72,9 +72,7 @@ test("profile summary is a source-first immutable version after final human revi
     mimeType: "application/pdf",
     buffer: distinctSyntheticDocument(syntheticLabBytes, `summary-${profileUrl}`),
   });
-  await expect(page).toHaveURL(
-    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
-  );
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
 
   await factCard(page, 0).click();
@@ -84,7 +82,7 @@ test("profile summary is a source-first immutable version after final human revi
   await expect(page.getByRole("heading", { name: "Извлечение завершено" })).toBeVisible();
 
   await page.getByRole("tab", { name: "История", exact: true }).click();
-  await expect(page).toHaveURL(`${profileUrl}?tab=history`);
+  await expect(page).toHaveURL(`${profileUrl}/history`);
   await page.getByRole("tab", { name: "Досье", exact: true }).click();
   await expect(summary.getByLabel("Версия сводки")).toHaveValue("1");
   await expect(summary.getByText("СИНТЕТИЧЕСКИЙ АНАЛИТ A: 7.0 synthetic-unit")).toBeVisible();
@@ -98,9 +96,7 @@ test("profile summary is a source-first immutable version after final human revi
   ).toBeVisible();
 
   await summary.getByRole("link", { name: "Открыть источник" }).click();
-  await expect(page).toHaveURL(
-    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
-  );
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("link", { name: "Скачать" })).toBeVisible();
 });
 

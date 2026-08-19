@@ -15,9 +15,9 @@ test("the dossier reads confirmed values against their references and sends the 
   // ТТГ corrected above the printed 5.0–8.0 → the endocrinologist; analyte B confirmed as printed.
   await correctResult(page, "synthetic-analyte-a", { name: "ТТГ", value: "9.9", unit: "мМЕ/л" });
   await confirmResult(page, "synthetic-analyte-b");
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
 
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   // The greeting steps aside: the passport is the page's identity.
   await expect(page.locator(".profile-heading")).toHaveCount(0);
   const passport = page.getByTestId("dossier-passport");
@@ -76,7 +76,7 @@ test("the dossier reads confirmed values against their references and sends the 
   await expect(card).toContainText("Щитовидная железа · читает эндокринолог");
   await expect(card.getByRole("link", { name: "История" })).toHaveAttribute(
     "href",
-    /\?tab=history&canonicalCode=tsh$/,
+    /\/[a-z0-9-]+\/history\?code=tsh$/,
   );
   await expect(
     group.getByRole("link", { name: "Спросить ИИ-врача, насколько срочно" }),
@@ -105,7 +105,7 @@ test("the dossier reads confirmed values against their references and sends the 
   const conversationUrl = page.url();
 
   // The same group again lands in the same conversation, not a second one.
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   await page
     .getByTestId("dossier-attention")
     .locator('[data-specialty="endocrinologist"]')
@@ -119,7 +119,7 @@ test("the dossier reads confirmed values against their references and sends the 
   );
 
   // The whole record asks for a консилиум in its own conversation, the question ready to convene.
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   await page.getByRole("link", { name: "Собрать консилиум по досье" }).click();
   await expect(assistant.getByRole("button", { name: /Досье · Консилиум/ })).toHaveCount(1);
   await page.getByTestId("assistant-egress-gate").getByRole("button").click();
@@ -127,7 +127,7 @@ test("the dossier reads confirmed values against their references and sends the 
     /^Что в моём досье требует внимания в первую очередь и насколько срочно\? Вне референса: ТТГ 9\.9 мМЕ\/л/,
   );
   await expect(assistant.getByRole("button", { name: "Собрать консилиум" })).toBeEnabled();
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
 
   // Into one area from its tile, then from the rail.
   await focus.locator('.dossier-area-tile[data-area="thyroid"]').click();
@@ -153,7 +153,7 @@ test("the dossier reads confirmed values against their references and sends the 
   await expect(page.locator(".profile-heading__access")).toContainText("Женщина · 36 лет");
   await expect(page.locator(".profile-heading__access")).toContainText("Рост 175 см");
   await expect(page.locator(".profile-heading__access")).toContainText("Вес 71,5 кг");
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   await expect(page.getByTestId("dossier-passport")).toContainText("Женщина");
   await expect(page.getByTestId("dossier-attention")).toContainText(
     "Требуют внимания: 1 показатель",

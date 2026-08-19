@@ -18,7 +18,7 @@ test("the training assistant programmes within clearance, files into the right l
     "Подтверждено пользователем",
   );
 
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
   await recordBasics(page, profileUrl, { sex: "male", birthYear: "1985" });
 
   await page.goto(profileUrl);
@@ -70,7 +70,7 @@ test("the training assistant programmes within clearance, files into the right l
   await expect(answer.getByText("Добавлено в план: получить допуск.")).toBeVisible();
 
   // The plan: the walk in «Активность» with its diary strip, the clearance visit in «Специалисты».
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   const plan = page.getByRole("region", { name: "План заботы" });
   const activityLane = plan.getByRole("region", { name: "Активность" });
   await expect(activityLane.getByText("Быстрая ходьба")).toBeVisible();

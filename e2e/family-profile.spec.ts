@@ -1,5 +1,6 @@
 import { type Browser, expect, type Page, test } from "@playwright/test";
 import { acceptSyntheticInvitation, createSyntheticFamily } from "./support/synthetic-family";
+import { profileHandleUrl } from "./support/urls";
 
 function syntheticNames() {
   const suffix = crypto.randomUUID().slice(0, 8);
@@ -33,7 +34,7 @@ async function registerDemoFamily(page: Page) {
   await expect(archive.getByText("Исходников пока нет.")).toBeVisible();
   await expect(archive.getByText("Экспорт источников", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: "Обзор", exact: true }).click();
-  await expect(page).toHaveURL(/\/profiles\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(profileHandleUrl);
 
   return names;
 }
@@ -41,7 +42,7 @@ async function registerDemoFamily(page: Page) {
 /** Family profiles and access live in the user section of settings, behind the gear. */
 async function openProfileManagement(page: Page): Promise<void> {
   await page.getByTestId("settings-gear").click();
-  await expect(page).toHaveURL(/\/settings(\?|$)/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/settings$/);
   await expect(page.getByTestId("profile-settings")).toBeVisible();
 }
 
@@ -69,7 +70,7 @@ test("a synthetic family session survives reload and keeps the active profile in
   await page.getByLabel("Имя нового профиля").fill(names.dependent);
   await page.getByRole("button", { name: "Создать профиль" }).click();
 
-  await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(profileHandleUrl);
   await expect(page.getByRole("heading", { level: 1, name: names.dependent })).toBeVisible();
   await expect(page).toHaveTitle(`${names.dependent} — Veylta`);
   await expect(page.getByLabel("Активный профиль")).toHaveValue(/^[0-9a-f-]{36}$/);
@@ -81,7 +82,7 @@ test("a synthetic family session survives reload and keeps the active profile in
 
   await page.getByRole("button", { name: "Выйти" }).click();
 
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/login$/);
   await expect(
     page.getByRole("heading", { level: 1, name: /Настройте домашнюю Veylta|Войдите в Veylta/ }),
   ).toBeVisible();
@@ -157,7 +158,7 @@ test("an owner can issue a one-time local adult invitation with no access to ano
     profileName: adultProfile,
   });
 
-  await expect(page).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
+  await expect(page).toHaveURL(profileHandleUrl);
   await expect(page.getByRole("heading", { level: 1, name: adultProfile })).toBeVisible();
   await expect(page.getByText("Участник пространства", { exact: true })).toBeVisible();
   await expect(page.getByRole("region", { name: "Пригласить участника" })).toHaveCount(0);
@@ -242,7 +243,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     await ownerPage.getByRole("button", { name: "Добавить профиль" }).click();
     await ownerPage.getByLabel("Имя нового профиля").fill(names.dependent);
     await ownerPage.getByRole("button", { name: "Создать профиль" }).click();
-    await expect(ownerPage).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
+    await expect(ownerPage).toHaveURL(profileHandleUrl);
     await expect(ownerPage.getByRole("heading", { level: 1, name: names.dependent })).toBeVisible();
     const sharedProfileUrl = ownerPage.url();
 
@@ -270,7 +271,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     await expect(consent.getByText("Только чтение", { exact: true })).toBeVisible();
 
     await caregiverPage.reload();
-    await expect(caregiverPage).toHaveURL(/\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}$/);
+    await expect(caregiverPage).toHaveURL(profileHandleUrl);
     await expect(
       caregiverPage.getByRole("heading", { level: 1, name: names.dependent }),
     ).toBeVisible();
@@ -284,9 +285,9 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     const refreshedConsent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
     await refreshedConsent.getByRole("button", { name: "Отозвать доступ" }).click();
     await caregiverPage.reload();
-    await expect(
-      caregiverPage.getByRole("heading", { level: 1, name: "Пока нет доступных профилей" }),
-    ).toBeVisible();
+    // Revoked, the shared page is a handle this session no longer knows — and it names no one.
+    await expect(caregiverPage.getByRole("region", { name: "Профиль недоступен" })).toBeVisible();
+    await expect(caregiverPage.getByText(names.dependent, { exact: true })).toHaveCount(0);
   } finally {
     await ownerContext.close();
     await caregiverContext.close();
@@ -296,9 +297,8 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
 test("an unavailable active profile does not disclose profile data", async ({ page }) => {
   const names = await registerDemoFamily(page);
 
-  await page.goto(
-    "/families/00000000-0000-4000-8000-000000000000/profiles/00000000-0000-4000-8000-000000000000",
-  );
+  // A handle nobody on this server carries: the page says so and names no one.
+  await page.goto("/nobody-lives-here");
 
   await expect(page.getByRole("heading", { level: 1, name: "Профиль недоступен" })).toBeVisible();
   await expect(page.getByText(names.profile)).toHaveCount(0);

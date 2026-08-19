@@ -9,7 +9,7 @@ export async function recordBasics(
   profileUrl: string,
   input: { sex: "female" | "male"; birthYear: string },
 ): Promise<void> {
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   const basics = page.getByTestId("dossier-basics");
   await basics.getByLabel("Пол").selectOption(input.sex);
   await basics.getByLabel("Год рождения").fill(input.birthYear);

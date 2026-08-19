@@ -17,7 +17,7 @@ test("the nutrition assistant answers alone, flags an interaction and files its 
     "Подтверждено пользователем",
   );
 
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1992" });
 
   await page.goto(profileUrl);
@@ -68,14 +68,14 @@ test("the nutrition assistant answers alone, flags an interaction and files its 
   await expect(answer).toContainText("когда: через 3 месяца");
   const source = answer.getByRole("list", { name: "Источники" }).first().getByRole("link");
   await expect(source).toContainText("СИНТЕТИЧЕСКИЙ АНАЛИТ A 7.0 synthetic-unit");
-  await expect(source).toHaveAttribute("href", /\/documents\/[0-9a-f-]{36}$/);
+  await expect(source).toHaveAttribute("href", /\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
 
   await answer.getByRole("button", { name: "В план: питание" }).first().click();
   await expect(answer.getByText("Добавлено в план питания.")).toBeVisible();
   await answer.getByRole("button", { name: "В план: повторить анализ" }).click();
   await expect(answer.getByText("Добавлено в план: повторить анализ.")).toBeVisible();
 
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   const plan = page.getByRole("region", { name: "План заботы" });
   await expect(
     plan.getByRole("region", { name: "Питание" }).getByText("Больше растворимой клетчатки"),

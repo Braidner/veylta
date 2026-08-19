@@ -16,7 +16,7 @@ test("the person records the clinician's word on a proposed block and the room's
   await expect(workspace.locator(".document-review-workspace__notice")).toHaveText(
     "Подтверждено пользователем",
   );
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1992" });
 
   await page.goto(`${profileUrl}/assistants/physician`);

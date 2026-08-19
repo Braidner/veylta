@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { expect, type Page, test } from "@playwright/test";
 import { recordBasics } from "./support/dossier";
 import { correctResult, openReview, resultCard, reviewWorkspace } from "./support/review";
+import { profileHandleUrl } from "./support/urls";
 
 /**
  * Regenerates the README screenshots from a fresh synthetic family on the e2e stand:
@@ -44,12 +45,12 @@ test("capture the README screenshots", async ({ page }) => {
 
   const tabs = page.getByRole("tablist", { name: "Основные разделы профиля" });
   await tabs.getByRole("tab", { name: "Документы", exact: true }).click();
-  await expect(page).toHaveURL(/\?tab=documents$/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs$/);
   await expect(page.getByRole("heading", { name: "Документы профиля" })).toBeVisible();
   await screenshot(page, "documents.png");
 
   await tabs.getByRole("tab", { name: "Обзор", exact: true }).click();
-  await expect(page).not.toHaveURL(/tab=/);
+  await expect(page).toHaveURL(profileHandleUrl);
   await screenshot(page, "overview.png");
 
   // The physician's second opinion over the confirmed value, profile filled in first.
@@ -80,7 +81,7 @@ test("capture the консилиум screenshot", async ({ page }) => {
     value: "9.8",
     unit: "г/дл",
   });
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
   // The dossier: passport, Veylta's own reading of the two values, their dynamics.
   await expect(page.getByTestId("dossier-attention")).toContainText("Требуют внимания");

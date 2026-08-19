@@ -19,7 +19,7 @@ test("the консилиум convenes the specialties the evidence names and kee
     unit: "г/дл",
   });
 
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
 
   await page.goto(`${profileUrl}/assistants/physician`);

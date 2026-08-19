@@ -20,9 +20,7 @@ test("the discharge note yields the doctor's records, each opening its fragment,
     mimeType: "application/pdf",
     buffer: distinctSyntheticDocument(noteBytes, filename),
   });
-  await expect(page).toHaveURL(
-    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
-  );
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
 
   const records = page.getByTestId("clinician-records");
   await expect(records).toBeVisible({ timeout: 30_000 });
@@ -71,7 +69,7 @@ test("the сверка: confirmed records reach the ИИ-врач, who says wher
   // A confirmed value, a ready profile, then the note with the doctor's statements.
   await openReview(page);
   await confirmResult(page, "synthetic-analyte-a");
-  const profileUrl = page.url().replace(/\/documents\/[0-9a-f-]{36}$/, "");
+  const profileUrl = page.url().replace(/\/docs\/[0-9a-f-]{36}$/, "");
   await recordBasics(page, profileUrl, { sex: "female", birthYear: "1990" });
   await page.goto(profileUrl);
   const filename = `note-${crypto.randomUUID().slice(0, 8)}.pdf`;
@@ -109,14 +107,14 @@ test("the сверка: confirmed records reach the ИИ-врач, who says wher
     answer.getByRole("link", {
       name: /Синтетический субклинический гипотиреоз · E03\.9 · 12 августа 2026 г\./,
     }),
-  ).toHaveAttribute("href", /\/documents\/[0-9a-f-]{36}$/);
+  ).toHaveAttribute("href", /\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
   await expect(answer).toContainText("ИИ-врач: По подтверждённым значениям картина ближе к норме");
   await expect(answer).toContainText("обсудить: эндокринолог");
 
   // Every «differs» becomes a question the person brings to the visit — into the plan.
   await answer.getByRole("button", { name: "В план: обсудить с врачом (эндокринолог)" }).click();
   await expect(answer.getByText("Добавлено в план: обсудить с врачом.")).toBeVisible();
-  await page.goto(`${profileUrl}?tab=dossier`);
+  await page.goto(`${profileUrl}/dossier`);
   await expect(
     page
       .getByRole("region", { name: "План заботы" })

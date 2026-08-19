@@ -77,26 +77,26 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   expect(viewportContract.body).toBeLessThanOrEqual(viewportContract.viewport + 1);
 
   await tabs.getByRole("tab", { name: "Документы", exact: true }).click();
-  await expect(page).toHaveURL(/\?tab=documents$/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs$/);
   await expect(page.getByRole("tabpanel", { name: "Документы" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Документы профиля" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Помощники" })).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: "История", exact: true }).click();
-  await expect(page).toHaveURL(/\?tab=history$/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/history$/);
   await expect(page.getByRole("tabpanel", { name: "История" })).toBeVisible();
   await expect(page.getByRole("region", { name: "История подтверждённых значений" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Документы профиля" })).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: "Досье", exact: true }).click();
-  await expect(page).toHaveURL(/\?tab=dossier$/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/dossier$/);
   await expect(page.getByRole("tabpanel", { name: "Досье" })).toBeVisible();
   await expect(page.getByTestId("dossier-passport")).toBeVisible();
   await expect(page.getByRole("region", { name: "План заботы" })).toBeVisible();
 
   await tabs.getByRole("tab", { name: "Обзор", exact: true }).focus();
   await page.keyboard.press("ArrowRight");
-  await expect(page).toHaveURL(/\?tab=documents$/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs$/);
   await expect(tabs.getByRole("tab", { name: "Документы", exact: true })).toBeFocused();
 
   await page.setViewportSize({ width: 390, height: 844 });
@@ -159,7 +159,7 @@ test("upload opens a keyboard-safe Codex batch dialog", async ({ page }) => {
     .check();
   await expect(submit).toBeEnabled();
   await submit.click();
-  await expect(page).toHaveURL(/\?tab=documents$/);
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs$/);
   // One list; freshly extracted sources await review, so their verb is «Открыть проверку».
   await expect(page.getByRole("region", { name: "Документы", exact: true })).toBeVisible({
     timeout: 15_000,

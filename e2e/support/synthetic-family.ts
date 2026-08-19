@@ -1,6 +1,7 @@
 import { expect, type Page } from "@playwright/test";
 
-const webOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_WEB_PORT ?? "4400"}`;
+/** The stand's browser origin — the trusted origin every mutating API call must carry. */
+export const webOrigin = `http://127.0.0.1:${process.env.PLAYWRIGHT_WEB_PORT ?? "4400"}`;
 
 interface SyntheticFamilyNames {
   owner: string;
@@ -8,14 +9,14 @@ interface SyntheticFamilyNames {
   profile: string;
 }
 
+/** Only the part of each response the stand navigates by: the person's own address. */
 interface DemoRegistrationResponse {
-  family: { id: string };
-  profile: { id: string };
+  profile: { id: string; handle: string };
 }
 
 interface DemoInvitationAcceptResponse {
-  family: { id: string };
-  profile: { id: string } | null;
+  /** A caregiver is admitted without a profile until an owner grants one. */
+  profile: { id: string; handle: string } | null;
 }
 
 export async function createSyntheticFamily(
@@ -32,7 +33,7 @@ export async function createSyntheticFamily(
   });
   expect(response.status()).toBe(201);
   const registration = (await response.json()) as DemoRegistrationResponse;
-  const path = `/families/${registration.family.id}/profiles/${registration.profile.id}`;
+  const path = `/${registration.profile.handle}`;
   await page.goto(path);
   await expect(page).toHaveURL(new RegExp(`${path}$`));
   return page.url();
@@ -48,10 +49,6 @@ export async function acceptSyntheticInvitation(
   });
   expect(response.status()).toBe(201);
   const accepted = (await response.json()) as DemoInvitationAcceptResponse;
-  await page.goto(
-    accepted.profile === null
-      ? "/"
-      : `/families/${accepted.family.id}/profiles/${accepted.profile.id}`,
-  );
+  await page.goto(accepted.profile === null ? "/" : `/${accepted.profile.handle}`);
   return accepted;
 }

@@ -26,9 +26,7 @@ async function uploadAndOpenReview(page: Page, filename: string): Promise<void> 
     mimeType: "application/pdf",
     buffer: distinctSyntheticDocument(syntheticLabBytes, filename),
   });
-  await expect(page).toHaveURL(
-    /\/families\/[0-9a-f-]{36}\/profiles\/[0-9a-f-]{36}\/documents\/[0-9a-f-]{36}$/,
-  );
+  await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs\/[0-9a-f-]{36}$/);
   await expect(page.getByRole("heading", { name: "Результаты исследования" })).toBeVisible();
 }
 
@@ -72,7 +70,7 @@ test("profile history shows confirmed and corrected observations with their auth
   await uploadAndOpenReview(page, `history-confirm-${crypto.randomUUID().slice(0, 8)}.pdf`);
   await confirmAndReject(page);
   await page.getByRole("tab", { name: "История", exact: true }).click();
-  await expect(page).toHaveURL(`${profileUrl}?tab=history`);
+  await expect(page).toHaveURL(`${profileUrl}/history`);
 
   const history = page.getByRole("region", { name: "История подтверждённых значений" });
   await expect(
@@ -92,7 +90,7 @@ test("profile history shows confirmed and corrected observations with their auth
   await correctAndReject(page, "7.1");
 
   await page.getByRole("tab", { name: "История", exact: true }).click();
-  await expect(page).toHaveURL(`${profileUrl}?tab=history`);
+  await expect(page).toHaveURL(`${profileUrl}/history`);
   await expect(history.locator("tbody tr")).toHaveCount(2);
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
   await expect(history.getByText("7.1 synthetic-unit", { exact: true })).toBeVisible();
