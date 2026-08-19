@@ -698,6 +698,16 @@ h3 {
   font-size: 0.8125rem;
 }
 
+.profile-handle {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.profile-handle input {
+  max-width: 320px;
+}
+
 .settings-notice {
   margin: 0 0 24px;
   padding: 12px 16px;

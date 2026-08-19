@@ -1018,6 +1018,15 @@ function HomeSettingsScreen({
     ultra: "Ультра",
   };
 
+  // The page's own person (the URL's handle), never whatever the family switcher below selects.
+  const managedProfileEntry = session.families
+    .flatMap((family) => family.profiles.map((profile) => ({ family, profile })))
+    .find((entry) => entry.profile.id === initialProfileId);
+  const managedProfile = managedProfileEntry?.profile ?? null;
+  const canRename =
+    managedProfileEntry !== undefined &&
+    (managedProfileEntry.family.role === "owner" || managedProfileEntry.profile.access === "self");
+
   return (
     <section
       className="settings-shell workspace-tab-panel workspace-tab-panel--settings"
@@ -1045,7 +1054,12 @@ function HomeSettingsScreen({
       </div>
       <SettingsSectionSwitch sections={sections} current={section} />
       {section === "user" ? (
-        <SettingsUserSection session={session}>
+        <SettingsUserSection
+          session={session}
+          managedProfile={managedProfile}
+          canRename={canRename}
+          onSessionRefresh={onSessionRefresh}
+        >
           {/* The key resets the switcher when the URL names another person; the page is theirs. */}
           <ProfileManagementSettings
             key={initialProfileId}

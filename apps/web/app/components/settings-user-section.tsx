@@ -1,7 +1,8 @@
 "use client";
 
-import type { AppAccountRole, SessionResponse } from "@veylta/contracts";
+import type { AppAccountRole, PatientProfileSummary, SessionResponse } from "@veylta/contracts";
 import type { ReactNode } from "react";
+import { ProfileHandleForm } from "./profile-handle-form";
 
 const roleCopy: Record<AppAccountRole, string> = {
   admin: "Администратор системы",
@@ -9,14 +10,22 @@ const roleCopy: Record<AppAccountRole, string> = {
 };
 
 /**
- * «Пользователь»: who is signed in, and then the family's profiles and access as the child —
- * that panel stays in `veylta-app.tsx`, so this component never imports back into it.
+ * «Пользователь»: who is signed in, then that person's own address (when they may set one),
+ * then the family's profiles and access as the child — that panel stays in `veylta-app.tsx`, so
+ * this component never imports back into it.
  */
 export function SettingsUserSection({
   session,
+  managedProfile,
+  canRename,
+  onSessionRefresh,
   children,
 }: {
   readonly session: SessionResponse;
+  /** The profile of the page's own person (the URL's handle), not the family switcher below. */
+  readonly managedProfile: PatientProfileSummary | null;
+  readonly canRename: boolean;
+  readonly onSessionRefresh: () => Promise<void>;
   readonly children: ReactNode;
 }) {
   return (
@@ -33,6 +42,9 @@ export function SettingsUserSection({
           </p>
         </div>
       </section>
+      {managedProfile !== null && canRename ? (
+        <ProfileHandleForm profile={managedProfile} onSaved={onSessionRefresh} />
+      ) : null}
       {children}
     </>
   );
