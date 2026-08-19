@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../lib/cn";
+import { documentPath, historyPath, profileTabPath } from "../paths";
 import type {
   DashboardAssistant,
   DashboardAssistantId,
@@ -131,10 +132,6 @@ function HealthSignal({ signal, icon: SignalIcon }: { signal: DashboardSignal; i
   );
 }
 
-function documentHref(familyId: string, profileId: string, documentId: string): string {
-  return `/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}/documents/${encodeURIComponent(documentId)}`;
-}
-
 function documentStateCopy(
   state: ProfileOverviewResponse["recentDocuments"][number]["processing"]["state"],
 ): string {
@@ -193,9 +190,7 @@ function DashboardDocuments({
         <ol className="dashboard-documents__list">
           {documents.map((document, index) => (
             <li key={document.id} data-primary={index === 0 ? "true" : undefined}>
-              <Link
-                href={documentHref(overview.profile.familyId, overview.profile.id, document.id)}
-              >
+              <Link href={documentPath(overview.profile.handle, document.id)}>
                 <span className="dashboard-documents__file" aria-hidden="true">
                   <FileText size={17} strokeWidth={1.8} />
                 </span>
@@ -274,9 +269,7 @@ export function ProfileDashboard({
   onUpload: () => void;
 }) {
   const model = buildProfileDashboardModel(overview);
-  const profileHref = `/families/${encodeURIComponent(overview.profile.familyId)}/profiles/${encodeURIComponent(overview.profile.id)}`;
-  const historyHref = `${profileHref}?tab=history`;
-  const planHref = `${profileHref}?tab=dossier`;
+  const { handle } = overview.profile;
   const signals = Object.entries(model.signals) as Array<
     [keyof ProfileDashboardModel["signals"], DashboardSignal]
   >;
@@ -305,7 +298,7 @@ export function ProfileDashboard({
         </div>
       </section>
 
-      <DashboardTools historyHref={historyHref} />
+      <DashboardTools historyHref={historyPath(handle)} />
 
       <section className="health-signals" aria-labelledby="health-signals-title">
         <div className="dashboard-panel-heading">
@@ -330,7 +323,7 @@ export function ProfileDashboard({
       </section>
 
       <DashboardDocuments overview={overview} onUpload={onUpload} />
-      <DashboardPlan href={planHref} />
+      <DashboardPlan href={profileTabPath(handle, "dossier")} />
     </div>
   );
 }

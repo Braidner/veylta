@@ -6,8 +6,9 @@ import { useEffect } from "react";
 import { ApiError, apiRequest } from "../api-client";
 import { type LegacyTarget, legacyDestination } from "../legacy-destination";
 import { loginPath } from "../paths";
+import { LoadingScreen } from "./loading-screen";
 
-/** Renders nothing; replaces the URL once the session is known, or sends to /login. */
+/** Holds the interstitial while it replaces the URL with where this link points now. */
 export function LegacyRedirect({ target }: { readonly target: LegacyTarget }) {
   const router = useRouter();
   useEffect(() => {
@@ -25,5 +26,5 @@ export function LegacyRedirect({ target }: { readonly target: LegacyTarget }) {
       active = false;
     };
   }, [router, target]);
-  return null;
+  return <LoadingScreen copy="Открываем по новой ссылке…" />;
 }

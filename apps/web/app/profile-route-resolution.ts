@@ -1,5 +1,11 @@
 import type { PatientProfileSummary, SessionFamily, SessionResponse } from "@veylta/contracts";
-import { loginPath, parseProfileTabSegment, profilePath, profileTabPath } from "./paths";
+import {
+  historyPath,
+  loginPath,
+  parseProfileTabSegment,
+  profilePath,
+  profileTabPath,
+} from "./paths";
 
 /** The person a `/<handle>` route is about; the handle is the name, so case is not part of it. */
 export function findProfileByHandle(
@@ -21,6 +27,8 @@ export interface EntryRoute {
   readonly requestedLogin: boolean;
   /** An old `?tab=` on `/<handle>`; the tab is a segment of its own now. */
   readonly legacyTab: string | undefined;
+  /** The indicator an old `?canonicalCode=` asked for; it travels to the history's own `?code=`. */
+  readonly legacyCanonicalCode?: string | undefined;
 }
 
 /**
@@ -33,6 +41,7 @@ export function entryRedirect({
   requestedHandle,
   requestedLogin,
   legacyTab,
+  legacyCanonicalCode,
 }: EntryRoute): string | null {
   if (session === null) return requestedLogin ? null : loginPath;
   if (requestedLogin || requestedHandle === undefined) {
@@ -41,7 +50,7 @@ export function entryRedirect({
   }
   const found = findProfileByHandle(session, requestedHandle);
   const tab = parseProfileTabSegment(legacyTab);
-  return found === undefined || tab === "overview"
-    ? null
-    : profileTabPath(found.profile.handle, tab);
+  if (found === undefined || tab === "overview") return null;
+  const handle = found.profile.handle;
+  return tab === "history" ? historyPath(handle, legacyCanonicalCode) : profileTabPath(handle, tab);
 }

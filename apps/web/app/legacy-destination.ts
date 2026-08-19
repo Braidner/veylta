@@ -45,7 +45,7 @@ export function legacyDestination(session: SessionResponse, target: LegacyTarget
   return profileTabPath(handle, tab);
 }
 
-type Defined<T> = { [K in keyof T]?: Exclude<T[K], undefined> };
+type Defined<T> = { [K in keyof T]: Exclude<T[K], undefined> };
 
 /** Drops undefined fields so a target literal satisfies `exactOptionalPropertyTypes`. */
 export function definedOnly<T extends object>(value: T): Defined<T> {

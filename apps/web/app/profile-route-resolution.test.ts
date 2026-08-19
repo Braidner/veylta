@@ -74,4 +74,14 @@ test("an old `?tab=` lands on the tab's own segment, its own name or the dossier
   assert.equal(at("documents"), "/anna/docs");
   assert.equal(at("history"), "/anna/history");
   assert.equal(at("overview"), null);
+  assert.equal(
+    entryRedirect({
+      ...route,
+      session: signedIn,
+      requestedHandle: "anna",
+      legacyTab: "history",
+      legacyCanonicalCode: "tsh",
+    }),
+    "/anna/history?code=tsh",
+  );
 });

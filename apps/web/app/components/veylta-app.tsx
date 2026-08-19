@@ -148,6 +148,7 @@ import { DocumentHero } from "./document-hero";
 import { DocumentsHero } from "./documents-hero";
 import { DossierPanel } from "./dossier-panel";
 import { IdentityChips } from "./identity-chips";
+import { LoadingScreen } from "./loading-screen";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SettingsGear } from "./settings-gear";
 import { SettingsSectionSwitch } from "./settings-section-switch";
@@ -351,6 +352,8 @@ export function VeyltaApp({
   const [actionError, setActionError] = useState<string | null>(null);
   const [addProfileOpen, setAddProfileOpen] = useState(false);
   const hasRequestedProfile = requestedHandle !== undefined;
+  /** Only an old `?tab=history` carries the indicator over; the history tab holds its own `?code=`. */
+  const legacyCanonicalCode = legacyTab === undefined ? undefined : requestedCanonicalCode;
 
   useEffect(() => {
     let active = true;
@@ -368,6 +371,7 @@ export function VeyltaApp({
           requestedHandle,
           requestedLogin,
           legacyTab,
+          legacyCanonicalCode,
         });
         if (destination !== null) router.replace(destination);
       })
@@ -378,7 +382,7 @@ export function VeyltaApp({
     return () => {
       active = false;
     };
-  }, [legacyTab, requestedHandle, requestedLogin, router]);
+  }, [legacyCanonicalCode, legacyTab, requestedHandle, requestedLogin, router]);
 
   async function handleSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -541,10 +545,22 @@ export function VeyltaApp({
         : (requestedTab ?? "overview");
   const focusableTab = focusableWorkspaceTab(activeTab);
   const pageTitle = pageTitleFor(requestedSettings, requestedSettingsSection, context?.profile);
+  /** Which of the shell's surfaces is on screen — one mounted app shows them all in turn. */
+  const surfaceKey = `${activeTab}:${requestedDocumentId ?? ""}:${requestedAssistantId ?? ""}`;
+  const shownSurface = useRef(surfaceKey);
 
   useEffect(() => {
     document.title = pageTitle;
   }, [pageTitle]);
+
+  // The shell outlives a navigation now, so an action's error and its open form stay with the
+  // surface that raised them instead of following the person to the next one.
+  useEffect(() => {
+    if (shownSurface.current === surfaceKey) return;
+    shownSurface.current = surfaceKey;
+    setActionError(null);
+    setAddProfileOpen(false);
+  }, [surfaceKey]);
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLElement>) {
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
@@ -1030,7 +1046,9 @@ function HomeSettingsScreen({
       <SettingsSectionSwitch sections={sections} current={section} />
       {section === "user" ? (
         <SettingsUserSection session={session}>
+          {/* The key resets the switcher when the URL names another person; the page is theirs. */}
           <ProfileManagementSettings
+            key={initialProfileId}
             session={session}
             initialProfileId={initialProfileId}
             {...profileManagement}
@@ -1686,17 +1704,6 @@ function MissingSettingsScreen() {
   );
 }
 
-function LoadingScreen({ copy = "Открываем семейное пространство…" }: { copy?: string }) {
-  return (
-    <section className="state-shell" aria-live="polite" aria-busy="true">
-      <p className="context-line">Veylta</p>
-      <div className="skeleton skeleton--title" aria-hidden="true" />
-      <div className="skeleton skeleton--copy" aria-hidden="true" />
-      <p className="state-copy">{copy}</p>
-    </section>
-  );
-}
-
 function ErrorScreen({ onRetry }: { onRetry: () => void }) {
   return (
     <section className="state-shell" aria-labelledby="error-title">
@@ -1971,13 +1978,15 @@ function ProfileWorkspace({
     if (!uploadOpen && dialog.open) dialog.close();
   }, [uploadOpen]);
 
+  // The shell stays mounted across tabs, so the notice belongs to the URL that carries it: the
+  // destination of a reused upload shows it, the next surface clears it.
   useEffect(() => {
-    if (
+    const reused =
       uploadNoticeLocationKey.length > 0 &&
-      new URLSearchParams(window.location.search).get("upload") === "already_exists"
-    ) {
-      setUploadNotice("Этот файл уже есть в архиве — открываем существующий документ.");
-    }
+      new URLSearchParams(window.location.search).get("upload") === "already_exists";
+    setUploadNotice(
+      reused ? "Этот файл уже есть в архиве — открываем существующий документ." : null,
+    );
   }, [uploadNoticeLocationKey]);
 
   function openUploadDialog() {
