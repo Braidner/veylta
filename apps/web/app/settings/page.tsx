@@ -9,6 +9,7 @@ export default async function SettingsPage({ searchParams }: SettingsPageProps) 
   return (
     <VeyltaApp
       requestedSettings
+      requestedSettingsSection="user"
       requestedSettingsProfileId={Array.isArray(profile) ? profile[0] : profile}
     />
   );

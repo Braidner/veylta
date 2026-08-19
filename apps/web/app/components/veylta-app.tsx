@@ -133,6 +133,7 @@ import {
 } from "../paths";
 import { referenceRangeCopy } from "../reference-range-copy";
 import { countCopy, pluralForm } from "../russian-plural";
+import type { SettingsSection } from "../settings-sections";
 import { AssistantHeader } from "./assistant-header";
 import { AssistantWorkspace } from "./assistant-workspace";
 import { CarePlanCheckins } from "./care-plan-checkins";
@@ -329,6 +330,8 @@ interface VeyltaAppProps {
   requestedSettingsProfileId?: string | undefined;
   requestedCanonicalCode?: string | undefined;
   requestedSettings?: boolean;
+  /** Which settings section `/settings[/app]` asked for; the user section by default. */
+  requestedSettingsSection?: SettingsSection | undefined;
 }
 
 export function VeyltaApp({
@@ -341,6 +344,7 @@ export function VeyltaApp({
   requestedTab,
   requestedCanonicalCode,
   requestedSettings = false,
+  requestedSettingsSection = "user",
   requestedSettingsProfileId,
 }: VeyltaAppProps) {
   const router = useRouter();
@@ -724,6 +728,7 @@ export function VeyltaApp({
             session={session}
             onSessionRefresh={refreshSession}
             initialProfileId={requestedSettingsProfileId}
+            section={requestedSettingsSection}
             profileManagement={{
               addProfileOpen,
               action,
@@ -793,6 +798,7 @@ interface HomeSettingsScreenProps {
   session: SessionResponse;
   onSessionRefresh: () => Promise<void>;
   initialProfileId?: string | undefined;
+  section: SettingsSection;
   profileManagement: ProfileManagementProps;
 }
 
@@ -800,6 +806,7 @@ function HomeSettingsScreen({
   session,
   onSessionRefresh,
   initialProfileId,
+  section,
   profileManagement,
 }: HomeSettingsScreenProps) {
   const settingsLoadGeneration = useRef(0);
