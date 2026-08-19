@@ -7,6 +7,9 @@ import {
 } from "@veylta/contracts";
 import { ApiError } from "./api-client";
 
+/** The rule as a standing hint, its bounds from the same constants the field validates against. */
+export const handleRuleHint = `Латиница, цифры и дефис, от ${MIN_PROFILE_HANDLE_LENGTH} до ${MAX_PROFILE_HANDLE_LENGTH} символов. Старый адрес перестанет открываться.`;
+
 /** The rule in the person's words, before the request; null when the value may be sent. */
 export function handleFieldError(value: string): string | null {
   const handle = value.trim().toLowerCase();

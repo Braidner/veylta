@@ -9,7 +9,7 @@ import { useRouter } from "next/navigation";
 import { type FormEvent, useId, useState } from "react";
 import { apiRequest } from "../api-client";
 import { settingsPath } from "../paths";
-import { handleFieldError, handleSaveErrorCopy } from "../profile-handle-copy";
+import { handleFieldError, handleRuleHint, handleSaveErrorCopy } from "../profile-handle-copy";
 
 /**
  * The person's own address: `/<handle>` on this server. Validated in the field by the same rule
@@ -79,8 +79,7 @@ export function ProfileHandleForm({
         />
       </label>
       <small id={`${id}-hint`} className="field-hint">
-        {fieldError ??
-          "Латиница, цифры и дефис, от 3 до 30 символов. Старый адрес перестанет открываться."}
+        {fieldError ?? handleRuleHint}
       </small>
       <button
         className="button button--secondary"

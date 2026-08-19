@@ -711,13 +711,16 @@ export function VeyltaApp({
         {(screen.kind === "setup" || screen.kind === "login") && !requestedLogin ? (
           <LoadingScreen copy="Открываем вход…" />
         ) : null}
-        {session !== undefined && !hasRequestedProfile && redirectProfile !== undefined ? (
-          <LoadingScreen copy="Открываем профиль…" />
-        ) : null}
-        {session !== undefined && !hasRequestedProfile && redirectProfile === undefined ? (
+        {session !== undefined && redirectProfile === undefined ? (
           <NoAuthorizedProfilesScreen />
         ) : null}
-        {session !== undefined && hasRequestedProfile && context === undefined ? (
+        {session !== undefined && redirectProfile !== undefined && !hasRequestedProfile ? (
+          <LoadingScreen copy="Открываем профиль…" />
+        ) : null}
+        {session !== undefined &&
+        redirectProfile !== undefined &&
+        hasRequestedProfile &&
+        context === undefined ? (
           <MissingProfileScreen fallbackProfile={redirectProfile} />
         ) : null}
         {session !== undefined && context !== undefined ? (

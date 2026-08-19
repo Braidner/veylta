@@ -51,6 +51,11 @@ async function openDocumentsTab(page: Page): Promise<void> {
   await expect(page.getByRole("tabpanel", { name: "Документы" })).toBeVisible();
 }
 
+async function expectNoAuthorizedProfiles(page: Page, hiddenName: string): Promise<void> {
+  await expect(page.getByRole("heading", { name: "Пока нет доступных профилей" })).toBeVisible();
+  await expect(page.getByText(hiddenName, { exact: true })).toHaveCount(0);
+}
+
 test("a synthetic family session survives reload and keeps the active profile in the URL", async ({
   page,
 }) => {
@@ -258,10 +263,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
       code: code ?? "",
       displayName: `Помощник ${crypto.randomUUID().slice(0, 8)}`,
     });
-    await expect(
-      caregiverPage.getByRole("heading", { level: 1, name: "Пока нет доступных профилей" }),
-    ).toBeVisible();
-    await expect(caregiverPage.getByText(names.dependent, { exact: true })).toHaveCount(0);
+    await expectNoAuthorizedProfiles(caregiverPage, names.dependent);
 
     await ownerPage.reload();
     await openProfileManagement(ownerPage);
@@ -285,9 +287,7 @@ test("a caregiver starts without a profile and sees only a profile explicitly sh
     const refreshedConsent = ownerPage.getByRole("region", { name: "Доступ к этому профилю" });
     await refreshedConsent.getByRole("button", { name: "Отозвать доступ" }).click();
     await caregiverPage.reload();
-    // Revoked, the shared page is a handle this session no longer knows — and it names no one.
-    await expect(caregiverPage.getByRole("region", { name: "Профиль недоступен" })).toBeVisible();
-    await expect(caregiverPage.getByText(names.dependent, { exact: true })).toHaveCount(0);
+    await expectNoAuthorizedProfiles(caregiverPage, names.dependent);
   } finally {
     await ownerContext.close();
     await caregiverContext.close();
