@@ -9,13 +9,14 @@ export const ACCOUNT_CONTRACT_VERSION = "account/v1" as const;
 export const HOME_SETTINGS_CONTRACT_VERSION = "home-settings/v5" as const;
 export const OBJECT_STORAGE_CONTRACT_VERSION = "object-storage/v1" as const;
 export const LAB_EXTRACTION_SCHEMA_VERSION = "lab-extraction/v1" as const;
-export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v2" as const;
+export const FAMILY_PROFILE_CONTRACT_VERSION = "family-profile/v3" as const;
 export * from "./assistant.js";
 export * from "./care-plan.js";
 export * from "./clinician-record.js";
 export * from "./codex.js";
 export * from "./document-intelligence-results.js";
 export * from "./medical-profile.js";
+export * from "./profile-handle.js";
 export const DOCUMENT_CONTRACT_VERSION = "document/v7" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
@@ -299,6 +300,8 @@ export interface PatientProfileSummary {
   id: string;
   familyId: string;
   displayName: string;
+  /** The browser-facing name of this person: `/<handle>` is their page. Unique server-wide. */
+  handle: string;
   kind: PatientProfileKind;
   /** The server-authorized scope this session has for the profile. */
   access: PatientProfileAccess;

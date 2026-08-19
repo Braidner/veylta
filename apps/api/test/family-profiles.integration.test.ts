@@ -155,7 +155,7 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
       false,
     );
     assert.equal(
-      metadata.every((value) => value.contractVersion === "family-profile/v2"),
+      metadata.every((value) => value.contractVersion === "family-profile/v3"),
       true,
     );
 

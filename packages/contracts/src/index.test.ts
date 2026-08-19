@@ -77,7 +77,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(DOCUMENT_SEARCH_CONTRACT_VERSION, "document-search/v1");
   assert.equal(DOCUMENT_LIFECYCLE_CONTRACT_VERSION, "document-lifecycle/v1");
   assert.equal(DOCUMENT_AGENT_CONTRACT_VERSION, "document-agent/v2");
-  assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v2");
+  assert.equal(FAMILY_PROFILE_CONTRACT_VERSION, "family-profile/v3");
   assert.equal(OBJECT_STORAGE_CONTRACT_VERSION, "object-storage/v1");
   assert.equal(OBSERVATION_HISTORY_CONTRACT_VERSION, "observation-history/v1");
   assert.equal(INDICATOR_SERIES_CONTRACT_VERSION, "indicator-series/v1");
