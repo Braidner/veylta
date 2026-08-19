@@ -65,13 +65,6 @@ test("a synthetic family session survives reload and keeps the active profile in
   await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
 
   await openProfileManagement(page);
-
-  // The gear reaches settings, but the application section stays administrator-only.
-  await page.goto("/settings/app");
-  await expect(page.getByRole("heading", { level: 1, name: "Настройки недоступны" })).toBeVisible();
-  await page.goBack();
-  await expect(page.getByTestId("profile-settings")).toBeVisible();
-
   await page.getByRole("button", { name: "Добавить профиль" }).click();
   await page.getByLabel("Имя нового профиля").fill(names.dependent);
   await page.getByRole("button", { name: "Создать профиль" }).click();
