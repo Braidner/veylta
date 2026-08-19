@@ -18,6 +18,7 @@ import { loadConfig } from "./config.js";
 import { createDatabase, databaseReadiness } from "./database/pool.js";
 import { registerDocumentDateRoutes } from "./documents/document-date-routes.js";
 import { createDocumentService } from "./documents/document-service.js";
+import { registerDocumentTimelineRoutes } from "./documents/document-timeline-routes.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
 import { registerProfileHandleRoutes } from "./family/profile-handle-routes.js";
@@ -119,6 +120,7 @@ registerDocumentRoutes(app, familyService, documentService, {
 registerDocumentDateRoutes(app, familyService, database, {
   allowedMutationOrigins: config.webOrigins,
 });
+registerDocumentTimelineRoutes(app, familyService, database);
 registerDocumentAgentRoutes(app, familyService, documentAgentService, {
   allowedMutationOrigins: config.webOrigins,
 });
