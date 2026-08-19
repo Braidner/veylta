@@ -15,10 +15,15 @@ export interface TimelineRow {
 
 /**
  * Reviewed documents only — the latest job succeeded, the latest run completed and no fact of
- * that run waits for a decision — strictly before `$3`, restricted to the `$4` most recent days
- * that carry one. `$1` family id, `$2` profile id. Newest day first, newest upload first within
- * a day. Ask for one day more than the page needs: that extra day says whether an older page
- * exists, and the caller drops its entries.
+ * that run waits for a decision — strictly before `$3` (null: no bound), restricted to the `$4`
+ * most recent days that carry one. `$1` family id, `$2` profile id. Newest day first, newest
+ * upload first within a day. Ask for one day more than the page needs: that extra day says
+ * whether an older page exists, and the caller drops its entries.
+ *
+ * The `NOT EXISTS` clause is the SQL twin of `isInDocumentQueue` in
+ * `packages/contracts/src/document-timeline.ts`: a document is reviewed here exactly when the
+ * queue there no longer holds it. Change one and the other must follow, or the queue and the
+ * timeline would disagree about the same document.
  */
 export const timelineEntriesSql = `WITH reviewed AS (
   SELECT d.id,
@@ -80,7 +85,7 @@ export const timelineEntriesSql = `WITH reviewed AS (
      )
 ),
 page AS (
-  SELECT * FROM reviewed WHERE effective_date < $3
+  SELECT * FROM reviewed WHERE ($3 IS NULL OR effective_date < $3)
 ),
 days AS (
   SELECT DISTINCT effective_date FROM page ORDER BY effective_date DESC LIMIT $4

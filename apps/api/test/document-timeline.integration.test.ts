@@ -6,7 +6,13 @@ import type { Database } from "../src/database/pool.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { startAssistantApp } from "./assistant-app.js";
-import { confirmSyntheticReport, multipartFile } from "./confirmed-observations.js";
+import {
+  confirmSyntheticReport,
+  multipartFile,
+  reviewSyntheticFacts,
+  type SyntheticFact,
+  syntheticFacts,
+} from "./confirmed-observations.js";
 import type { Identity } from "./medical-profile-app.js";
 import { register, webOrigin } from "./medical-profile-app.js";
 import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
@@ -22,7 +28,7 @@ async function queuedReport(
   database: Database,
   storageRoot: string,
   identity: Identity,
-): Promise<{ documentId: string; factCount: number }> {
+): Promise<{ documentId: string; facts: SyntheticFact[] }> {
   const profilePath = `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
   const scan = createSyntheticImageOnlyPdf([
     "VEYLTA SYNTHETIC LAB REPORT v1",
@@ -48,13 +54,7 @@ async function queuedReport(
     intelligence: createSyntheticIntelligence(),
   }).processNext({ workerId: `worker-${randomUUID()}`, leaseDurationMs: 60_000, retryDelayMs: 1 });
   assert.equal(processed.status, "completed");
-  const facts = await app.inject({
-    method: "GET",
-    url: `${profilePath}/documents/${documentId}/facts`,
-    headers: { cookie: identity.cookie },
-  });
-  assert.equal(facts.statusCode, 200, facts.body);
-  return { documentId, factCount: (facts.json().items as unknown[]).length };
+  return { documentId, facts: await syntheticFacts(app, identity, documentId) };
 }
 
 test("the timeline shows reviewed documents by effective date in whole-day pages with their counts; the queue stays out", async () => {
@@ -78,15 +78,21 @@ test("the timeline shows reviewed documents by effective date in whole-day pages
       nextBefore: null,
     });
 
-    // A reviewed report: confirm analyte a as printed, reject b — one confirmed observation.
+    // A reviewed report: analyte a corrected above its printed 5.0–8.0, b confirmed as printed —
+    // two confirmed observations, one of them outside its range.
     const report = await confirmSyntheticReport(app, database, storageRoot, owner, (factKey) =>
-      factKey === "synthetic-analyte-a" ? "confirm" : "reject",
+      factKey === "synthetic-analyte-a"
+        ? {
+            decision: "correct",
+            correction: { sourceName: "ТТГ", sourceValue: "9.9", sourceUnit: "мМЕ/л" },
+          }
+        : "confirm",
     );
     // The discharge note: zero facts, so its run completes at once; its own date is 2026-08-12.
     const note = await analyseSyntheticNote(app, database, storageRoot, owner);
     // One more report that stays in the queue: analysed, never decided.
     const queued = await queuedReport(app, database, storageRoot, owner);
-    assert.equal(queued.factCount, 1, "the queued report has a fact nobody decided");
+    assert.equal(queued.facts.length, 1, "the queued report has a fact nobody decided");
 
     const all = await get();
     const entries = all.json().entries as Array<{
@@ -105,11 +111,11 @@ test("the timeline shows reviewed documents by effective date in whole-day pages
     );
     const [reportEntry, noteEntry] = entries;
     assert.equal(reportEntry?.effectiveDate.source, "upload");
-    assert.equal(reportEntry?.confirmedCount, 1);
+    assert.equal(reportEntry?.confirmedCount, 2);
     assert.equal(
       reportEntry?.outsideRangeCount,
-      0,
-      "synthetic-analyte-a is 7.0 inside the printed 5.0–8.0 synthetic-unit",
+      1,
+      "the corrected 9.9 sits above the printed 5.0–8.0; analyte b as printed sits inside its own",
     );
     assert.equal(reportEntry?.recordCount, 0);
     assert.deepEqual(noteEntry?.effectiveDate, { value: "2026-08-12", source: "document" });
@@ -173,13 +179,37 @@ test("the timeline shows reviewed documents by effective date in whole-day pages
     );
     assert.equal(second.json().nextBefore, null);
 
-    for (const query of [
-      "?limit=0",
-      "?limit=51",
-      "?limit=abc",
-      "?before=2026-13-01",
-      "?before=yesterday",
-    ]) {
+    // A third day. Deciding the queued report's fact moves it out of the queue and into the
+    // timeline; March puts it below the other two, so a two-day page has to stop before it.
+    await reviewSyntheticFacts(app, owner, queued.documentId, queued.facts);
+    const movedScan = await app.inject({
+      method: "PUT",
+      url: `${base}/documents/${queued.documentId}/date`,
+      headers: { cookie: owner.cookie, origin: webOrigin },
+      payload: { documentDate: "2026-03-02" },
+    });
+    assert.equal(movedScan.statusCode, 200, movedScan.body);
+    const twoDays = await get("?limit=2");
+    assert.deepEqual(
+      (twoDays.json().entries as Array<{ id: string }>).map((entry) => entry.id),
+      [note.documentId, report.documentId],
+      "two days of three: the third day is not in the page at all",
+    );
+    assert.equal(
+      twoDays.json().nextBefore,
+      "2026-05-14",
+      "nextBefore is the oldest day kept, so the next page starts strictly below it",
+    );
+    const third = await get("?limit=2&before=2026-05-14");
+    assert.deepEqual(
+      (third.json().entries as Array<{ id: string }>).map((entry) => entry.id),
+      [queued.documentId],
+    );
+    assert.equal(third.json().nextBefore, null);
+
+    // A page of no days is refused rather than clamped: the service owns the bound, not the route.
+    assert.equal((await get("?limit=0")).statusCode, 422);
+    for (const query of ["?limit=51", "?limit=abc", "?before=2026-13-01", "?before=yesterday"]) {
       const refused = await get(query);
       assert.ok(
         refused.statusCode === 400 || refused.statusCode === 422,
@@ -201,7 +231,7 @@ test("the timeline shows reviewed documents by effective date in whole-day pages
         WHERE family_id = $1 AND action = 'profile.timeline.opened'`,
       [owner.body.family.id],
     );
-    assert.equal(audit.rows.length, 6, "one row per answered read, none for the refusals");
+    assert.equal(audit.rows.length, 8, "one row per answered read, none for the refusals");
     for (const row of audit.rows) {
       assert.equal(row.resource_type, "PatientProfile");
       assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "document-timeline/v1" });

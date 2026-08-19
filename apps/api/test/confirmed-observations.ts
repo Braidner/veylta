@@ -36,6 +36,56 @@ export type SyntheticReviewDecision =
       };
     };
 
+export interface SyntheticFact {
+  readonly id: string;
+  readonly factKey: string;
+  readonly factVersion: number;
+}
+
+/** Lists the facts of a document's latest analysis — the shape the review loop below needs. */
+export async function syntheticFacts(
+  app: FastifyInstance,
+  identity: Identity,
+  documentId: string,
+): Promise<SyntheticFact[]> {
+  const profilePath = `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
+  const facts = await app.inject({
+    method: "GET",
+    url: `${profilePath}/documents/${documentId}/facts`,
+    headers: { cookie: identity.cookie },
+  });
+  assert.equal(facts.statusCode, 200, facts.body);
+  return facts.json().items as SyntheticFact[];
+}
+
+/** Decides every given fact the way the caller says — the one review loop the helpers share. */
+export async function reviewSyntheticFacts(
+  app: FastifyInstance,
+  identity: Identity,
+  documentId: string,
+  facts: readonly SyntheticFact[],
+  decide: (factKey: string) => SyntheticReviewDecision = () => "confirm",
+): Promise<void> {
+  const profilePath = `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
+  for (const fact of facts) {
+    const decision = decide(fact.factKey);
+    const review = await app.inject({
+      method: "POST",
+      url: `${profilePath}/documents/${documentId}/facts/${fact.id}/review`,
+      headers: {
+        cookie: identity.cookie,
+        origin: webOrigin,
+        "idempotency-key": `review-${randomUUID()}`,
+      },
+      payload:
+        typeof decision === "string"
+          ? { factVersion: fact.factVersion, decision }
+          : { factVersion: fact.factVersion, ...decision },
+    });
+    assert.equal(review.statusCode, 201, review.body);
+  }
+}
+
 /**
  * Uploads the synthetic laboratory fixture, runs the worker over it and reviews every fact
  * the way the caller decides — the only path that yields real confirmed observations.
@@ -67,30 +117,13 @@ export async function confirmSyntheticReport(
     storage: createLocalObjectStorage(storageRoot),
   }).processNext({ workerId: `worker-${randomUUID()}`, leaseDurationMs: 60_000, retryDelayMs: 1 });
   assert.equal(processed.status, "completed");
-  const facts = await app.inject({
-    method: "GET",
-    url: `${profilePath}/documents/${documentId}/facts`,
-    headers: { cookie: identity.cookie },
-  });
-  assert.equal(facts.statusCode, 200, facts.body);
-  const items = facts.json().items as Array<{ id: string; factKey: string; factVersion: number }>;
-  for (const fact of items) {
-    const decision = decide(fact.factKey);
-    const review = await app.inject({
-      method: "POST",
-      url: `${profilePath}/documents/${documentId}/facts/${fact.id}/review`,
-      headers: {
-        cookie: identity.cookie,
-        origin: webOrigin,
-        "idempotency-key": `review-${randomUUID()}`,
-      },
-      payload:
-        typeof decision === "string"
-          ? { factVersion: fact.factVersion, decision }
-          : { factVersion: fact.factVersion, ...decision },
-    });
-    assert.equal(review.statusCode, 201, review.body);
-  }
+  await reviewSyntheticFacts(
+    app,
+    identity,
+    documentId,
+    await syntheticFacts(app, identity, documentId),
+    decide,
+  );
   const observations = await database.transaction((client) =>
     client.query<{ id: string }>(
       `SELECT id FROM observations

@@ -19,9 +19,6 @@ import { effectiveDocumentDate, isCalendarDate } from "./document-date.js";
 import { countsByDocument, type TimelineCounts } from "./document-timeline-counts.js";
 import { type TimelineRow, timelineEntriesSql } from "./document-timeline-query.js";
 
-/** No `before` given: a bound no calendar day the person can write ever reaches. */
-const NO_BOUND = "9999-12-31";
-
 const NO_COUNTS: TimelineCounts = { confirmed: 0, outside: 0, records: 0 };
 
 function pageDays(limit: string | undefined): number {
@@ -33,8 +30,9 @@ function pageDays(limit: string | undefined): number {
   return parsed;
 }
 
-function beforeDay(before: string | undefined): string {
-  if (before === undefined) return NO_BOUND;
+/** No `before` given: the query takes a null bound rather than a date nobody can reach. */
+function beforeDay(before: string | undefined): string | null {
+  if (before === undefined) return null;
   if (!isCalendarDate(before)) throw new DomainValidationError();
   return before;
 }

@@ -16,6 +16,7 @@ export function DocumentTimeline({
   loadingMore,
   onLoadMore,
   onCorrectDate,
+  heading,
 }: {
   readonly nodes: readonly TimelineNode[];
   /** Search results come flat; the record comes grouped by month. */
@@ -25,15 +26,24 @@ export function DocumentTimeline({
   readonly loadingMore: boolean;
   readonly onLoadMore: () => void;
   readonly onCorrectDate: (documentId: string, value: string | null) => Promise<void>;
+  /** Search hits say what they are; the record itself needs no visible heading above the months. */
+  readonly heading?: { readonly title: string; readonly note: string } | undefined;
 }) {
   const groups: readonly TimelineGroup[] = grouped
     ? timelineGroups(nodes)
     : [{ key: "search", label: "", yearMarker: null, nodes }];
   return (
     <section className="document-timeline" aria-labelledby="document-timeline-title">
-      <h3 id="document-timeline-title" className="visually-hidden">
-        Лента документов
-      </h3>
+      {heading === undefined ? (
+        <h3 id="document-timeline-title" className="visually-hidden">
+          Лента документов
+        </h3>
+      ) : (
+        <header className="document-timeline__heading">
+          <h3 id="document-timeline-title">{heading.title}</h3>
+          <p>{heading.note}</p>
+        </header>
+      )}
       {nodes.length === 0 ? (
         <p className="document-timeline__empty" role="status">
           В ленте пока ничего нет: документ появляется здесь, когда проверка завершена.

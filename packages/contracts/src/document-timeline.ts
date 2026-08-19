@@ -62,6 +62,10 @@ export interface DocumentTimelineResponse {
 /**
  * The one queue rule, shared by the timeline query and the web: a document stays in the queue
  * while the machine is not done with it or the person still has a fact to decide.
+ *
+ * The server states the same rule in SQL — the `NOT EXISTS` clause of `timelineEntriesSql`
+ * (`apps/api/src/documents/document-timeline-query.ts`) admits a document exactly when this
+ * returns false. The two must move together, or a document would sit in both surfaces or neither.
  */
 export function isInDocumentQueue(
   processing: DocumentProcessingStatus,

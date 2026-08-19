@@ -29,7 +29,10 @@ function timelinePath(familyId: string, profileId: string, before: string | null
   return before === null ? base : `${base}&before=${encodeURIComponent(before)}`;
 }
 
-/** The timeline: first page on mount and whenever `revision` changes (a document left the queue), more on demand. */
+/**
+ * The timeline: the first page on mount and whenever `revision` changes, more on demand. What
+ * `revision` counts is the caller's business — this hook only reloads when the number differs.
+ */
 export function useDocumentTimeline(input: {
   familyId: string;
   profileId: string;
@@ -61,29 +64,40 @@ export function useDocumentTimeline(input: {
   );
 
   useEffect(() => {
-    // `revision` is the queue's size: a document that left the queue belongs in the timeline now,
-    // so the first page is asked for again — the value itself is not part of the request.
+    // The revision is a reload trigger, not a request field: it changes when what the timeline
+    // holds can differ, and the first page is asked for again.
     void revision;
     const controller = new AbortController();
     void reload(controller.signal);
     return () => controller.abort();
   }, [reload, revision]);
 
+  /**
+   * Older days appended to what is on screen. Every write goes through the current state: a
+   * reload that lands while the page is in flight must not be overwritten by this snapshot.
+   */
   async function loadMore(): Promise<void> {
     if (state.kind !== "ready" || state.nextBefore === null || state.loadingMore) return;
-    setState({ ...state, loadingMore: true });
-    try {
-      const page = await apiRequest<DocumentTimelineResponse>(
-        timelinePath(familyId, profileId, state.nextBefore),
+    const before = state.nextBefore;
+    const settle = (page: DocumentTimelineResponse | null) => {
+      setState((current) =>
+        current.kind !== "ready"
+          ? current
+          : page === null
+            ? { ...current, loadingMore: false }
+            : {
+                kind: "ready",
+                entries: mergeTimelinePages(current.entries, page.entries),
+                nextBefore: page.nextBefore,
+                loadingMore: false,
+              },
       );
-      setState({
-        kind: "ready",
-        entries: mergeTimelinePages(state.entries, page.entries),
-        nextBefore: page.nextBefore,
-        loadingMore: false,
-      });
+    };
+    setState((current) => (current.kind === "ready" ? { ...current, loadingMore: true } : current));
+    try {
+      settle(await apiRequest<DocumentTimelineResponse>(timelinePath(familyId, profileId, before)));
     } catch {
-      setState({ ...state, loadingMore: false });
+      settle(null);
     }
   }
 

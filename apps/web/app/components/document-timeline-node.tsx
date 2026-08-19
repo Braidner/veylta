@@ -70,7 +70,10 @@ export function DocumentTimelineNode({
           error={error}
           onSave={(value) => void save(value)}
           onClear={() => void save(null)}
-          onCancel={() => setEditing(false)}
+          onCancel={() => {
+            setEditing(false);
+            setError(null);
+          }}
         />
       ) : null}
       <div className="document-timeline__body">

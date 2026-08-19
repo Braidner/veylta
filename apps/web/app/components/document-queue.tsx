@@ -73,7 +73,7 @@ export function DocumentQueue({
                     disabled={busy}
                     onClick={() => onRestart(row)}
                   >
-                    Повторить
+                    {busy ? "Запускаем…" : "Повторить"}
                   </button>
                 ) : null}
                 {next.kind === "none" && isProcessingActive(row.document.processing) ? (

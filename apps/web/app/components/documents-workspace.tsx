@@ -1,20 +1,21 @@
 "use client";
 
 import type { DocumentSummary, ProfileOverviewResponse } from "@veylta/contracts";
-import { Search } from "lucide-react";
+import { FileUp, Search } from "lucide-react";
 import { useEffect, useState } from "react";
-import { apiPrefix, apiRequest } from "../api-client";
+import { apiRequest } from "../api-client";
 import { queueCounts, queueRows } from "../document-queue";
 import { searchNodes, timelineNodes } from "../document-timeline";
 import {
+  archiveDocumentCountCopy,
   buildDocumentSearchPath,
   buildDocumentsArchiveHero,
   normalizeDocumentSearchResponse,
   restartTargets,
 } from "../documents-archive";
-import { profileApiPath } from "../paths";
 import { useArchiveActions } from "../use-archive-actions";
 import { useDocumentTimeline } from "../use-document-timeline";
+import { DocumentExports } from "./document-exports";
 import { DocumentQueue } from "./document-queue";
 import { DocumentTimeline } from "./document-timeline";
 import { DocumentsHero } from "./documents-hero";
@@ -44,8 +45,13 @@ export function DocumentsWorkspace({
   const rows = queueRows(overview);
   const counts = queueCounts(overview);
   const archive = useArchiveActions({ familyId, profileId, reload: onReload });
-  // A document leaving the queue must show up below: the queue's size is the timeline's revision.
-  const timeline = useDocumentTimeline({ familyId, profileId, revision: counts.inQueue });
+  // Reviewed documents are exactly what the timeline holds, so their number is its revision: it
+  // changes when one leaves the queue and when one is deleted, and both must reach the lane below.
+  const timeline = useDocumentTimeline({
+    familyId,
+    profileId,
+    revision: counts.total - counts.inQueue,
+  });
   const [searchQuery, setSearchQuery] = useState("");
   const [searchState, setSearchState] = useState<SearchState>({ kind: "idle" });
   const [searchRevision, setSearchRevision] = useState(0);
@@ -106,34 +112,22 @@ export function DocumentsWorkspace({
         onConfirmAll={() => void archive.confirmDocuments(overview.reviewQueue.documents)}
         onRestartFailed={() => void archive.restartDocuments(restartTargets(overview))}
       />
-      {canWrite ? (
-        <details className="profile-overview__exports">
-          <summary>Экспорт источников</summary>
-          <div>
-            <p className="profile-overview__export">
-              <a
-                className="text-link"
-                href={`${apiPrefix}${profileApiPath(familyId, profileId)}/evidence-bundle`}
-                download
-              >
-                Скачать локальный пакет источников
-              </a>
-              <span>До 5 синтетических исходников; это не резервная копия.</span>
-            </p>
-            <p className="profile-overview__export">
-              <a
-                className="text-link"
-                href={`${apiPrefix}${profileApiPath(familyId, profileId)}/portable-export`}
-                download
-              >
-                Скачать полный synthetic-экспорт профиля
-              </a>
-              <span>Все источники и подтверждённые записи в пределах локального лимита.</span>
-            </p>
-          </div>
-        </details>
+      {canWrite ? <DocumentExports familyId={familyId} profileId={profileId} /> : null}
+      {searchState.kind === "idle" && counts.total === 0 ? (
+        <div className="profile-overview__empty" role="status">
+          <p>
+            Исходников пока нет. Загрузите PDF, PNG или JPEG — до 20 файлов по 5 МБ за раз. Codex
+            подготовит значения для вашей проверки, а оригиналы останутся неизменными.
+          </p>
+          {canWrite ? (
+            <button className="button button--secondary" type="button" onClick={onUpload}>
+              <FileUp size={16} aria-hidden="true" />
+              Загрузить первый документ
+            </button>
+          ) : null}
+        </div>
       ) : null}
-      {searchState.kind === "idle" ? (
+      {searchState.kind === "idle" && counts.total > 0 ? (
         <>
           <DocumentQueue
             rows={rows}
@@ -217,6 +211,10 @@ export function DocumentsWorkspace({
           loadingMore={false}
           onLoadMore={() => undefined}
           onCorrectDate={async () => undefined}
+          heading={{
+            title: archiveDocumentCountCopy(searchState.documents.length),
+            note: `Результаты поиска по запросу «${searchState.query}».`,
+          }}
         />
       ) : null}
     </>
