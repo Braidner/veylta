@@ -46,7 +46,9 @@ test("capture the README screenshots", async ({ page }) => {
   const tabs = page.getByRole("tablist", { name: "Основные разделы профиля" });
   await tabs.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs$/);
-  await expect(page.getByRole("heading", { name: "Документы профиля" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Архив документов" })).toBeVisible();
+  // One value is still undecided, so the document is shot where it actually is: in the queue.
+  await expect(page.getByRole("region", { name: "Очередь" })).toBeVisible();
   await screenshot(page, "documents.png");
 
   await tabs.getByRole("tab", { name: "Обзор", exact: true }).click();

@@ -80,12 +80,13 @@ test("a synthetic report is extracted, survives reload, preserves its filename, 
   await page.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page).toHaveURL(`${profileUrl}/docs`);
   const overview = page.getByRole("region", { name: "Архив документов" });
-  // One list: the source awaiting a decision sits at the top with its two counts.
-  await expect(overview.getByRole("region", { name: "Документы", exact: true })).toBeVisible();
-  // The queue names the two kinds of pending value, each beside the verb that handles it.
-  await expect(overview.getByText("1 значение без замечаний")).toBeVisible();
-  await expect(overview.getByText("1 значение требует отдельной проверки")).toBeVisible();
-  await expect(overview.getByRole("link", { name: "Открыть проверку" })).toBeVisible();
+  // The queue holds what is not done: the document, the state it is in, and the way into it.
+  const queue = overview.getByRole("region", { name: "Очередь" });
+  await expect(
+    queue.getByRole("link", { name: "Синтетические лабораторные результаты" }),
+  ).toBeVisible();
+  await expect(queue.getByText("2 значения ждут явной проверки")).toBeVisible();
+  await expect(queue.getByRole("link", { name: "Проверить 2 значения" })).toBeVisible();
   await overview.getByText("Экспорт источников", { exact: true }).click();
   const evidenceBundleDownload = page.waitForEvent("download");
   await overview.getByRole("link", { name: "Скачать локальный пакет источников" }).click();
@@ -237,13 +238,12 @@ test("document archive searches summaries and deletion requires an explicit conf
   const archive = page.getByRole("region", { name: "Архив документов" });
   const search = archive.getByPlaceholder("Поиск по саммари и результатам");
   await search.fill("лабораторные результаты");
+  // Hits render as timeline nodes under their own heading, summary and all.
+  await expect(archive.getByRole("heading", { name: "1 документ" })).toBeVisible();
   await expect(archive.getByText(filename, { exact: true })).toBeVisible();
-  await expect(archive.locator(".archive-list__summary")).toBeVisible();
+  await expect(archive.locator(".document-timeline__summary")).toBeVisible();
 
-  await archive
-    .getByRole("link", { name: /Открыть (проверку|источник)/ })
-    .last()
-    .click();
+  await archive.locator(".document-timeline__title").last().click();
   await page.getByRole("button", { name: "Удалить" }).click();
   const confirmation = page.getByRole("dialog", { name: "Удалить документ из Veylta?" });
   await expect(confirmation).toContainText("исчезнет из активного архива и поиска");

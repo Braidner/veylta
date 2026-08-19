@@ -79,14 +79,14 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   await tabs.getByRole("tab", { name: "Документы", exact: true }).click();
   await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs$/);
   await expect(page.getByRole("tabpanel", { name: "Документы" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Документы профиля" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "Архив документов" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Помощники" })).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: "История", exact: true }).click();
   await expect(page).toHaveURL(/\/[a-z0-9-]+\/history$/);
   await expect(page.getByRole("tabpanel", { name: "История" })).toBeVisible();
   await expect(page.getByRole("region", { name: "История подтверждённых значений" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Документы профиля" })).toHaveCount(0);
+  await expect(page.getByRole("region", { name: "Архив документов" })).toHaveCount(0);
 
   await tabs.getByRole("tab", { name: "Досье", exact: true }).click();
   await expect(page).toHaveURL(/\/[a-z0-9-]+\/dossier$/);
@@ -160,11 +160,9 @@ test("upload opens a keyboard-safe Codex batch dialog", async ({ page }) => {
   await expect(submit).toBeEnabled();
   await submit.click();
   await expect(page).toHaveURL(/\/[a-z0-9-]+\/docs$/);
-  // One list; freshly extracted sources await review, so their verb is «Открыть проверку».
-  await expect(page.getByRole("region", { name: "Документы", exact: true })).toBeVisible({
-    timeout: 15_000,
-  });
-  await expect(page.getByRole("link", { name: /^Открыть (проверку|источник) / })).toHaveCount(2, {
+  // Both fresh sources land in the queue, each offering the way into its pending values.
+  await expect(page.getByRole("region", { name: "Очередь" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("link", { name: /^Проверить \d+ значени/ })).toHaveCount(2, {
     timeout: 15_000,
   });
 });
