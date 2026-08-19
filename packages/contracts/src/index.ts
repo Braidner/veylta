@@ -17,6 +17,7 @@ export * from "./codex.js";
 export * from "./document-intelligence-results.js";
 export * from "./medical-profile.js";
 export * from "./profile-handle.js";
+export * from "./profile-responses.js";
 export const DOCUMENT_CONTRACT_VERSION = "document/v7" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
@@ -420,47 +421,6 @@ export interface DemoRegistrationRequest {
   displayName: string;
   familyName: string;
   profileName: string;
-}
-
-export interface DemoRegistrationResponse {
-  contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
-  family: FamilySummary;
-  profile: PatientProfileSummary;
-}
-
-export interface ProfileListResponse {
-  contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
-  items: PatientProfileSummary[];
-}
-
-export interface ProfileCreateResponse {
-  contractVersion: typeof FAMILY_PROFILE_CONTRACT_VERSION;
-  profile: PatientProfileSummary;
-}
-
-export interface ProfileArchiveResponse {
-  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
-  readonly profileId: string;
-  readonly archivedAt: string;
-}
-
-export interface ProfileRestoreResponse {
-  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
-  readonly profileId: string;
-  readonly restoredAt: string;
-}
-
-export interface ArchivedProfileSummary {
-  readonly id: string;
-  readonly familyId: string;
-  readonly displayName: string;
-  readonly kind: PatientProfileKind;
-  readonly archivedAt: string;
-}
-
-export interface ArchivedProfileListResponse {
-  readonly contractVersion: typeof PROFILE_ARCHIVE_CONTRACT_VERSION;
-  readonly items: readonly ArchivedProfileSummary[];
 }
 
 /**
