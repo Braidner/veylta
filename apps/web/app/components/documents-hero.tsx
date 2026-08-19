@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCheck, FileUp, RefreshCw, Search, X } from "lucide-react";
-import type { DocumentsArchiveHero } from "../documents-archive";
+import { type DocumentsArchiveHero, heroCountsCopy } from "../documents-archive";
 import { PageHero } from "./page-hero";
 
 interface DocumentsHeroProps {
@@ -36,8 +36,8 @@ export function DocumentsHero({
     <PageHero
       testId="documents-hero"
       titleId="document-inbox-title"
-      title="Документы профиля"
-      meta="Добавьте один файл или пачку. Codex распределит документы по разделам и подготовит значения для вашей проверки, не меняя оригиналы."
+      title="Документы"
+      meta={summary === null ? undefined : heroCountsCopy(summary)}
       search={
         <label className="page-hero__search">
           <Search size={18} aria-hidden="true" />

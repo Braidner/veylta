@@ -1,0 +1,224 @@
+"use client";
+
+import type { DocumentSummary, ProfileOverviewResponse } from "@veylta/contracts";
+import { Search } from "lucide-react";
+import { useEffect, useState } from "react";
+import { apiPrefix, apiRequest } from "../api-client";
+import { queueCounts, queueRows } from "../document-queue";
+import { searchNodes, timelineNodes } from "../document-timeline";
+import {
+  buildDocumentSearchPath,
+  buildDocumentsArchiveHero,
+  normalizeDocumentSearchResponse,
+  restartTargets,
+} from "../documents-archive";
+import { profileApiPath } from "../paths";
+import { useArchiveActions } from "../use-archive-actions";
+import { useDocumentTimeline } from "../use-document-timeline";
+import { DocumentQueue } from "./document-queue";
+import { DocumentTimeline } from "./document-timeline";
+import { DocumentsHero } from "./documents-hero";
+
+type SearchState =
+  | { kind: "idle" }
+  | { kind: "loading"; query: string }
+  | { kind: "ready"; query: string; documents: readonly DocumentSummary[] }
+  | { kind: "error"; query: string };
+
+/** The documents page: the one-line hero, the exports, the queue, then the timeline; search shows hits as nodes. */
+export function DocumentsWorkspace({
+  familyId,
+  profileId,
+  canWrite,
+  overview,
+  onReload,
+  onUpload,
+}: {
+  readonly familyId: string;
+  readonly profileId: string;
+  readonly canWrite: boolean;
+  readonly overview: ProfileOverviewResponse;
+  readonly onReload: () => Promise<void>;
+  readonly onUpload: () => void;
+}) {
+  const rows = queueRows(overview);
+  const counts = queueCounts(overview);
+  const archive = useArchiveActions({ familyId, profileId, reload: onReload });
+  // A document leaving the queue must show up below: the queue's size is the timeline's revision.
+  const timeline = useDocumentTimeline({ familyId, profileId, revision: counts.inQueue });
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchState, setSearchState] = useState<SearchState>({ kind: "idle" });
+  const [searchRevision, setSearchRevision] = useState(0);
+
+  useEffect(() => {
+    const query = searchQuery.trim();
+    if (query.length < 2) {
+      setSearchState({ kind: "idle" });
+      return;
+    }
+    const controller = new AbortController();
+    setSearchState({ kind: "loading", query });
+    const timeout = window.setTimeout(
+      () => {
+        void apiRequest<unknown>(buildDocumentSearchPath(familyId, profileId, query), {
+          signal: controller.signal,
+        })
+          .then((response) => {
+            if (!controller.signal.aborted) {
+              setSearchState({
+                kind: "ready",
+                query,
+                documents: normalizeDocumentSearchResponse(response),
+              });
+            }
+          })
+          .catch(() => {
+            if (!controller.signal.aborted) setSearchState({ kind: "error", query });
+          });
+      },
+      searchRevision === 0 ? 260 : 0,
+    );
+    return () => {
+      controller.abort();
+      window.clearTimeout(timeout);
+    };
+  }, [familyId, profileId, searchQuery, searchRevision]);
+
+  return (
+    <>
+      <DocumentsHero
+        canWrite={canWrite}
+        summary={buildDocumentsArchiveHero(overview, counts.inQueue)}
+        bulkConfirmPending={archive.action.kind === "confirming"}
+        bulkConfirmProgress={
+          archive.action.kind === "confirming" && archive.action.documentId === null
+            ? `Подтверждаем ${archive.action.completed} из ${archive.action.total}…`
+            : null
+        }
+        bulkConfirmError={archive.action.kind === "error" ? archive.action.copy : null}
+        restartAllPending={archive.action.kind === "restarting"}
+        searchQuery={searchQuery}
+        onSearchChange={(query) => {
+          setSearchRevision(0);
+          setSearchQuery(query);
+        }}
+        onUpload={onUpload}
+        onConfirmAll={() => void archive.confirmDocuments(overview.reviewQueue.documents)}
+        onRestartFailed={() => void archive.restartDocuments(restartTargets(overview))}
+      />
+      {canWrite ? (
+        <details className="profile-overview__exports">
+          <summary>Экспорт источников</summary>
+          <div>
+            <p className="profile-overview__export">
+              <a
+                className="text-link"
+                href={`${apiPrefix}${profileApiPath(familyId, profileId)}/evidence-bundle`}
+                download
+              >
+                Скачать локальный пакет источников
+              </a>
+              <span>До 5 синтетических исходников; это не резервная копия.</span>
+            </p>
+            <p className="profile-overview__export">
+              <a
+                className="text-link"
+                href={`${apiPrefix}${profileApiPath(familyId, profileId)}/portable-export`}
+                download
+              >
+                Скачать полный synthetic-экспорт профиля
+              </a>
+              <span>Все источники и подтверждённые записи в пределах локального лимита.</span>
+            </p>
+          </div>
+        </details>
+      ) : null}
+      {searchState.kind === "idle" ? (
+        <>
+          <DocumentQueue
+            rows={rows}
+            canWrite={canWrite}
+            action={archive.action}
+            onRestart={(row) => void archive.restartDocuments([row.document])}
+          />
+          {timeline.state.kind === "loading" ? (
+            <p className="document-timeline__loading" aria-live="polite">
+              Собираем ленту…
+            </p>
+          ) : null}
+          {timeline.state.kind === "error" ? (
+            <div className="profile-overview__empty" role="status">
+              <p>Не удалось загрузить ленту. Очередь выше актуальна.</p>
+              <button
+                className="button button--secondary"
+                type="button"
+                onClick={() => void timeline.reload()}
+              >
+                Повторить
+              </button>
+            </div>
+          ) : null}
+          {timeline.state.kind === "ready" ? (
+            <DocumentTimeline
+              nodes={timelineNodes(timeline.state.entries)}
+              grouped
+              canWrite={canWrite}
+              nextBefore={timeline.state.nextBefore}
+              loadingMore={timeline.state.loadingMore}
+              onLoadMore={() => void timeline.loadMore()}
+              onCorrectDate={timeline.correctDate}
+            />
+          ) : null}
+        </>
+      ) : null}
+      {searchState.kind === "loading" ? (
+        <div className="document-search-state" role="status">
+          <span className="document-search-state__spinner" aria-hidden="true" />
+          <div>
+            <strong>Ищем по саммари и результатам</strong>
+            <p>Запрос «{searchState.query}» проверяется в локальном архиве.</p>
+          </div>
+        </div>
+      ) : null}
+      {searchState.kind === "error" ? (
+        <div className="document-search-state document-search-state--error" role="alert">
+          <div>
+            <strong>Поиск временно недоступен</strong>
+            <p>Архив не изменён. Можно повторить тот же запрос.</p>
+          </div>
+          <button
+            className="button button--secondary"
+            type="button"
+            onClick={() => setSearchRevision((current) => current + 1)}
+          >
+            Повторить
+          </button>
+        </div>
+      ) : null}
+      {searchState.kind === "ready" && searchState.documents.length === 0 ? (
+        <div className="profile-overview__empty document-search-empty" role="status">
+          <Search size={20} aria-hidden="true" />
+          <p>По запросу «{searchState.query}» ничего не найдено.</p>
+          <button
+            className="text-link text-link--button"
+            type="button"
+            onClick={() => setSearchQuery("")}
+          >
+            Показать весь архив
+          </button>
+        </div>
+      ) : null}
+      {searchState.kind === "ready" && searchState.documents.length > 0 ? (
+        <DocumentTimeline
+          nodes={searchNodes(searchState.documents)}
+          grouped={false}
+          canWrite={false}
+          nextBefore={null}
+          loadingMore={false}
+          onLoadMore={() => undefined}
+          onCorrectDate={async () => undefined}
+        />
+      ) : null}
+    </>
+  );
+}

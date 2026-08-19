@@ -10998,3 +10998,336 @@ body:has(.upload-dialog[open]) {
     margin-left: 0;
   }
 }
+
+/* The documents page: what is not done yet, then the record itself. Both sit on the plain
+   canvas under the one-line hero — one left edge, no nested cards. */
+.profile-overview--documents .profile-overview__exports {
+  margin: 20px 0 0;
+}
+
+.profile-overview--documents .profile-overview__exports > div {
+  right: auto;
+  left: 0;
+}
+
+.document-queue {
+  padding: 24px 0 4px;
+}
+
+.document-queue__heading h3 {
+  margin: 0;
+  font-size: 1.125rem;
+  letter-spacing: -0.015em;
+}
+
+.document-queue__heading p {
+  max-width: 62ch;
+  margin: 6px 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  text-wrap: pretty;
+}
+
+.document-queue__empty {
+  margin: 16px 0 0;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.document-queue__rows {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  margin: 16px 0 0;
+  list-style: none;
+}
+
+.document-queue__row {
+  display: grid;
+  gap: 8px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--color-bg);
+  border: 1px solid var(--color-line);
+  border-radius: 10px;
+}
+
+/* The two states that ask something of a person are named by their own hue, with the state
+   still written out in words beside the name. */
+.document-queue__row--awaiting_review {
+  background: oklch(0.985 0.018 78);
+  border-color: oklch(0.88 0.05 78);
+}
+
+.document-queue__row--failed {
+  background: oklch(0.985 0.012 25);
+  border-color: oklch(0.88 0.05 25);
+}
+
+.document-queue__identity {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.document-queue__name {
+  overflow: hidden;
+  color: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  text-decoration: none;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-queue__name:hover {
+  color: var(--color-primary);
+}
+
+.document-queue__state {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.document-queue__row .button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.document-queue__progress {
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--color-line-strong);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: document-search-spin 800ms linear infinite;
+  justify-self: end;
+}
+
+.document-timeline {
+  padding: 24px 0 8px;
+}
+
+.document-timeline__loading,
+.document-timeline__empty {
+  max-width: 62ch;
+  margin: 20px 0 0;
+  color: var(--color-muted);
+  font-size: 0.875rem;
+}
+
+.document-timeline__months {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+/* One hairline is the spine of the record; every node puts its dot on it. */
+.document-timeline__month {
+  padding-bottom: 8px;
+  border-left: 1px solid var(--color-line);
+}
+
+.document-timeline__year {
+  position: sticky;
+  z-index: 3;
+  top: 104px;
+  padding: 12px 0 6px 24px;
+  margin: 0;
+  background: var(--color-canvas);
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.document-timeline__month-title {
+  padding: 8px 0 0 24px;
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  font-weight: 650;
+}
+
+.document-timeline__nodes {
+  display: grid;
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.document-timeline__node {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 12px 0 16px 24px;
+}
+
+.document-timeline__node::before {
+  position: absolute;
+  top: 18px;
+  left: -5px;
+  width: 10px;
+  height: 10px;
+  background: var(--color-canvas);
+  border: 2px solid var(--color-primary);
+  border-radius: 50%;
+  content: "";
+}
+
+.document-timeline__date {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: baseline;
+  font-size: 0.875rem;
+  font-weight: 650;
+}
+
+.document-timeline__marker {
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.document-timeline__correct {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+  font-weight: 550;
+  transition: color 180ms ease-out;
+}
+
+.document-timeline__correct:hover:not(:disabled) {
+  color: var(--color-primary);
+}
+
+.document-timeline__body {
+  display: grid;
+  gap: 4px;
+  justify-items: start;
+}
+
+.document-timeline__kicker {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.document-timeline__title {
+  color: inherit;
+  font-size: 0.9375rem;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.document-timeline__title:hover {
+  color: var(--color-primary);
+}
+
+.document-timeline__summary {
+  max-width: 68ch;
+  margin: 2px 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
+.document-timeline__filename {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.document-timeline__counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0;
+  margin: 4px 0 0;
+  list-style: none;
+}
+
+.document-timeline__counts li {
+  display: inline-flex;
+  align-items: center;
+  min-height: 26px;
+  padding: 0 10px;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.document-timeline__more {
+  min-height: 38px;
+  margin-top: 16px;
+}
+
+.document-date-editor {
+  display: grid;
+  gap: 8px;
+  max-width: 320px;
+  padding: 12px 0 4px;
+}
+
+.document-date-editor .field input {
+  min-height: 40px;
+}
+
+.document-date-editor__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+}
+
+.document-date-editor__actions .button {
+  min-height: 36px;
+}
+
+.document-date-editor__actions .text-link--button {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+  .document-queue__row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .document-queue__row .button {
+    justify-self: start;
+  }
+
+  .document-queue__progress {
+    justify-self: start;
+  }
+
+  /* Under the workspace bar's mobile layout a pinned label would cover the node it names. */
+  .document-timeline__year {
+    position: static;
+  }
+
+  .document-date-editor {
+    max-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .document-queue__progress {
+    animation: none;
+  }
+
+  .document-timeline__correct {
+    transition: none;
+  }
+}

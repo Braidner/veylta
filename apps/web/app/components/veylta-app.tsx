@@ -50,16 +50,14 @@ import type {
   ProfileConsentGrantCreateResponse,
   ProfileConsentGrantListResponse,
   ProfileCreateResponse,
-  ProfileOverviewDocument,
   ProfileOverviewResponse,
-  ProfileOverviewReviewDocument,
   ProfileRestoreResponse,
   SessionFamily,
   SessionResponse,
   SetupStatusResponse,
   StorageRelocationResponse,
 } from "@veylta/contracts";
-import { type DOCUMENT_CATEGORIES, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import {
   ArrowRight,
   Bot,
@@ -73,7 +71,6 @@ import {
   History,
   House,
   LogOut,
-  RefreshCw,
   Search,
   ShieldCheck,
   Trash2,
@@ -98,27 +95,13 @@ import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { assistantIdentity } from "../assistant";
 import { takesCheckins } from "../care-plan-checkins";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
-import { queueRows } from "../document-queue";
 import {
   documentResultStatusCopy,
   documentResultTypeCopy,
   prioritizeDocumentResults,
 } from "../document-results";
-import {
-  type ArchiveRow,
-  archiveDocumentCountCopy,
-  archiveRows,
-  archiveValueCountCopy,
-  awaitingReviewVerb,
-  buildDocumentSearchPath,
-  buildDocumentsArchiveHero,
-  bulkConfirmableCount,
-  canBulkConfirmFact,
-  isRestartable,
-  normalizeDocumentSearchResponse,
-  restartTargets,
-  uploadButtonCopy,
-} from "../documents-archive";
+import { documentCategoryLabels } from "../document-timeline";
+import { archiveValueCountCopy, canBulkConfirmFact, uploadButtonCopy } from "../documents-archive";
 import { parseAsk } from "../dossier-ask";
 import { formatBytes } from "../format-bytes";
 import { formatDate, formatSampleMoment } from "../format-moment";
@@ -146,6 +129,7 @@ import { ClinicianRecordsPanel } from "./clinician-records-panel";
 import { DocumentAgentPanel } from "./document-agent-panel";
 import { DocumentHero } from "./document-hero";
 import { DocumentsHero } from "./documents-hero";
+import { DocumentsWorkspace } from "./documents-workspace";
 import { DossierPanel } from "./dossier-panel";
 import { IdentityChips } from "./identity-chips";
 import { LoadingScreen } from "./loading-screen";
@@ -216,14 +200,6 @@ function healthSummaryHistoryPath(familyId: string, profileId: string): string {
 
 function healthSummaryComparisonPath(familyId: string, profileId: string): string {
   return `${healthSummaryPath(familyId, profileId)}/compare`;
-}
-
-function evidenceBundlePath(familyId: string, profileId: string): string {
-  return `${profileApiPath(familyId, profileId)}/evidence-bundle`;
-}
-
-function portableProfileExportPath(familyId: string, profileId: string): string {
-  return `${profileApiPath(familyId, profileId)}/portable-export`;
 }
 
 function observationHistoryPath(familyId: string, profileId: string): string {
@@ -3126,181 +3102,11 @@ type ProfileOverviewState =
   | { kind: "ready"; overview: ProfileOverviewResponse }
   | { kind: "error"; copy: string };
 
-type DocumentSearchState =
-  | { kind: "idle" }
-  | { kind: "loading"; query: string }
-  | { kind: "ready"; query: string; documents: readonly DocumentSummary[] }
-  | { kind: "error"; query: string };
-
 function profileOverviewErrorCopy(error: unknown): string {
   if (error instanceof ApiError && [401, 404].includes(error.status)) {
     return "Обзор этого профиля недоступен. Вернитесь к доступному профилю и попробуйте снова.";
   }
   return "Не удалось загрузить обзор. Исходники и подтверждённые значения не изменены.";
-}
-
-function profileOverviewProcessingCopy(
-  status: ProfileOverviewResponse["recentDocuments"][number]["processing"],
-): string {
-  switch (status.state) {
-    case "not_started":
-      return "Обработка ещё не началась";
-    case "queued":
-      return "В очереди обработки";
-    case "security_check":
-      return "Проверяем исходник";
-    case "text_extraction":
-      return "Извлекаем текст";
-    case "document_classification":
-      return "Codex определяет раздел";
-    case "structured_extraction":
-      return "Готовим черновые значения";
-    case "validation":
-      return "Проверяем черновой результат";
-    case "awaiting_review":
-      return `${archiveValueCountCopy(status.factCount)} ждут явной проверки`;
-    case "completed":
-      return `${archiveValueCountCopy(status.factCount)} подтверждены пользователем`;
-    case "failed":
-      return "Обработка не завершилась";
-  }
-}
-
-const documentCategoryLabels: Record<(typeof DOCUMENT_CATEGORIES)[number], string> = {
-  laboratory: "Анализы",
-  imaging: "Снимки и исследования",
-  prescription: "Назначения",
-  discharge_summary: "Выписки",
-  consultation: "Консультации",
-  vaccination: "Вакцинация",
-  insurance: "Страховые документы",
-  other: "Другое",
-};
-
-type ArchiveActionState =
-  | { kind: "idle" }
-  | { kind: "confirming"; completed: number; total: number; documentId: string | null }
-  | { kind: "restarting"; documentId: string | null }
-  | { kind: "error"; copy: string };
-
-/**
- * One row shape for every source. A row that still holds values awaiting a decision shows
- * the two counts that map onto its two verbs; every other row shows its processing state.
- */
-function ArchiveRows({
-  rows,
-  canWrite,
-  action,
-  onConfirm,
-  onRestart,
-}: {
-  rows: readonly ArchiveRow[];
-  canWrite: boolean;
-  action: ArchiveActionState;
-  onConfirm: (entry: ProfileOverviewReviewDocument) => void;
-  onRestart: (document: ProfileOverviewDocument) => void;
-}) {
-  const handle = useProfileHandle();
-  return (
-    <ol className="archive-list">
-      {rows.map(({ document, queue }) => {
-        const clean = queue === null ? 0 : bulkConfirmableCount(queue);
-        const attention = queue?.needsAttentionFactCount ?? 0;
-        const title = document.intelligence?.title ?? document.originalFilename;
-        const confirming = action.kind === "confirming" && action.documentId === document.id;
-        const restarting = action.kind === "restarting" && action.documentId === document.id;
-        return (
-          <li
-            key={document.id}
-            className={`archive-list__item${queue === null ? "" : " archive-list__item--pending"}`}
-          >
-            <div className="archive-list__doc">
-              <span className="archive-list__icon" aria-hidden="true">
-                <FileText size={18} strokeWidth={1.8} />
-              </span>
-              <div>
-                <strong>{title}</strong>
-                <span>
-                  {documentKindLabel(document.contentType)} · {formatDate(document.uploadedAt)}
-                  {document.intelligence === null
-                    ? null
-                    : ` · ${documentCategoryLabels[document.intelligence.category]}`}
-                  {/* The upload's own name stays visible under a model-written title. */}
-                  {title === document.originalFilename ? null : (
-                    <>
-                      {" · "}
-                      <span className="archive-list__filename">{document.originalFilename}</span>
-                    </>
-                  )}
-                </span>
-                {document.intelligence?.shortSummary ? (
-                  <p className="archive-list__summary">{document.intelligence.shortSummary}</p>
-                ) : null}
-              </div>
-            </div>
-
-            {queue !== null ? (
-              <ul className="archive-list__chips" aria-label="Состав очереди">
-                {clean > 0 ? (
-                  <li className="archive-list__chip archive-list__chip--clean">
-                    <CheckCheck size={14} aria-hidden="true" />
-                    {archiveValueCountCopy(clean)} без замечаний
-                  </li>
-                ) : null}
-                {attention > 0 ? (
-                  <li className="archive-list__chip archive-list__chip--attention">
-                    <span aria-hidden="true">!</span>
-                    {archiveValueCountCopy(attention)}{" "}
-                    {pluralForm(attention, ["требует", "требуют", "требуют"])} отдельной проверки
-                  </li>
-                ) : null}
-              </ul>
-            ) : (
-              <span className={`document-status document-status--${document.processing.state}`}>
-                {profileOverviewProcessingCopy(document.processing)}
-              </span>
-            )}
-
-            <div className="archive-list__actions">
-              {canWrite && queue !== null && clean > 0 ? (
-                <button
-                  className="button archive-list__action"
-                  type="button"
-                  disabled={action.kind === "confirming"}
-                  onClick={() => onConfirm(queue)}
-                >
-                  <CheckCheck size={16} aria-hidden="true" />
-                  {confirming && action.kind === "confirming"
-                    ? `Подтверждаем ${action.completed} из ${action.total}…`
-                    : `Подтвердить ${clean}`}
-                </button>
-              ) : null}
-              {canWrite && isRestartable(document) ? (
-                <button
-                  className="archive-list__restart"
-                  type="button"
-                  disabled={action.kind === "restarting"}
-                  onClick={() => onRestart(document)}
-                  aria-label={`Перезапустить разбор ${title}`}
-                >
-                  <RefreshCw size={15} aria-hidden="true" />
-                  <span>{restarting ? "Запускаем…" : "Перезапустить"}</span>
-                </button>
-              ) : null}
-              <Link
-                className="button button--secondary archive-list__action"
-                href={documentPath(handle, document.id)}
-                aria-label={`${queue === null ? "Открыть источник" : "Открыть проверку"} ${title}`}
-              >
-                {queue === null ? "Открыть источник" : "Открыть проверку"}
-                <ArrowRight size={16} aria-hidden="true" />
-              </Link>
-            </div>
-          </li>
-        );
-      })}
-    </ol>
-  );
 }
 
 function ProfileOverviewPanel({
@@ -3317,85 +3123,6 @@ function ProfileOverviewPanel({
   onUpload: () => void;
 }) {
   const [state, setState] = useState<ProfileOverviewState>({ kind: "loading" });
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchState, setSearchState] = useState<DocumentSearchState>({ kind: "idle" });
-  const [searchRevision, setSearchRevision] = useState(0);
-
-  const [archiveAction, setArchiveAction] = useState<ArchiveActionState>({ kind: "idle" });
-
-  /**
-   * Confirms only the values the review workspace would also confirm in bulk. Each decision
-   * is a separate idempotent command, so a failure part-way leaves the rest untouched and
-   * says exactly how far it got. One document or the whole queue: same code path.
-   */
-  async function confirmDocuments(
-    documents: readonly ProfileOverviewReviewDocument[],
-  ): Promise<void> {
-    const queue = documents.filter((document) => bulkConfirmableCount(document) > 0);
-    if (queue.length === 0) return;
-    const single = queue.length === 1 ? (queue[0]?.id ?? null) : null;
-
-    setArchiveAction({ kind: "confirming", completed: 0, total: 0, documentId: single });
-    let completed = 0;
-    let total = 0;
-    try {
-      for (const document of queue) {
-        const response = await apiRequest<DocumentFactsResponse>(
-          documentFactsPath(familyId, profileId, document.id),
-        );
-        const confirmable = response.items.filter(canBulkConfirmFact);
-        total += confirmable.length;
-        setArchiveAction({ kind: "confirming", completed, total, documentId: single });
-        for (const fact of confirmable) {
-          await apiRequest<FactReviewResponse>(
-            `${documentFactsPath(familyId, profileId, document.id)}/${encodeURIComponent(fact.id)}/review`,
-            {
-              method: "POST",
-              headers: { "Idempotency-Key": crypto.randomUUID() },
-              body: JSON.stringify({ factVersion: fact.factVersion, decision: "confirm" }),
-            },
-          );
-          completed += 1;
-          setArchiveAction({ kind: "confirming", completed, total, documentId: single });
-        }
-      }
-      setArchiveAction({ kind: "idle" });
-      await loadOverview();
-    } catch {
-      setArchiveAction({
-        kind: "error",
-        copy:
-          completed === 0
-            ? "Не удалось начать подтверждение. Ни одно значение не изменено."
-            : `Подтверждено ${completed} из ${total}. Остальные значения не изменены; повторите действие.`,
-      });
-      await loadOverview();
-    }
-  }
-
-  async function restartDocuments(documents: readonly ProfileOverviewDocument[]): Promise<void> {
-    const targets = documents.filter(isRestartable);
-    if (targets.length === 0) return;
-    const single = targets.length === 1 ? (targets[0]?.id ?? null) : null;
-
-    setArchiveAction({ kind: "restarting", documentId: single });
-    try {
-      for (const document of targets) {
-        await apiRequest<DocumentProcessingRestartResponse>(
-          `${documentProcessingPath(familyId, profileId, document.id)}/restart`,
-          { method: "POST", headers: { "Idempotency-Key": crypto.randomUUID() } },
-        );
-      }
-      setArchiveAction({ kind: "idle" });
-      await loadOverview();
-    } catch {
-      setArchiveAction({
-        kind: "error",
-        copy: "Не удалось перезапустить разбор. Исходники не изменены; повторите действие.",
-      });
-      await loadOverview();
-    }
-  }
 
   const loadOverview = useCallback(
     async (signal?: AbortSignal): Promise<void> => {
@@ -3450,42 +3177,6 @@ function ProfileOverviewPanel({
     return () => window.clearTimeout(timer);
   }, [refreshOverview, state]);
 
-  useEffect(() => {
-    const query = searchQuery.trim();
-    if (view !== "documents" || query.length < 2) {
-      setSearchState({ kind: "idle" });
-      return;
-    }
-
-    const controller = new AbortController();
-    setSearchState({ kind: "loading", query });
-    const timeout = window.setTimeout(
-      () => {
-        void apiRequest<unknown>(buildDocumentSearchPath(familyId, profileId, query), {
-          signal: controller.signal,
-        })
-          .then((response) => {
-            if (!controller.signal.aborted) {
-              setSearchState({
-                kind: "ready",
-                query,
-                documents: normalizeDocumentSearchResponse(response),
-              });
-            }
-          })
-          .catch(() => {
-            if (!controller.signal.aborted) setSearchState({ kind: "error", query });
-          });
-      },
-      searchRevision === 0 ? 260 : 0,
-    );
-
-    return () => {
-      controller.abort();
-      window.clearTimeout(timeout);
-    };
-  }, [familyId, profileId, searchQuery, searchRevision, view]);
-
   return (
     <section
       id={view === "dashboard" ? "profile-dashboard" : "document-archive"}
@@ -3506,11 +3197,8 @@ function ProfileOverviewPanel({
           bulkConfirmProgress={null}
           bulkConfirmError={null}
           restartAllPending={false}
-          searchQuery={searchQuery}
-          onSearchChange={(query) => {
-            setSearchRevision(0);
-            setSearchQuery(query);
-          }}
+          searchQuery=""
+          onSearchChange={() => undefined}
           onUpload={onUpload}
           onConfirmAll={() => undefined}
           onRestartFailed={() => undefined}
@@ -3542,180 +3230,14 @@ function ProfileOverviewPanel({
         view === "dashboard" ? (
           <ProfileDashboard overview={state.overview} onUpload={onUpload} />
         ) : (
-          <>
-            <DocumentsHero
-              canWrite={canWriteProfile}
-              summary={buildDocumentsArchiveHero(state.overview, queueRows(state.overview).length)}
-              bulkConfirmPending={archiveAction.kind === "confirming"}
-              bulkConfirmProgress={
-                archiveAction.kind === "confirming" && archiveAction.documentId === null
-                  ? `Подтверждаем ${archiveAction.completed} из ${archiveAction.total}…`
-                  : null
-              }
-              bulkConfirmError={archiveAction.kind === "error" ? archiveAction.copy : null}
-              restartAllPending={archiveAction.kind === "restarting"}
-              searchQuery={searchQuery}
-              onSearchChange={(query) => {
-                setSearchRevision(0);
-                setSearchQuery(query);
-              }}
-              onUpload={onUpload}
-              onConfirmAll={() => void confirmDocuments(state.overview.reviewQueue.documents)}
-              onRestartFailed={() => void restartDocuments(restartTargets(state.overview))}
-            />
-            <div className="document-library__toolbar">
-              <div className="document-library__tools">
-                <div className="document-library__stats">
-                  <span>
-                    <strong>{state.overview.recentDocuments.length}</strong>в архиве
-                  </span>
-                  <span>
-                    <strong>{state.overview.reviewQueue.documentCount}</strong>
-                    {awaitingReviewVerb(state.overview.reviewQueue.documentCount)}
-                  </span>
-                </div>
-                {canWriteProfile ? (
-                  <details className="profile-overview__exports">
-                    <summary>Экспорт источников</summary>
-                    <div>
-                      <p className="profile-overview__export">
-                        <a
-                          className="text-link"
-                          href={`${apiPrefix}${evidenceBundlePath(familyId, profileId)}`}
-                          download
-                        >
-                          Скачать локальный пакет источников
-                        </a>
-                        <span>До 5 синтетических исходников; это не резервная копия.</span>
-                      </p>
-                      <p className="profile-overview__export">
-                        <a
-                          className="text-link"
-                          href={`${apiPrefix}${portableProfileExportPath(familyId, profileId)}`}
-                          download
-                        >
-                          Скачать полный synthetic-экспорт профиля
-                        </a>
-                        <span>
-                          Все источники и подтверждённые записи в пределах локального лимита.
-                        </span>
-                      </p>
-                    </div>
-                  </details>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="profile-overview__sections">
-              <section
-                className="profile-overview__section"
-                aria-labelledby="overview-documents-title"
-                aria-busy={searchState.kind === "loading"}
-              >
-                <header className="archive-list__heading">
-                  <div>
-                    <h3 id="overview-documents-title">
-                      {searchState.kind === "ready"
-                        ? archiveDocumentCountCopy(searchState.documents.length)
-                        : "Документы"}
-                    </h3>
-                    <p>
-                      {searchState.kind === "idle"
-                        ? "Сначала — источники, которые ждут решения. Значения без замечаний можно подтвердить сразу; с замечаниями открываются по одному."
-                        : `Результаты поиска по запросу «${searchState.kind === "loading" ? searchState.query : searchState.kind === "ready" || searchState.kind === "error" ? searchState.query : ""}».`}
-                    </p>
-                  </div>
-                  {searchState.kind === "idle" && state.overview.reviewQueue.documentCount > 0 ? (
-                    <dl className="archive-list__totals">
-                      <div>
-                        <dt>Ждут решения</dt>
-                        <dd>
-                          {archiveValueCountCopy(state.overview.reviewQueue.pendingFactCount)}
-                        </dd>
-                      </div>
-                      <div>
-                        <dt>Документов</dt>
-                        <dd>{state.overview.reviewQueue.documentCount}</dd>
-                      </div>
-                    </dl>
-                  ) : null}
-                </header>
-                {searchState.kind === "loading" ? (
-                  <div className="document-search-state" role="status">
-                    <span className="document-search-state__spinner" aria-hidden="true" />
-                    <div>
-                      <strong>Ищем по саммари и результатам</strong>
-                      <p>Запрос «{searchState.query}» проверяется в локальном архиве.</p>
-                    </div>
-                  </div>
-                ) : null}
-                {searchState.kind === "error" ? (
-                  <div className="document-search-state document-search-state--error" role="alert">
-                    <div>
-                      <strong>Поиск временно недоступен</strong>
-                      <p>Архив не изменён. Можно повторить тот же запрос.</p>
-                    </div>
-                    <button
-                      className="button button--secondary"
-                      type="button"
-                      onClick={() => setSearchRevision((current) => current + 1)}
-                    >
-                      Повторить
-                    </button>
-                  </div>
-                ) : null}
-                {searchState.kind === "ready" && searchState.documents.length === 0 ? (
-                  <div className="profile-overview__empty document-search-empty" role="status">
-                    <Search size={20} aria-hidden="true" />
-                    <p>По запросу «{searchState.query}» ничего не найдено.</p>
-                    <button
-                      className="text-link text-link--button"
-                      type="button"
-                      onClick={() => setSearchQuery("")}
-                    >
-                      Показать весь архив
-                    </button>
-                  </div>
-                ) : null}
-                {searchState.kind === "idle" && state.overview.recentDocuments.length === 0 ? (
-                  <div className="profile-overview__empty" role="status">
-                    <p>
-                      Исходников пока нет. Загрузите PDF, PNG или JPEG — до 20 файлов по 5 МБ за
-                      раз. Codex подготовит значения для вашей проверки, а оригиналы останутся
-                      неизменными.
-                    </p>
-                    {canWriteProfile ? (
-                      <button className="button button--secondary" type="button" onClick={onUpload}>
-                        <FileUp size={16} aria-hidden="true" />
-                        Загрузить первый документ
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
-                {searchState.kind === "idle" && state.overview.recentDocuments.length > 0 ? (
-                  <ArchiveRows
-                    rows={archiveRows(state.overview)}
-                    canWrite={canWriteProfile}
-                    action={archiveAction}
-                    onConfirm={(entry) => void confirmDocuments([entry])}
-                    onRestart={(document) => void restartDocuments([document])}
-                  />
-                ) : null}
-                {searchState.kind === "ready" && searchState.documents.length > 0 ? (
-                  <ArchiveRows
-                    rows={archiveRows({
-                      ...state.overview,
-                      recentDocuments: searchState.documents,
-                    })}
-                    canWrite={canWriteProfile}
-                    action={archiveAction}
-                    onConfirm={(entry) => void confirmDocuments([entry])}
-                    onRestart={(document) => void restartDocuments([document])}
-                  />
-                ) : null}
-              </section>
-            </div>
-          </>
+          <DocumentsWorkspace
+            familyId={familyId}
+            profileId={profileId}
+            canWrite={canWriteProfile}
+            overview={state.overview}
+            onReload={refreshOverview}
+            onUpload={onUpload}
+          />
         )
       ) : null}
     </section>
