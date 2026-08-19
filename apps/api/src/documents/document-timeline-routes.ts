@@ -39,9 +39,10 @@ export function registerDocumentTimelineRoutes(
           type: "object",
           additionalProperties: false,
           properties: {
-            // Shape only; the calendar day is the service's 422.
+            // Shape only; the calendar day and the 1..MAX_DOCUMENT_TIMELINE_DAYS bound are the
+            // service's 422, so the page size lives in the contract constant alone.
             before: { type: "string", minLength: 10, maxLength: 10 },
-            limit: { type: "string", pattern: "^(?:[1-9]|[1-4][0-9]|50)$" },
+            limit: { type: "string", pattern: "^[0-9]{1,3}$" },
           },
         },
       },

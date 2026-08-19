@@ -186,6 +186,9 @@ test("the timeline shows reviewed documents by effective date in whole-day pages
         `${query}: ${refused.statusCode}`,
       );
     }
+    // The page size lives in MAX_DOCUMENT_TIMELINE_DAYS alone: the route checks shape, the
+    // service refuses a day count past the contract's bound.
+    assert.equal((await get("?limit=51")).statusCode, 422);
     const stranger = await app.inject({
       method: "GET",
       url: `${base}/documents/timeline`,
