@@ -22,8 +22,14 @@ export interface NewPatientProfile {
 }
 
 async function takenHandles(client: DatabaseClient, base: string): Promise<Set<string>> {
+  // `withSuffix` clips a long base before appending `-2` … `-9999`, so a stored handle may share
+  // only the first 25 characters of `base` (30 - the longest possible suffix). Matching that
+  // clipped prefix too keeps a long base's taken set complete; it may be a superset, never short.
   const rows = await client.query<{ handle: string }>(
-    "SELECT handle FROM patient_profiles WHERE handle = $1 COLLATE NOCASE OR handle LIKE $2",
+    `SELECT handle FROM patient_profiles
+      WHERE handle = $1 COLLATE NOCASE
+         OR handle LIKE $2
+         OR handle LIKE substr($1, 1, 25) || '%'`,
     [base, `${base}-%`],
   );
   return new Set(rows.rows.map((row) => row.handle.toLowerCase()));

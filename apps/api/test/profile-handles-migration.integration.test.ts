@@ -4,6 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { MAX_PROFILE_HANDLE_LENGTH } from "@veylta/contracts";
 import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
 import { backfillProfileHandles, createPatientProfile } from "../src/family/patient-profiles.js";
@@ -140,6 +141,76 @@ test("0038: existing profiles get provisional handles, the backfill applies the 
     const again = await database.query<{ handle: string }>("SELECT handle FROM patient_profiles");
     assert.equal(again.rows.length, 4);
     assert.ok(again.rows.every((row) => /^p-[0-9a-f]{12}$/.test(row.handle)));
+  } finally {
+    await database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("handles: three profiles whose derived base shares its first 30 characters still get distinct handles", async () => {
+  const root = await mkdtemp(join(tmpdir(), "veylta-handles-clip-"));
+  const database = createDatabase(join(root, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const { userId, familyId, now } = await seedFamily(database, "clip");
+    const username = "a".repeat(MAX_PROFILE_HANDLE_LENGTH);
+    const handles: string[] = [];
+    for (let index = 0; index < 3; index += 1) {
+      const handle = await database.transaction((client) =>
+        createPatientProfile(client, {
+          id: randomUUID(),
+          familyId,
+          displayName: `Clip profile ${index}`,
+          kind: "dependent",
+          linkedUserId: null,
+          createdByUserId: userId,
+          createdAt: now,
+          username,
+        }),
+      );
+      handles.push(handle);
+    }
+    // A 30-character base collides with itself; the suffix clips the base to fit, so the taken
+    // check must recognize the clipped prefix too, or the third insert hits the unique index.
+    assert.deepEqual(handles, [
+      username,
+      `${username.slice(0, 28)}-2`,
+      `${username.slice(0, 28)}-3`,
+    ]);
+  } finally {
+    await database.close();
+    await rm(root, { force: true, recursive: true });
+  }
+});
+
+test("handles: the backfill never rewrites a handle_set_by = 'person' row, even one that looks provisional", async () => {
+  const root = await mkdtemp(join(tmpdir(), "veylta-handles-person-"));
+  const database = createDatabase(join(root, "test.sqlite"));
+  try {
+    await migrateUp(database);
+    const { userId, familyId, now } = await seedFamily(database, "person");
+    const profileId = randomUUID();
+    await database.transaction((client) =>
+      client.query(
+        `INSERT INTO patient_profiles
+           (id, family_id, display_name, kind, linked_user_id, created_by_user_id, created_at,
+            handle, handle_set_by)
+         VALUES ($1, $2, 'Person Chosen', 'adult', NULL, $3, $4, $5, 'person')`,
+        [profileId, familyId, userId, now, "p-abc123def456"],
+      ),
+    );
+    const rewritten = await backfillProfileHandles(database);
+    assert.equal(
+      rewritten,
+      0,
+      "a person-set handle is never touched, even a provisional-looking one",
+    );
+    const after = await database.query<{ handle: string; handle_set_by: string }>(
+      "SELECT handle, handle_set_by FROM patient_profiles WHERE id = $1",
+      [profileId],
+    );
+    assert.equal(after.rows[0]?.handle, "p-abc123def456");
+    assert.equal(after.rows[0]?.handle_set_by, "person");
   } finally {
     await database.close();
     await rm(root, { force: true, recursive: true });

@@ -1,11 +1,28 @@
 import { createHash } from "node:crypto";
 import {
+  MAX_PROFILE_HANDLE_LENGTH,
   MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
   SYNTHETIC_EVIDENCE_BUNDLE_CONTRACT_VERSION,
   SYNTHETIC_PROFILE_EXPORT_CONTRACT_VERSION,
 } from "@veylta/contracts";
+
+export { EvidenceBundleVerificationError } from "./evidence-bundle-field-parsers.js";
+
+import {
+  fail,
+  hasExactKeys,
+  isRecord,
+  nullableBoundedString,
+  nullableStoredText,
+  nullableTimestamp,
+  requiredBoundedString,
+  requiredCanonicalUuid,
+  requiredStoredText,
+  requiredString,
+  requiredTimestamp,
+} from "./evidence-bundle-field-parsers.js";
 
 const tarBlockBytes = 512;
 const maximumManifestBytes = 8 * 1024 * 1024;
@@ -19,13 +36,6 @@ const documentPathPattern =
 const checksumPattern = /^[a-f0-9]{64}$/;
 const canonicalCodePattern = /^[a-z0-9][a-z0-9._-]{0,99}$/;
 const maximumObservationCount = MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS * 100;
-
-export class EvidenceBundleVerificationError extends Error {
-  constructor() {
-    super("Evidence bundle verification failed");
-    this.name = "EvidenceBundleVerificationError";
-  }
-}
 
 export interface EvidenceBundleVerification {
   contractVersion:
@@ -53,70 +63,6 @@ interface VerifiedManifest {
   contractVersion: EvidenceBundleVerification["contractVersion"];
   documents: Map<string, VerifiedDocument>;
   observationCount: number;
-}
-
-function fail(): never {
-  throw new EvidenceBundleVerificationError();
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
-  const keys = Object.keys(value).sort();
-  const sortedExpected = [...expected].sort();
-  return (
-    keys.length === sortedExpected.length &&
-    keys.every((key, index) => key === sortedExpected[index])
-  );
-}
-
-function requiredString(value: unknown, maximum: number): string {
-  if (typeof value !== "string" || value.length === 0 || value.length > maximum) fail();
-  return value;
-}
-
-function nullableBoundedString(value: unknown, maximum: number): string | null {
-  if (value === null) return null;
-  const string = requiredString(value, maximum);
-  if (string !== string.trim()) fail();
-  return string;
-}
-
-function nullableStoredText(value: unknown, maximum: number): string | null {
-  if (value === null) return null;
-  return requiredString(value, maximum);
-}
-
-function requiredBoundedString(value: unknown, maximum: number): string {
-  const string = nullableBoundedString(value, maximum);
-  if (string === null) fail();
-  return string;
-}
-
-function requiredStoredText(value: unknown, maximum: number): string {
-  const string = nullableStoredText(value, maximum);
-  if (string === null) fail();
-  return string;
-}
-
-function requiredCanonicalUuid(value: unknown): string {
-  const uuid = requiredString(value, 36);
-  if (!/^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(uuid)) fail();
-  return uuid;
-}
-
-function requiredTimestamp(value: unknown): string {
-  const timestamp = requiredString(value, 30);
-  const parsed = new Date(timestamp);
-  if (!Number.isFinite(parsed.getTime()) || parsed.toISOString() !== timestamp) fail();
-  return timestamp;
-}
-
-function nullableTimestamp(value: unknown): string | null {
-  if (value === null) return null;
-  return requiredTimestamp(value);
 }
 
 function tarChecksum(header: Buffer): number {
@@ -375,13 +321,14 @@ function verifyManifest(bundle: Buffer): VerifiedManifest {
   requiredTimestamp(parsed.exportedAt);
   if (
     !isRecord(parsed.profile) ||
-    !hasExactKeys(parsed.profile, ["createdAt", "displayName", "familyId", "id", "kind"])
+    !hasExactKeys(parsed.profile, ["createdAt", "displayName", "familyId", "handle", "id", "kind"])
   ) {
     fail();
   }
   requiredCanonicalUuid(parsed.profile.id);
   requiredCanonicalUuid(parsed.profile.familyId);
   requiredString(parsed.profile.displayName, 120);
+  requiredString(parsed.profile.handle, MAX_PROFILE_HANDLE_LENGTH);
   if (parsed.profile.kind !== "adult" && parsed.profile.kind !== "dependent") fail();
   requiredTimestamp(parsed.profile.createdAt);
   if (

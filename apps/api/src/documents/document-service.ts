@@ -507,13 +507,8 @@ interface DocumentIntelligenceRow extends DocumentIntelligenceSummaryRow {
   structured_results_json: string;
 }
 
-interface ProfileOverviewProfileRow {
-  id: string;
-  family_id: string;
-  display_name: string;
-  kind: string;
+interface ProfileOverviewProfileRow extends EvidenceBundleProfileRow {
   access: string;
-  created_at: string;
 }
 
 interface ProfileOverviewQueueRow {
@@ -528,6 +523,7 @@ interface EvidenceBundleProfileRow {
   display_name: string;
   kind: string;
   created_at: string;
+  handle: string;
 }
 
 interface EvidenceBundleDocumentRow extends DocumentRow {}
@@ -1249,6 +1245,7 @@ function profileOverviewProfile(row: ProfileOverviewProfileRow): PatientProfileS
     id: requiredCanonicalUuid(row.id, "overview profile"),
     familyId: requiredCanonicalUuid(row.family_id, "overview family"),
     displayName: requiredBoundedString(row.display_name, 120, "overview profile name"),
+    handle: requiredBoundedString(row.handle, 30, "overview profile handle"),
     kind: row.kind,
     access: row.access,
     createdAt: canonicalTimestamp(row.created_at),
@@ -1301,6 +1298,7 @@ function evidenceBundleProfile(
     id: requiredCanonicalUuid(row.id, "export profile"),
     familyId: requiredCanonicalUuid(row.family_id, "export family"),
     displayName: requiredBoundedString(row.display_name, 120, "export profile name"),
+    handle: requiredBoundedString(row.handle, 30, "export profile handle"),
     kind: row.kind,
     createdAt: canonicalTimestamp(row.created_at),
   };
@@ -2770,7 +2768,7 @@ export function createDocumentService(
       await requireProfileWriteAccess(client, actor, scope.familyId, scope.profileId);
       const profile = (
         await client.query<EvidenceBundleProfileRow>(
-          `SELECT id, family_id, display_name, kind, created_at
+          `SELECT id, family_id, display_name, kind, created_at, COALESCE(handle, 'p-' || lower(substr(replace(id, '-', ''), 1, 12))) AS handle
              FROM patient_profiles
             WHERE family_id = $1 AND id = $2 AND archived_at IS NULL`,
           [scope.familyId, scope.profileId],
@@ -3587,7 +3585,7 @@ export function createDocumentService(
                     p.family_id,
                     p.display_name,
                     p.kind,
-                    p.created_at,
+                    p.created_at, COALESCE(p.handle, 'p-' || lower(substr(replace(p.id, '-', ''), 1, 12))) AS handle,
                     CASE
                       WHEN m.role = 'owner' THEN 'owner'
                       WHEN m.role = 'adult_member' AND p.linked_user_id = m.user_id THEN 'self'

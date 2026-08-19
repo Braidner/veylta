@@ -12,6 +12,17 @@ import {
   verifySyntheticProfileArchive,
 } from "./evidence-bundle-verifier.js";
 
+function syntheticProfile(): SyntheticEvidenceBundleManifest["profile"] {
+  return {
+    id: "00000000-0000-4000-8000-000000000001",
+    familyId: "00000000-0000-4000-8000-000000000002",
+    displayName: "Synthetic profile",
+    handle: "synthetic-profile",
+    kind: "adult",
+    createdAt: "2026-08-12T00:00:00.000Z",
+  };
+}
+
 function bundleFor(
   contentType: SyntheticDocumentContentType,
   source: Buffer,
@@ -22,13 +33,7 @@ function bundleFor(
     manifest: {
       contractVersion: "synthetic-evidence-bundle/v1",
       exportedAt: "2026-08-12T00:00:00.000Z",
-      profile: {
-        id: "00000000-0000-4000-8000-000000000001",
-        familyId: "00000000-0000-4000-8000-000000000002",
-        displayName: "Synthetic profile",
-        kind: "adult",
-        createdAt: "2026-08-12T00:00:00.000Z",
-      },
+      profile: syntheticProfile(),
       documents: [
         {
           id: documentId,
@@ -70,13 +75,7 @@ test("verifies a complete synthetic profile archive only through its dedicated c
     manifest: {
       contractVersion: "synthetic-profile-export/v1",
       exportedAt: "2026-08-13T00:00:00.000Z",
-      profile: {
-        id: "00000000-0000-4000-8000-000000000001",
-        familyId: "00000000-0000-4000-8000-000000000002",
-        displayName: "Synthetic profile",
-        kind: "adult",
-        createdAt: "2026-08-12T00:00:00.000Z",
-      },
+      profile: syntheticProfile(),
       documents: [],
       observations: [],
     },
@@ -102,13 +101,7 @@ test("verifies a source-first confirmed observation bound to an archived documen
     manifest: {
       contractVersion: "synthetic-evidence-bundle/v1",
       exportedAt: "2026-08-12T00:00:00.000Z",
-      profile: {
-        id: "00000000-0000-4000-8000-000000000001",
-        familyId: "00000000-0000-4000-8000-000000000002",
-        displayName: "Synthetic profile",
-        kind: "adult",
-        createdAt: "2026-08-12T00:00:00.000Z",
-      },
+      profile: syntheticProfile(),
       documents: [
         {
           id: documentId,

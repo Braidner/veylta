@@ -19,6 +19,7 @@ import { createDatabase, databaseReadiness } from "./database/pool.js";
 import { createDocumentService } from "./documents/document-service.js";
 import { registerDocumentRoutes } from "./documents/routes.js";
 import { createFamilyService } from "./family/family-service.js";
+import { registerProfileHandleRoutes } from "./family/profile-handle-routes.js";
 import { registerFamilyRoutes } from "./family/routes.js";
 import { createMedicalProfileService } from "./medical-profile/medical-profile-service.js";
 import { registerMedicalProfileRoutes } from "./medical-profile/routes.js";
@@ -68,6 +69,9 @@ registerAccountRoutes(
 registerFamilyRoutes(app, familyService, {
   allowedMutationOrigins: config.webOrigins,
   demoRegistrationEnabled: config.demoRegistrationEnabled,
+});
+registerProfileHandleRoutes(app, familyService, database, {
+  allowedMutationOrigins: config.webOrigins,
 });
 registerHomeSettingsRoutes(
   app,

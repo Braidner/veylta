@@ -6,6 +6,8 @@ ALTER TABLE patient_profiles ADD COLUMN handle TEXT COLLATE NOCASE CHECK (
   handle IS NULL
   OR (
     length(handle) BETWEEN 3 AND 30
+    -- `handle = lower(handle)` is inert under COLLATE NOCASE (SQLite compares it case-insensitively
+    -- either way); the GLOB clauses below are what actually forbid an upper-case character.
     AND handle = lower(handle)
     AND handle GLOB '[a-z0-9]*'
     AND handle NOT GLOB '*[^a-z0-9-]*'

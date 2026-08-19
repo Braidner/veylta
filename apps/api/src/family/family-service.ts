@@ -30,7 +30,8 @@ import {
   type SessionResponse,
 } from "@veylta/contracts";
 import { type Database, type DatabaseClient, isSqliteConstraintError } from "../database/pool.js";
-import { createPatientProfile } from "./patient-profiles.js";
+import { cookieValue } from "./cookie-header.js";
+import { createPatientProfile, provisionalHandleSql } from "./patient-profiles.js";
 
 export class ResourceNotFoundError extends Error {}
 export class DomainConflictError extends Error {}
@@ -145,6 +146,7 @@ interface ProfileRow {
   id: string;
   family_id: string;
   display_name: string;
+  handle: string;
   kind: PatientProfileKind;
   access: PatientProfileAccess;
   created_at: string;
@@ -282,6 +284,7 @@ function profileSummary(row: ProfileRow): PatientProfileSummary {
     id: row.id,
     familyId: row.family_id,
     displayName: row.display_name,
+    handle: row.handle,
     kind: row.kind,
     access: row.access,
     createdAt: new Date(row.created_at).toISOString(),
@@ -311,18 +314,6 @@ function consentGrant(row: ConsentGrantRow): ProfileConsentGrant {
     grantee: consentMember(row),
     createdAt: new Date(row.created_at).toISOString(),
   };
-}
-
-function cookieValue(header: string | undefined, name: string): string | null {
-  if (header === undefined) return null;
-  for (const part of header.split(";")) {
-    const separator = part.indexOf("=");
-    if (separator < 1) continue;
-    if (part.slice(0, separator).trim() === name) {
-      return part.slice(separator + 1).trim();
-    }
-  }
-  return null;
 }
 
 async function audit(
@@ -379,7 +370,8 @@ async function profilesFor(
   userId: string,
 ): Promise<PatientProfileSummary[]> {
   const result = await client.query<ProfileRow>(
-    `SELECT id, family_id, display_name, kind, 'owner' AS access, created_at
+    `SELECT id, family_id, display_name, kind, 'owner' AS access, created_at,
+            COALESCE(handle, ${provisionalHandleSql}) AS handle
      FROM patient_profiles
      WHERE family_id = $1 AND archived_at IS NULL
      ORDER BY CASE WHEN linked_user_id = $2 THEN 0 ELSE 1 END, created_at, id`,
@@ -399,7 +391,8 @@ async function profilesForGrantedUser(
             p.display_name,
             p.kind,
             CASE WHEN p.linked_user_id = $2 THEN 'self' ELSE 'granted_read' END AS access,
-            p.created_at
+            p.created_at,
+            COALESCE(p.handle, 'p-' || lower(substr(replace(p.id, '-', ''), 1, 12))) AS handle
        FROM patient_profiles p
        LEFT JOIN profile_consent_grants g
          ON g.family_id = p.family_id
@@ -469,7 +462,7 @@ export function createFamilyService(
       const now = new Date();
       const created = await database.transaction(async (client) => {
         await requireOwner(client, actor, familyId);
-        const row: ProfileRow = {
+        const row: Omit<ProfileRow, "handle"> = {
           id: randomUUID(),
           family_id: familyId,
           display_name: displayName,
@@ -477,7 +470,7 @@ export function createFamilyService(
           access: "owner",
           created_at: now.toISOString(),
         };
-        await createPatientProfile(client, {
+        const handle = await createPatientProfile(client, {
           id: row.id,
           familyId,
           displayName: row.display_name,
@@ -496,7 +489,7 @@ export function createFamilyService(
           correlationId,
           createdAt: now,
         });
-        return row;
+        return { ...row, handle };
       });
       return profileSummary(created);
     },
@@ -685,6 +678,7 @@ export function createFamilyService(
         profile: randomUUID(),
         session: randomUUID(),
       };
+      let profileHandle: string | null = null;
       const result = await database.transaction(async (client) => {
         const invitation = (
           await client.query<InvitationRow>(
@@ -716,7 +710,7 @@ export function createFamilyService(
           [ids.membership, invitation.family_id, ids.user, invitation.role, now],
         );
         if (invitation.role === "adult_member") {
-          await createPatientProfile(client, {
+          profileHandle = await createPatientProfile(client, {
             id: ids.profile,
             familyId: invitation.family_id,
             displayName: profileName ?? "",
@@ -774,6 +768,7 @@ export function createFamilyService(
               id: ids.profile,
               familyId: result.family.id,
               displayName: profileName ?? "",
+              handle: profileHandle ?? "",
               kind: "adult",
               access: "self",
               createdAt: now.toISOString(),
@@ -1118,6 +1113,7 @@ export function createFamilyService(
         session: randomUUID(),
       };
 
+      let profileHandle = "";
       try {
         await database.transaction(async (client) => {
           await client.query(
@@ -1140,7 +1136,7 @@ export function createFamilyService(
              VALUES ($1, $2, $3, 'owner', 'active', $4)`,
             [ids.membership, ids.family, ids.user, now],
           );
-          await createPatientProfile(client, {
+          profileHandle = await createPatientProfile(client, {
             id: ids.profile,
             familyId: ids.family,
             displayName: profileName,
@@ -1195,6 +1191,7 @@ export function createFamilyService(
         id: ids.profile,
         familyId: ids.family,
         displayName: profileName,
+        handle: profileHandle,
         kind: "adult",
         access: "owner",
         createdAt: now.toISOString(),

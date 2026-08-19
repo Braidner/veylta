@@ -8,6 +8,7 @@ import { buildApp } from "../src/app.js";
 import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
 import { createFamilyService } from "../src/family/family-service.js";
+import { registerProfileHandleRoutes } from "../src/family/profile-handle-routes.js";
 import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createMedicalProfileService } from "../src/medical-profile/medical-profile-service.js";
 import { registerMedicalProfileRoutes } from "../src/medical-profile/routes.js";
@@ -67,6 +68,7 @@ export async function startMedicalProfileApp(): Promise<{
     allowedMutationOrigins: [webOrigin],
     demoRegistrationEnabled: true,
   });
+  registerProfileHandleRoutes(app, family, database, { allowedMutationOrigins: [webOrigin] });
   registerMedicalProfileRoutes(app, family, createMedicalProfileService(database), {
     allowedMutationOrigins: [webOrigin],
   });

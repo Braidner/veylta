@@ -198,7 +198,7 @@ export function createHomeSettingsService(
             now,
           ],
         );
-        await createPatientProfile(client, {
+        const handle = await createPatientProfile(client, {
           id: ids.profile,
           familyId: family.family_id,
           displayName,
@@ -238,6 +238,7 @@ export function createHomeSettingsService(
             id: ids.profile,
             familyId: family.family_id,
             displayName,
+            handle,
             kind: "adult",
             access: input.role === "admin" ? "owner" : "self",
             createdAt: now.toISOString(),

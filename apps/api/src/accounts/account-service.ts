@@ -174,7 +174,7 @@ export function createAccountService(
         membership: randomUUID(),
         profile: randomUUID(),
       };
-      await database.transaction(async (client) => {
+      const handle = await database.transaction(async (client) => {
         const accounts = await client.query<{ count: number }>(
           "SELECT count(*) AS count FROM app_accounts",
         );
@@ -200,7 +200,7 @@ export function createAccountService(
              VALUES ($1, $2, $3, 'owner', 'active', $4)`,
           [ids.membership, ids.family, ids.user, session.now],
         );
-        await createPatientProfile(client, {
+        const profileHandle = await createPatientProfile(client, {
           id: ids.profile,
           familyId: ids.family,
           displayName,
@@ -242,6 +242,7 @@ export function createAccountService(
           correlationId,
           createdAt: session.now,
         });
+        return profileHandle;
       });
       const user: AppAccountUser = { id: ids.user, username, displayName, role: "admin" };
       return {
@@ -258,6 +259,7 @@ export function createAccountService(
             id: ids.profile,
             familyId: ids.family,
             displayName,
+            handle,
             kind: "adult",
             access: "owner",
             createdAt: session.now.toISOString(),
