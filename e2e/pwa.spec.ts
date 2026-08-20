@@ -44,7 +44,9 @@ test("the service worker offers only a safe offline shell", async ({ context, pa
   });
   expect(cachedRequests).toContain("/offline.html");
   expect(
-    cachedRequests.some((path) => path.includes("health-api") || path.includes("documents")),
+    cachedRequests.some(
+      (path) => path.includes("health-api") || path.includes("documents") || path.includes("/docs"),
+    ),
   ).toBe(false);
 
   await context.setOffline(true);

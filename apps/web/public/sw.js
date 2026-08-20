@@ -27,7 +27,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname.startsWith("/health-api/")) {
+  // Never intercept API bytes or a document page (/<handle>/docs/<id>): a reader on a
+  // document must see the network's truth, never anything a worker chose to serve.
+  if (url.pathname.startsWith("/health-api/") || url.pathname.includes("/docs/")) {
     return;
   }
 
