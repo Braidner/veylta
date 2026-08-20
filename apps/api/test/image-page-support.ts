@@ -1,21 +1,27 @@
+import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import {
   DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
   LAB_EXTRACTION_SCHEMA_VERSION,
 } from "@veylta/contracts";
+import type { FastifyInstance } from "fastify";
 import type { Database } from "../src/database/pool.js";
 import {
   CODEX_DOCUMENT_INTELLIGENCE_VERSION,
   CodexDocumentIntelligenceError,
 } from "../src/processing/codex-document-intelligence-provider.js";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
+import {
+  createDocumentExtractionProcessor,
+  type DocumentExtractionProcessorDependencies,
+} from "../src/processing/document-extraction-processor.js";
 import type {
   DocumentIntelligenceInput,
   DocumentIntelligenceProvider,
 } from "../src/processing/document-intelligence-provider.js";
+import { extractPdfTextLayer } from "../src/processing/pdf-text-extractor.js";
 import type { StrictLabExtractionFact } from "../src/processing/synthetic-lab-parser.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import type { Identity } from "./family-app.js";
+import { type Identity, webOrigin } from "./family-app.js";
 import { SYNTHETIC_VISION_TRANSCRIPTION } from "./synthetic-intelligence.js";
 
 export const imagePageFixtureUrl = new URL(
@@ -49,7 +55,13 @@ function fact(factKey: string, pageNumber: number, fragment: string): StrictLabE
  * the fact printed in that transcription. Both bind their fragments to real lines, so the run
  * meets the same verification a live answer does.
  */
-export function scriptedIntelligence(options: { refuseVision?: boolean } = {}): {
+export function scriptedIntelligence(
+  options: {
+    refuseVision?: boolean;
+    /** A line the text pass reads as a fact wherever it is printed — a caption on a picture page. */
+    textFactLine?: string;
+  } = {},
+): {
   calls: Array<"text" | "vision">;
   provider: DocumentIntelligenceProvider;
 } {
@@ -73,12 +85,15 @@ export function scriptedIntelligence(options: { refuseVision?: boolean } = {}): 
       ...page,
       textSha256: createHash("sha256").update(page.text, "utf8").digest("hex"),
     }));
-    const items = pages.flatMap((page) =>
-      page.text
-        .split("\n")
+    const caption = options.textFactLine;
+    const items = pages.flatMap((page) => {
+      const lines = page.text.split("\n");
+      const printed = lines
         .filter((line) => line.startsWith("FACT|"))
-        .map((line) => fact(line.slice("FACT|".length), page.pageNumber, line)),
-    );
+        .map((line) => fact(line.slice("FACT|".length), page.pageNumber, line));
+      if (images.length > 0 || caption === undefined || !lines.includes(caption)) return printed;
+      return [...printed, fact(`caption-page-${page.pageNumber}`, page.pageNumber, caption)];
+    });
     return {
       pages,
       extraction: {
@@ -104,15 +119,30 @@ export function scriptedIntelligence(options: { refuseVision?: boolean } = {}): 
   return { calls, provider: { analyze } };
 }
 
+/**
+ * The text pass as Veylta ran it before it could see a picture: every page reports no raster
+ * image, so `imageOnlyPages` names none and no second pass follows. It is how the documents
+ * already in a household's database were read.
+ */
+export const blindToPictures: NonNullable<
+  DocumentExtractionProcessorDependencies["extractText"]
+> = async (bytes, extractOptions) =>
+  (await extractPdfTextLayer(bytes, extractOptions)).map((page) => ({
+    ...page,
+    hasRasterImage: false,
+  }));
+
 export async function processOne(
   database: Database,
   storageRoot: string,
   intelligence: DocumentIntelligenceProvider,
+  overrides: Pick<DocumentExtractionProcessorDependencies, "extractText"> = {},
 ): Promise<{ factCount: number; status: string }> {
   const processed = await createDocumentExtractionProcessor({
     database,
     storage: createLocalObjectStorage(storageRoot),
     intelligence,
+    ...(overrides.extractText === undefined ? {} : { extractText: overrides.extractText }),
   }).processNext({
     workerId: `worker-${randomUUID()}`,
     leaseDurationMs: 60_000,
@@ -122,6 +152,25 @@ export async function processOne(
     status: processed.status,
     factCount: processed.status === "completed" ? processed.factCount : 0,
   };
+}
+
+/** Asks for a fresh analysis of the same document version, the way the document page does. */
+export async function restartAnalysis(
+  app: FastifyInstance,
+  owner: Identity,
+  documentId: string,
+  idempotencyKey: string,
+): Promise<void> {
+  const restarted = await app.inject({
+    method: "POST",
+    url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${documentId}/processing/restart`,
+    headers: {
+      cookie: owner.cookie,
+      origin: webOrigin,
+      "idempotency-key": idempotencyKey.padEnd(16, "_"),
+    },
+  });
+  assert.equal(restarted.statusCode, 202, restarted.rawPayload.toString());
 }
 
 export interface StoredPage {

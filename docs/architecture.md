@@ -108,12 +108,16 @@ both. What is new is a second run. A page inside a text PDF may paint a picture
 and print almost nothing — a densitometry curve with a header and a caption —
 and the text pass reads nothing from it. After a successful text pass the worker
 renders exactly those pages (a raster image and fewer than
-`IMAGE_ONLY_PAGE_TEXT_CHARACTERS` characters, minus every page that already
-yielded a fact or result) and analyses them as images in a second, page-scoped
-run under their true page numbers. The two results merge into one analysis: the
-transcribed page replaces the text page of its number, items concatenate with
-repeated keys settled deterministically, and the text pass keeps the document's
-title, category and summaries. The second pass is best-effort — a refusal, a
+`IMAGE_ONLY_PAGE_TEXT_CHARACTERS` characters, minus every page something has
+already been read from — a fact or result of this pass, or a fact, observation
+or confirmed clinician record an earlier run left on it) and analyses them as
+images in a second, page-scoped run under their true page numbers. The two
+results merge into one analysis: the transcribed page replaces the text page of
+its number, items concatenate with repeated keys settled deterministically, and
+the text pass keeps the document's title, category and summaries. Replacing that
+page row is how a document analysed before this existed reaches the second pass
+at all: page provenance is immutable for anything that was read from it, and a
+page nothing was read from may take the better reading under its own row id. The second pass is best-effort — a refusal, a
 provider error or more picture pages than one bounded run may carry leaves the
 text pass's result whole and records each page it could not read with a closed
 reason from `DOCUMENT_PAGE_UNREAD_REASONS` in `document_pages.unread_reason`.
@@ -296,7 +300,10 @@ required. Shared code is extracted only when two real consumers need it.
   in the first slice.
 - Exhausted Task 5 work moves to a visible dead-letter state.
 - A user-requested restart creates another job/run/result chain. Latest-result
-  projections move forward without deleting or rewriting prior provenance.
+  projections move forward without deleting or rewriting prior provenance. The
+  one row a later run may rewrite is a `document_pages` row nothing has been
+  read from, and only into a vision reading of the same page or a different
+  unread reason; the update trigger enforces the guard in the database.
 - Every real queue, claim, stage, completion, retry, and terminal-failure
   transition also appends one closed-code `ProcessingJobEvent`. That timeline
   exposes only code, attempt number, and timestamp; it is never token streaming

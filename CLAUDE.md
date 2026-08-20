@@ -174,7 +174,9 @@ layer travels as text — but a page may paint a raster image and print almost n
 text pass reads nothing from it. `pdf-text-extractor.ts` `imageOnlyPages` is the one rule that
 names such a page (a raster image and fewer than `IMAGE_ONLY_PAGE_TEXT_CHARACTERS` characters);
 after a successful text pass `processing/extraction-merge.ts` (`readImagePages`) subtracts every
-page that already yielded a fact or result, renders the rest with
+page something has already been read from — this pass's own facts and results plus
+`processing/document-page-evidence.ts` `pagesAlreadyRead` (a fact of any run bound to the page
+row, an observation standing on one, a clinician record confirmed off that page) —, renders the rest with
 `renderPdfPagesToImages(bytes, { pages })` under their true page numbers, and analyses them in a
 second, page-scoped run. The two merge into one `ProcessingExtractionOutput`: the transcribed page
 replaces the text page of its number (`codex_vision`), items concatenate with repeated keys
@@ -183,7 +185,13 @@ Best-effort: a refusal, a provider error or more picture pages than one bounded 
 leaves the text pass whole and records each page it could not read as
 `DocumentIntelligenceOutput.unreadPages` with a closed `DOCUMENT_PAGE_UNREAD_REASONS` code
 (`image_page_limit`, `vision_unavailable`), stored on `document_pages.unread_reason` (migration
-0041) by `processing/document-page-rows.ts`. The document projection carries one
+0041) by `processing/document-page-rows.ts`. That module is also where a page row may change:
+`writeAnalysisPages` decides per page through `pageWriteDecision` — a page nothing was read from
+takes the new reading (a text-layer page becomes the vision transcription; the unread reason moves)
+under the same row id every fact binds by, a page something was read from keeps its stored
+provenance, a later text pass never un-reads a transcription, and a text page whose text merely
+differs is still a conflict. Migration 0042 narrows the `document_pages` update trigger to the same
+guard, so the database refuses what the rule refuses. The document projection carries one
 `DocumentPageReading` per page — number, `extractionMethod`, `unreadReason` —
 (`documents/document-page-readings.ts`), and the document page's rail card «Страницы»
 (`app/document-pages.ts` → `components/document-source-rail.tsx`) says in fixed Russian which
@@ -535,6 +543,12 @@ YOU MUST NOT relax these to make a feature easier.
 - `ExtractedFact` is untrusted model output and is never mutated. A `ReviewDecision` is
   immutable; `confirm`/`correct` create an `Observation` in the same transaction, `reject`
   creates none.
+- Page provenance is immutable **for anything that was read from it**: a page a fact of any run
+  binds to, an observation stands on, or a confirmed clinician record cites keeps its stored text
+  and method for ever — a fragment must stay findable in the page it names. A page nothing was
+  read from is not evidence yet, so a later analysis may replace its reading in place, under the
+  same row id: only a text-layer page becoming the vision pass's transcription, and the closed
+  unread reason beside it. Two text passes that disagree about one page remain a conflict.
 - Reject a Codex extraction unless every fact cites an exact source fragment with a page
   number. Fail closed rather than accept an unbound fact. Verification is per item: an
   unbound fact or summary result is dropped, the verified rest is kept, and only an answer

@@ -7,7 +7,6 @@ import {
   DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
   type DocumentIntelligenceResult,
   type DocumentIntelligenceStructuredResult,
-  type DocumentPageUnreadReason,
   type DocumentProcessingEventCode,
   LAB_EXTRACTION_SCHEMA_VERSION,
   MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
@@ -20,7 +19,7 @@ import type {
   DocumentIntelligenceExchange,
   DocumentIntelligenceOutput,
 } from "./document-intelligence-provider.js";
-import { insertOrVerifyPage } from "./document-page-rows.js";
+import { analysisPageWrites, writeAnalysisPages } from "./document-page-rows.js";
 import {
   InvalidProcessingOutputError,
   InvalidProcessingStageTransitionError,
@@ -849,17 +848,6 @@ function pageId(job: LeasedProcessingJob, page: ParsedDocumentPage): string {
   return stableId("page", job.familyId, job.documentVersionId, page.pageNumber);
 }
 
-/**
- * Why this analysis could not read a page, by page number. Only an output merged out of several
- * passes fills it; one provider run reads every page it was given.
- */
-function unreadReasons(
-  output: ProcessingExtractionOutput,
-): ReadonlyMap<number, DocumentPageUnreadReason> {
-  const unread = "unreadPages" in output ? (output.unreadPages ?? []) : [];
-  return new Map(unread.map((page) => [page.pageNumber, page.reason]));
-}
-
 function runId(
   job: LeasedProcessingJob,
   extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
@@ -1390,16 +1378,12 @@ export function createProcessingJobService(
             now,
           ],
         );
-        const unread = unreadReasons(output);
-        for (const page of output.pages) {
-          const unreadReason = unread.get(page.pageNumber) ?? null;
-          await insertOrVerifyPage(
-            client,
-            claim,
-            { id: pageId(claim, page), page, unreadReason },
-            now,
-          );
-        }
+        await writeAnalysisPages(
+          client,
+          claim,
+          analysisPageWrites(output, (page) => pageId(claim, page)),
+          now,
+        );
         for (const fact of output.extraction.items) {
           await insertOrVerifyFact(
             client,

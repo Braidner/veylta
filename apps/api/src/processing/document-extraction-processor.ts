@@ -1,27 +1,18 @@
 import type { DatabaseClient } from "../database/pool.js";
-import {
-  type ObjectStorage,
-  ObjectStorageIntegrityError,
-  ObjectStorageNotFoundError,
-  ObjectStorageSecurityError,
-  ObjectStorageValidationError,
-} from "../storage/object-storage.js";
+import type { ObjectStorage } from "../storage/object-storage.js";
 import { loadAnalyteCatalogForPrompt } from "./analyte-mapping.js";
 import { CodexDocumentIntelligenceError } from "./codex-document-intelligence-provider.js";
 import { checkedDirectImage } from "./direct-image.js";
 import {
   type DirectImageContentType,
-  DocumentImageError,
   type DocumentImageRenderOptions,
   type DocumentPageImage,
   renderPdfPagesToImages,
 } from "./document-images.js";
 import type { DocumentIntelligenceProvider } from "./document-intelligence-provider.js";
-import {
-  DocumentSourceUnavailableError,
-  loadDocumentBytes,
-  sourceForClaim,
-} from "./document-source.js";
+import { pagesAlreadyRead } from "./document-page-evidence.js";
+import { loadDocumentBytes, sourceForClaim } from "./document-source.js";
+import { failureCode } from "./extraction-failure-code.js";
 import { readImagePages } from "./extraction-merge.js";
 import {
   type ExtractedPdfPage,
@@ -31,7 +22,6 @@ import {
 } from "./pdf-text-extractor.js";
 import {
   createProcessingJobService,
-  InvalidProcessingOutputError,
   type LeasedProcessingJob,
   type ProcessingCompletion,
   type ProcessingErrorCode,
@@ -121,35 +111,6 @@ function transactionalDatabase(database: DatabaseClient): TransactionalProcessin
     throw new Error("A transactional database is required when a job coordinator is not supplied");
   }
   return database as TransactionalProcessingDatabase;
-}
-
-function failureCode(error: unknown): ProcessingErrorCode {
-  if (
-    error instanceof DocumentSourceUnavailableError ||
-    error instanceof ObjectStorageNotFoundError ||
-    error instanceof ObjectStorageIntegrityError ||
-    error instanceof ObjectStorageSecurityError ||
-    error instanceof ObjectStorageValidationError
-  ) {
-    return "DOCUMENT_UNAVAILABLE";
-  }
-  if (error instanceof PdfTextExtractionError) {
-    if (error.code === "INVALID_PDF") return "INVALID_DOCUMENT";
-    if (error.code === "TEXT_LAYER_MISSING" || error.code === "PDF_LIMIT_EXCEEDED") {
-      return "EXTRACTION_FAILED";
-    }
-  }
-  if (error instanceof DocumentImageError) {
-    return error.code === "INVALID_DOCUMENT" ? "INVALID_DOCUMENT" : "EXTRACTION_FAILED";
-  }
-  if (error instanceof SyntheticLabParseError) {
-    return "VALIDATION_FAILED";
-  }
-  if (error instanceof CodexDocumentIntelligenceError) {
-    return error.code === "PROVIDER_UNAVAILABLE" ? "AGENT_UNAVAILABLE" : "AGENT_OUTPUT_INVALID";
-  }
-  if (error instanceof InvalidProcessingOutputError) return "VALIDATION_FAILED";
-  return "EXTRACTION_FAILED";
 }
 
 async function advance(
@@ -247,13 +208,15 @@ export function createDocumentExtractionProcessor(
           });
           // A page that carries a picture and hardly any text was read by nothing: a second,
           // page-scoped run reads it as an image into the same analysis. One run sends text
-          // or images, never both, so this is a run of its own.
+          // or images, never both, so this is a run of its own. A page an earlier run read
+          // something from keeps the provenance that reading cites, so it is never sent.
           output =
             images.length > 0
               ? analyzed
               : await readImagePages({
                   analyzed,
                   pages,
+                  alreadyRead: await pagesAlreadyRead(dependencies.database, claim),
                   bytes,
                   render: renderPdfImages,
                   analyze: (attached) =>

@@ -11,21 +11,23 @@ import {
   type DocumentPageImage,
 } from "./document-images.js";
 import type { DocumentAnalysis, UnreadDocumentPage } from "./document-intelligence-provider.js";
+import { pagesReadByAnalysis } from "./document-page-evidence.js";
 import { type ExtractedPdfPage, imageOnlyPages } from "./pdf-text-extractor.js";
 import type { ParsedDocumentPage } from "./synthetic-lab-parser.js";
 
 /**
  * The picture pages a second, vision run should read: the ones `imageOnlyPages` names, minus
- * every page the text pass already produced a verified fact or structured result on. A page
- * that yielded evidence has been read, whatever its character count — re-reading it would
- * spend a Codex call to replace verified text-layer provenance with a transcription of the
- * same page. The subtraction is a safety rule, not an optimisation.
+ * every page something has already been read from — a fact or structured result of this text
+ * pass, or one an earlier run of the same document left behind. A page that yielded evidence
+ * has been read, whatever its character count, and its stored provenance may no longer move,
+ * so a call spent transcribing it would buy a transcription nothing could accept.
  */
-function candidatePages(pages: readonly ExtractedPdfPage[], analyzed: DocumentAnalysis): number[] {
-  const read = new Set<number>();
-  for (const item of analyzed.extraction.items) read.add(item.source.pageNumber);
-  for (const result of analyzed.intelligence.structuredResults) read.add(result.source.pageNumber);
-  return imageOnlyPages(pages).filter((pageNumber) => !read.has(pageNumber));
+function candidatePages(pass: ImagePageSecondPass): number[] {
+  const read = new Set([
+    ...pagesReadByAnalysis(pass.analyzed),
+    ...(pass.alreadyRead ?? new Set<number>()),
+  ]);
+  return imageOnlyPages(pass.pages).filter((pageNumber) => !read.has(pageNumber));
 }
 
 /**
@@ -115,6 +117,8 @@ export interface ImagePageSecondPass {
   readonly analyzed: DocumentAnalysis;
   /** The text pass's own pages, carrying what it saw of how each one was drawn. */
   readonly pages: readonly ExtractedPdfPage[];
+  /** Pages an earlier run already read something from; their provenance is fixed. */
+  readonly alreadyRead?: ReadonlySet<number>;
   readonly bytes: Uint8Array;
   readonly render: (
     bytes: Uint8Array,
@@ -129,7 +133,7 @@ export interface ImagePageSecondPass {
  * the document nothing but those pages, which then say why they were never read.
  */
 export async function readImagePages(pass: ImagePageSecondPass): Promise<DocumentAnalysis> {
-  const candidates = candidatePages(pass.pages, pass.analyzed);
+  const candidates = candidatePages(pass);
   if (candidates.length === 0) return pass.analyzed;
   // A render that never returned leaves nothing behind the page cap: every candidate is unread.
   let sent: readonly number[] = candidates;
