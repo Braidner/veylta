@@ -10336,9 +10336,10 @@ body:has(.upload-dialog[open]) {
   content: "";
 }
 
+/* Centred on the date's own line — half a line box less half the dot — so it never rides high. */
 .document-timeline__date::before {
   position: absolute;
-  top: 0.3em;
+  top: calc(0.75em - 6px);
   left: -34px;
   width: 12px;
   height: 12px;
@@ -10349,14 +10350,23 @@ body:has(.upload-dialog[open]) {
 }
 
 /*
- * The reading cursor of a long record: the node crossing the viewport's middle is the one
- * being read — it takes full strength and a touch of size, its dot fills in, neighbours
- * recede. Scroll-driven, compositor-only; a browser without view() or a reader preferring
- * reduced motion keeps the static lente. transform-origin pins the left edge so the node's
- * dot never leaves the month's spine.
+ * The reading cursor of a long record: the node crossing the viewport's middle is the one being
+ * read — it grows to full size and strength, its dot fills and swells, the spine marks it, and
+ * the entries around it step back. Scrolling settles on one document at a time. Scroll-driven and
+ * compositor-only; a browser without view() or a reader preferring reduced motion keeps the
+ * static lente. transform-origin pins the left edge so the node's dot never leaves the spine.
  */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
+    /*
+     * Scrolling comes to rest with one document in the middle of the screen. Proximity, not
+     * mandatory: the reader may still stop anywhere, and the hero and the queue above — which
+     * carry no snap points — scroll as they always did.
+     */
+    html:has(.document-timeline--scroll-focus) {
+      scroll-snap-type: y proximity;
+    }
+
     /*
      * Exactly the room the oldest document needs to reach the middle of the viewport — half a
      * screen less its own block. Without it the last entry ends its scroll recessed and can
@@ -10368,6 +10378,7 @@ body:has(.upload-dialog[open]) {
 
     .document-timeline--scroll-focus .document-timeline__node {
       transform-origin: left center;
+      scroll-snap-align: center;
       animation: document-timeline-focus linear both;
       animation-timeline: view();
     }
@@ -10383,61 +10394,54 @@ body:has(.upload-dialog[open]) {
     }
 
     /*
-     * Pointing at a receded document, or tabbing into one, is intent: it comes forward at once
-     * and stays readable, so no control is ever operated through a blur.
+     * Tabbing into a stepped-back document brings it forward: a keyboard reader must see where
+     * they are. The pointer does not — hovering is not reading, and a document that jumped
+     * forward under the cursor would fight the one the scroll has settled on.
      */
-    .document-timeline--scroll-focus .document-timeline__node:hover,
     .document-timeline--scroll-focus .document-timeline__node:focus-within {
       opacity: 1;
-      filter: none;
       transform: none;
       animation: none;
     }
 
-    .document-timeline--scroll-focus .document-timeline__node:hover::after,
     .document-timeline--scroll-focus .document-timeline__node:focus-within::after {
       opacity: 1;
       animation: none;
     }
 
     .document-timeline--scroll-focus
-      .document-timeline__node:hover
-      .document-timeline__date::before,
-    .document-timeline--scroll-focus
       .document-timeline__node:focus-within
       .document-timeline__date::before {
       background: var(--color-primary);
       border-color: var(--color-primary);
+      transform: none;
       animation: none;
     }
   }
 }
 
 /*
- * A trapezoid, not a ramp: a document is held recessed, comes forward over a short stretch of
- * scroll, owns the reading band alone, and recedes again. The steep sides are what keep exactly
- * one entry lit — a linear ramp would leave its neighbours half-lit and the focus unreadable.
+ * A trapezoid, not a ramp: a document is held stepped back, comes forward over a short stretch of
+ * scroll, owns the reading band alone, and steps back again. The steep sides are what keep exactly
+ * one entry forward — a linear ramp would leave its neighbours half-lit and the focus unreadable.
  */
 @keyframes document-timeline-focus {
   0%,
   30% {
-    opacity: 0.32;
-    filter: blur(3px);
-    transform: scale(0.9);
+    opacity: 0.3;
+    transform: scale(0.86);
   }
 
   43%,
   57% {
     opacity: 1;
-    filter: blur(0);
-    transform: scale(1);
+    transform: scale(1.04);
   }
 
   70%,
   100% {
-    opacity: 0.32;
-    filter: blur(3px);
-    transform: scale(0.9);
+    opacity: 0.3;
+    transform: scale(0.86);
   }
 }
 
@@ -10458,19 +10462,22 @@ body:has(.upload-dialog[open]) {
   }
 }
 
+/* The mark on the spine is alive: it swells and fills as its document takes the reading band. */
 @keyframes document-timeline-dot {
   0%,
   30% {
     background: var(--color-canvas);
     border-color: var(--color-line);
     box-shadow: 0 0 0 0 transparent;
+    transform: scale(0.75);
   }
 
   43%,
   57% {
     background: var(--color-primary);
     border-color: var(--color-primary);
-    box-shadow: 0 0 0 5px oklch(0.5 0.2 268 / 13%);
+    box-shadow: 0 0 0 6px oklch(0.5 0.2 268 / 12%);
+    transform: scale(1.2);
   }
 
   70%,
@@ -10478,6 +10485,7 @@ body:has(.upload-dialog[open]) {
     background: var(--color-canvas);
     border-color: var(--color-line);
     box-shadow: 0 0 0 0 transparent;
+    transform: scale(0.75);
   }
 }
 
