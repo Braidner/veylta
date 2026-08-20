@@ -32,8 +32,14 @@ export function DocumentTimeline({
   const groups: readonly TimelineGroup[] = grouped
     ? timelineGroups(nodes)
     : [{ key: "search", label: "", yearMarker: null, nodes }];
+  // The scroll focus is a reading cursor for a LONG record; a lente of a few documents barely
+  // scrolls, and a lone node would sit dimmed forever, so the effect arms from four nodes up.
+  const scrollFocus = nodes.length >= 4 ? " document-timeline--scroll-focus" : "";
   return (
-    <section className="document-timeline" aria-labelledby="document-timeline-title">
+    <section
+      className={`document-timeline${scrollFocus}`}
+      aria-labelledby="document-timeline-title"
+    >
       {heading === undefined ? (
         <h3 id="document-timeline-title" className="visually-hidden">
           Лента документов

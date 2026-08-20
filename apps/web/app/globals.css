@@ -10281,9 +10281,14 @@ body:has(.upload-dialog[open]) {
   letter-spacing: -0.01em;
 }
 
+/* The month sticks just under its year and yields to the next month's title. */
 .document-timeline__month-title {
-  padding: 8px 0 0 24px;
+  position: sticky;
+  z-index: 2;
+  top: 146px;
+  padding: 8px 0 6px 24px;
   margin: 0;
+  background: var(--color-canvas);
   color: var(--color-muted);
   font-size: 0.8125rem;
   font-weight: 650;
@@ -10313,6 +10318,54 @@ body:has(.upload-dialog[open]) {
   border: 2px solid var(--color-primary);
   border-radius: 50%;
   content: "";
+}
+
+/*
+ * The reading cursor of a long record: the node crossing the viewport's middle is the one
+ * being read — it takes full strength and a touch of size, its dot fills in, neighbours
+ * recede. Scroll-driven, compositor-only; a browser without view() or a reader preferring
+ * reduced motion keeps the static lente. transform-origin pins the left edge so the node's
+ * dot never leaves the month's spine.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .document-timeline--scroll-focus .document-timeline__node {
+      transform-origin: left center;
+      animation: document-timeline-focus linear both;
+      animation-timeline: view();
+    }
+
+    .document-timeline--scroll-focus .document-timeline__node::before {
+      animation: document-timeline-dot linear both;
+      animation-timeline: view();
+    }
+  }
+}
+
+@keyframes document-timeline-focus {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+
+  42%,
+  58% {
+    opacity: 1;
+    transform: scale(1.03);
+  }
+}
+
+@keyframes document-timeline-dot {
+  0%,
+  100% {
+    background: var(--color-canvas);
+  }
+
+  42%,
+  58% {
+    background: var(--color-primary);
+  }
 }
 
 .document-timeline__date {
