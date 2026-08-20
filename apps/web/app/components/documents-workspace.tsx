@@ -116,7 +116,7 @@ export function DocumentsWorkspace({
       {searchState.kind === "idle" && counts.total === 0 ? (
         <div className="profile-overview__empty" role="status">
           <p>
-            Исходников пока нет. Загрузите PDF, PNG или JPEG — до 20 файлов по 5 МБ за раз. Codex
+            Исходников пока нет. Загрузите PDF, PNG или JPEG — до 20 файлов по 100 МБ за раз. Codex
             подготовит значения для вашей проверки, а оригиналы останутся неизменными.
           </p>
           {canWrite ? (

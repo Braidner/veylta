@@ -94,7 +94,7 @@ test("public contracts carry explicit versions", () => {
   assert.equal(MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS, 10);
   assert.equal(MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE, 50);
   assert.equal(LAB_EXTRACTION_SCHEMA_VERSION, "lab-extraction/v1");
-  assert.equal(MAX_SYNTHETIC_PDF_BYTES, 5 * 1024 * 1024);
+  assert.equal(MAX_SYNTHETIC_PDF_BYTES, 100 * 1024 * 1024);
   assert.equal(MAX_SYNTHETIC_DOCUMENT_BYTES, MAX_SYNTHETIC_PDF_BYTES);
 });
 

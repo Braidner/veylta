@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import { loadConfig } from "./config.js";
 import { withEnvironment } from "./test-support/with-environment.js";
 
@@ -70,11 +71,14 @@ test("trusted web origins are an explicit exact allowlist", () => {
 });
 
 test("the configured document limit cannot exceed the contract and database boundary", () => {
-  withEnvironment({ MAX_DOCUMENT_BYTES: "5242881" }, () => {
-    assert.throws(() => loadConfig(), /MAX_DOCUMENT_BYTES must not exceed 5242880/);
+  withEnvironment({ MAX_DOCUMENT_BYTES: String(MAX_SYNTHETIC_DOCUMENT_BYTES + 1) }, () => {
+    assert.throws(
+      () => loadConfig(),
+      new RegExp(`MAX_DOCUMENT_BYTES must not exceed ${MAX_SYNTHETIC_DOCUMENT_BYTES}`),
+    );
   });
   withEnvironment({ MAX_DOCUMENT_BYTES: undefined }, () => {
-    assert.equal(loadConfig().maxDocumentBytes, 5 * 1024 * 1024);
+    assert.equal(loadConfig().maxDocumentBytes, MAX_SYNTHETIC_DOCUMENT_BYTES);
   });
 });
 

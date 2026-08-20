@@ -1,6 +1,5 @@
 import { fileURLToPath } from "node:url";
 import { type Canvas, createCanvas, loadImage, type SKRSContext2D } from "@napi-rs/canvas";
-import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import {
   getDocument,
   type PageViewport,
@@ -15,6 +14,14 @@ import {
 export const DOCUMENT_IMAGE_RENDER_VERSION = `pdfjs-dist/${pdfjsVersion}+napi-rs-canvas/1.0.5`;
 export const MAXIMUM_DOCUMENT_IMAGE_PIXELS = 2_000_000;
 export const MAXIMUM_DOCUMENT_IMAGE_PAGES = 3;
+/**
+ * The largest source `renderPdfPagesToImages`/`checkedDirectImage` will hand to pdf.js/canvas
+ * for rasterisation. This is a different question from what the household may keep in storage
+ * (`MAX_SYNTHETIC_DOCUMENT_BYTES` in `@veylta/contracts`): pulling a source near the storage
+ * ceiling into memory whole to rasterise it would strain the renderer, so the vision path stays
+ * bounded well under that ceiling regardless of how large an upload the household may keep.
+ */
+export const MAX_DOCUMENT_IMAGE_SOURCE_BYTES = 32 * 1024 * 1024;
 
 const maximumTotalPixels = 4_000_000;
 const maximumImageHeaderBytes = 128 * 1024;
@@ -95,7 +102,7 @@ export async function renderPdfPagesToImages(pdfBytes: Uint8Array): Promise<Docu
   ) {
     throw new DocumentImageError("INVALID_DOCUMENT");
   }
-  if (pdfBytes.byteLength > MAX_SYNTHETIC_DOCUMENT_BYTES) {
+  if (pdfBytes.byteLength > MAX_DOCUMENT_IMAGE_SOURCE_BYTES) {
     throw new DocumentImageError("IMAGE_LIMIT_EXCEEDED");
   }
   const parameters: RenderParameters = {
@@ -204,7 +211,7 @@ export async function checkedDirectImage(
   ) {
     throw new DocumentImageError("INVALID_DOCUMENT");
   }
-  if (bytes.byteLength > MAX_SYNTHETIC_DOCUMENT_BYTES) {
+  if (bytes.byteLength > MAX_DOCUMENT_IMAGE_SOURCE_BYTES) {
     throw new DocumentImageError("IMAGE_LIMIT_EXCEEDED");
   }
   const expected = contentType === "image/png" ? pngDimensions(bytes) : jpegDimensions(bytes);

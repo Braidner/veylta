@@ -1982,7 +1982,7 @@ function ProfileWorkspace({
     });
     setDocumentError(
       rejected.length > 0
-        ? `Не добавлены: ${rejected.join(", ")}. Нужны PDF, PNG или JPEG до 5 МБ.`
+        ? `Не добавлены: ${rejected.join(", ")}. Нужны PDF, PNG или JPEG до 100 МБ.`
         : valid.length > 20
           ? "За один раз можно загрузить не больше 20 документов."
           : null,
@@ -1998,7 +1998,7 @@ function ProfileWorkspace({
   function uploadFailureMessage(error: unknown) {
     if (error instanceof ApiError) {
       if (error.status === 413 || error.code === "PAYLOAD_TOO_LARGE") {
-        return "Файл превышает лимит 5 МБ. Выберите документ меньшего размера.";
+        return "Файл превышает лимит 100 МБ. Выберите документ меньшего размера.";
       }
       if (
         error.code === "INVALID_DOCUMENT_SIGNATURE" ||
@@ -4236,7 +4236,7 @@ function DocumentUploadDialog({
               <span>Можно добавить ещё — до 20 документов за раз</span>
             </span>
           )}
-          <span className="upload-dropzone__formats">PDF · PNG · JPEG · до 5 МБ</span>
+          <span className="upload-dropzone__formats">PDF · PNG · JPEG · до 100 МБ</span>
         </label>
 
         {selectedFiles.length > 0 ? (
