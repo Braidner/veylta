@@ -28,9 +28,12 @@ const historyPages = 8;
 /** How many confirmed values the page reads at most — what the truncation note tells the reader. */
 export const historyValueCap = historyPageLimit * historyPages;
 
-/** A profile the actor may not read answers 404 — the reader is told where to go, not to retry. */
+/**
+ * A profile this session may not read answers 404, an expired session 401 — in both cases the
+ * reader is told where to go rather than to retry, as every other panel of the shell says it.
+ */
 function historyErrorCopy(error: unknown): string {
-  return error instanceof ApiError && error.status === 404
+  return error instanceof ApiError && [401, 404].includes(error.status)
     ? "История этого профиля недоступна. Вернитесь к доступному профилю и попробуйте снова."
     : "Не удалось загрузить историю. Подтверждённые значения и исходные документы не изменены.";
 }

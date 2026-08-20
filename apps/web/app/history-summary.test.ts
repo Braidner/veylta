@@ -3,6 +3,7 @@ import test from "node:test";
 import { buildDossierSeries } from "./dossier";
 import { observation } from "./dossier.fixture";
 import {
+  defaultPeriodFor,
   defaultSelectionKey,
   historyPeriodLabel,
   historySummary,
@@ -17,6 +18,23 @@ test("period starts are UTC month arithmetic; «всё» has no bound", () => {
   assert.equal(periodStart("12m", now), "2025-08-20T12:00:00.000Z");
   assert.equal(periodStart("all", now), null);
   assert.equal(historyPeriodLabel["12m"], "Год");
+});
+
+test("a period's day is clamped to a shorter target month, never rolled into the next one", () => {
+  const endOfAugust = new Date("2026-08-31T12:00:00.000Z");
+  assert.equal(periodStart("6m", endOfAugust), "2026-02-28T12:00:00.000Z");
+  assert.equal(periodStart("3m", endOfAugust), "2026-05-31T12:00:00.000Z");
+  // A leap February takes the 29th.
+  assert.equal(periodStart("6m", new Date("2024-08-31T12:00:00.000Z")), "2024-02-29T12:00:00.000Z");
+});
+
+test("the page opens on the narrowest period that still holds the latest value", () => {
+  const seriesAt = (at: string) =>
+    buildDossierSeries([observation({ id: "d", at })], null)[0] ?? null;
+  assert.equal(defaultPeriodFor(seriesAt("2026-06-20T12:00:00.000Z"), now), "3m", "two months old");
+  assert.equal(defaultPeriodFor(seriesAt("2025-12-20T12:00:00.000Z"), now), "12m", "eight months");
+  assert.equal(defaultPeriodFor(seriesAt("2024-08-20T12:00:00.000Z"), now), "all", "two years");
+  assert.equal(defaultPeriodFor(null, now), "all", "nothing measured");
 });
 
 test("the four buckets: moved out, returned, unchanged, first measured — by the dossier's status rule", () => {

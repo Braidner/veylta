@@ -14,11 +14,23 @@ export const historyPeriodLabel: Record<HistoryPeriod, string> = {
 
 const periodMonths: Record<Exclude<HistoryPeriod, "all">, number> = { "3m": 3, "6m": 6, "12m": 12 };
 
-/** The period's left edge as an ISO instant (UTC month arithmetic), or null for the whole record. */
+/** How many days the month of an instant holds — the clamp a shorter target month needs. */
+function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+}
+
+/**
+ * The period's left edge as an ISO instant (UTC month arithmetic), or null for the whole record.
+ * The day is clamped to the target month: six months before 31 August is 28 February, not 3 March
+ * — a rollover would silently widen the window past the period the reader chose.
+ */
 export function periodStart(period: HistoryPeriod, now: Date): string | null {
   if (period === "all") return null;
   const start = new Date(now.getTime());
+  const day = start.getUTCDate();
+  start.setUTCDate(1);
   start.setUTCMonth(start.getUTCMonth() - periodMonths[period]);
+  start.setUTCDate(Math.min(day, daysInMonth(start.getUTCFullYear(), start.getUTCMonth())));
   return start.toISOString();
 }
 
@@ -97,4 +109,18 @@ export function historySummary(
 export function defaultSelectionKey(series: readonly DossierSeries[]): string | null {
   const outside = series.find((entry) => isOutsideRange(entry.status));
   return (outside ?? series[0])?.key ?? null;
+}
+
+/**
+ * The window the page opens on: the narrowest period that still holds the indicator's latest
+ * value, so a record last measured a year ago is not shown as an empty three months. The reader's
+ * own choice replaces it and is never recomputed.
+ */
+export function defaultPeriodFor(series: DossierSeries | null, now: Date): HistoryPeriod {
+  const latest = series?.latest.at;
+  if (latest === undefined) return "all";
+  const bounded = HISTORY_PERIODS.filter(
+    (period): period is Exclude<HistoryPeriod, "all"> => period !== "all",
+  );
+  return bounded.find((period) => (periodStart(period, now) ?? "") <= latest) ?? "all";
 }

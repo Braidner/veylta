@@ -144,6 +144,10 @@ the opposite stance:
 </p>
 
 <p align="center">
+  <img src="docs/media/history.png" alt="История: «что изменилось» за период — счёт показателей, вышедших за референс и вернувшихся в него, слева каталог показателей, справа выбранный показатель на фоне референсной полосы своей лаборатории и таблица подтверждённых значений с источниками" width="900">
+</p>
+
+<p align="center">
   <img src="docs/media/assistant.png" alt="The physician assistant: a fixed urgency banner, then typed blocks — interpretation, a hypothesis with a referral, a treatment option, a question — each linking to the confirmed value's source page" width="900">
 </p>
 

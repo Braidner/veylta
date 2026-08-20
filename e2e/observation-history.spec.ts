@@ -58,6 +58,14 @@ function chartOf(page: Page, name: string) {
   return page.getByRole("img", { name: new RegExp(`^${name}: значения за период`) });
 }
 
+/**
+ * Which indicator the page is showing, asked without the calendar: the chart drops points outside
+ * the period, so only under «Всё» can a run years from now still expect one. The heading stands.
+ */
+function selectedIndicator(page: Page, name: string) {
+  return page.getByRole("heading", { name, level: 3 });
+}
+
 test("profile history shows confirmed and corrected observations with their authorized sources only", async ({
   page,
 }) => {
@@ -146,14 +154,13 @@ test("the summary counts the record's movement, the rail selects, the chart bind
   await expect(page.locator(".history-chart__point.is-within")).toHaveCount(1);
   await expect(page.locator(".history-chart__point.is-above")).toHaveCount(1);
 
-  // A point is its value's source: the document the value was confirmed from. Chromium measures
-  // a round-capped zero-length line as a zero-size box, so Playwright cannot see the dot it
-  // paints; the click goes to the point's own coordinates and the navigation that follows is the
-  // proof that the browser hit the link there.
-  await page.locator(".history-chart__point.is-above").click({ force: true });
+  // A point is its value's source: the document the value was confirmed from.
+  await page.locator(".history-chart__point.is-above").click();
   await expect(page).toHaveURL(/\/docs\/[0-9a-f-]{36}$/);
   await page.goBack();
-  await expect(chartOf(page, printedName)).toBeVisible();
+  // Back on a freshly mounted page the period is the default one, so the selection is asked for
+  // by its heading — the chart holds only what the period contains.
+  await expect(selectedIndicator(page, printedName)).toBeVisible();
 
   // Under the chart, the same values in full — each with the fragment and the source it came from.
   const values = page.getByRole("region", { name: "История подтверждённых значений" });
@@ -166,15 +173,21 @@ test("the summary counts the record's movement, the rail selects, the chart bind
   await expect(rail.locator("li")).toHaveCount(0);
   await expect(rail.getByText("По этому запросу показателей нет", { exact: false })).toBeVisible();
   await page.goto(`${profileUrl}/history?code=synthetic-analyte-a`);
-  await expect(chartOf(page, printedName)).toBeVisible();
+  await expect(selectedIndicator(page, printedName)).toBeVisible();
 
-  // The period switch re-renders the same page; nothing period-dependent is counted here.
+  // The period switch presses one button and only one; nothing period-dependent is asserted here.
   await summary.getByRole("button", { name: "3 мес" }).click();
   await expect(summary.getByRole("button", { name: "3 мес" })).toHaveAttribute(
     "aria-pressed",
     "true",
   );
-  await expect(chartOf(page, printedName)).toBeVisible();
+  for (const other of ["6 мес", "Год", "Всё"]) {
+    await expect(summary.getByRole("button", { name: other })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  }
+  await expect(selectedIndicator(page, printedName)).toBeVisible();
 });
 
 test("the page's anchors exist before its values do", async ({ page }) => {

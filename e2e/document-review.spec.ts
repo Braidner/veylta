@@ -307,12 +307,13 @@ test("missing critical fields can be handed to Codex and a mapped indicator show
   await expect(history.getByText("7.0 synthetic-unit", { exact: true })).toBeVisible();
   const fullHistory = history.getByRole("link", { name: "Открыть всю историю" });
   await expect(fullHistory).toHaveAttribute("href", /\/history\?code=synthetic-analyte-a/);
-  // The link lands on the history page with that indicator already chosen: its chart above, its
-  // confirmed values below — and only its own, never another indicator's.
+  // The link lands on the history page with that indicator already chosen — asked for by its
+  // heading, since the chart under the default period holds only what that period contains — and
+  // its confirmed values below, only its own and never another indicator's.
   await fullHistory.click();
   await expect(page).toHaveURL(/\/history\?code=synthetic-analyte-a/);
   await expect(
-    page.getByRole("img", { name: /^СИНТЕТИЧЕСКИЙ АНАЛИТ A: значения за период/ }),
+    page.getByRole("heading", { name: "СИНТЕТИЧЕСКИЙ АНАЛИТ A", level: 3 }),
   ).toBeVisible();
   const values = page.getByRole("region", { name: "История подтверждённых значений" });
   await expect(values.getByText("synthetic-analyte-a", { exact: true })).toBeVisible();

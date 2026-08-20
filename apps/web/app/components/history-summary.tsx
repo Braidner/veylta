@@ -45,6 +45,9 @@ export function HistorySummaryPanel({
             {countCopy(summary.measuredCount, ["показатель", "показателя", "показателей"])} с
             измерениями за период
           </p>
+          <p className="history-summary__rule">
+            Считаем по референсу лаборатории: вышло значение за референс или вернулось в него.
+          </p>
         </div>
         <fieldset className="history-summary__periods">
           <legend className="visually-hidden">Период</legend>

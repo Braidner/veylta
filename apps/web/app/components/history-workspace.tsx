@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { buildDossierSeries, type DossierSeries, seriesKeyOf } from "../dossier";
 import { formatSampleMoment } from "../format-moment";
 import { chooseSelectionKey } from "../history-selection";
-import type { HistoryPeriod } from "../history-summary";
+import { defaultPeriodFor, type HistoryPeriod } from "../history-summary";
 import { historyPath } from "../paths";
 import { useProfileHandle } from "../profile-route";
 import { type HistoryDataState, useHistoryData } from "../use-history-data";
@@ -41,14 +41,15 @@ export function HistoryWorkspace({
   const router = useRouter();
   const handle = useProfileHandle();
   const { state, reload } = useHistoryData({ familyId, profileId });
-  const [period, setPeriod] = useState<HistoryPeriod>("6m");
+  const [chosenPeriod, setPeriod] = useState<HistoryPeriod | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const selectedCode = useRef<string | null | undefined>(undefined);
 
   const items = state.kind === "ready" ? state.items : noItems;
   const sex = state.kind === "ready" ? state.sex : null;
   const series = useMemo(() => buildDossierSeries(items, sex), [items, sex]);
-  // The page reads one clock: the summary's window and the chart's axis are the same period.
+  // One clock for everything this page draws: the summary's window and the chart's axis read the
+  // same instant. (The data hook keeps its own for the passport; only `sex` comes from there.)
   const now = useMemo(() => new Date(), []);
 
   const chosen = useMemo(() => {
@@ -59,6 +60,13 @@ export function HistoryWorkspace({
     });
     return series.find((entry) => entry.key === key) ?? null;
   }, [series, selectedKey, requestedCanonicalCode]);
+
+  // The window opens on the values that exist and then belongs to the reader: it is resolved once,
+  // when the record arrives, and a later choice of indicator never moves it again.
+  const period = chosenPeriod ?? defaultPeriodFor(chosen, now);
+  useEffect(() => {
+    if (state.kind === "ready") setPeriod((current) => current ?? period);
+  }, [state.kind, period]);
 
   // A `?code=` arriving from elsewhere re-selects; the code this page has just written back does
   // not, so a unit chip chosen inside one code survives its own URL update.

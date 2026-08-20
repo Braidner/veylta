@@ -10522,6 +10522,15 @@ body:has(.upload-dialog[open]) {
   font-size: 0.875rem;
 }
 
+/* What the counts mean: the bucket reads the printed reference, the rail carries the numbers. */
+.history-summary__rule {
+  max-width: 62ch;
+  margin: 4px 0 0;
+  color: var(--color-muted);
+  font-size: 0.8125rem;
+  line-height: 1.5;
+}
+
 .history-summary__periods {
   display: inline-flex;
   gap: 4px;
@@ -10876,6 +10885,13 @@ body:has(.upload-dialog[open]) {
   stroke-linecap: round;
   stroke-width: 9;
   transition: stroke-width 160ms ease-out;
+}
+
+/* Painted but invisible: transparent still takes the pointer, `none` would not. */
+.history-chart__hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 18;
 }
 
 .history-chart__point:hover line {

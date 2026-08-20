@@ -120,6 +120,16 @@ function PointLink({
       aria-label={text}
     >
       <title>{text}</title>
+      {/* The target is wider than the dot: a transparent non-scaling stroke around a hair of a
+          circle, so the reach is measured in screen pixels and the stretched box cannot flatten
+          it. A zero-length line carries no client rectangle at all — no pointer would find it. */}
+      <circle
+        className="history-chart__hit"
+        cx={point.x}
+        cy={point.y}
+        r={0.1}
+        vectorEffect="non-scaling-stroke"
+      />
       <line x1={point.x} y1={point.y} x2={point.x} y2={point.y} vectorEffect="non-scaling-stroke" />
     </a>
   );
