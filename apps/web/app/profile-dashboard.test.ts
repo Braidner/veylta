@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProfileOverviewResponse } from "@veylta/contracts";
-import { buildProfileDashboardModel } from "./profile-dashboard";
+import { buildProfileDashboardModel, signalHref } from "./profile-dashboard";
 
 function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOverviewResponse {
   return {
@@ -17,7 +17,7 @@ function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOver
     },
     documentCount: 0,
     confirmedCount: 0,
-    outsideRangeCount: 0,
+    outsideIndicatorCount: 0,
     recentDocuments: [],
     reviewQueue: {
       documentCount: 0,
@@ -26,6 +26,31 @@ function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOver
       documents: [],
     },
     recentObservations: [],
+    ...overrides,
+  };
+}
+
+type OverviewDocument = ProfileOverviewResponse["recentDocuments"][number];
+
+function overviewDocument(overrides: Partial<OverviewDocument> = {}): OverviewDocument {
+  return {
+    id: "00000000-0000-4000-8000-000000000030",
+    originalFilename: "f754db29-cc7f-406a-9ed0-9f5c1d2e3a4b",
+    contentType: "application/pdf",
+    uploadedAt: "2026-08-16T09:00:00.000Z",
+    effectiveDate: { value: "2026-08-14", source: "document" },
+    intelligence: {
+      contractVersion: "document-intelligence/v2",
+      provider: "codex",
+      modelId: "synthetic",
+      runtimeVersion: "synthetic",
+      category: "laboratory",
+      title: "Общий анализ крови",
+      shortSummary: "Синтетический отчёт",
+      documentDate: "2026-08-14",
+      confidence: 0.9,
+    },
+    processing: { state: "completed", updatedAt: "2026-08-16T10:00:00.000Z", factCount: 6 },
     ...overrides,
   };
 }
@@ -58,59 +83,58 @@ test("medical navigator leads with the real review queue and source action", () 
   assert.equal(model.signals.pendingReview.tone, "attention");
 });
 
-test("health signals count only explicit source flags and never invent a score", () => {
-  const baseObservation = {
-    id: "00000000-0000-4000-8000-000000000010",
-    canonicalCode: null,
-    source: { name: "Глюкоза", value: "7.0", unit: "ммоль/л" },
-    normalized: { value: null, unit: null, conversionVersion: null },
-    dates: { sampledAt: null, resultedAt: null, uploadedAt: "2026-08-12T09:00:00.000Z" },
-    timelineAt: "2026-08-12T09:00:00.000Z",
-    specimenType: null,
-    laboratory: "Синтетическая лаборатория",
-    extractionConfidence: 0.98,
-    confirmed: {
-      at: "2026-08-12T10:00:00.000Z",
-      by: { id: "00000000-0000-4000-8000-000000000011", displayName: "Иван" },
-    },
-    sourceDocument: {
-      id: "00000000-0000-4000-8000-000000000012",
-      versionId: "00000000-0000-4000-8000-000000000013",
-      pageNumber: 1,
-      fragment: "SYNTHETIC TEST DATA",
-      contentPath: "/source",
-    },
-  } as const;
-  const model = buildProfileDashboardModel(
-    overview({
-      recentObservations: [
-        {
-          ...baseObservation,
-          referenceRange: {
-            sourceText: "3.9–6.1",
-            sourceLow: "3.9",
-            sourceHigh: "6.1",
-            sourceUnit: "ммоль/л",
-            laboratoryOutOfRange: true,
-            normalizedLow: null,
-            normalizedHigh: null,
-            normalizedUnit: null,
-            conversionVersion: null,
-          },
-        },
-        {
-          ...baseObservation,
-          id: "00000000-0000-4000-8000-000000000020",
-          referenceRange: null,
-        },
-      ],
-    }),
-  );
+/**
+ * The record is deliberately larger than what the response shows: `recentObservations` is empty
+ * and `recentDocuments` holds one entry, while the counts speak for 41 values and 12 documents.
+ * A tile derived from either capped list would print the wrong number here.
+ */
+const wholeRecord = overview({
+  documentCount: 12,
+  confirmedCount: 41,
+  outsideIndicatorCount: 3,
+  recentDocuments: [overviewDocument()],
+});
 
-  assert.equal(model.signals.sourceFlags.value, "1");
-  assert.match(model.signals.sourceFlags.detail, /диапазона источника/);
+test("the signals state the whole record, not the capped lists the response carries", () => {
+  const model = buildProfileDashboardModel(wholeRecord);
+
+  // Neither number can be reached from a list this response carries: one document, no observations.
+  assert.equal(wholeRecord.recentObservations.length, 0);
+  assert.equal(wholeRecord.recentDocuments.length, 1);
+  assert.equal(model.signals.outside.value, "3");
+  assert.equal(model.signals.outside.tone, "attention");
+  assert.equal(
+    model.signals.outside.detail,
+    "Показатели, чьё последнее значение вне печатного диапазона",
+  );
+  assert.equal(model.signals.confirmed.value, "41");
+  assert.equal(model.signals.confirmed.detail, "41 значение связано с источником");
+  assert.equal(model.signals.confirmed.tone, "positive");
+  assert.equal(model.signals.documents.value, "12");
+  assert.equal(model.signals.documents.detail, "Последний — 14 августа 2026 г.");
+  assert.equal(model.signals.documents.tone, "positive");
   assert.equal("score" in model, false);
   assert.equal("healthScore" in model, false);
+});
+
+test("an empty record says so on every tile and never turns attention on", () => {
+  const model = buildProfileDashboardModel(overview());
+
+  assert.equal(model.signals.outside.value, "0");
+  assert.equal(model.signals.outside.tone, "positive");
+  assert.equal(model.signals.outside.detail, "Все показатели в пределах диапазонов источников");
+  assert.equal(model.signals.confirmed.detail, "Нет подтверждённых значений");
+  assert.equal(model.signals.confirmed.tone, "neutral");
+  assert.equal(model.signals.documents.detail, "Архив пока пуст");
+  assert.equal(model.signals.documents.tone, "neutral");
+});
+
+test("only an outside tile above zero leads into the dossier", () => {
+  assert.equal(signalHref("outside", wholeRecord), "/ivan/dossier");
+  assert.equal(signalHref("outside", overview()), null);
+  assert.equal(signalHref("confirmed", wholeRecord), null);
+  assert.equal(signalHref("documents", wholeRecord), null);
+  assert.equal(signalHref("pendingReview", wholeRecord), null);
 });
 
 test("nutrition and movement assistants stay honest when context is absent", () => {
@@ -122,6 +146,6 @@ test("nutrition and movement assistants stay honest when context is absent", () 
   assert.equal(model.assistants[2]?.id, "movement");
   assert.match(model.assistants[2]?.message ?? "", /ограничения/i);
   assert.match(model.assistants[2]?.action.href ?? "", /\/assistants\/trainer$/);
-  assert.equal(model.signals.sources.value, "0");
+  assert.equal(model.signals.documents.value, "0");
   assert.equal(model.signals.confirmed.value, "0");
 });

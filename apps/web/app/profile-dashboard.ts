@@ -1,5 +1,7 @@
 import type { ProfileOverviewResponse } from "@veylta/contracts";
+import { formatSampleMoment } from "./format-moment";
 import { assistantPath, documentPath, profileTabPath } from "./paths";
+import { countCopy } from "./russian-plural";
 
 export type DashboardAssistantId = "physician" | "nutrition" | "movement";
 export type DashboardSignalTone = "neutral" | "positive" | "attention";
@@ -27,18 +29,26 @@ export interface ProfileDashboardModel {
   readonly assistants: readonly [DashboardAssistant, DashboardAssistant, DashboardAssistant];
   readonly signals: {
     readonly pendingReview: DashboardSignal;
-    readonly sourceFlags: DashboardSignal;
-    readonly sources: DashboardSignal;
+    readonly outside: DashboardSignal;
+    readonly documents: DashboardSignal;
     readonly confirmed: DashboardSignal;
   };
 }
 
-function countCopy(count: number, one: string, few: string, many: string): string {
-  const mod100 = count % 100;
-  const mod10 = count % 10;
-  const word =
-    mod100 >= 11 && mod100 <= 14 ? many : mod10 === 1 ? one : mod10 >= 2 && mod10 <= 4 ? few : many;
-  return `${count} ${word}`;
+export type DashboardSignalKey = keyof ProfileDashboardModel["signals"];
+
+/**
+ * «Вне референса» is Veylta's own deterministic reading, and the dossier is where those
+ * indicators are read with their specialty — so above zero the tile leads there. At zero there is
+ * nothing to open, and the tile stays plain text.
+ */
+export function signalHref(
+  key: DashboardSignalKey,
+  overview: ProfileOverviewResponse,
+): string | null {
+  return key === "outside" && overview.outsideIndicatorCount > 0
+    ? profileTabPath(overview.profile.handle, "dossier")
+    : null;
 }
 
 /**
@@ -55,14 +65,15 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
   );
 
   const pending = overview.reviewQueue.pendingFactCount;
-  if (overview.recentObservations.length > 0) {
+  // The whole record decides, not the three values the response carries.
+  if (overview.confirmedCount > 0) {
     return {
       id: "physician",
       label,
       role,
       message:
         pending > 0
-          ? `${countCopy(pending, "значение ещё ждёт", "значения ещё ждут", "значений ещё ждут")} вашей проверки — ИИ-врач читает только подтверждённые. Разберу их с учётом вашего профиля и назову, что подтвердить у врача.`
+          ? `${countCopy(pending, ["значение ещё ждёт", "значения ещё ждут", "значений ещё ждут"])} вашей проверки — ИИ-врач читает только подтверждённые. Разберу их с учётом вашего профиля и назову, что подтвердить у врача.`
           : "Разберу подтверждённые значения с учётом вашего профиля, назову вероятные объяснения и то, что стоит подтвердить у врача.",
       meta: "Рекомендации для разговора с врачом, не диагноз",
       action: {
@@ -77,10 +88,10 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
       id: "physician",
       label,
       role,
-      message: `${countCopy(pending, "значение ждёт", "значения ждут", "значений ждут")} вашей проверки. ИИ-врач читает только подтверждённые значения — сначала проверьте их.`,
+      message: `${countCopy(pending, ["значение ждёт", "значения ждут", "значений ждут"])} вашей проверки. ИИ-врач читает только подтверждённые значения — сначала проверьте их.`,
       meta:
         overview.reviewQueue.needsAttentionFactCount > 0
-          ? `${countCopy(overview.reviewQueue.needsAttentionFactCount, "значение требует", "значения требуют", "значений требуют")} особого внимания`
+          ? `${countCopy(overview.reviewQueue.needsAttentionFactCount, ["значение требует", "значения требуют", "значений требуют"])} особого внимания`
           : "Автоматических подтверждений нет",
       action: {
         label: "Проверить значения",
@@ -121,11 +132,8 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
 export function buildProfileDashboardModel(
   overview: ProfileOverviewResponse,
 ): ProfileDashboardModel {
-  const explicitSourceFlags = overview.recentObservations.filter(
-    (observation) => observation.referenceRange?.laboratoryOutOfRange === true,
-  ).length;
-  const sourceCount = overview.recentDocuments.length;
-  const confirmedCount = overview.recentObservations.length;
+  const { confirmedCount, documentCount, outsideIndicatorCount } = overview;
+  const newestDocument = overview.recentDocuments[0];
 
   return {
     assistants: [
@@ -169,23 +177,23 @@ export function buildProfileDashboardModel(
             : "Только вы можете подтвердить значение",
         tone: overview.reviewQueue.pendingFactCount === 0 ? "positive" : "attention",
       },
-      sourceFlags: {
-        label: "Отмечено источником",
-        value: String(explicitSourceFlags),
+      outside: {
+        label: "Вне референса",
+        value: String(outsideIndicatorCount),
         detail:
-          explicitSourceFlags === 0
-            ? "Нет явных отметок в последних данных"
-            : `${countCopy(explicitSourceFlags, "значение вне", "значения вне", "значений вне")} диапазона источника`,
-        tone: explicitSourceFlags === 0 ? "positive" : "attention",
+          outsideIndicatorCount === 0
+            ? "Все показатели в пределах диапазонов источников"
+            : "Показатели, чьё последнее значение вне печатного диапазона",
+        tone: outsideIndicatorCount === 0 ? "positive" : "attention",
       },
-      sources: {
-        label: "Последние источники",
-        value: String(sourceCount),
+      documents: {
+        label: "Документов",
+        value: String(documentCount),
         detail:
-          sourceCount === 0
+          documentCount === 0 || newestDocument === undefined
             ? "Архив пока пуст"
-            : `В обзоре ${countCopy(sourceCount, "источник", "источника", "источников")}`,
-        tone: sourceCount === 0 ? "neutral" : "positive",
+            : `Последний — ${formatSampleMoment(newestDocument.effectiveDate.value)}`,
+        tone: documentCount === 0 ? "neutral" : "positive",
       },
       confirmed: {
         label: "Подтверждено",
@@ -193,7 +201,7 @@ export function buildProfileDashboardModel(
         detail:
           confirmedCount === 0
             ? "Нет подтверждённых значений"
-            : `${countCopy(confirmedCount, "значение связано", "значения связаны", "значений связаны")} с источником`,
+            : `${countCopy(confirmedCount, ["значение связано", "значения связаны", "значений связаны"])} с источником`,
         tone: confirmedCount === 0 ? "neutral" : "positive",
       },
     },

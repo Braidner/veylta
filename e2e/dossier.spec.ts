@@ -153,6 +153,28 @@ test("the dossier reads confirmed values against their references and sends the 
   await expect(page.locator(".profile-heading__access")).toContainText("Женщина · 36 лет");
   await expect(page.locator(".profile-heading__access")).toContainText("Рост 175 см");
   await expect(page.locator(".profile-heading__access")).toContainText("Вес 71,5 кг");
+
+  // The overview states the same record: two confirmed values, one indicator outside, one source.
+  const signals = page.getByRole("region", { name: "Сигналы здоровья" });
+  const outside = signals.locator("a.health-signal--link");
+  await expect(outside).toContainText("Вне референса");
+  await expect(outside.locator("strong")).toHaveText("1");
+  await expect(signals.locator(".health-signal", { hasText: "Подтверждено" })).toContainText(
+    "2 значения связаны с источником",
+  );
+  await expect(signals.locator(".health-signal", { hasText: "Документов" })).toContainText(
+    "Последний —",
+  );
+  // The row names the document, not the stored filename, and says what it left behind.
+  const documentRow = page.locator(".dashboard-documents__list li").first();
+  await expect(documentRow).toContainText("Синтетические лабораторные результаты");
+  await expect(documentRow).toContainText("Анализы · ");
+  await expect(documentRow).toContainText("разобрано 2");
+  // The tile is one keyboard-reachable target, and it opens the dossier.
+  await outside.focus();
+  await expect(outside).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(`${profileUrl}/dossier`);
   await page.goto(`${profileUrl}/dossier`);
   await expect(page.getByTestId("dossier-passport")).toContainText("Женщина");
   await expect(page.getByTestId("dossier-attention")).toContainText(

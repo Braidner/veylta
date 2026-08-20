@@ -1351,21 +1351,6 @@ h3 {
   justify-content: flex-end;
 }
 
-.profile-heading__control {
-  display: inline-flex;
-  gap: var(--space-xs);
-  align-items: center;
-  min-height: 48px;
-  padding: 0 var(--space-md);
-  color: var(--color-ink);
-  background: var(--color-canvas);
-  border: 1px solid var(--color-line);
-  border-radius: 999px;
-  font-size: 0.8125rem;
-  font-weight: 580;
-  white-space: nowrap;
-}
-
 .profile-heading__upload {
   display: inline-flex;
   gap: var(--space-md);
@@ -1803,6 +1788,23 @@ h3 {
   padding: var(--space-md);
   background: var(--color-surface);
   border-radius: 13px;
+}
+
+/* The whole tile is the target, so the card keeps its own shape when focus lands on it. */
+.health-signal--link {
+  display: block;
+  text-decoration: none;
+  transition: background-color 180ms ease-out;
+}
+
+.health-signal--link:hover {
+  background: oklch(0.94 0.045 72);
+}
+
+.health-signal--link:focus-visible {
+  border-radius: 13px;
+  outline: none;
+  box-shadow: var(--focus);
 }
 
 .health-signal--attention {
@@ -4645,13 +4647,11 @@ body:has(.upload-dialog[open]) {
     width: 100%;
   }
 
-  .profile-heading__control,
   .profile-heading__controls .profile-switcher,
   .profile-heading__upload {
     width: 100%;
   }
 
-  .profile-heading__control,
   .profile-heading__upload {
     justify-content: center;
   }

@@ -27,7 +27,7 @@ async function registerDemoFamily(page: Page) {
   await expect(signals).toBeVisible();
   await expect(signals.getByText("Без общего балла", { exact: true })).toBeVisible();
   await expect(signals.getByText("Ждёт проверки", { exact: true })).toBeVisible();
-  await expect(signals.getByText("Отмечено источником", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Вне референса", { exact: true })).toBeVisible();
   await expect(signals.getByText("Подтверждено", { exact: true })).toBeVisible();
   await openDocumentsTab(page);
   const archive = page.getByRole("region", { name: "Архив документов" });

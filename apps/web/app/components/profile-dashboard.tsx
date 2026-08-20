@@ -17,15 +17,16 @@ import {
   Utensils,
 } from "lucide-react";
 import Link from "next/link";
+import { documentKindLine, documentStandingCopy } from "../dashboard-documents";
 import { cn } from "../lib/cn";
 import { documentPath, historyPath, profileTabPath } from "../paths";
 import type {
   DashboardAssistant,
   DashboardAssistantId,
   DashboardSignal,
-  ProfileDashboardModel,
+  DashboardSignalKey,
 } from "../profile-dashboard";
-import { buildProfileDashboardModel } from "../profile-dashboard";
+import { buildProfileDashboardModel, signalHref } from "../profile-dashboard";
 import { DashboardTools } from "./dashboard-tools";
 
 const assistantIcons: Record<DashboardAssistantId, LucideIcon> = {
@@ -34,10 +35,10 @@ const assistantIcons: Record<DashboardAssistantId, LucideIcon> = {
   movement: PersonStanding,
 };
 
-const signalIcons: Record<keyof ProfileDashboardModel["signals"], LucideIcon> = {
+const signalIcons: Record<DashboardSignalKey, LucideIcon> = {
   pendingReview: ClipboardCheck,
-  sourceFlags: CircleAlert,
-  sources: FileText,
+  outside: CircleAlert,
+  documents: FileText,
   confirmed: BadgeCheck,
 };
 
@@ -117,9 +118,17 @@ function AssistantCard({
   );
 }
 
-function HealthSignal({ signal, icon: SignalIcon }: { signal: DashboardSignal; icon: LucideIcon }) {
-  return (
-    <article className={signalClassName({ tone: signal.tone })}>
+function HealthSignal({
+  signal,
+  icon: SignalIcon,
+  href,
+}: {
+  signal: DashboardSignal;
+  icon: LucideIcon;
+  href: string | null;
+}) {
+  const body = (
+    <>
       <div className="health-signal__topline">
         <span className="health-signal__icon" aria-hidden="true">
           <SignalIcon size={18} strokeWidth={1.8} />
@@ -128,34 +137,17 @@ function HealthSignal({ signal, icon: SignalIcon }: { signal: DashboardSignal; i
       </div>
       <strong>{signal.value}</strong>
       <p>{signal.detail}</p>
-    </article>
+    </>
   );
-}
 
-function documentStateCopy(
-  state: ProfileOverviewResponse["recentDocuments"][number]["processing"]["state"],
-): string {
-  switch (state) {
-    case "completed":
-      return "Проверено";
-    case "awaiting_review":
-      return "Нужна проверка";
-    case "failed":
-      return "Не обработан";
-    case "not_started":
-    case "queued":
-      return "Ожидает обработки";
-    default:
-      return "Обработка";
-  }
-}
-
-function formatShortDate(value: string): string {
-  return new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(new Date(value));
+  // A tile that leads somewhere is one link, so the whole card is the target and takes focus once.
+  return href === null ? (
+    <article className={signalClassName({ tone: signal.tone })}>{body}</article>
+  ) : (
+    <Link className={cn(signalClassName({ tone: signal.tone }), "health-signal--link")} href={href}>
+      {body}
+    </Link>
+  );
 }
 
 function DashboardDocuments({
@@ -172,7 +164,7 @@ function DashboardDocuments({
         <span aria-hidden="true">
           <FileText size={20} strokeWidth={1.8} />
         </span>
-        <h3 id="dashboard-documents-title">Последний документ</h3>
+        <h3 id="dashboard-documents-title">Последние документы</h3>
         <button type="button" onClick={onUpload} aria-label="Загрузить новый документ">
           <ArrowUpRight size={18} aria-hidden="true" />
         </button>
@@ -195,10 +187,10 @@ function DashboardDocuments({
                   <FileText size={17} strokeWidth={1.8} />
                 </span>
                 <span>
-                  <strong>{document.originalFilename}</strong>
-                  <small>{formatShortDate(document.uploadedAt)}</small>
+                  <strong>{document.intelligence?.title ?? document.originalFilename}</strong>
+                  <small>{documentKindLine(document)}</small>
                 </span>
-                <em>{documentStateCopy(document.processing.state)}</em>
+                <em>{documentStandingCopy(document, overview.reviewQueue.documents)}</em>
               </Link>
             </li>
           ))}
@@ -270,9 +262,7 @@ export function ProfileDashboard({
 }) {
   const model = buildProfileDashboardModel(overview);
   const { handle } = overview.profile;
-  const signals = Object.entries(model.signals) as Array<
-    [keyof ProfileDashboardModel["signals"], DashboardSignal]
-  >;
+  const signals = Object.entries(model.signals) as Array<[DashboardSignalKey, DashboardSignal]>;
 
   return (
     <div className="profile-dashboard">
@@ -314,11 +304,17 @@ export function ProfileDashboard({
 
         <div className="health-signals__grid">
           {signals.map(([key, signal]) => (
-            <HealthSignal key={key} signal={signal} icon={signalIcons[key]} />
+            <HealthSignal
+              key={key}
+              signal={signal}
+              icon={signalIcons[key]}
+              href={signalHref(key, overview)}
+            />
           ))}
         </div>
         <p className="health-signals__note">
-          Это состояние архива и явные отметки источников — не диагноз, риск или медицинская оценка.
+          Вне референса — оценка Veylta по печатным диапазонам ваших источников, а не диагноз; она
+          ведёт к названному специалисту в досье. Остальное — состояние архива.
         </p>
       </section>
 

@@ -59,9 +59,7 @@ import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import {
   ArrowRight,
   Bot,
-  CalendarDays,
   CheckCheck,
-  Clock3,
   ContactRound,
   Files,
   FileText,
@@ -1920,11 +1918,6 @@ function ProfileWorkspace({
   const now = new Date();
   const greeting =
     now.getHours() < 12 ? "Доброе утро" : now.getHours() < 18 ? "Добрый день" : "Добрый вечер";
-  const dashboardDate = new Intl.DateTimeFormat("ru-RU", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  }).format(now);
   const uploadNoticeLocationKey = `${activeTab}:${requestedDocumentId ?? ""}`;
 
   useEffect(() => {
@@ -2154,14 +2147,6 @@ function ProfileWorkspace({
           </div>
 
           <div className="profile-heading__controls">
-            <span className="profile-heading__control">
-              <CalendarDays size={18} aria-hidden="true" />
-              {dashboardDate}
-            </span>
-            <span className="profile-heading__control">
-              <Clock3 size={18} aria-hidden="true" />
-              30 дней
-            </span>
             <label className="profile-switcher">
               <span className="visually-hidden">Активный профиль</span>
               <select
