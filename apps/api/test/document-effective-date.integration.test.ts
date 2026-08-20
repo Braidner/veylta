@@ -74,7 +74,7 @@ test("every document summary carries its effective date, and the overview counts
     });
     assert.equal(overview.statusCode, 200, overview.body);
     const body = overview.json() as ProfileOverviewResponse;
-    assert.equal(body.contractVersion, "profile-overview/v4");
+    assert.equal(body.contractVersion, "profile-overview/v5");
     assert.equal(body.documentCount, 2, "both documents count");
     assert.equal(body.documentCount, body.recentDocuments.length);
     const overviewNote = body.recentDocuments.find((document) => document.id === noteId);

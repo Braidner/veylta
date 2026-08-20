@@ -5,7 +5,7 @@ import { buildProfileDashboardModel, signalHref } from "./profile-dashboard";
 
 function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOverviewResponse {
   return {
-    contractVersion: "profile-overview/v4",
+    contractVersion: "profile-overview/v5",
     profile: {
       id: "00000000-0000-4000-8000-000000000002",
       familyId: "00000000-0000-4000-8000-000000000001",
@@ -18,6 +18,8 @@ function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOver
     documentCount: 0,
     confirmedCount: 0,
     outsideIndicatorCount: 0,
+    attention: [],
+    assistants: [],
     recentDocuments: [],
     reviewQueue: {
       documentCount: 0,

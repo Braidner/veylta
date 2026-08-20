@@ -381,7 +381,7 @@ response cannot appear under the wrong run's heading.
 **Documents: queue and timeline.** A document's *effective date* is one rule
 (`documents/document-date.ts`: the person's correction → the document's own date → the upload
 day in UTC, with `source: person | document | upload`), carried as `effectiveDate` by every
-projection with `intelligence` (`document/v8`, `profile-overview/v4`, which also counts
+projection with `intelligence` (`document/v8`, `profile-overview/v5`, which also counts
 `documentCount`, `confirmedCount` and `outsideIndicatorCount` — see the overview below);
 `PUT …/documents/:id/date` (`document-date-service.ts`, migration 0039
 `documents.document_date_override`) corrects it — 422 for a malformed day or one after tomorrow,
@@ -395,12 +395,18 @@ in whole-day pages (`?before=&limit=` days, `nextBefore`) with `confirmedCount`,
 (nodes, month groups, date copy), `components/documents-workspace.tsx` →
 `document-exports.tsx` + `document-queue.tsx` + `document-timeline.tsx` →
 `document-timeline-node.tsx` → `document-date-editor.tsx`; the overview's document queries share
-`overview-documents-query.ts`. The overview's own two counts come from
-`documents/profile-overview-counts.ts`: `confirmedCount` is a plain `COUNT(*)`, and
-`outsideIndicatorCount` reads the latest confirmed observation per indicator
+`overview-documents-query.ts`. The overview's own reading of the record comes from
+`documents/profile-overview-reading.ts`: `confirmedCount` is a plain `COUNT(*)`, and
+`outsideIndicatorCount` reads the two latest confirmed observations per indicator
 (`indicatorKey` in `observation-status.ts`, shared with the dossier's `seriesKeyOf`) and applies
 `pointStatus` in TypeScript — rows out of SQL, the rule above it, because `CAST('< 0,1' AS REAL)`
-would invent a number the document never printed. The overview's four tiles read those counts,
+would invent a number the document never printed. The same pass fills `attention`: at most
+`MAX_PROFILE_OVERVIEW_ATTENTION` (3) indicators that sit outside, newest reading first, each with
+the printed value, unit, bounds (the stored `source_text`, else the bounds joined) and the value
+before it — named, never graded. `assistants` says what each room last answered
+(`assistant/assistant-overview.ts` `assistantOverviewSummaries`: the newest `role = 'assistant'`
+message per `assistant_id`, its `urgency_tier` and whether it was refused; `answer_json` is never
+read, so no medical text reaches the dashboard). The overview's four tiles read those counts,
 never the capped `recentObservations`/`recentDocuments` (`app/profile-dashboard.ts`: `signals`
 keyed `pendingReview` / `outside` / `documents` / `confirmed`, `signalHref` — «Вне референса»
 above zero is a link into the dossier, at zero plain text); a document row reads through

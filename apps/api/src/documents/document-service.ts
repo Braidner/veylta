@@ -64,6 +64,7 @@ import {
   type SyntheticEvidenceBundleManifest,
   type SyntheticProfileExportManifest,
 } from "@veylta/contracts";
+import { assistantOverviewSummaries } from "../assistant/assistant-overview.js";
 import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
 import {
   DomainConflictError,
@@ -90,7 +91,7 @@ import {
 import { effectiveDateSql, effectiveDocumentDate } from "./document-date.js";
 import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
 import { overviewDocumentsSql, reviewQueueCountsSql } from "./overview-documents-query.js";
-import { profileOverviewCounts } from "./profile-overview-counts.js";
+import { profileOverviewReading } from "./profile-overview-reading.js";
 import { reviewedAnalyte } from "./reviewed-analyte.js";
 
 export class UnsupportedDocumentTypeError extends Error {}
@@ -3639,7 +3640,7 @@ export function createDocumentService(
           )
         ).rows[0];
 
-        const observationCounts = await profileOverviewCounts(client, scope);
+        const reading = await profileOverviewReading(client, scope);
 
         const recentDocuments = await client.query<ProfileOverviewDocumentRow>(
           overviewDocumentsSql({ onlyAwaitingReview: false, limit: 50 }),
@@ -3706,11 +3707,10 @@ export function createDocumentService(
           contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
           profile: profileOverviewProfile(profile),
           documentCount: asCount(documentCount?.document_count ?? -1, "overview document count"),
-          confirmedCount: asCount(observationCounts.confirmed, "overview confirmed count"),
-          outsideIndicatorCount: asCount(
-            observationCounts.outsideIndicators,
-            "overview outside indicator count",
-          ),
+          confirmedCount: asCount(reading.confirmed, "overview confirmed count"),
+          outsideIndicatorCount: asCount(reading.outsideIndicators, "overview outside indicators"),
+          attention: reading.attention,
+          assistants: await assistantOverviewSummaries(client, scope),
           recentDocuments: recentDocuments.rows.map(profileOverviewDocument),
           reviewQueue: {
             documentCount: asCount(reviewQueue.document_count, "overview review document count"),

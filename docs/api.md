@@ -951,7 +951,7 @@ explicit decision.
 unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` on each
 `recentDocuments` entry the same way as `document/v8`.
 
-`profile-overview/v4` adds two more counts over the whole record, so a client never has to
+`profile-overview/v4` added two more counts over the whole record, so a client never has to
 infer them from the three `recentObservations`: `confirmedCount` is every confirmed observation
 of the profile, and `outsideIndicatorCount` is how many *indicators* currently sit outside — the
 number of distinct indicators (one canonical code, or its printed name, under one printed unit)
@@ -959,9 +959,21 @@ whose **latest** confirmed value is outside its printed range or flagged by the 
 are read with the dossier's own rule over the printed value; nothing is parsed or compared in
 SQL, and no unit is converted.
 
+`profile-overview/v5` says *which* indicators those are and *whether an assistant has spoken*.
+`attention` names at most three of the indicators `outsideIndicatorCount` counts, newest reading
+first: the printed `name`, `value` and `unit` exactly as they were confirmed, the `status` the
+dossier's own rule read, the `range` as the source printed it (its own reference sentence when it
+had one, else the bounds it named), and `previous` — the value of the same indicator before this
+one, with the day it was read, or `null` when it is the first. It is a placement against the
+document's own bounds; it is never a grade, a trend, an urgency, or a recommendation.
+`assistants` carries one entry per assistant room that has ever answered about this person,
+newest answer first: the `assistantId`, when it answered, the `urgency` tier that answer carried
+(`null` when the turn was refused) and `refused`. The query behind it never reads the stored
+answer, so no block, sentence, or medical value of an assistant reaches the overview.
+
 ```json
 {
-  "contractVersion": "profile-overview/v4",
+  "contractVersion": "profile-overview/v5",
   "profile": {
     "id": "profile_placeholder",
     "familyId": "family_placeholder",
@@ -974,6 +986,20 @@ SQL, and no unit is converted.
   "documentCount": 1,
   "confirmedCount": 4,
   "outsideIndicatorCount": 1,
+  "attention": [
+    {
+      "canonicalCode": "tsh",
+      "name": "ТТГ",
+      "value": "9.9",
+      "unit": "мМЕ/л",
+      "status": "above",
+      "range": "0,4 – 4,0 мМЕ/л",
+      "previous": { "value": "9.5", "at": "2026-06-01T00:00:00.000Z" }
+    }
+  ],
+  "assistants": [
+    { "assistantId": "physician", "answeredAt": "2026-08-12T00:05:00.000Z", "urgency": "routine", "refused": false }
+  ],
   "recentDocuments": [
     {
       "id": "document_placeholder",
@@ -1007,7 +1033,7 @@ SQL, and no unit is converted.
 It is not a diagnosis, medical summary, health score, risk state, trend, or
 recommendation. Each successful read writes a payload-free
 `profile.overview.opened` audit event against the profile with only
-`profile-overview/v4` as metadata; it never records filenames, values, units,
+`profile-overview/v5` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
 ## Household care plan (Task 33a)
