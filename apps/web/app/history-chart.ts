@@ -93,7 +93,9 @@ export function historyChartModel(
   const band: BandSegment[] = [];
   visible.forEach((point, index) => {
     if (point.low === null && point.high === null) return;
-    const x1 = points[index]?.x ?? 0;
+    // The earliest visible point's bounds are the earliest ones known, so they hold back to the
+    // period's left edge: a bounded window must not open with an unshaded gap before the value.
+    const x1 = index === 0 ? 0 : (points[index]?.x ?? 0);
     const x2 = points[index + 1]?.x ?? 100;
     const yTop = point.high === null ? 0 : yOf(point.high);
     const yBottom = point.low === null ? 100 : yOf(point.low);

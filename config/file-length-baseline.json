@@ -36,7 +36,7 @@
     "apps/api/test/profile-overview.integration.test.ts": 406,
     "apps/web/app/components/document-agent-workspace.tsx": 648,
     "apps/web/app/components/profile-dashboard.tsx": 329,
-    "apps/web/app/components/veylta-app.tsx": 6831,
+    "apps/web/app/components/veylta-app.tsx": 6051,
     "e2e/document-agent.spec.ts": 300,
     "e2e/document-review.spec.ts": 321,
     "e2e/document-upload.spec.ts": 294,

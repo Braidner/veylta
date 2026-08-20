@@ -25,6 +25,9 @@ export type HistoryDataState =
 const historyPageLimit = 100;
 const historyPages = 8;
 
+/** How many confirmed values the page reads at most — what the truncation note tells the reader. */
+export const historyValueCap = historyPageLimit * historyPages;
+
 async function loadHistoryPages(
   base: string,
   signal: AbortSignal,
@@ -63,12 +66,12 @@ export function useHistoryData(input: { familyId: string; profileId: string }): 
     setState({ kind: "loading" });
     try {
       const base = `${profileApiPath(familyId, profileId)}/observations`;
-      const profileRequest = apiRequest<MedicalProfileResponse>(
-        medicalProfilePath(familyId, profileId),
-        { signal },
-      );
-      const { items, truncated } = await loadHistoryPages(base, signal);
-      const profile = await profileRequest;
+      // Both requests are awaited together: a lone `await` on the first would leave the second's
+      // rejection unhandled when an unmount aborts the pair mid-flight.
+      const [{ items, truncated }, profile] = await Promise.all([
+        loadHistoryPages(base, signal),
+        apiRequest<MedicalProfileResponse>(medicalProfilePath(familyId, profileId), { signal }),
+      ]);
       if (signal.aborted) return;
       const passport = passportOf(profile.entries, new Date());
       setState({ kind: "ready", items, sex: passport.sex, truncated });

@@ -42,6 +42,23 @@ test("points are placed on the period's time axis with their status; the band st
   assert.ok(model.yMaxLabel.includes("9"), "the y extent covers the largest value");
 });
 
+test("a bounded period opens with the earliest known bounds, not with an unshaded gap", () => {
+  const [series] = buildDossierSeries(
+    [
+      // Both points sit inside the 3-month window; the first one starts it well past its left edge.
+      observation({ id: "mid", value: "2,0", at: "2026-07-20T12:00:00.000Z" }),
+      observation({ id: "late", value: "2,4", at: "2026-08-10T12:00:00.000Z" }),
+    ],
+    null,
+  );
+  assert.ok(series);
+  const model = historyChartModel(series, "3m", now);
+  const [first] = model.points;
+  assert.ok(first !== undefined && first.x > 0, "the first value sits inside the window");
+  assert.equal(model.band.length, 1, "one printed range → one segment");
+  assert.equal(model.band[0]?.x1, 0, "the band reaches the period's left edge");
+});
+
 test("a series with no numeric point in the period is empty and says so", () => {
   const [series] = buildDossierSeries(
     [observation({ id: "old", value: "2,0", at: "2024-01-10T08:00:00.000Z" })],
