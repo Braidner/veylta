@@ -3,13 +3,10 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { FastifyInstance } from "fastify";
 import type { Database } from "../src/database/pool.js";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import { multipartFile } from "./confirmed-observations.js";
+import { extractNextDocument, uploadDocument } from "./document-app.js";
 import type { Identity } from "./medical-profile-app.js";
 import { createSyntheticIntelligence } from "./synthetic-intelligence.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL(
   "../../../fixtures/veylta-synthetic-discharge-note.pdf",
   import.meta.url,
@@ -26,25 +23,18 @@ export async function analyseSyntheticNote(
   identity: Identity,
 ): Promise<{ documentId: string; profilePath: string }> {
   const profilePath = `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
-  const multipart = multipartFile(await readFile(fixtureUrl), "synthetic-note.pdf");
-  const upload = await app.inject({
-    method: "POST",
-    url: `${profilePath}/documents`,
-    headers: {
-      cookie: identity.cookie,
-      origin: webOrigin,
-      "content-type": multipart.contentType,
-      "idempotency-key": `upload-${randomUUID()}`,
-    },
-    payload: multipart.body,
-  });
+  const upload = await uploadDocument(
+    app,
+    identity,
+    await readFile(fixtureUrl),
+    `upload-${randomUUID()}`,
+    { filename: "synthetic-note.pdf" },
+  );
   assert.equal(upload.statusCode, 202, upload.body);
   const documentId = upload.json().document.id as string;
-  const processed = await createDocumentExtractionProcessor({
-    database,
-    storage: createLocalObjectStorage(storageRoot),
-    intelligence: createSyntheticIntelligence(),
-  }).processNext({ workerId: `worker-${randomUUID()}`, leaseDurationMs: 60_000, retryDelayMs: 1 });
-  assert.equal(processed.status, "completed");
+  await extractNextDocument(
+    { database, storageRoot },
+    { intelligence: createSyntheticIntelligence() },
+  );
   return { documentId, profilePath };
 }

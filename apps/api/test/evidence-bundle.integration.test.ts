@@ -6,12 +6,14 @@ import {
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
 } from "@veylta/contracts";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import {
+  type DocumentTestContext,
+  extractNextDocument,
+  labReportFixtureUrl,
+  uploadDocument,
+  withDocumentContext,
+} from "./document-app.js";
 import { type Identity, register, webOrigin } from "./family-app.js";
-
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
 
 function profilePath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
@@ -29,55 +31,23 @@ function documentPath(identity: Identity, documentId: string): string {
   return `${profilePath(identity)}/documents/${documentId}`;
 }
 
-function multipartFile(bytes: Buffer, filename: string) {
-  const boundary = `veylta-evidence-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
-
-async function uploadDocument(
+async function uploadSource(
   context: DocumentTestContext,
   owner: Identity,
   filename = "evidence-source.pdf",
 ): Promise<string> {
-  const fixture = await readFile(fixtureUrl);
+  const fixture = await readFile(labReportFixtureUrl);
   const source = Buffer.concat([fixture, Buffer.from(`\n% ${filename}\n`)]);
-  const multipart = multipartFile(source, filename);
-  const uploaded = await context.app.inject({
-    method: "POST",
-    url: `${profilePath(owner)}/documents`,
-    headers: {
-      "content-type": multipart.contentType,
-      "idempotency-key": `evidence_${randomUUID()}`,
-      cookie: owner.cookie,
-      origin: webOrigin,
-    },
-    payload: multipart.body,
+  const uploaded = await uploadDocument(context.app, owner, source, `evidence_${randomUUID()}`, {
+    filename,
   });
   assert.equal(uploaded.statusCode, 202);
   return uploaded.json().document.id as string;
 }
 
 async function uploadAndExtract(context: DocumentTestContext, owner: Identity): Promise<string> {
-  const documentId = await uploadDocument(context, owner);
-  const processor = createDocumentExtractionProcessor({
-    database: context.database,
-    storage: createLocalObjectStorage(context.storageRoot),
-  });
-  const processed = await processor.processNext({
-    workerId: `evidence-worker-${randomUUID()}`,
-    leaseDurationMs: 60_000,
-    retryDelayMs: 1,
-  });
-  assert.equal(processed.status, "completed");
+  const documentId = await uploadSource(context, owner);
+  await extractNextDocument(context);
   return documentId;
 }
 
@@ -217,7 +187,7 @@ test("the local export is a bounded snapshot when a profile has more source docu
       olderDocumentId,
     ]);
     for (let index = 1; index <= MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS; index += 1) {
-      await uploadDocument(context, owner, `evidence-bound-${index}.pdf`);
+      await uploadSource(context, owner, `evidence-bound-${index}.pdf`);
     }
 
     const response = await context.app.inject({
@@ -251,7 +221,7 @@ test("owner can export every synthetic source and confirmed record from one prof
     const firstDocumentId = await uploadAndExtract(context, owner);
     await confirmOneFact(context, owner, firstDocumentId);
     for (let index = 1; index <= MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS; index += 1) {
-      await uploadDocument(context, owner, `portable-source-${index}.pdf`);
+      await uploadSource(context, owner, `portable-source-${index}.pdf`);
     }
 
     const response = await context.app.inject({
@@ -303,7 +273,7 @@ test("portable profile export fails closed rather than silently omitting sources
   await withDocumentContext(async (context) => {
     const owner = await register(context.app, "portable cap");
     for (let index = 0; index <= MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS; index += 1) {
-      await uploadDocument(context, owner, `portable-cap-${index}.pdf`);
+      await uploadSource(context, owner, `portable-cap-${index}.pdf`);
     }
 
     const response = await context.app.inject({

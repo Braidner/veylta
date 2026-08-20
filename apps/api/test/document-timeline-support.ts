@@ -5,9 +5,9 @@ import type { Database } from "../src/database/pool.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
-import { multipartFile, type SyntheticFact, syntheticFacts } from "./confirmed-observations.js";
-import type { Identity } from "./medical-profile-app.js";
-import { webOrigin } from "./medical-profile-app.js";
+import { type SyntheticFact, syntheticFacts } from "./confirmed-observations.js";
+import { extractNextDocument, uploadDocument } from "./document-app.js";
+import { type Identity, webOrigin } from "./medical-profile-app.js";
 import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
 import { createSyntheticIntelligence } from "./synthetic-intelligence.js";
 
@@ -32,26 +32,15 @@ export async function queuedReport(
     "VEYLTA SYNTHETIC LAB REPORT v1",
     "SCANNED COPY - SYNTHETIC TEST DATA",
   ]);
-  const multipart = multipartFile(scan, "queued-scan.pdf");
-  const upload = await app.inject({
-    method: "POST",
-    url: `${profilePath(identity)}/documents`,
-    headers: {
-      cookie: identity.cookie,
-      origin: webOrigin,
-      "content-type": multipart.contentType,
-      "idempotency-key": `upload-${randomUUID()}`,
-    },
-    payload: multipart.body,
+  const upload = await uploadDocument(app, identity, scan, `upload-${randomUUID()}`, {
+    filename: "queued-scan.pdf",
   });
   assert.equal(upload.statusCode, 202, upload.body);
   const documentId = upload.json().document.id as string;
-  const processed = await createDocumentExtractionProcessor({
-    database,
-    storage: createLocalObjectStorage(storageRoot),
-    intelligence: createSyntheticIntelligence(),
-  }).processNext({ workerId: `worker-${randomUUID()}`, leaseDurationMs: 60_000, retryDelayMs: 1 });
-  assert.equal(processed.status, "completed");
+  await extractNextDocument(
+    { database, storageRoot },
+    { intelligence: createSyntheticIntelligence() },
+  );
   return { documentId, facts: await syntheticFacts(app, identity, documentId) };
 }
 

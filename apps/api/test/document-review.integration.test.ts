@@ -1,44 +1,10 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { DOCUMENT_CONTRACT_VERSION } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import type { Database } from "../src/database/pool.js";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { uploadAndExtract, withDocumentContext } from "./document-app.js";
 import { type Identity, register, webOrigin } from "./family-app.js";
-
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface PreparedFact {
-  documentId: string;
-  facts: Array<{
-    id: string;
-    factKey: string;
-    factVersion: number;
-    sourceName: string;
-    sourceValue: string;
-    sourceUnit: string;
-    reviewStatus: string;
-    review: unknown;
-  }>;
-}
-
-function multipartFile(bytes: Buffer) {
-  const boundary = `veylta-review-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="synthetic-lab-report.pdf"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
 
 function documentUrl(identity: Identity, documentId: string): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/documents/${documentId}`;
@@ -60,47 +26,6 @@ async function registeredReviewer(
   ).rows[0];
   if (row === undefined) throw new Error("Expected registered family owner");
   return { id: row.id, displayName: row.display_name };
-}
-
-async function uploadAndExtract(
-  context: DocumentTestContext,
-  owner: Identity,
-  idempotencyKey: string,
-): Promise<PreparedFact> {
-  const fixture = await readFile(fixtureUrl);
-  const multipart = multipartFile(fixture);
-  const uploaded = await context.app.inject({
-    method: "POST",
-    url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
-    headers: {
-      "content-type": multipart.contentType,
-      "idempotency-key": idempotencyKey.padEnd(16, "_"),
-      cookie: owner.cookie,
-      origin: webOrigin,
-    },
-    payload: multipart.body,
-  });
-  assert.equal(uploaded.statusCode, 202);
-  const documentId = uploaded.json().document.id as string;
-
-  const processor = createDocumentExtractionProcessor({
-    database: context.database,
-    storage: createLocalObjectStorage(context.storageRoot),
-  });
-  const processed = await processor.processNext({
-    workerId: `review-test-worker-${randomUUID()}`,
-    leaseDurationMs: 60_000,
-    retryDelayMs: 1,
-  });
-  assert.equal(processed.status, "completed");
-
-  const facts = await context.app.inject({
-    method: "GET",
-    url: `${documentUrl(owner, documentId)}/facts`,
-    headers: { cookie: owner.cookie },
-  });
-  assert.equal(facts.statusCode, 200);
-  return { documentId, facts: facts.json().items };
 }
 
 async function review(
@@ -129,7 +54,9 @@ test("a fact confirmation atomically records an immutable decision, observation,
   await withDocumentContext(async (context) => {
     const owner = await register(context.app, "Confirm");
     const reviewer = await registeredReviewer(context.database, owner);
-    const prepared = await uploadAndExtract(context, owner, "review-confirm-upload");
+    const prepared = await uploadAndExtract(context, owner, {
+      idempotencyKey: "review-confirm-upload",
+    });
     assert.deepEqual(
       prepared.facts.map((item) => item.review),
       [null, null],
@@ -316,7 +243,9 @@ test("a correction creates a confirmed observation without changing raw extracti
   await withDocumentContext(async (context) => {
     const owner = await register(context.app, "Correct and reject");
     const reviewer = await registeredReviewer(context.database, owner);
-    const prepared = await uploadAndExtract(context, owner, "review-correct-upload");
+    const prepared = await uploadAndExtract(context, owner, {
+      idempotencyKey: "review-correct-upload",
+    });
     const correcting = prepared.facts.find((item) => item.factKey === "synthetic-analyte-a");
     const rejecting = prepared.facts.find((item) => item.factKey === "synthetic-analyte-b");
     if (correcting === undefined || rejecting === undefined)
@@ -441,7 +370,9 @@ test("review commands reject stale or conflicting decisions, invalid corrections
   await withDocumentContext(async (context) => {
     const owner = await register(context.app, "Conflicts owner");
     const outsider = await register(context.app, "Conflicts outsider");
-    const prepared = await uploadAndExtract(context, owner, "review-conflicts-upload");
+    const prepared = await uploadAndExtract(context, owner, {
+      idempotencyKey: "review-conflicts-upload",
+    });
     const fact = prepared.facts[0];
     if (fact === undefined) throw new Error("Expected an extracted fact");
 
@@ -558,7 +489,9 @@ test("review commands reject stale or conflicting decisions, invalid corrections
 test("an audit failure rolls back review decision, observation, reference range, and idempotency record together", async () => {
   await withDocumentContext(async (context) => {
     const owner = await register(context.app, "Atomic rollback");
-    const prepared = await uploadAndExtract(context, owner, "review-atomic-upload");
+    const prepared = await uploadAndExtract(context, owner, {
+      idempotencyKey: "review-atomic-upload",
+    });
     const fact = prepared.facts[0];
     if (fact === undefined) throw new Error("Expected an extracted fact");
 

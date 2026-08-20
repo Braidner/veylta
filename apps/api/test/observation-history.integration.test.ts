@@ -1,42 +1,12 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
 } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { uploadAndExtract, withDocumentContext } from "./document-app.js";
 import { type Identity, register, webOrigin } from "./family-app.js";
-
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface PreparedFact {
-  documentId: string;
-  facts: Array<{
-    id: string;
-    factKey: string;
-    factVersion: number;
-    sourceValue: string;
-  }>;
-}
-
-function multipartFile(bytes: Buffer) {
-  const boundary = `veylta-history-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="synthetic-lab-report.pdf"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
 
 function profilePath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
@@ -52,48 +22,6 @@ function historyPath(identity: Identity): string {
 
 function indicatorsPath(identity: Identity): string {
   return `${profilePath(identity)}/indicators`;
-}
-
-async function uploadAndExtract(
-  context: DocumentTestContext,
-  owner: Identity,
-  idempotencyKey: string,
-): Promise<PreparedFact> {
-  const fixture = await readFile(fixtureUrl);
-  const source = Buffer.concat([fixture, Buffer.from(`\n% ${idempotencyKey}\n`)]);
-  const multipart = multipartFile(source);
-  const uploaded = await context.app.inject({
-    method: "POST",
-    url: `${profilePath(owner)}/documents`,
-    headers: {
-      "content-type": multipart.contentType,
-      "idempotency-key": idempotencyKey.padEnd(16, "_"),
-      cookie: owner.cookie,
-      origin: webOrigin,
-    },
-    payload: multipart.body,
-  });
-  assert.equal(uploaded.statusCode, 202);
-  const documentId = uploaded.json().document.id as string;
-
-  const processor = createDocumentExtractionProcessor({
-    database: context.database,
-    storage: createLocalObjectStorage(context.storageRoot),
-  });
-  const processed = await processor.processNext({
-    workerId: `history-test-worker-${randomUUID()}`,
-    leaseDurationMs: 60_000,
-    retryDelayMs: 1,
-  });
-  assert.equal(processed.status, "completed");
-
-  const facts = await context.app.inject({
-    method: "GET",
-    url: `${documentPath(owner, documentId)}/facts`,
-    headers: { cookie: owner.cookie },
-  });
-  assert.equal(facts.statusCode, 200);
-  return { documentId, facts: facts.json().items };
 }
 
 async function review(
@@ -120,7 +48,10 @@ test("observation history is source-first, paginated, re-authorized, and audited
   await withDocumentContext(async (context) => {
     const owner = await register(context.app, "Synthetic Historian");
     const outsider = await register(context.app, "Synthetic Outsider");
-    const prepared = await uploadAndExtract(context, owner, "history-upload");
+    const prepared = await uploadAndExtract(context, owner, {
+      idempotencyKey: "history-upload",
+      marker: "history-upload",
+    });
     const correcting = prepared.facts.find((fact) => fact.factKey === "synthetic-analyte-a");
     const confirming = prepared.facts.find((fact) => fact.factKey === "synthetic-analyte-b");
     if (correcting === undefined || confirming === undefined) {
@@ -295,7 +226,10 @@ test("compatible confirmed observations form a canonical indicator series withou
     const owner = await register(context.app, "Indicators");
     const outsider = await register(context.app, "Indicators outsider");
 
-    const first = await uploadAndExtract(context, owner, "indicators-first");
+    const first = await uploadAndExtract(context, owner, {
+      idempotencyKey: "indicators-first",
+      marker: "indicators-first",
+    });
     const firstFact = first.facts.find((fact) => fact.factKey === "synthetic-analyte-a");
     if (firstFact === undefined) throw new Error("Expected first synthetic analyte");
     const firstReview = await review(
@@ -308,7 +242,10 @@ test("compatible confirmed observations form a canonical indicator series withou
     );
     assert.equal(firstReview.statusCode, 201);
 
-    const second = await uploadAndExtract(context, owner, "indicators-second");
+    const second = await uploadAndExtract(context, owner, {
+      idempotencyKey: "indicators-second",
+      marker: "indicators-second",
+    });
     const secondFact = second.facts.find((fact) => fact.factKey === "synthetic-analyte-a");
     if (secondFact === undefined) throw new Error("Expected second synthetic analyte");
     const secondReview = await review(
@@ -329,7 +266,10 @@ test("compatible confirmed observations form a canonical indicator series withou
     );
     assert.equal(secondReview.statusCode, 201);
 
-    const incompatible = await uploadAndExtract(context, owner, "indicators-incompatible");
+    const incompatible = await uploadAndExtract(context, owner, {
+      idempotencyKey: "indicators-incompatible",
+      marker: "indicators-incompatible",
+    });
     const incompatibleFact = incompatible.facts.find(
       (fact) => fact.factKey === "synthetic-analyte-a",
     );

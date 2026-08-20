@@ -3,66 +3,20 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { DOCUMENT_CONTRACT_VERSION, LAB_EXTRACTION_SCHEMA_VERSION } from "@veylta/contracts";
-import type { FastifyInstance, LightMyRequestResponse } from "fastify";
+import type { LightMyRequestResponse } from "fastify";
 import type { Database } from "../src/database/pool.js";
 import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../src/processing/codex-document-intelligence-provider.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
-import { withDocumentContext } from "./document-app.js";
+import { labReportFixtureUrl, uploadDocument, withDocumentContext } from "./document-app.js";
 import { type Identity, register, webOrigin } from "./family-app.js";
 import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
 import { createSyntheticIntelligence } from "./synthetic-intelligence.js";
 import { createSyntheticLabImage } from "./synthetic-lab-image.js";
 
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-function multipartFile(
-  bytes: Buffer,
-  {
-    contentType = "application/pdf",
-    filename = "synthetic-lab-report.pdf",
-  }: {
-    contentType?: string;
-    filename?: string;
-  } = {},
-) {
-  const boundary = `veylta-processing-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
-
 function documentUrl(identity: Identity, documentId: string): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/documents/${documentId}`;
-}
-
-async function upload(
-  app: FastifyInstance,
-  identity: Identity,
-  bytes: Buffer,
-  idempotencyKey: string,
-  options?: { contentType?: string; filename?: string },
-): Promise<LightMyRequestResponse> {
-  const multipart = multipartFile(bytes, options);
-  return app.inject({
-    method: "POST",
-    url: `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/documents`,
-    headers: {
-      "content-type": multipart.contentType,
-      "idempotency-key": idempotencyKey.padEnd(16, "_"),
-      cookie: identity.cookie,
-      origin: webOrigin,
-    },
-    payload: multipart.body,
-  });
 }
 
 async function processOneDocument(
@@ -88,8 +42,8 @@ async function processOneDocument(
 test("real synthetic PDF moves from a queued job to an auditable review queue", async () => {
   await withDocumentContext(async ({ app, database, storageRoot }) => {
     const owner = await register(app, "Processing");
-    const fixture = await readFile(fixtureUrl);
-    const uploaded = await upload(app, owner, fixture, "processing-fixture-upload");
+    const fixture = await readFile(labReportFixtureUrl);
+    const uploaded = await uploadDocument(app, owner, fixture, "processing-fixture-upload");
     assert.equal(uploaded.statusCode, 202);
     const documentId = uploaded.json().document.id as string;
 
@@ -224,7 +178,7 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
 test("a synthetic image-only PDF is rendered to page images that Codex transcribes", async () => {
   await withDocumentContext(async ({ app, database, storageRoot }) => {
     const owner = await register(app, "Scanned processing");
-    const uploaded = await upload(
+    const uploaded = await uploadDocument(
       app,
       owner,
       createSyntheticImageOnlyPdf([
@@ -280,7 +234,7 @@ for (const [format, contentType, filename] of [
   test(`a direct synthetic ${format} reaches Codex as one page image with immutable provenance`, async () => {
     await withDocumentContext(async ({ app, database, storageRoot }) => {
       const owner = await register(app, `Direct ${format}`);
-      const uploaded = await upload(
+      const uploaded = await uploadDocument(
         app,
         owner,
         createSyntheticLabImage(
@@ -351,7 +305,7 @@ for (const [format, contentType, filename] of [
 test("Codex classifies an image-only PDF outside the lab grammar without inventing facts", async () => {
   await withDocumentContext(async ({ app, database, storageRoot }) => {
     const owner = await register(app, "Unsupported scanned processing");
-    const uploaded = await upload(
+    const uploaded = await uploadDocument(
       app,
       owner,
       createSyntheticImageOnlyPdf(["UNSUPPORTED EXAMPLE", "THIS IS NOT A VEYLTA SYNTHETIC REPORT"]),
@@ -397,10 +351,10 @@ test("an archived profile hides its sources and pauses queued extraction until a
     });
     assert.equal(addedProfile.statusCode, 201);
 
-    const uploaded = await upload(
+    const uploaded = await uploadDocument(
       app,
       owner,
-      await readFile(fixtureUrl),
+      await readFile(labReportFixtureUrl),
       "archive-document-upload",
     );
     assert.equal(uploaded.statusCode, 202);
@@ -455,10 +409,10 @@ test("processing status and extracted facts do not disclose another family docum
   await withDocumentContext(async ({ app, database, storageRoot }) => {
     const owner = await register(app, "Owner boundary");
     const outsider = await register(app, "Outsider boundary");
-    const uploaded = await upload(
+    const uploaded = await uploadDocument(
       app,
       owner,
-      await readFile(fixtureUrl),
+      await readFile(labReportFixtureUrl),
       "tenant-boundary-fixture-upload",
     );
     assert.equal(uploaded.statusCode, 202);
@@ -493,8 +447,8 @@ test("processing status and extracted facts do not disclose another family docum
 test("terminal processing retry requires a trusted idempotent command and is replay-safe", async () => {
   await withDocumentContext(async ({ app, database, storageRoot }) => {
     const owner = await register(app, "Retry");
-    const fixture = await readFile(fixtureUrl);
-    const uploaded = await upload(app, owner, fixture, "terminal-failure-upload");
+    const fixture = await readFile(labReportFixtureUrl);
+    const uploaded = await uploadDocument(app, owner, fixture, "terminal-failure-upload");
     assert.equal(uploaded.statusCode, 202);
     const documentId = uploaded.json().document.id as string;
 
@@ -650,9 +604,9 @@ test("terminal processing retry requires a trusted idempotent command and is rep
 test("an explicit run selector opens that exact run journal and refuses a foreign run", async () => {
   await withDocumentContext(async ({ app, database, storageRoot }) => {
     const owner = await register(app, "Run journal");
-    const source = await readFile(fixtureUrl);
-    const documentId = (await upload(app, owner, source, "run-journal-first")).json().document
-      .id as string;
+    const source = await readFile(labReportFixtureUrl);
+    const documentId = (await uploadDocument(app, owner, source, "run-journal-first")).json()
+      .document.id as string;
     assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
 
     const restarted = await app.inject({
@@ -668,7 +622,7 @@ test("an explicit run selector opens that exact run journal and refuses a foreig
     assert.equal((await processOneDocument(database, storageRoot)).status, "completed");
 
     const otherDocumentId = (
-      await upload(
+      await uploadDocument(
         app,
         owner,
         createSyntheticLabImage(
@@ -750,10 +704,10 @@ test("an explicit run selector opens that exact run journal and refuses a foreig
 test("a trusted restart creates a fresh immutable analysis run without replacing prior results", async () => {
   await withDocumentContext(async ({ app, database, storageRoot }) => {
     const owner = await register(app, "Restart analysis");
-    const uploaded = await upload(
+    const uploaded = await uploadDocument(
       app,
       owner,
-      await readFile(fixtureUrl),
+      await readFile(labReportFixtureUrl),
       "restart-analysis-upload",
     );
     assert.equal(uploaded.statusCode, 202);

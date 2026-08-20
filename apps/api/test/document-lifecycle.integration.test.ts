@@ -10,26 +10,12 @@ import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
-import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { type DocumentTestContext, uploadDocument, withDocumentContext } from "./document-app.js";
 import { type Identity, register, webOrigin } from "./family-app.js";
 import { migrationNames, rollbackTo } from "./migration-chain.js";
 
 function syntheticPdf(label: string): Buffer {
   return Buffer.from(`%PDF-1.7\n% VEYLTA SYNTHETIC ONLY\n${label}\n%%EOF\n`);
-}
-
-function multipartFile(bytes: Buffer, filename = "synthetic-result.pdf") {
-  const boundary = `veylta-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
 }
 
 async function upload(
@@ -38,19 +24,10 @@ async function upload(
   bytes: Buffer,
   idempotencyKey: string,
   profileId = identity.body.profile.id,
-  filename = "synthetic-result.pdf",
 ): Promise<LightMyRequestResponse> {
-  const multipart = multipartFile(bytes, filename);
-  return app.inject({
-    method: "POST",
-    url: `/v1/families/${identity.body.family.id}/profiles/${profileId}/documents`,
-    headers: {
-      "content-type": multipart.contentType,
-      "idempotency-key": idempotencyKey.padEnd(16, "_"),
-      cookie: identity.cookie,
-      origin: webOrigin,
-    },
-    payload: multipart.body,
+  return uploadDocument(app, identity, bytes, idempotencyKey, {
+    filename: "synthetic-result.pdf",
+    profileId,
   });
 }
 

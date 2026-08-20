@@ -5,10 +5,13 @@ import { join } from "node:path";
 import test from "node:test";
 import { createCarePlanService } from "../src/care-plan/care-plan-service.js";
 import { registerCarePlanRoutes } from "../src/care-plan/routes.js";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { syntheticPreference } from "./codex-preference.js";
-import { createDocumentApp } from "./document-app.js";
+import {
+  createDocumentApp,
+  extractNextDocument,
+  labReportFixtureUrl,
+  uploadDocument,
+} from "./document-app.js";
 import {
   createFamilyApp,
   createTempDatabase,
@@ -17,24 +20,8 @@ import {
   webOrigin,
 } from "./family-app.js";
 
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
 function carePlanPath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/care-plan`;
-}
-
-function multipartFile(bytes: Buffer) {
-  const boundary = `veylta-care-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="care-plan.pdf"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
 }
 
 test("a profile care plan is actionable, replay-safe, and profile-authorized", async () => {
@@ -357,33 +344,16 @@ test("an explicit Codex run stores bounded drafts once and never exposes source 
     const owner = await register(app, "Codex care owner");
     const outsider = await register(app, "Codex care outsider");
     const profilePath = `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}`;
-    const multipart = multipartFile(await readFile(fixtureUrl));
-    const upload = await app.inject({
-      method: "POST",
-      url: `${profilePath}/documents`,
-      headers: {
-        cookie: owner.cookie,
-        origin: webOrigin,
-        "content-type": multipart.contentType,
-        "idempotency-key": `care-upload-${randomUUID()}`,
-      },
-      payload: multipart.body,
-    });
+    const upload = await uploadDocument(
+      app,
+      owner,
+      await readFile(labReportFixtureUrl),
+      `care-upload-${randomUUID()}`,
+      { filename: "care-plan.pdf" },
+    );
     assert.equal(upload.statusCode, 202, upload.body);
     const documentId = upload.json().document.id as string;
-    assert.equal(
-      (
-        await createDocumentExtractionProcessor({
-          database,
-          storage: createLocalObjectStorage(storageRoot),
-        }).processNext({
-          workerId: `care-worker-${randomUUID()}`,
-          leaseDurationMs: 60_000,
-          retryDelayMs: 1,
-        })
-      ).status,
-      "completed",
-    );
+    await extractNextDocument({ database, storageRoot });
     const facts = await app.inject({
       method: "GET",
       url: `${profilePath}/documents/${documentId}/facts`,

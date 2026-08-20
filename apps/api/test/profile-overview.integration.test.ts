@@ -1,15 +1,14 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import type { ProfileOverviewResponse } from "@veylta/contracts";
 import type { Database } from "../src/database/pool.js";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
-import { type Identity, register, webOrigin } from "./family-app.js";
-
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
+import {
+  type DocumentTestContext,
+  uploadAndExtract as uploadAndExtractDocument,
+  withDocumentContext,
+} from "./document-app.js";
+import { type Identity, register } from "./family-app.js";
 
 function profilePath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
@@ -19,51 +18,11 @@ function overviewPath(identity: Identity): string {
   return `${profilePath(identity)}/overview`;
 }
 
-function multipartFile(
-  bytes: Buffer,
-  {
-    contentType = "application/pdf",
-    filename = "overview-synthetic.pdf",
-  }: { contentType?: string; filename?: string } = {},
-) {
-  const boundary = `veylta-overview-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${contentType}\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
-
 async function uploadAndExtract(context: DocumentTestContext, owner: Identity): Promise<string> {
-  const multipart = multipartFile(await readFile(fixtureUrl));
-  const uploaded = await context.app.inject({
-    method: "POST",
-    url: `${profilePath(owner)}/documents`,
-    headers: {
-      "content-type": multipart.contentType,
-      "idempotency-key": `overview_${randomUUID()}`,
-      cookie: owner.cookie,
-      origin: webOrigin,
-    },
-    payload: multipart.body,
+  const prepared = await uploadAndExtractDocument(context, owner, {
+    filename: "overview-synthetic.pdf",
   });
-  assert.equal(uploaded.statusCode, 202);
-  const documentId = uploaded.json().document.id as string;
-  const processed = await createDocumentExtractionProcessor({
-    database: context.database,
-    storage: createLocalObjectStorage(context.storageRoot),
-  }).processNext({
-    workerId: `overview-worker-${randomUUID()}`,
-    leaseDurationMs: 60_000,
-    retryDelayMs: 1,
-  });
-  assert.equal(processed.status, "completed");
-  return documentId;
+  return prepared.documentId;
 }
 
 test("profile overview is source-first, bounded, and payload-free audited", async () => {

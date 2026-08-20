@@ -3,26 +3,8 @@ import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import type { FastifyInstance } from "fastify";
 import type { Database } from "../src/database/pool.js";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import type { Identity } from "./medical-profile-app.js";
-
-const webOrigin = "http://127.0.0.1:4300";
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-export function multipartFile(bytes: Buffer, filename = "synthetic-report.pdf") {
-  const boundary = `veylta-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
+import { extractNextDocument, labReportFixtureUrl, uploadDocument } from "./document-app.js";
+import { type Identity, webOrigin } from "./medical-profile-app.js";
 
 export type SyntheticReviewDecision =
   | "confirm"
@@ -97,26 +79,16 @@ export async function confirmSyntheticReport(
   identity: Identity,
   decide: (factKey: string) => SyntheticReviewDecision = () => "confirm",
 ): Promise<{ documentId: string; observationIds: string[] }> {
-  const profilePath = `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
-  const multipart = multipartFile(await readFile(fixtureUrl));
-  const upload = await app.inject({
-    method: "POST",
-    url: `${profilePath}/documents`,
-    headers: {
-      cookie: identity.cookie,
-      origin: webOrigin,
-      "content-type": multipart.contentType,
-      "idempotency-key": `upload-${randomUUID()}`,
-    },
-    payload: multipart.body,
-  });
+  const upload = await uploadDocument(
+    app,
+    identity,
+    await readFile(labReportFixtureUrl),
+    `upload-${randomUUID()}`,
+    { filename: "synthetic-report.pdf" },
+  );
   assert.equal(upload.statusCode, 202, upload.body);
   const documentId = upload.json().document.id as string;
-  const processed = await createDocumentExtractionProcessor({
-    database,
-    storage: createLocalObjectStorage(storageRoot),
-  }).processNext({ workerId: `worker-${randomUUID()}`, leaseDurationMs: 60_000, retryDelayMs: 1 });
-  assert.equal(processed.status, "completed");
+  await extractNextDocument({ database, storageRoot });
   await reviewSyntheticFacts(
     app,
     identity,

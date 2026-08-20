@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
@@ -9,38 +8,17 @@ import type { DocumentAgentRuntime } from "../src/agent/codex-document-agent-run
 import { createDocumentAgentCapabilityStore } from "../src/agent/document-agent-mcp.js";
 import { createDocumentAgentService } from "../src/agent/document-agent-service.js";
 import { registerDocumentAgentRoutes } from "../src/agent/routes.js";
-import { createDocumentApp } from "./document-app.js";
+import { createDocumentApp, labReportFixtureUrl, uploadDocument } from "./document-app.js";
 import { createTempDatabase, type Identity, register, webOrigin } from "./family-app.js";
 
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-function multipartFile(bytes: Buffer) {
-  const boundary = `veylta-agent-${randomUUID()}`;
-  return {
-    contentType: `multipart/form-data; boundary=${boundary}`,
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="synthetic-agent-report.pdf"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-  };
-}
-
 async function upload(app: FastifyInstance, owner: Identity): Promise<string> {
-  const multipart = multipartFile(await readFile(fixtureUrl));
-  const response = await app.inject({
-    method: "POST",
-    url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
-    headers: {
-      cookie: owner.cookie,
-      origin: webOrigin,
-      "content-type": multipart.contentType,
-      "idempotency-key": "agent-upload-key".padEnd(16, "_"),
-    },
-    payload: multipart.body,
-  });
+  const response = await uploadDocument(
+    app,
+    owner,
+    await readFile(labReportFixtureUrl),
+    "agent-upload-key",
+    { filename: "synthetic-agent-report.pdf" },
+  );
   assert.equal(response.statusCode, 202);
   return response.json().document.id as string;
 }

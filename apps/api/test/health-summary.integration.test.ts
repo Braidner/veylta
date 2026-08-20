@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
@@ -8,17 +7,13 @@ import {
   type HealthSummaryComparisonResponse,
   type HealthSummaryResponse,
 } from "@veylta/contracts";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
-import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import {
+  type DocumentTestContext,
+  type PreparedDocument,
+  uploadAndExtract as uploadAndExtractDocument,
+  withDocumentContext,
+} from "./document-app.js";
 import { type Identity, register, webOrigin } from "./family-app.js";
-
-const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface PreparedDocument {
-  documentId: string;
-  facts: Array<{ id: string; factVersion: number; factKey: string }>;
-}
 
 function profilePath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
@@ -40,62 +35,12 @@ function summaryComparisonPath(identity: Identity): string {
   return `${summaryPath(identity)}/compare`;
 }
 
-function multipartFile(bytes: Buffer, filename: string) {
-  const boundary = `veylta-summary-${randomUUID()}`;
-  return {
-    body: Buffer.concat([
-      Buffer.from(
-        `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: application/pdf\r\n\r\n`,
-      ),
-      bytes,
-      Buffer.from(`\r\n--${boundary}--\r\n`),
-    ]),
-    contentType: `multipart/form-data; boundary=${boundary}`,
-  };
-}
-
 async function uploadAndExtract(
   context: DocumentTestContext,
   owner: Identity,
   suffix: string,
 ): Promise<PreparedDocument> {
-  const fixture = await readFile(fixtureUrl);
-  const source = Buffer.concat([fixture, Buffer.from(`\n% ${suffix}\n`)]);
-  const multipart = multipartFile(source, `${suffix}.pdf`);
-  const upload = await context.app.inject({
-    method: "POST",
-    url: `${profilePath(owner)}/documents`,
-    headers: {
-      cookie: owner.cookie,
-      origin: webOrigin,
-      "content-type": multipart.contentType,
-      "idempotency-key": `summary-upload-${randomUUID()}`,
-    },
-    payload: multipart.body,
-  });
-  assert.equal(upload.statusCode, 202, upload.rawPayload.toString());
-  const documentId = upload.json().document.id as string;
-  const processor = createDocumentExtractionProcessor({
-    database: context.database,
-    storage: createLocalObjectStorage(context.storageRoot),
-  });
-  assert.equal(
-    (
-      await processor.processNext({
-        workerId: `summary-worker-${randomUUID()}`,
-        leaseDurationMs: 60_000,
-        retryDelayMs: 1,
-      })
-    ).status,
-    "completed",
-  );
-  const facts = await context.app.inject({
-    method: "GET",
-    url: `${documentPath(owner, documentId)}/facts`,
-    headers: { cookie: owner.cookie },
-  });
-  assert.equal(facts.statusCode, 200);
-  return { documentId, facts: facts.json().items };
+  return uploadAndExtractDocument(context, owner, { filename: `${suffix}.pdf`, marker: suffix });
 }
 
 async function decide(
