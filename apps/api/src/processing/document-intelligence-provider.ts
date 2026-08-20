@@ -1,4 +1,8 @@
-import type { DocumentIntelligenceResult, SyntheticDocumentContentType } from "@veylta/contracts";
+import type {
+  DocumentIntelligenceResult,
+  DocumentPageUnreadReason,
+  SyntheticDocumentContentType,
+} from "@veylta/contracts";
 import type { DocumentPageImage } from "./document-images.js";
 import type {
   ExtractedPageText,
@@ -31,6 +35,12 @@ export interface AnalyteCatalogEntry {
   readonly aliases: readonly string[];
 }
 
+/** A page an analysis never read, with the server-derived reason it did not. */
+export interface UnreadDocumentPage {
+  readonly pageNumber: number;
+  readonly reason: DocumentPageUnreadReason;
+}
+
 export interface DocumentIntelligenceOutput {
   readonly pages: readonly ParsedDocumentPage[];
   readonly extraction: {
@@ -39,6 +49,11 @@ export interface DocumentIntelligenceOutput {
     readonly items: readonly StrictLabExtractionFact[];
   };
   readonly intelligence: DocumentIntelligenceResult;
+  /**
+   * Pages this analysis left unread, in page order. One provider run reads every page it is
+   * given, so only an analysis merged out of several passes fills this.
+   */
+  readonly unreadPages?: readonly UnreadDocumentPage[];
 }
 
 /** Explicit alias for consumers that want to state the v2 provider guarantee. */
@@ -60,8 +75,11 @@ export interface DocumentIntelligenceExchange {
   readonly durationMs: number;
 }
 
+/** One analysis as a provider returned it, with the round trip that produced it. */
+export type DocumentAnalysis = DocumentIntelligenceOutput & {
+  readonly exchange?: DocumentIntelligenceExchange;
+};
+
 export interface DocumentIntelligenceProvider {
-  analyze(
-    input: DocumentIntelligenceInput,
-  ): Promise<DocumentIntelligenceOutput & { exchange?: DocumentIntelligenceExchange }>;
+  analyze(input: DocumentIntelligenceInput): Promise<DocumentAnalysis>;
 }

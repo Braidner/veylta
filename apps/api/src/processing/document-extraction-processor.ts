@@ -1,12 +1,5 @@
-import { createHash } from "node:crypto";
-import {
-  MAX_SYNTHETIC_DOCUMENT_BYTES,
-  OBJECT_STORAGE_CONTRACT_VERSION,
-  type SyntheticDocumentContentType,
-} from "@veylta/contracts";
 import type { DatabaseClient } from "../database/pool.js";
 import {
-  createObjectStorageKey,
   type ObjectStorage,
   ObjectStorageIntegrityError,
   ObjectStorageNotFoundError,
@@ -19,11 +12,19 @@ import { checkedDirectImage } from "./direct-image.js";
 import {
   type DirectImageContentType,
   DocumentImageError,
+  type DocumentImageRenderOptions,
   type DocumentPageImage,
   renderPdfPagesToImages,
 } from "./document-images.js";
 import type { DocumentIntelligenceProvider } from "./document-intelligence-provider.js";
 import {
+  DocumentSourceUnavailableError,
+  loadDocumentBytes,
+  sourceForClaim,
+} from "./document-source.js";
+import { readImagePages } from "./extraction-merge.js";
+import {
+  type ExtractedPdfPage,
   extractPdfTextLayer,
   PdfTextExtractionError,
   type PdfTextExtractionOptions,
@@ -34,6 +35,7 @@ import {
   type LeasedProcessingJob,
   type ProcessingCompletion,
   type ProcessingErrorCode,
+  type ProcessingExtractionOutput,
   type ProcessingJob,
   type ProcessingJobService,
   type ProcessingStage,
@@ -60,9 +62,12 @@ export interface DocumentExtractionProcessorDependencies {
   extractText?: (
     bytes: Uint8Array,
     options?: PdfTextExtractionOptions,
-  ) => Promise<ExtractedPageText[]>;
-  /** Renders a PDF without a text layer into bounded page images for the model. */
-  renderPdfImages?: (bytes: Uint8Array) => Promise<DocumentPageImage[]>;
+  ) => Promise<ExtractedPdfPage[]>;
+  /** Renders a whole PDF, or the pages named, into bounded page images for the model. */
+  renderPdfImages?: (
+    bytes: Uint8Array,
+    options?: DocumentImageRenderOptions,
+  ) => Promise<DocumentPageImage[]>;
   /** Validates a direct PNG/JPEG upload and returns it as one page image for the model. */
   checkImage?: (
     bytes: Uint8Array,
@@ -104,22 +109,6 @@ export interface DocumentExtractionProcessor {
   ): Promise<ProcessNextDocumentExtractionResult>;
 }
 
-interface DocumentSourceRow {
-  storage_key: string;
-  content_type: string;
-  byte_size: number;
-  sha256: string;
-}
-
-interface DocumentSource {
-  storageKey: ReturnType<typeof createObjectStorageKey>;
-  contentType: SyntheticDocumentContentType;
-  byteSize: number;
-  sha256: string;
-}
-
-class DocumentSourceUnavailableError extends Error {}
-
 function validNow(now: () => Date): Date {
   const value = now();
   if (!Number.isFinite(value.getTime()))
@@ -132,106 +121,6 @@ function transactionalDatabase(database: DatabaseClient): TransactionalProcessin
     throw new Error("A transactional database is required when a job coordinator is not supplied");
   }
   return database as TransactionalProcessingDatabase;
-}
-
-async function sourceForClaim(
-  database: DatabaseClient,
-  claim: LeasedProcessingJob,
-): Promise<DocumentSource> {
-  const result = await database.query<DocumentSourceRow>(
-    `SELECT b.storage_key, COALESCE(bt.content_type, b.content_type) AS content_type,
-            b.byte_size, b.sha256
-       FROM document_versions AS v
-       JOIN documents AS d
-         ON d.family_id = v.family_id
-        AND d.id = v.document_id
-       JOIN patient_profiles AS p
-         ON p.family_id = d.family_id
-        AND p.id = d.patient_profile_id
-        AND p.archived_at IS NULL
-       JOIN document_blobs AS b
-         ON b.family_id = v.family_id
-        AND b.id = v.blob_id
-       LEFT JOIN document_blob_content_types AS bt
-         ON bt.family_id = b.family_id
-        AND bt.blob_id = b.id
-      WHERE v.family_id = $1 AND v.id = $2
-        AND d.deleted_at IS NULL`,
-    [claim.familyId, claim.documentVersionId],
-  );
-  const row = result.rows[0];
-  const byteSize = Number(row?.byte_size);
-  if (
-    result.rowCount !== 1 ||
-    row === undefined ||
-    !["application/pdf", "image/png", "image/jpeg"].includes(row.content_type) ||
-    !Number.isSafeInteger(byteSize) ||
-    byteSize < 5 ||
-    byteSize > MAX_SYNTHETIC_DOCUMENT_BYTES ||
-    !/^[a-f0-9]{64}$/.test(row.sha256)
-  ) {
-    throw new DocumentSourceUnavailableError();
-  }
-  try {
-    return {
-      storageKey: createObjectStorageKey(row.storage_key),
-      contentType: row.content_type as SyntheticDocumentContentType,
-      byteSize,
-      sha256: row.sha256,
-    };
-  } catch (error) {
-    if (error instanceof ObjectStorageValidationError) throw new DocumentSourceUnavailableError();
-    throw error;
-  }
-}
-
-async function exactBodyBytes(
-  body: NodeJS.ReadableStream & AsyncIterable<unknown>,
-  source: DocumentSource,
-): Promise<Uint8Array> {
-  const chunks: Buffer[] = [];
-  let byteSize = 0;
-  const digest = createHash("sha256");
-  for await (const chunk of body) {
-    const bytes =
-      typeof chunk === "string"
-        ? Buffer.from(chunk)
-        : Buffer.isBuffer(chunk)
-          ? chunk
-          : Buffer.from(chunk as Uint8Array);
-    byteSize += bytes.byteLength;
-    if (byteSize > source.byteSize || byteSize > MAX_SYNTHETIC_DOCUMENT_BYTES) {
-      throw new DocumentSourceUnavailableError();
-    }
-    digest.update(bytes);
-    chunks.push(bytes);
-  }
-  if (byteSize !== source.byteSize || digest.digest("hex") !== source.sha256) {
-    throw new DocumentSourceUnavailableError();
-  }
-  return Buffer.concat(chunks, byteSize);
-}
-
-async function loadDocumentBytes(
-  storage: ObjectStorage,
-  source: DocumentSource,
-): Promise<Uint8Array> {
-  const read = await storage.get(source.storageKey, {
-    contentType: source.contentType,
-    byteSize: source.byteSize,
-    sha256: source.sha256,
-  });
-  if (
-    read.metadata.contractVersion !== OBJECT_STORAGE_CONTRACT_VERSION ||
-    read.metadata.key !== source.storageKey ||
-    read.metadata.contentType !== source.contentType ||
-    read.metadata.byteSize !== source.byteSize ||
-    read.metadata.sha256 !== source.sha256
-  ) {
-    read.body.destroy();
-    throw new DocumentSourceUnavailableError();
-  }
-  return exactBodyBytes(read.body, source);
 }
 
 function failureCode(error: unknown): ProcessingErrorCode {
@@ -322,7 +211,7 @@ export function createDocumentExtractionProcessor(
         await advance(jobs, claim, "text_extraction", now);
         // A text layer travels as text; anything else travels as bounded page images that
         // Codex reads and transcribes itself. Local OCR is gone: one reader, one provenance.
-        let pages: ExtractedPageText[] = [];
+        let pages: ExtractedPdfPage[] = [];
         let images: DocumentPageImage[] = [];
         if (source.contentType === "application/pdf") {
           try {
@@ -338,23 +227,39 @@ export function createDocumentExtractionProcessor(
         }
         await advance(jobs, claim, "document_classification", now);
         await advance(jobs, claim, "structured_extraction", now);
-        const output =
-          intelligence === undefined
-            ? (() => {
-                // Compatibility seam for isolated deterministic fixtures. The runtime worker
-                // always supplies the Codex provider, and image sources need one.
-                if (images.length > 0)
-                  throw new SyntheticLabParseError("UNSUPPORTED_SYNTHETIC_FORMAT");
-                requireSyntheticLabFixture(pages);
-                return parse(pages);
-              })()
-            : await intelligence.analyze({
-                contentType: source.contentType,
-                pages,
-                ...(images.length === 0 ? {} : { images }),
-                analyteCatalog: await loadAnalyteCatalogForPrompt(dependencies.database),
-                ...(input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal }),
-              });
+        let output: ProcessingExtractionOutput;
+        if (intelligence === undefined) {
+          // Compatibility seam for isolated deterministic fixtures. The runtime worker
+          // always supplies the Codex provider, and image sources need one.
+          if (images.length > 0) throw new SyntheticLabParseError("UNSUPPORTED_SYNTHETIC_FORMAT");
+          requireSyntheticLabFixture(pages);
+          output = parse(pages);
+        } else {
+          const request = {
+            contentType: source.contentType,
+            analyteCatalog: await loadAnalyteCatalogForPrompt(dependencies.database),
+            ...(input.abortSignal === undefined ? {} : { abortSignal: input.abortSignal }),
+          };
+          const analyzed = await intelligence.analyze({
+            ...request,
+            pages,
+            ...(images.length === 0 ? {} : { images }),
+          });
+          // A page that carries a picture and hardly any text was read by nothing: a second,
+          // page-scoped run reads it as an image into the same analysis. One run sends text
+          // or images, never both, so this is a run of its own.
+          output =
+            images.length > 0
+              ? analyzed
+              : await readImagePages({
+                  analyzed,
+                  pages,
+                  bytes,
+                  render: renderPdfImages,
+                  analyze: (attached) =>
+                    intelligence.analyze({ ...request, pages: [], images: attached }),
+                });
+        }
         await advance(jobs, claim, "validation", now);
         const completion = await jobs.completeExtraction(claim, output, validNow(now));
         return completedResult(claim, completion);
