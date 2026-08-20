@@ -72,6 +72,11 @@ function deltaOf(latest: SeriesPoint, previous: SeriesPoint | null): DossierSeri
   );
 }
 
+/** The series identity: canonical code (or the printed name) plus the exact printed unit. */
+export function seriesKeyOf(item: ObservationHistoryItem): string {
+  return `${item.canonicalCode ?? item.source.name.toLocaleLowerCase("ru-RU")}|${item.source.unit}`;
+}
+
 /**
  * One series per analyte and printed unit, oldest first, each point read against the source's
  * own reference. Nothing is converted or mixed: two units of one code are two series.
@@ -82,7 +87,7 @@ export function buildDossierSeries(
 ): DossierSeries[] {
   const groups = new Map<string, ObservationHistoryItem[]>();
   for (const item of items) {
-    const key = `${item.canonicalCode ?? item.source.name.toLocaleLowerCase("ru-RU")}|${item.source.unit}`;
+    const key = seriesKeyOf(item);
     groups.set(key, [...(groups.get(key) ?? []), item]);
   }
   return [...groups.entries()]

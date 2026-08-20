@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { attentionBySpecialty, buildDossierSeries, seriesAssessment } from "./dossier";
+import { attentionBySpecialty, buildDossierSeries, seriesAssessment, seriesKeyOf } from "./dossier";
 import { observation } from "./dossier.fixture";
 
 test("series are built per analyte and unit, ordered in time, with the printed range read as numbers", () => {
@@ -66,8 +66,10 @@ test("status comes from the printed bounds, then from the laboratory's own flag,
   assert.equal(flagged?.status, "flagged");
   const [below] = buildDossierSeries([observation({ value: "0,2" })], null);
   assert.equal(below?.status, "below");
-  const [within] = buildDossierSeries([observation({ value: "2,2" })], null);
+  const withinItem = observation({ value: "2,2" });
+  const [within] = buildDossierSeries([withinItem], null);
   assert.equal(within?.status, "within");
+  assert.equal(seriesKeyOf(withinItem), within?.key, "the exported helper and the builder agree");
   const [unknown] = buildDossierSeries([observation({ low: null, high: null, text: null })], null);
   assert.equal(unknown?.status, "unknown");
   const [comparison] = buildDossierSeries(
