@@ -7,7 +7,7 @@
     "apps/api/src/documents/document-service.ts": 4844,
     "apps/api/src/documents/evidence-bundle-verifier.test.ts": 268,
     "apps/api/src/documents/evidence-bundle-verifier.ts": 460,
-    "apps/api/src/documents/routes.ts": 720,
+    "apps/api/src/documents/routes.ts": 608,
     "apps/api/src/family/family-service.ts": 1210,
     "apps/api/src/family/routes.ts": 377,
     "apps/api/src/processing/document-extraction-processor.test.ts": 428,
@@ -34,13 +34,13 @@
     "apps/api/test/observation-history.integration.test.ts": 425,
     "apps/api/test/profile-overview.integration.test.ts": 277,
     "apps/web/app/components/document-agent-workspace.tsx": 648,
-    "apps/web/app/components/veylta-app.tsx": 5997,
+    "apps/web/app/components/veylta-app.tsx": 5975,
     "e2e/document-agent.spec.ts": 300,
     "e2e/document-review.spec.ts": 321,
     "e2e/document-upload.spec.ts": 294,
     "e2e/family-profile.spec.ts": 307,
-    "packages/contracts/src/index.test.ts": 682,
-    "packages/contracts/src/index.ts": 1408,
+    "packages/contracts/src/index.test.ts": 678,
+    "packages/contracts/src/index.ts": 1406,
     "test/veylta-agent/bridge.test.mjs": 298
   }
 }

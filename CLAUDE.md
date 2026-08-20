@@ -457,7 +457,15 @@ the documents archive; the two wrappers stay thin. On those tabs the profile hea
 aside, so the tab-level `padding-top` is removed for `.profile-shell--documents` too.
 
 **Web ↔ API.** The browser never calls port 4301; `next.config.ts` rewrites
-`/health-api/:path*` to `API_INTERNAL_URL`. Session state is an opaque token in an HttpOnly
+`/health-api/:path*` to `API_INTERNAL_URL`. Every upload crosses that rewrite, and Next clones
+a proxied body with a 10 MB default cap, forwarding a truncated body rather than failing —
+`experimental.proxyClientMaxBodySize` is therefore pinned to
+`MAX_SYNTHETIC_DOCUMENT_UPLOAD_BYTES` (the document plus its multipart framing, the same
+headroom the POST route's `bodyLimit` adds), and `next-config.test.ts` holds the two together.
+The size a document may be is stated in four places that must agree: the contract constant, the
+API route, this proxy cap, and the `byte_size` CHECK in the schema (migration 0040 —
+`document-size.integration.test.ts` reads the live bounds back and fails if they drift).
+Session state is an opaque token in an HttpOnly
 cookie; SQLite stores only its SHA-256 digest. Browser routes address a person by handle
 (`patient_profiles.handle`, server-unique, migration
 0038; `apps/api/src/family/profile-handle.ts` is the default rule — username, then the

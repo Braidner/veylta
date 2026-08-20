@@ -16,6 +16,7 @@ export * from "./care-plan.js";
 export * from "./clinician-record.js";
 export * from "./codex.js";
 export * from "./document-intelligence-results.js";
+export * from "./document-size.js";
 export * from "./document-timeline.js";
 export * from "./medical-profile.js";
 export * from "./observation-status.js";
@@ -62,9 +63,6 @@ export const MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS = 10;
 export const MAX_PROFILE_OVERVIEW_REVIEW_DOCUMENTS = 50;
 export const MAX_HEALTH_SUMMARY_EVIDENCE = 50;
 export const MAX_HEALTH_SUMMARY_HISTORY_PAGE_SIZE = 50;
-export const MAX_SYNTHETIC_DOCUMENT_BYTES = 100 * 1024 * 1024;
-/** @deprecated Use MAX_SYNTHETIC_DOCUMENT_BYTES for every supported local source. */
-export const MAX_SYNTHETIC_PDF_BYTES = MAX_SYNTHETIC_DOCUMENT_BYTES;
 export const MAX_OBSERVATION_HISTORY_PAGE_SIZE = 100;
 export const MAX_INDICATOR_SERIES_PAGE_SIZE = 100;
 export const MAX_AUDIT_LOG_PAGE_SIZE = 100;
