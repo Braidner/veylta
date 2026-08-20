@@ -209,7 +209,7 @@ real-data readiness claim.
 - Versioned `ObjectStorage/v1` contract, backed by a persistent local filesystem
   directory by default and an explicit S3-compatible encrypted adapter for
   synthetic deployments. Controlled reads take a bounded, checksum-verified
-  snapshot (the current synthetic-document cap is 5 MiB) before returning bytes.
+  snapshot (the current synthetic-document cap is 100 MB) before returning bytes.
 - Provider-neutral `DocumentIntelligenceProvider` boundary with a Codex CLI
   implementation. A PDF text layer travels as text; a scanned PDF or a direct
   PNG/JPEG travels as bounded page images that Codex transcribes itself.
@@ -297,7 +297,7 @@ Rolling 0038 back and re-applying it re-derives every handle, including the ones
 On first launch, <http://127.0.0.1:4300> creates the only bootstrap administrator
 and signs them into their linked profile. Later visits show the local sign-in
 screen. The active profile stays explicit in both the route and heading. The
-batch dialog accepts up to twenty synthetic PDF, PNG, or JPEG files of 5 MiB
+batch dialog accepts up to twenty synthetic PDF, PNG, or JPEG files of 100 MB
 each and streams each through matching
 MIME/signature, size, and SHA-256 checks, and
 keeps it below `OBJECT_STORAGE_ROOT` across restarts. A repeated checksum is

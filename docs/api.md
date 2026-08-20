@@ -482,7 +482,7 @@ Headers:
   whose magic bytes agree with the declared MIME type.
 
 The idempotency key is 16–200 printable ASCII characters and only its SHA-256
-digest is stored. The current document limit is 5 MiB. The request must contain
+digest is stored. The current document limit is 100 MB. The request must contain
 exactly one file part and no fields.
 
 The server streams the body through size/signature checks, SHA-256 hashing, and

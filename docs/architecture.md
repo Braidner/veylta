@@ -379,7 +379,8 @@ separate confirmed workflows and remain deferred.
 metadata, size, content type, checksum, and an explicit deletion primitive
 reachable only from a separate confirmed deletion workflow. The upload path streams
 uploads, but a controlled read takes a checksum-verified in-memory snapshot of
-at most 5 MiB so the returned bytes are exactly the bytes that were verified.
+at most the document cap (100 MB) so the returned bytes are exactly the bytes
+that were verified — a whole large source is held in memory for that read.
 Original `DocumentVersion` content is immutable after finalization.
 
 The local adapter stores opaque keys derived from trusted identifiers/checksum,
