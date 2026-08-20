@@ -53,7 +53,7 @@ test("the overview counts the whole record: every confirmed value, and the indic
     assert.equal(afterFirst.contractVersion, "profile-overview/v4");
     assert.equal(afterFirst.confirmedCount, 2, "both decided facts became observations");
     assert.equal(afterFirst.confirmedCount, first.observationIds.length);
-    assert.equal(afterFirst.outsideRangeCount, 1, "ТТГ is outside; analyte b is not");
+    assert.equal(afterFirst.outsideIndicatorCount, 1, "ТТГ is outside; analyte b is not");
 
     // Second report: another ТТГ above the same range. Two outside values, still one indicator.
     const second = await confirmSyntheticReport(
@@ -68,7 +68,7 @@ test("the overview counts the whole record: every confirmed value, and the indic
     assert.equal(afterSecond.confirmedCount, 3);
     assert.equal(afterSecond.confirmedCount, second.observationIds.length);
     assert.equal(
-      afterSecond.outsideRangeCount,
+      afterSecond.outsideIndicatorCount,
       1,
       "two outside values of one indicator are one indicator outside, not two",
     );
@@ -100,7 +100,7 @@ test("the overview counts the whole record: every confirmed value, and the indic
       "the count is the record's, not the length of what the response shows",
     );
     assert.equal(
-      afterThird.outsideRangeCount,
+      afterThird.outsideIndicatorCount,
       0,
       "the indicator's latest value is inside; the two older ones no longer count",
     );

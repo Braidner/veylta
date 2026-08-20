@@ -15,7 +15,7 @@ interface LatestObservationRow {
 
 export interface ProfileOverviewCounts {
   readonly confirmed: number;
-  readonly outsideRange: number;
+  readonly outsideIndicators: number;
 }
 
 const confirmedCountSql = `SELECT COUNT(*) AS confirmed_count
@@ -82,7 +82,7 @@ export async function profileOverviewCounts(
     const held = newestByIndicator.get(key);
     if (held === undefined || row.timeline_at > held.timeline_at) newestByIndicator.set(key, row);
   }
-  let outsideRange = 0;
+  let outsideIndicators = 0;
   for (const row of newestByIndicator.values()) {
     const status = pointStatus(numberOf(row.source_value), {
       sourceLow: row.source_low,
@@ -90,7 +90,7 @@ export async function profileOverviewCounts(
       laboratoryOutOfRange:
         row.laboratory_out_of_range === null ? null : row.laboratory_out_of_range === 1,
     });
-    if (isOutsideRange(status)) outsideRange += 1;
+    if (isOutsideRange(status)) outsideIndicators += 1;
   }
-  return { confirmed: Number(confirmed?.confirmed_count ?? 0), outsideRange };
+  return { confirmed: Number(confirmed?.confirmed_count ?? 0), outsideIndicators };
 }

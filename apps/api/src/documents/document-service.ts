@@ -3707,7 +3707,10 @@ export function createDocumentService(
           profile: profileOverviewProfile(profile),
           documentCount: asCount(documentCount?.document_count ?? -1, "overview document count"),
           confirmedCount: asCount(observationCounts.confirmed, "overview confirmed count"),
-          outsideRangeCount: asCount(observationCounts.outsideRange, "overview outside count"),
+          outsideIndicatorCount: asCount(
+            observationCounts.outsideIndicators,
+            "overview outside indicator count",
+          ),
           recentDocuments: recentDocuments.rows.map(profileOverviewDocument),
           reviewQueue: {
             documentCount: asCount(reviewQueue.document_count, "overview review document count"),

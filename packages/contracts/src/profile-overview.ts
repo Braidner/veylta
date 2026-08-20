@@ -44,9 +44,10 @@ export interface ProfileOverviewResponse {
    * How many indicators currently sit outside: the number of distinct indicators whose latest
    * confirmed value is outside its printed range or flagged by the laboratory. Indicators, not
    * values — that is what the dossier's own reading counts and what «3 показателя вне референса»
-   * means to a person.
+   * means to a person. `DocumentTimelineEntry.outsideRangeCount` counts values in one document;
+   * the two names differ because the units of counting do.
    */
-  readonly outsideRangeCount: number;
+  readonly outsideIndicatorCount: number;
   /** Newest first; bounded to fifty immutable source documents. */
   readonly recentDocuments: readonly ProfileOverviewDocument[];
   readonly reviewQueue: {

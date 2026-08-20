@@ -953,7 +953,7 @@ unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` 
 
 `profile-overview/v4` adds two more counts over the whole record, so a client never has to
 infer them from the three `recentObservations`: `confirmedCount` is every confirmed observation
-of the profile, and `outsideRangeCount` is how many *indicators* currently sit outside — the
+of the profile, and `outsideIndicatorCount` is how many *indicators* currently sit outside — the
 number of distinct indicators (one canonical code, or its printed name, under one printed unit)
 whose **latest** confirmed value is outside its printed range or flagged by the laboratory. Both
 are read with the dossier's own rule over the printed value; nothing is parsed or compared in
@@ -973,7 +973,7 @@ SQL, and no unit is converted.
   },
   "documentCount": 1,
   "confirmedCount": 4,
-  "outsideRangeCount": 1,
+  "outsideIndicatorCount": 1,
   "recentDocuments": [
     {
       "id": "document_placeholder",
