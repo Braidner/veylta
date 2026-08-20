@@ -144,7 +144,7 @@ the opposite stance:
 </p>
 
 <p align="center">
-  <img src="docs/media/history.png" alt="История: «что изменилось» за период — счёт показателей, вышедших за референс и вернувшихся в него, слева каталог показателей, справа выбранный показатель на фоне референсной полосы своей лаборатории и таблица подтверждённых значений с источниками" width="900">
+  <img src="docs/media/history.png" alt="The history page: what changed over the period as counts of the indicators that left their printed reference or came back, the record's indicators on the left, and the chosen one drawn against the reference band its laboratory printed, with the confirmed values and their sources below" width="900">
 </p>
 
 <p align="center">
