@@ -379,8 +379,10 @@ separate confirmed workflows and remain deferred.
 metadata, size, content type, checksum, and an explicit deletion primitive
 reachable only from a separate confirmed deletion workflow. The upload path streams
 uploads, but a controlled read takes a checksum-verified in-memory snapshot of
-at most the document cap (100 MB) so the returned bytes are exactly the bytes
-that were verified — a whole large source is held in memory for that read.
+exactly the object's recorded byte size, so the returned bytes are exactly the
+bytes that were verified. Stored metadata is refused outright when that recorded
+size exceeds `MAX_SYNTHETIC_DOCUMENT_BYTES`, which is what bounds the snapshot:
+a source near the 100 MB ceiling is held in memory whole for such a read.
 Original `DocumentVersion` content is immutable after finalization.
 
 The local adapter stores opaque keys derived from trusted identifiers/checksum,

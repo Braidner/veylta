@@ -2,6 +2,11 @@
 
 - Status: Accepted
 - Date: 2026-08-11
+- Amended 2026-08-20: the 5 MiB figure below is the bound as decided. The per-document
+  cap is now `MAX_SYNTHETIC_DOCUMENT_BYTES` (100 MB) in
+  `packages/contracts/src/document-size.ts`, which every source-side bound reads —
+  including the snapshot a controlled read verifies. The decision itself is unchanged:
+  one bound, enforced while streaming, with reads verified against it.
 
 ## Context
 

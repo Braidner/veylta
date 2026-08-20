@@ -391,7 +391,7 @@ script policy are reviewed under the MIT boundary.
 Commit intent: `feat: add direct synthetic image ingestion`
 
 - Extends the immutable upload contract from PDF-only to `application/pdf`,
-  `image/png`, and `image/jpeg`, sharing the existing 5 MiB streaming,
+  `image/png`, and `image/jpeg`, sharing the existing bounded streaming,
   SHA-256, same-family deduplication, safe-download, and authorization path.
 - Validates exact magic bytes before staging. PNG/JPEG inputs are additionally
   preflighted with a bounded header parser before decode, then pass through the

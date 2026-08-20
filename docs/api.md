@@ -482,8 +482,13 @@ Headers:
   whose magic bytes agree with the declared MIME type.
 
 The idempotency key is 16–200 printable ASCII characters and only its SHA-256
-digest is stored. The current document limit is 100 MB. The request must contain
-exactly one file part and no fields.
+digest is stored. The document limit is `MAX_SYNTHETIC_DOCUMENT_BYTES` (100 MB)
+from `@veylta/contracts`; `MAX_DOCUMENT_BYTES` may lower it for one deployment
+but never raise it above the constant. The route admits
+`SYNTHETIC_DOCUMENT_MULTIPART_OVERHEAD_BYTES` (128 KiB) of multipart framing on
+top of the source itself, and so must every hop in front of it. A source past the
+limit is refused with 413 `UPLOAD_TOO_LARGE`. The request must contain exactly one
+file part and no fields.
 
 The server streams the body through size/signature checks, SHA-256 hashing, and
 `ObjectStorage/v1`. A display filename is never used as a storage path.

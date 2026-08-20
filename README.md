@@ -66,8 +66,9 @@ the opposite stance:
 
 ## Features
 
-- **Batch upload** of PDF, PNG and JPEG (up to 20 files × 100 MB): streaming SHA-256, signature and
-  MIME checks, immutable originals, private per-family deduplication.
+- **Batch upload** of PDF, PNG and JPEG (up to 20 files at a time, 100 MB each, one request per
+  file): streaming SHA-256, signature and MIME checks, immutable originals, private per-family
+  deduplication.
 - **Extraction that shows its work.** A PDF text layer travels as text; scans and photos travel as
   bounded page images that Codex transcribes first. Every fact and summary result binds to a page
   fragment; unbound items are dropped, an incomplete laboratory answer is refused and retried, and
