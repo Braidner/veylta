@@ -105,6 +105,7 @@ import { archiveValueCountCopy, canBulkConfirmFact, uploadButtonCopy } from "../
 import { parseAsk } from "../dossier-ask";
 import { formatBytes } from "../format-bytes";
 import { formatDate, formatSampleMoment } from "../format-moment";
+import { observationSourceHref } from "../observation-dates";
 import {
   documentApiPath,
   documentPath,
@@ -133,6 +134,7 @@ import { DocumentsWorkspace } from "./documents-workspace";
 import { DossierPanel } from "./dossier-panel";
 import { IdentityChips } from "./identity-chips";
 import { LoadingScreen } from "./loading-screen";
+import { ObservationHistoryRow } from "./observation-history-row";
 import { ProfileDashboard } from "./profile-dashboard";
 import { SettingsGear } from "./settings-gear";
 import { SettingsSectionSwitch } from "./settings-section-switch";
@@ -4408,42 +4410,11 @@ function observationHistoryRequestPath(
   return `${observationHistoryPath(familyId, profileId)}${query.length === 0 ? "" : `?${query}`}`;
 }
 
-interface ObservationDate {
-  label: string;
-  value: string;
-}
-
-function timelineDate(item: ObservationHistoryItem): ObservationDate {
-  if (item.dates.sampledAt !== null) {
-    return { label: "Дата биоматериала", value: item.dates.sampledAt };
-  }
-  if (item.dates.resultedAt !== null) {
-    return { label: "Дата результата", value: item.dates.resultedAt };
-  }
-  return { label: "Дата загрузки", value: item.dates.uploadedAt };
-}
-
-function knownObservationDates(item: ObservationHistoryItem): readonly ObservationDate[] {
-  return [
-    item.dates.sampledAt === null
-      ? null
-      : { label: "Дата биоматериала", value: item.dates.sampledAt },
-    item.dates.resultedAt === null
-      ? null
-      : { label: "Дата результата", value: item.dates.resultedAt },
-    { label: "Дата загрузки", value: item.dates.uploadedAt },
-  ].filter((date): date is ObservationDate => date !== null);
-}
-
 function observationHistoryErrorCopy(error: unknown): string {
   if (error instanceof ApiError && [401, 404].includes(error.status)) {
     return "История этого профиля недоступна. Вернитесь к доступному профилю и попробуйте снова.";
   }
   return "Не удалось загрузить историю. Подтверждённые значения и исходные документы не изменены.";
-}
-
-function observationSourceHref(contentPath: string): string {
-  return `${apiPrefix}${contentPath}`;
 }
 
 function ObservationHistoryPanel({
@@ -4618,120 +4589,6 @@ function appendDistinctObservations(
 ): readonly ObservationHistoryItem[] {
   const seen = new Set(current.map((item) => item.id));
   return [...current, ...incoming.filter((item) => !seen.has(item.id))];
-}
-
-function ObservationHistoryRow({ item }: { item: ObservationHistoryItem }) {
-  const date = timelineDate(item);
-  const knownDates = knownObservationDates(item);
-  const normalizedValue =
-    item.normalized.value === null
-      ? null
-      : `${item.normalized.value}${item.normalized.unit === null ? "" : ` ${item.normalized.unit}`}`;
-  const confidence = new Intl.NumberFormat("ru-RU", {
-    style: "percent",
-    maximumFractionDigits: 0,
-  }).format(item.extractionConfidence);
-
-  return (
-    <tr>
-      <th scope="row">
-        <span className="observation-history__name">{item.source.name}</span>
-        {item.canonicalCode !== null ? (
-          <span className="observation-history__code">{item.canonicalCode}</span>
-        ) : null}
-      </th>
-      <td>
-        <strong className="observation-history__value">
-          {item.source.value} {item.source.unit}
-        </strong>
-        {normalizedValue !== null ? (
-          <span className="observation-history__normalized">
-            Нормализовано: {normalizedValue}
-            {item.normalized.conversionVersion === null
-              ? ""
-              : ` · ${item.normalized.conversionVersion}`}
-          </span>
-        ) : null}
-      </td>
-      <td>
-        <span className="observation-history__date-label">{date.label}</span>
-        <time dateTime={date.value}>{formatDate(date.value)}</time>
-      </td>
-      <td>
-        <details className="observation-history__provenance">
-          <summary>Документ · страница {item.sourceDocument.pageNumber}</summary>
-          <div className="observation-history__provenance-content">
-            <dl>
-              <div>
-                <dt>Подтверждено</dt>
-                <dd>
-                  <time dateTime={item.confirmed.at}>{formatDate(item.confirmed.at)}</time>
-                  {` · ${item.confirmed.by.displayName}`}
-                </dd>
-              </div>
-              <div>
-                <dt>Уверенность извлечения</dt>
-                <dd>{confidence}</dd>
-              </div>
-              <div>
-                <dt>Нормализованное значение</dt>
-                <dd>{normalizedValue ?? "Не рассчитано"}</dd>
-              </div>
-              {knownDates.map((knownDate) => (
-                <div key={knownDate.label}>
-                  <dt>{knownDate.label}</dt>
-                  <dd>
-                    <time dateTime={knownDate.value}>{formatDate(knownDate.value)}</time>
-                  </dd>
-                </div>
-              ))}
-              {item.specimenType !== null ? (
-                <div>
-                  <dt>Материал</dt>
-                  <dd>{item.specimenType}</dd>
-                </div>
-              ) : null}
-              {item.laboratory !== null ? (
-                <div>
-                  <dt>Лаборатория</dt>
-                  <dd>{item.laboratory}</dd>
-                </div>
-              ) : null}
-              {item.referenceRange !== null ? (
-                <>
-                  <div>
-                    <dt>Диапазон в документе</dt>
-                    <dd>{referenceRangeCopy(item.referenceRange)}</dd>
-                  </div>
-                  {item.referenceRange.laboratoryOutOfRange !== null ? (
-                    <div>
-                      <dt>Отметка лаборатории</dt>
-                      <dd>
-                        {item.referenceRange.laboratoryOutOfRange
-                          ? "Отмечено в исходном документе"
-                          : "Не отмечено в исходном документе"}
-                      </dd>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-            </dl>
-            <p className="observation-history__fragment-label">Фрагмент из исходника</p>
-            <pre className="observation-history__fragment">
-              <code>{item.sourceDocument.fragment}</code>
-            </pre>
-            <a
-              className="observation-history__source-link"
-              href={observationSourceHref(item.sourceDocument.contentPath)}
-              download
-            >
-              Открыть исходник
-            </a>
-          </div>
-        </details>
-      </td>
-    </tr>
-  );
 }
 
 type IndicatorCatalogItem = IndicatorCatalogResponse["items"][number];
