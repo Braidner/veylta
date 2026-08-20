@@ -120,8 +120,8 @@ test("re-uploading a large source answers from the one already kept", async () =
 test("0040 moves the bound on a record that already holds documents", async () => {
   await withDocumentContext(async ({ app, database }) => {
     const owner = await register(app, "Migration record");
-    // A real upload leaves the children that made a table rebuild impossible: a document
-    // version, the content-type overlays and the recorded upload request.
+    // A real upload leaves the children the rebuild must not disturb: a document version, the
+    // content-type overlays and the recorded upload request.
     const kept = await uploadDocument(app, owner, syntheticPdf(64 * 1024), "migration-small-001");
     assert.equal(kept.statusCode, 202, kept.rawPayload.toString());
     const documentId = kept.json().document.id;
@@ -190,8 +190,8 @@ test("0040 reaches a connection that opened before it ran", async () => {
 
       await reapplyFrom(database, "0040_document_size_ceiling");
 
-      // The api and the worker hold their own connections; an edited CHECK that left the schema
-      // cookie alone would go on refusing large sources there until the process restarted.
+      // The api and the worker hold their own connections; a widened bound that never moved the
+      // schema cookie would go on refusing large sources there until the process restarted.
       const blobId = randomUUID();
       await running.transaction((client) =>
         client.query(

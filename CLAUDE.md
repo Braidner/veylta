@@ -18,8 +18,13 @@ pnpm eval:assistants     # 30 synthetic vignettes against the local Codex CLI (-
 Full check sequence, in CI order:
 
 ```bash
+nvm use   # 24.19.0 — .nvmrc is the pin, and CI reads the same file
 pnpm license:check && pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build && pnpm test:e2e
 ```
+
+**Run the gate on the Node in `.nvmrc`.** `node:sqlite` is not the same build across majors —
+Node 24 refuses writes to `sqlite_master` that Node 22 allows — so a green run on another
+version is not evidence about CI.
 
 `pnpm lint` also runs `scripts/check-file-lines.mjs`: **no source file may exceed 250
 lines**. Files that were already larger are listed with their size in
@@ -123,6 +128,16 @@ tables and the failure surfaces as a request-time 500 instead. Every migration n
 working `.down.sql` because CI rolls back and re-applies. Integration tests never copy the
 migration list: `test/migration-chain.ts` reads it from `db/migrations` (`rollbackTo`,
 `reapplyFrom`, `migrationNames`), so adding a migration edits no test.
+
+**Migrations run as a schema change, not a plain transaction.** `migrations.ts` calls
+`database.schemaChange()` (`pool.ts`), which is the SQLite manual's procedure for the table
+rebuilds `ALTER TABLE` cannot express: foreign key enforcement off before `BEGIN` (the pragma
+is a no-op inside a transaction), the migration inside it, `PRAGMA foreign_key_check` over the
+whole database as the gate before `COMMIT`, enforcement restored after — also when the
+migration throws. So a migration may drop and rebuild a table its children still reference
+(0035 for the assistants, 0040 for the document byte bound) and no dangling reference can
+survive: one violating row refuses the migration and rolls it back. Never widen a CHECK by
+editing `sqlite_master` under `PRAGMA writable_schema` — Node 24 refuses it outright.
 
 **Profile authorization** is one rule in `family/profile-access.ts` (`profileAccess`,
 `requireProfileWrite`, `canonicalProfileScope`): owner or linked adult writes, a live

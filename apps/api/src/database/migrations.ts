@@ -29,7 +29,7 @@ export async function migrateUp(
     const migrationName = file.slice(0, -".up.sql".length);
     if (appliedNames.has(migrationName)) continue;
     const sql = await readFile(`${directory}/${file}`, "utf8");
-    await database.transaction(async (client) => {
+    await database.schemaChange(async (client) => {
       await client.exec(sql);
       await client.query("INSERT INTO schema_migrations (name) VALUES ($1)", [migrationName]);
     });
@@ -51,7 +51,7 @@ export async function migrateDown(
   if (migrationName === undefined) return null;
 
   const sql = await readFile(`${directory}/${migrationName}.down.sql`, "utf8");
-  await database.transaction(async (client) => {
+  await database.schemaChange(async (client) => {
     await client.exec(sql);
     await client.query("DELETE FROM schema_migrations WHERE name = $1", [migrationName]);
   });

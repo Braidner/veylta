@@ -254,7 +254,8 @@ See [product](product.md), [architecture](architecture.md),
 
 ## Operational detail of the current build
 
-Node.js 22.16+ is required. No database server or container runtime is needed.
+Node.js 24.19.0 is required (`.nvmrc`, the version CI runs). No database server or
+container runtime is needed.
 Start the current runnable foundation from the repository root:
 
 ```sh

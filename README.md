@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/Braidner/veylta/actions/workflows/ci.yml"><img src="https://github.com/Braidner/veylta/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-2859ED.svg" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/node-%E2%89%A5%2022.16-339933?logo=node.js&logoColor=white" alt="Node ≥ 22.16">
+  <img src="https://img.shields.io/badge/node-24.19-339933?logo=node.js&logoColor=white" alt="Node 24.19">
   <img src="https://img.shields.io/badge/pnpm-10.4-F69220?logo=pnpm&logoColor=white" alt="pnpm 10.4">
   <img src="https://img.shields.io/badge/local--first-no%20cloud-7457EE" alt="local-first, no cloud">
   <img src="https://img.shields.io/badge/UI-%D1%80%D1%83%D1%81%D1%81%D0%BA%D0%B8%D0%B9-1473F3" alt="Russian UI">
@@ -188,7 +188,7 @@ flowchart LR
 
 | Requirement | Notes |
 | --- | --- |
-| Node.js ≥ 22.16 | uses the built-in `node:sqlite` — no database server, no containers |
+| Node.js 24.19.0 | pinned in `.nvmrc` (`nvm use` reads it) and the version CI runs; `node:sqlite` differs between majors, so a green run on another Node proves nothing |
 | pnpm 10.4 | `corepack enable` installs the pinned version |
 | [Codex CLI](https://github.com/openai/codex), signed in | `codex login` once; Veylta only shells out to it locally |
 | Chromium for Playwright | `pnpm exec playwright install chromium` — e2e only |
@@ -196,6 +196,7 @@ flowchart LR
 **Run**
 
 ```bash
+nvm use            # 24.19.0, from .nvmrc
 corepack enable
 pnpm install --frozen-lockfile
 pnpm db:migrate

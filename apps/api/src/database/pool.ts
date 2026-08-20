@@ -1,11 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { DatabaseSync, type StatementSync } from "node:sqlite";
+import { DatabaseSync } from "node:sqlite";
+import { execute, type QueryResult } from "./statements.js";
 
-export interface QueryResult<Row extends object> {
-  rows: Row[];
-  rowCount: number;
-}
+export type { QueryResult };
 
 export interface DatabaseClient {
   exec(sql: string): Promise<void>;
@@ -44,43 +42,6 @@ export function isSqliteConstraintError(error: unknown, kind?: ConstraintKind): 
   const code = sqliteErrorCode(error);
   if (code === null || (code & 0xff) !== 19) return false;
   return kind === undefined || constraintCodes[kind].has(code);
-}
-
-function sqliteValue(value: unknown): null | number | bigint | string | Uint8Array {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) return value.toISOString();
-  if (Buffer.isBuffer(value) || value instanceof Uint8Array) return value;
-  if (typeof value === "boolean") return value ? 1 : 0;
-  if (typeof value === "number" || typeof value === "bigint" || typeof value === "string") {
-    return value;
-  }
-  return JSON.stringify(value);
-}
-
-function bindings(
-  sql: string,
-  values: readonly unknown[],
-): Record<string, ReturnType<typeof sqliteValue>> | ReturnType<typeof sqliteValue>[] {
-  const normalized = values.map(sqliteValue);
-  if (!/\$\d+/.test(sql)) return normalized;
-  return Object.fromEntries(normalized.map((value, index) => [String(index + 1), value]));
-}
-
-function execute<Row extends object>(
-  database: DatabaseSync,
-  sql: string,
-  values: readonly unknown[] = [],
-): QueryResult<Row> {
-  const statement: StatementSync = database.prepare(sql);
-  const bound = bindings(sql, values);
-  const hasNamedBindings = !Array.isArray(bound);
-  if (statement.columns().length > 0) {
-    const sqliteRows = hasNamedBindings ? statement.all(bound) : statement.all(...bound);
-    const rows = sqliteRows.map((row) => ({ ...row })) as Row[];
-    return { rows, rowCount: rows.length };
-  }
-  const result = hasNamedBindings ? statement.run(bound) : statement.run(...bound);
-  return { rows: [], rowCount: Number(result.changes) };
 }
 
 class TransactionClient implements DatabaseClient {
@@ -155,19 +116,54 @@ export class Database implements DatabaseClient {
     return this.enqueue(() => execute<Row>(this.database, sql, values));
   }
 
+  private async runTransaction<T>(operation: (client: DatabaseClient) => Promise<T>): Promise<T> {
+    this.database.exec("BEGIN IMMEDIATE");
+    const client = new TransactionClient(this.database);
+    try {
+      const result = await operation(client);
+      this.database.exec("COMMIT");
+      return result;
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
   transaction<T>(operation: (client: DatabaseClient) => Promise<T>): Promise<T> {
+    return this.enqueue(() => this.runTransaction(operation));
+  }
+
+  /**
+   * One schema change, run the way the SQLite manual prescribes for the table rebuilds no ALTER
+   * TABLE can express: enforcement off, rebuild, `PRAGMA foreign_key_check`, commit, enforcement
+   * back. Dropping a table its children still reference is itself a violation while enforcement
+   * is on, and the pragma is a no-op inside a transaction — so the whole dance is one queued
+   * operation and no other work on this connection ever sees enforcement lifted. The check reads
+   * the whole database rather than the rows the change touched: a stricter gate than the
+   * enforcement it stands in for, and the change is refused if it reports a single row.
+   */
+  schemaChange<T>(operation: (client: DatabaseClient) => Promise<T>): Promise<T> {
     return this.enqueue(async () => {
-      this.database.exec("BEGIN IMMEDIATE");
-      const client = new TransactionClient(this.database);
+      this.database.exec("PRAGMA foreign_keys = OFF");
       try {
-        const result = await operation(client);
-        this.database.exec("COMMIT");
-        return result;
-      } catch (error) {
-        this.database.exec("ROLLBACK");
-        throw error;
+        return await this.runTransaction(async (client) => {
+          const result = await operation(client);
+          const { rows } = await client.query<{ parent: string; table: string }>(
+            "PRAGMA foreign_key_check",
+          );
+          // One broken reference reports once per orphaned row; name each pair once.
+          const dangling = [...new Set(rows.map(({ parent, table }) => `${table} -> ${parent}`))];
+          if (dangling.length > 0) {
+            throw new Error(
+              `Schema change left dangling foreign key references: ${dangling.join(", ")}`,
+            );
+          }
+          return result;
+        });
       } finally {
-        client.release();
+        this.database.exec("PRAGMA foreign_keys = ON");
       }
     });
   }
