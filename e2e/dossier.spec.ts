@@ -154,25 +154,28 @@ test("the dossier reads confirmed values against their references and sends the 
   await expect(page.locator(".profile-heading__access")).toContainText("Рост 175 см");
   await expect(page.locator(".profile-heading__access")).toContainText("Вес 71,5 кг");
 
-  // The overview states the same record: two confirmed values, one indicator outside, one source.
+  // The overview states the same record: two indicators, one of them outside, one source.
   const signals = page.getByRole("region", { name: "Сигналы здоровья" });
-  const outside = signals.locator("a.health-signal--link");
-  await expect(outside).toContainText("Вне референса");
-  await expect(outside.locator("strong")).toHaveText("1");
-  await expect(signals.locator(".health-signal", { hasText: "Подтверждено" })).toContainText(
-    "2 значения связаны с источником",
+  await expect(
+    signals.getByRole("img", { name: "2 показателя · 1 вне референса · 1 в пределах" }),
+  ).toBeVisible();
+  await expect(signals.getByRole("link", { name: "1 вне референса" })).toHaveAttribute(
+    "href",
+    /\/[a-z0-9-]+\/dossier$/,
   );
-  await expect(signals.locator(".health-signal", { hasText: "Документов" })).toContainText(
-    "Последний —",
-  );
-  // The block names the finding, not just the count: the value, its placement and who reads it.
-  const finding = signals.locator(".health-signals__attention li");
+  await expect(signals.getByText(/^Документов 1 · последний /)).toBeVisible();
+  // The panel names the finding, not just the count: the value on its printed band, and who reads it.
+  const finding = signals.getByTestId("signal-card");
   await expect(finding).toHaveCount(1);
   await expect(finding).toContainText("ТТГ");
   await expect(finding).toContainText("9.9 мМЕ/л");
   await expect(finding).toContainText("выше 5.0–8.0 synthetic-unit");
   await expect(finding).toContainText("эндокринолог");
-  await expect(finding.getByRole("link")).toHaveAttribute(
+  await expect(
+    finding.getByRole("img", { name: "ТТГ: выше 5.0–8.0 synthetic-unit" }),
+  ).toBeVisible();
+  await expect(finding.locator(".dossier-gauge__marker")).toHaveCount(1);
+  await expect(finding.getByRole("link").first()).toHaveAttribute(
     "href",
     /\/[a-z0-9-]+\/history\?code=tsh$/,
   );
@@ -192,7 +195,8 @@ test("the dossier reads confirmed values against their references and sends the 
   await expect(documentRow).toContainText("Синтетические лабораторные результаты");
   await expect(documentRow).toContainText("Анализы · ");
   await expect(documentRow).toContainText("разобрано 2");
-  // The tile is one keyboard-reachable target, and it opens the dossier.
+  // The outside count on the bar is one keyboard-reachable target, and it opens the dossier.
+  const outside = signals.getByRole("link", { name: "1 вне референса" });
   await outside.focus();
   await expect(outside).toBeFocused();
   await page.keyboard.press("Enter");

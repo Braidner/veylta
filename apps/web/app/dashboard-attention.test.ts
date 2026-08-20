@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProfileOverviewAttention, ProfileOverviewResponse } from "@veylta/contracts";
 import { attentionRemainderCopy, attentionRows } from "./dashboard-attention";
+import { gaugeScale, type ScaleReading } from "./dossier-scale";
 
 const point = (value: string, at = "2026-05-14T00:00:00.000Z") => ({ value, at });
 
@@ -92,4 +93,50 @@ test("the remainder counts what the rows do not name", () => {
   assert.equal(attentionRemainderCopy(overview([attention()], 5)), "и ещё 4");
   assert.equal(attentionRemainderCopy(overview([attention()], 1)), null);
   assert.equal(attentionRemainderCopy(overview([], 0)), null);
+});
+
+test("a row carries the reading the gauge places and the run the sparkline draws", () => {
+  const [row] = attentionRows(overview([attention()]));
+
+  assert.deepEqual(row?.reading, {
+    value: 6.5,
+    low: 0.4,
+    high: 4,
+    lowText: "0,4",
+    highText: "4,0",
+  });
+  assert.deepEqual(row?.band, { low: 0.4, high: 4 });
+  assert.deepEqual(
+    row?.run.map((point) => point.value),
+    [3.1, 4.4, 6.5],
+  );
+  assert.equal(new Set(row?.run.map((point) => point.id)).size, 3, "every point draws once");
+  assert.equal(row?.runLabel, "ТТГ: 3 значения во времени");
+});
+
+test("without printed bounds there is no band and no scale to draw — never a fabricated one", () => {
+  const [row] = attentionRows(overview([attention({ status: "flagged", range: null })]));
+
+  assert.deepEqual(row?.reading, {
+    value: 6.5,
+    low: null,
+    high: null,
+    lowText: null,
+    highText: null,
+  });
+  assert.equal(gaugeScale(row?.reading as ScaleReading), null);
+  assert.equal(row?.band, null);
+});
+
+test("a reading that is not one number keeps its slot in the run and marks nothing", () => {
+  const [row] = attentionRows(
+    overview([attention({ value: "< 0,1", points: [point("0,3"), point("< 0,1")] })]),
+  );
+
+  assert.equal(row?.reading.value, null);
+  assert.deepEqual(
+    row?.run.map((entry) => entry.value),
+    [0.3, null],
+  );
+  assert.equal(row?.runLabel, "ТТГ: 2 значения во времени");
 });

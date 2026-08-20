@@ -1,4 +1,15 @@
-import type { SeriesPoint } from "./dossier";
+/**
+ * What placing a value takes: the number itself and the bounds the source printed, in figures and
+ * in its own spelling. A dossier point satisfies this shape, and so does an overview reading — the
+ * track is drawn once, from whichever the caller holds.
+ */
+export interface ScaleReading {
+  readonly value: number | null;
+  readonly low: number | null;
+  readonly high: number | null;
+  readonly lowText: string | null;
+  readonly highText: string | null;
+}
 
 export interface GaugeScale {
   /** The printed reference as a band on the track, in percent, left to right. */
@@ -16,7 +27,7 @@ const clamp = (value: number) => Math.min(100, Math.max(0, value));
  * marker; a value outside the reference stretches the track so nothing is clipped. Nothing here
  * grades the distance — the track only shows where the number stands against what was printed.
  */
-export function gaugeScale(point: SeriesPoint): GaugeScale | null {
+export function gaugeScale(point: ScaleReading): GaugeScale | null {
   const { low, high, value } = point;
   if (low === null && high === null) return null;
   const width = low !== null && high !== null ? high - low : Math.abs(low ?? high ?? 0);

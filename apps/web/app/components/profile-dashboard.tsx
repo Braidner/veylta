@@ -1,12 +1,7 @@
 import type { ProfileOverviewResponse } from "@veylta/contracts";
-import { cva } from "class-variance-authority";
 import type { LucideIcon } from "lucide-react";
 import {
-  Activity,
   ArrowUpRight,
-  BadgeCheck,
-  CircleAlert,
-  ClipboardCheck,
   FileText,
   MessagesSquare,
   PersonStanding,
@@ -18,39 +13,16 @@ import Link from "next/link";
 import { documentKindLine, documentStandingCopy } from "../dashboard-documents";
 import { cn } from "../lib/cn";
 import { documentPath, profileTabPath } from "../paths";
-import type {
-  DashboardAssistant,
-  DashboardAssistantId,
-  DashboardSignal,
-  DashboardSignalKey,
-} from "../profile-dashboard";
-import { buildProfileDashboardModel, signalHref } from "../profile-dashboard";
-import { DashboardAttention } from "./dashboard-attention";
+import type { DashboardAssistant, DashboardAssistantId } from "../profile-dashboard";
+import { buildProfileDashboardModel } from "../profile-dashboard";
 import { DashboardPlan } from "./dashboard-plan";
+import { HealthSignals } from "./health-signals";
 
 const assistantIcons: Record<DashboardAssistantId, LucideIcon> = {
   physician: Stethoscope,
   nutrition: Utensils,
   movement: PersonStanding,
 };
-
-const signalIcons: Record<DashboardSignalKey, LucideIcon> = {
-  pendingReview: ClipboardCheck,
-  outside: CircleAlert,
-  documents: FileText,
-  confirmed: BadgeCheck,
-};
-
-const signalClassName = cva("health-signal", {
-  variants: {
-    tone: {
-      neutral: "health-signal--neutral",
-      positive: "health-signal--positive",
-      attention: "health-signal--attention",
-    },
-  },
-  defaultVariants: { tone: "neutral" },
-});
 
 function AssistantAction({
   assistant,
@@ -117,38 +89,6 @@ function AssistantCard({
   );
 }
 
-function HealthSignal({
-  signal,
-  icon: SignalIcon,
-  href,
-}: {
-  signal: DashboardSignal;
-  icon: LucideIcon;
-  href: string | null;
-}) {
-  const body = (
-    <>
-      <div className="health-signal__topline">
-        <span className="health-signal__icon" aria-hidden="true">
-          <SignalIcon size={18} strokeWidth={1.8} />
-        </span>
-        <span>{signal.label}</span>
-      </div>
-      <strong>{signal.value}</strong>
-      <p>{signal.detail}</p>
-    </>
-  );
-
-  // A tile that leads somewhere is one link, so the whole card is the target and takes focus once.
-  return href === null ? (
-    <article className={signalClassName({ tone: signal.tone })}>{body}</article>
-  ) : (
-    <Link className={cn(signalClassName({ tone: signal.tone }), "health-signal--link")} href={href}>
-      {body}
-    </Link>
-  );
-}
-
 function DashboardDocuments({
   overview,
   onUpload,
@@ -208,7 +148,6 @@ export function ProfileDashboard({
 }) {
   const model = buildProfileDashboardModel(overview);
   const { handle } = overview.profile;
-  const signals = Object.entries(model.signals) as Array<[DashboardSignalKey, DashboardSignal]>;
 
   return (
     <div className="profile-dashboard">
@@ -234,34 +173,7 @@ export function ProfileDashboard({
         </div>
       </section>
 
-      <section className="health-signals" aria-labelledby="health-signals-title">
-        <div className="dashboard-panel-heading">
-          <div className="dashboard-panel-heading__icon" aria-hidden="true">
-            <Activity size={21} strokeWidth={1.8} />
-          </div>
-          <div>
-            <p>Что требует внимания</p>
-            <h3 id="health-signals-title">Сигналы здоровья</h3>
-          </div>
-          <span className="health-signals__boundary">Без общего балла</span>
-        </div>
-
-        <div className="health-signals__grid">
-          {signals.map(([key, signal]) => (
-            <HealthSignal
-              key={key}
-              signal={signal}
-              icon={signalIcons[key]}
-              href={signalHref(key, overview)}
-            />
-          ))}
-        </div>
-        <DashboardAttention overview={overview} />
-        <p className="health-signals__note">
-          Оценка Veylta по печатным диапазонам ваших источников, а не диагноз — каждая ведёт к
-          названному специалисту.
-        </p>
-      </section>
+      <HealthSignals overview={overview} />
 
       <DashboardDocuments overview={overview} onUpload={onUpload} />
       <DashboardPlan

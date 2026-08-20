@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { ProfileOverviewResponse } from "@veylta/contracts";
-import { buildProfileDashboardModel, signalHref } from "./profile-dashboard";
+import { signalChips, signalsStrip } from "./health-signals";
+import { buildProfileDashboardModel } from "./profile-dashboard";
 
 function overview(overrides: Partial<ProfileOverviewResponse> = {}): ProfileOverviewResponse {
   return {
@@ -83,8 +84,6 @@ test("medical navigator leads with the real review queue and source action", () 
   assert.equal(model.assistants[0]?.id, "physician");
   assert.match(model.assistants[0]?.message ?? "", /2 значения/);
   assert.match(model.assistants[0]?.action.href ?? "", /^\/ivan\/docs\/.*0003$/);
-  assert.equal(model.signals.pendingReview.value, "2");
-  assert.equal(model.signals.pendingReview.tone, "attention");
 });
 
 /**
@@ -96,49 +95,26 @@ const wholeRecord = overview({
   documentCount: 12,
   confirmedCount: 41,
   outsideIndicatorCount: 3,
+  withinIndicatorCount: 18,
+  unknownIndicatorCount: 1,
   recentDocuments: [overviewDocument()],
 });
 
-test("the signals state the whole record, not the capped lists the response carries", () => {
-  const model = buildProfileDashboardModel(wholeRecord);
-
+test("the panel states the whole record, not the capped lists the response carries", () => {
   // Neither number can be reached from a list this response carries: one document, no observations.
   assert.equal(wholeRecord.recentObservations.length, 0);
   assert.equal(wholeRecord.recentDocuments.length, 1);
-  assert.equal(model.signals.outside.value, "3");
-  assert.equal(model.signals.outside.tone, "attention");
-  assert.equal(
-    model.signals.outside.detail,
-    "Показатели, чьё последнее значение вне печатного диапазона",
+  const strip = signalsStrip(wholeRecord);
+  assert.equal(strip.total, 22);
+  assert.equal(strip.label, "22 показателя · 3 вне референса · 18 в пределах · 1 без референса");
+  assert.deepEqual(
+    signalChips(wholeRecord).map((chip) => chip.label),
+    ["Ждёт проверки 0", "Документов 12 · последний 14 августа"],
   );
-  assert.equal(model.signals.confirmed.value, "41");
-  assert.equal(model.signals.confirmed.detail, "41 значение связано с источником");
-  assert.equal(model.signals.confirmed.tone, "positive");
-  assert.equal(model.signals.documents.value, "12");
-  assert.equal(model.signals.documents.detail, "Последний — 14 августа 2026 г.");
-  assert.equal(model.signals.documents.tone, "positive");
+  const model = buildProfileDashboardModel(wholeRecord);
   assert.equal("score" in model, false);
   assert.equal("healthScore" in model, false);
-});
-
-test("an empty record says so on every tile and never turns attention on", () => {
-  const model = buildProfileDashboardModel(overview());
-
-  assert.equal(model.signals.outside.value, "0");
-  assert.equal(model.signals.outside.tone, "positive");
-  assert.equal(model.signals.outside.detail, "Все показатели в пределах диапазонов источников");
-  assert.equal(model.signals.confirmed.detail, "Нет подтверждённых значений");
-  assert.equal(model.signals.confirmed.tone, "neutral");
-  assert.equal(model.signals.documents.detail, "Архив пока пуст");
-  assert.equal(model.signals.documents.tone, "neutral");
-});
-
-test("only an outside tile above zero leads into the dossier", () => {
-  assert.equal(signalHref("outside", wholeRecord), "/ivan/dossier");
-  assert.equal(signalHref("outside", overview()), null);
-  assert.equal(signalHref("confirmed", wholeRecord), null);
-  assert.equal(signalHref("documents", wholeRecord), null);
-  assert.equal(signalHref("pendingReview", wholeRecord), null);
+  assert.equal("signals" in model, false);
 });
 
 test("a card that has answered says what its room said, not what the room can do", () => {
@@ -190,6 +166,4 @@ test("nutrition and movement assistants stay honest when context is absent", () 
   assert.equal(model.assistants[2]?.id, "movement");
   assert.match(model.assistants[2]?.message ?? "", /ограничения/i);
   assert.match(model.assistants[2]?.action.href ?? "", /\/assistants\/trainer$/);
-  assert.equal(model.signals.documents.value, "0");
-  assert.equal(model.signals.confirmed.value, "0");
 });

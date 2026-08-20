@@ -123,9 +123,14 @@ The first slice proves one complete and safe path with synthetic data:
     recent immutable documents, sources awaiting explicit review, and explicitly
     confirmed values. Its assistant inbox is a deterministic projection of those
     same states; nutrition and movement only open the explicit care-plan flow.
-    Its health signals count pending review, explicit source flags, recent
-    sources, and confirmed values. It does not calculate a health score,
-    clinical state, diagnosis, trend, or recommendation (Task 17, delivered).
+    Its health signals show what the record holds: one proportional bar of the
+    three named states an indicator can be in — outside its printed reference,
+    within it, or without one to read it against — and each indicator standing
+    outside placed on the band its own source printed, with its last confirmed
+    readings behind it. Every segment carries its number and its word, so colour
+    never states anything alone. Pending review and the archive's size stay as
+    two plain chips. It does not calculate a health score, clinical state,
+    diagnosis, trend, or recommendation (Task 17, delivered).
 13. An owner or self-linked adult can download a bounded local TAR snapshot of
     up to five latest synthetic source files and an immutable manifest. This is
     deliberately not a backup, restore format, or production portability claim

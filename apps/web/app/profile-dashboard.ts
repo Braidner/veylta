@@ -1,11 +1,9 @@
 import type { AssistantId, ProfileOverviewResponse } from "@veylta/contracts";
 import { assistantStateLine } from "./dashboard-assistants";
-import { formatSampleMoment } from "./format-moment";
 import { assistantPath, documentPath, profileTabPath } from "./paths";
 import { countCopy } from "./russian-plural";
 
 export type DashboardAssistantId = "physician" | "nutrition" | "movement";
-export type DashboardSignalTone = "neutral" | "positive" | "attention";
 
 export interface DashboardAssistant {
   readonly id: DashboardAssistantId;
@@ -20,37 +18,8 @@ export interface DashboardAssistant {
   };
 }
 
-export interface DashboardSignal {
-  readonly label: string;
-  readonly value: string;
-  readonly detail: string;
-  readonly tone: DashboardSignalTone;
-}
-
 export interface ProfileDashboardModel {
   readonly assistants: readonly [DashboardAssistant, DashboardAssistant, DashboardAssistant];
-  readonly signals: {
-    readonly pendingReview: DashboardSignal;
-    readonly outside: DashboardSignal;
-    readonly documents: DashboardSignal;
-    readonly confirmed: DashboardSignal;
-  };
-}
-
-export type DashboardSignalKey = keyof ProfileDashboardModel["signals"];
-
-/**
- * «Вне референса» is Veylta's own deterministic reading, and the dossier is where those
- * indicators are read with their specialty — so above zero the tile leads there. At zero there is
- * nothing to open, and the tile stays plain text.
- */
-export function signalHref(
-  key: DashboardSignalKey,
-  overview: ProfileOverviewResponse,
-): string | null {
-  return key === "outside" && overview.outsideIndicatorCount > 0
-    ? profileTabPath(overview.profile.handle, "dossier")
-    : null;
 }
 
 /**
@@ -151,8 +120,7 @@ export function buildProfileDashboardModel(
   overview: ProfileOverviewResponse,
   now = new Date(),
 ): ProfileDashboardModel {
-  const { confirmedCount, documentCount, outsideIndicatorCount } = overview;
-  const newestDocument = overview.recentDocuments[0];
+  const { confirmedCount } = overview;
   const room = (card: DashboardAssistant, assistantId: AssistantId) =>
     withRoomState(card, overview, assistantId, now);
 
@@ -194,43 +162,5 @@ export function buildProfileDashboardModel(
         "trainer",
       ),
     ],
-    signals: {
-      pendingReview: {
-        label: "Ждёт проверки",
-        value: String(overview.reviewQueue.pendingFactCount),
-        detail:
-          overview.reviewQueue.pendingFactCount === 0
-            ? "Все извлечённые значения разобраны"
-            : "Только вы можете подтвердить значение",
-        tone: overview.reviewQueue.pendingFactCount === 0 ? "positive" : "attention",
-      },
-      outside: {
-        label: "Вне референса",
-        value: String(outsideIndicatorCount),
-        detail:
-          outsideIndicatorCount === 0
-            ? "Все показатели в пределах диапазонов источников"
-            : "Показатели, чьё последнее значение вне печатного диапазона",
-        tone: outsideIndicatorCount === 0 ? "positive" : "attention",
-      },
-      documents: {
-        label: "Документов",
-        value: String(documentCount),
-        detail:
-          documentCount === 0 || newestDocument === undefined
-            ? "Архив пока пуст"
-            : `Последний — ${formatSampleMoment(newestDocument.effectiveDate.value)}`,
-        tone: documentCount === 0 ? "neutral" : "positive",
-      },
-      confirmed: {
-        label: "Подтверждено",
-        value: String(confirmedCount),
-        detail:
-          confirmedCount === 0
-            ? "Нет подтверждённых значений"
-            : `${countCopy(confirmedCount, ["значение связано", "значения связаны", "значений связаны"])} с источником`,
-        tone: confirmedCount === 0 ? "neutral" : "positive",
-      },
-    },
   };
 }

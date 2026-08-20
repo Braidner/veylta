@@ -4,12 +4,12 @@ import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import Link from "next/link";
 import { type DossierSeries, seriesAssessment } from "../dossier";
 import { dossierAreaLabel, readersCopy } from "../dossier-areas";
-import { gaugeScale } from "../dossier-scale";
 import { formatSampleMoment } from "../format-moment";
 import { historyPath } from "../paths";
 import { useProfileHandle } from "../profile-route";
 import { countCopy } from "../russian-plural";
 import { DossierSparkline } from "./dossier-sparkline";
+import { GaugeTrack } from "./gauge-track";
 
 interface GaugeCardProps {
   readonly series: DossierSeries;
@@ -45,48 +45,18 @@ export function DeltaChip({
   );
 }
 
-/** The printed reference as a band on a track, the value as a marker — nothing graded, only placed. */
+/** The dossier's own reading of one series, placed on the shared track. */
 function ScaleTrack({ series }: { readonly series: DossierSeries }) {
-  const scale = gaugeScale(series.latest);
-  if (scale === null) {
-    return (
-      <p className="dossier-gauge__noscale">
-        {series.latest.rangeText === null
-          ? "Референс не напечатан"
-          : `Референс: ${series.latest.rangeText}`}
-      </p>
-    );
-  }
-  const label = `Референс ${series.latest.rangeText ?? ""}: значение ${statusLabel[series.status]}`;
   return (
-    <div className="dossier-gauge__scale" role="img" aria-label={label}>
-      <div className="dossier-gauge__track">
-        <span
-          className="dossier-gauge__band"
-          style={{ left: `${scale.band.from}%`, width: `${scale.band.to - scale.band.from}%` }}
-        />
-        {scale.marker === null ? null : (
-          <span className="dossier-gauge__marker" style={{ left: `${scale.marker}%` }} />
-        )}
-      </div>
-      <div className="dossier-gauge__bounds" aria-hidden="true">
-        {scale.lowLabel === null ? null : (
-          <span
-            style={{
-              left: `${scale.band.from}%`,
-              transform: `translateX(-${scale.band.from}%)`,
-            }}
-          >
-            {scale.lowLabel}
-          </span>
-        )}
-        {scale.highLabel === null ? null : (
-          <span style={{ left: `${scale.band.to}%`, transform: `translateX(-${scale.band.to}%)` }}>
-            {scale.highLabel}
-          </span>
-        )}
-      </div>
-    </div>
+    <GaugeTrack
+      reading={series.latest}
+      label={`Референс ${series.latest.rangeText ?? ""}: значение ${statusLabel[series.status]}`}
+      fallback={
+        series.latest.rangeText === null
+          ? "Референс не напечатан"
+          : `Референс: ${series.latest.rangeText}`
+      }
+    />
   );
 }
 

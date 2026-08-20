@@ -3,11 +3,13 @@ import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import { attentionRemainderCopy, attentionRows } from "../dashboard-attention";
 import { profileTabPath } from "../paths";
+import { DossierSparkline } from "./dossier-sparkline";
+import { GaugeTrack } from "./gauge-track";
 
 /**
- * The indicators the record says are outside, named under the tiles. Each row is one placement
- * against the source's own bounds and the specialist who reads it — the way into that indicator's
- * history, never a verdict on it.
+ * The indicators the record says are outside, each as the dossier draws one: the value on the
+ * band its own source printed, its run behind it, how it moved and who reads it. A placement and
+ * a name — never a grade, and never a scale the document did not carry.
  */
 export function DashboardAttention({ overview }: { overview: ProfileOverviewResponse }) {
   const rows = attentionRows(overview);
@@ -15,30 +17,39 @@ export function DashboardAttention({ overview }: { overview: ProfileOverviewResp
   if (rows.length === 0) return null;
 
   return (
-    <div className="health-signals__attention">
+    <div className="signal-cards">
       <ul aria-label="Показатели вне референса">
         {rows.map((row) => (
-          <li key={row.key}>
-            <Link href={row.href}>
-              <span className="health-signals__attention-name">
-                <strong>{row.name}</strong>
-                <b>{row.value}</b>
-              </span>
-              <span className="health-signals__attention-standing">
-                {row.standing}
-                {row.change === null ? null : <i>{row.change}</i>}
-              </span>
-              <span className="health-signals__attention-reader">
-                {row.reader}
-                <ArrowUpRight size={13} aria-hidden="true" strokeWidth={1.8} />
-              </span>
+          <li className="signal-card" key={row.key} data-testid="signal-card">
+            <Link className="signal-card__head" href={row.href}>
+              <strong title={row.name}>{row.name}</strong>
+              <b>{row.value}</b>
+              <ArrowUpRight size={13} aria-hidden="true" strokeWidth={1.8} />
             </Link>
+            <p className="signal-card__standing">{row.standing}</p>
+            <GaugeTrack
+              reading={row.reading}
+              label={`${row.name}: ${row.standing}`}
+              fallback={null}
+            />
+            {row.run.length > 1 ? (
+              <DossierSparkline
+                points={row.run}
+                band={row.band}
+                tone="watch"
+                label={row.runLabel}
+              />
+            ) : null}
+            <p className="signal-card__foot">
+              {row.change === null ? null : <span>{row.change}</span>}
+              <em>{row.reader}</em>
+            </p>
           </li>
         ))}
       </ul>
       {remainder === null ? null : (
         <Link
-          className="health-signals__attention-more"
+          className="signal-cards__more"
           href={profileTabPath(overview.profile.handle, "dossier")}
         >
           {remainder}

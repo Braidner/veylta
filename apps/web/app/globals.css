@@ -16,6 +16,11 @@
   --color-success: oklch(0.56 0.13 160);
   --color-warning: oklch(0.65 0.16 70);
   --color-danger: oklch(0.56 0.18 27);
+  /* Where a value stands against its own printed reference — three states, never a grade. */
+  --status-outside: oklch(0.7 0.15 62);
+  --status-within: oklch(0.72 0.12 160);
+  --status-unknown: var(--color-surface-strong);
+  --status-watch-ink: oklch(0.6 0.15 60);
   --color-cockpit-blue: var(--color-primary-start);
   --color-cockpit-violet: var(--color-primary-end);
   --color-cockpit-bg: oklch(0.97 0.006 255);
@@ -1747,83 +1752,109 @@ h3 {
   margin-top: var(--space-sm);
 }
 
-.health-signals__grid {
+/* The whole record as one bar, sized by its three counts and named beside it. */
+.signals-strip {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-sm);
+  gap: 7px;
 }
 
-.health-signal {
-  min-width: 0;
-  padding: var(--space-md);
-  background: var(--color-surface);
-  border-radius: 13px;
+.signals-strip__legend {
+  display: flex;
+  gap: var(--space-2xs) var(--space-sm);
+  flex-wrap: wrap;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
-/* The whole tile is the target, so the card keeps its own shape when focus lands on it. */
-.health-signal--link {
-  display: block;
+.signals-strip__word {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  color: var(--color-muted);
+  border-radius: 6px;
+  font-size: 0.72rem;
+  font-weight: 620;
   text-decoration: none;
-  transition: background-color 180ms ease-out;
 }
 
-.health-signal--link:hover {
-  background: oklch(0.94 0.045 72);
+/* The swatch only repeats the bar; the number and the word carry the state on their own. */
+.signals-strip__word::before {
+  width: 8px;
+  height: 8px;
+  border-radius: 3px;
+  content: "";
 }
 
-.health-signal--link:focus-visible {
-  border-radius: 13px;
+.signals-strip__word.is-outside {
+  color: oklch(0.44 0.13 62);
+}
+
+.signals-strip__word.is-outside::before {
+  background: var(--status-outside);
+}
+
+.signals-strip__word.is-within::before {
+  background: var(--status-within);
+}
+
+.signals-strip__word.is-unknown::before {
+  background: var(--status-unknown);
+}
+
+a.signals-strip__word:hover {
+  text-decoration: underline;
+}
+
+a.signals-strip__word:focus-visible {
   outline: none;
   box-shadow: var(--focus);
 }
 
-.health-signal--attention {
-  background: oklch(0.96 0.035 72);
+.signals-strip__empty {
+  margin: 0;
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border-radius: 12px;
+  font-size: 0.78rem;
+  line-height: 1.45;
 }
 
-.health-signal--positive {
-  background: oklch(0.96 0.025 158);
-}
-
-.health-signal__topline {
+.signal-chips {
   display: flex;
-  gap: 7px;
+  gap: var(--space-2xs);
+  flex-wrap: wrap;
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.signal-chip {
+  display: inline-flex;
+  gap: 4px;
   align-items: center;
-  min-height: 24px;
+  padding: 5px 10px;
   color: var(--color-muted);
-  font-size: 0.75rem;
-  font-weight: 620;
+  background: var(--color-surface);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  text-decoration: none;
 }
 
-.health-signal__icon {
-  display: grid;
+.signal-chip--link {
   color: var(--color-primary);
-  place-items: center;
 }
 
-.health-signal--attention .health-signal__icon {
-  color: var(--color-warning);
+.signal-chip--link:hover {
+  background: var(--color-surface-strong);
 }
 
-.health-signal--positive .health-signal__icon {
-  color: var(--color-success);
-}
-
-.health-signal strong {
-  display: block;
-  margin-top: 15px;
-  font-size: 2rem;
-  font-weight: 580;
-  line-height: 1;
-  letter-spacing: -0.035em;
-}
-
-.health-signal p {
-  min-height: 32px;
-  margin: 7px 0 0;
-  color: var(--color-muted);
-  font-size: 0.75rem;
-  line-height: 1.4;
+.signal-chip--link:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
 }
 
 .health-signals__note {
@@ -2093,95 +2124,97 @@ h3 {
   line-height: 1.4;
 }
 
-.health-signals__attention {
+/* The named indicators, each drawn the way the dossier draws one: placed on its own printed band. */
+.signal-cards {
   margin-top: var(--space-sm);
 }
 
-.health-signals__attention ul {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2xs);
+.signal-cards ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
+  gap: var(--space-xs);
   margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.health-signals__attention a {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 2px var(--space-sm);
+/* A column so the reader's line sits at the foot of every card, however tall the drawing is. */
+.signal-card {
+  display: flex;
+  gap: 5px;
+  flex-direction: column;
+  min-width: 0;
+  padding: 9px var(--space-sm) 10px;
+  background: oklch(0.975 0.022 72);
+  border-radius: 12px;
+}
+
+.signal-card__head {
+  display: flex;
+  gap: 5px;
   align-items: baseline;
-  padding: var(--space-xs) var(--space-sm);
-  background: var(--color-surface);
-  border-radius: 10px;
+  min-width: 0;
+  border-radius: 8px;
   text-decoration: none;
 }
 
-.health-signals__attention a:hover {
-  background: oklch(0.96 0.035 72);
-}
-
-.health-signals__attention a:focus-visible {
-  outline: none;
-  box-shadow: var(--focus);
-}
-
-.health-signals__attention-name {
-  display: flex;
-  grid-row: 1;
-  grid-column: 1;
-  gap: var(--space-2xs);
-  min-width: 0;
-  align-items: baseline;
-}
-
-.health-signals__attention-name strong {
+.signal-card__head strong {
   overflow: hidden;
   color: var(--color-ink);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 620;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.health-signals__attention-name b {
+.signal-card__head b {
   flex: 0 0 auto;
-  color: var(--color-warning);
-  font-size: 0.75rem;
-  font-weight: 620;
+  margin-left: auto;
+  color: oklch(0.44 0.13 62);
+  font-size: 0.78rem;
+  font-weight: 640;
+  font-variant-numeric: tabular-nums;
 }
 
-.health-signals__attention-reader {
-  display: flex;
-  grid-row: 1 / span 2;
-  grid-column: 2;
-  gap: 3px;
-  align-items: center;
+.signal-card__head svg {
+  flex: 0 0 auto;
   align-self: center;
   color: var(--color-muted);
-  font-size: 0.65rem;
 }
 
-.health-signals__attention-standing {
-  display: flex;
-  grid-row: 2;
-  grid-column: 1;
-  gap: var(--space-2xs);
-  flex-wrap: wrap;
+.signal-card__head:hover strong {
+  text-decoration: underline;
+}
+
+.signal-card__head:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.signal-card__standing {
+  margin: 0;
   color: var(--color-muted);
   font-size: 0.65rem;
   line-height: 1.35;
 }
 
-.health-signals__attention-standing i {
+.signal-card__foot {
+  display: flex;
+  gap: 2px var(--space-2xs);
+  flex-wrap: wrap;
+  align-items: baseline;
+  margin: auto 0 0;
+  padding-top: 2px;
+  color: var(--color-muted);
+  font-size: 0.65rem;
+}
+
+.signal-card__foot em {
+  margin-left: auto;
   font-style: normal;
 }
 
-.health-signals__attention-standing i::before {
-  content: "· ";
-}
-
-.health-signals__attention-more {
+.signal-cards__more {
   display: inline-block;
   margin-top: var(--space-2xs);
   color: var(--color-muted);
@@ -4607,10 +4640,6 @@ body:has(.upload-dialog[open]) {
       / 1fr;
     min-height: auto;
   }
-
-  .health-signals__grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 820px) {
@@ -4746,8 +4775,9 @@ body:has(.upload-dialog[open]) {
     grid-template-columns: 1fr;
   }
 
-  .health-signals__grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Below the two-column shell a card would be too narrow to place a value, so they stack. */
+  .signal-cards ul {
+    grid-template-columns: 1fr;
   }
 
   .care-plan__form {
@@ -5025,12 +5055,8 @@ body:has(.upload-dialog[open]) {
     width: 100%;
   }
 
-  .health-signal {
-    padding: 12px;
-  }
-
-  .health-signal strong {
-    font-size: 1.7rem;
+  .signal-card {
+    padding: 10px 12px 12px;
   }
 
   .care-plan__heading {
@@ -9745,8 +9771,14 @@ body:has(.upload-dialog[open]) {
   border-radius: 999px;
 }
 
-.dossier-focus__aside .dossier-strip {
+.dossier-focus__aside .dossier-strip,
+.signals-strip .dossier-strip {
   width: 100%;
+}
+
+/* On the overview the bar is the panel's own picture, so it carries a little more weight. */
+.signals-strip .dossier-strip {
+  height: 10px;
 }
 
 .dossier-strip__segment {
@@ -9755,15 +9787,15 @@ body:has(.upload-dialog[open]) {
 }
 
 .dossier-strip__segment.is-outside {
-  background: oklch(0.7 0.15 62);
+  background: var(--status-outside);
 }
 
 .dossier-strip__segment.is-within {
-  background: oklch(0.72 0.12 160);
+  background: var(--status-within);
 }
 
 .dossier-strip__segment.is-unknown {
-  background: var(--color-surface-strong);
+  background: var(--status-unknown);
 }
 
 /* Attention */
@@ -9988,8 +10020,9 @@ body:has(.upload-dialog[open]) {
   transform: translateX(-50%);
 }
 
-.dossier-gauge.is-watch .dossier-gauge__marker {
-  background: oklch(0.6 0.15 60);
+.dossier-gauge.is-watch .dossier-gauge__marker,
+.signal-card .dossier-gauge__marker {
+  background: var(--status-watch-ink);
 }
 
 .dossier-gauge__bounds {
@@ -9998,6 +10031,11 @@ body:has(.upload-dialog[open]) {
   color: var(--color-muted);
   font-size: 0.6875rem;
   font-variant-numeric: tabular-nums;
+}
+
+.signal-card .dossier-gauge__bounds {
+  height: 12px;
+  font-size: 0.625rem;
 }
 
 .dossier-gauge__bounds span {
@@ -10022,6 +10060,10 @@ body:has(.upload-dialog[open]) {
   flex: 1 1 auto;
   min-width: 0;
   height: 20px;
+}
+
+.signal-card .dossier-sparkline {
+  height: 26px;
 }
 
 .dossier-sparkline__band {
@@ -10049,7 +10091,7 @@ body:has(.upload-dialog[open]) {
 
 .dossier-sparkline.is-watch .dossier-sparkline__line,
 .dossier-sparkline.is-watch .dossier-sparkline__point {
-  stroke: oklch(0.6 0.15 60);
+  stroke: var(--status-watch-ink);
 }
 
 .dossier-gauge__meta {

@@ -26,9 +26,9 @@ async function registerDemoFamily(page: Page) {
   const signals = overview.getByRole("region", { name: "Сигналы здоровья" });
   await expect(signals).toBeVisible();
   await expect(signals.getByText("Без общего балла", { exact: true })).toBeVisible();
-  await expect(signals.getByText("Ждёт проверки", { exact: true })).toBeVisible();
-  await expect(signals.getByText("Вне референса", { exact: true })).toBeVisible();
-  await expect(signals.getByText("Подтверждено", { exact: true })).toBeVisible();
+  await expect(signals.getByText(/^Пока нет подтверждённых значений/)).toBeVisible();
+  await expect(signals.getByText("Ждёт проверки 0", { exact: true })).toBeVisible();
+  await expect(signals.getByText("Документов 0", { exact: true })).toBeVisible();
   await openDocumentsTab(page);
   const archive = page.getByRole("region", { name: "Архив документов" });
   await expect(archive.getByText("Исходников пока нет.")).toBeVisible();

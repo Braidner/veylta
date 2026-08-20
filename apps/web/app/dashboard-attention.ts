@@ -6,9 +6,17 @@ import {
   type ProfileOverviewResponse,
 } from "@veylta/contracts";
 import { specialtyLabel } from "./assistant";
-import { printedDelta } from "./dossier-numbers";
+import { printedDelta, rangeBounds } from "./dossier-numbers";
+import type { ScaleReading } from "./dossier-scale";
 import { formatSampleDay } from "./format-moment";
 import { historyPath, profileTabPath } from "./paths";
+import { countCopy } from "./russian-plural";
+
+/** One reading of the run, as the sparkline draws it; a value that is not a number keeps its slot. */
+export interface AttentionRunPoint {
+  readonly id: string;
+  readonly value: number | null;
+}
 
 /**
  * One indicator the overview says is outside, read as a row: the value as the source printed it,
@@ -26,6 +34,14 @@ export interface DashboardAttentionRow {
   /** Who reads this indicator; the therapist when the catalog names no one. */
   readonly reader: string;
   readonly href: string;
+  /** What the gauge places: the value against the bounds the source printed, if it printed a pair. */
+  readonly reading: ScaleReading;
+  /** The indicator's last confirmed values, oldest first. */
+  readonly run: readonly AttentionRunPoint[];
+  /** The printed reference the run is drawn against; null when the source printed no bounds. */
+  readonly band: { readonly low: number | null; readonly high: number | null } | null;
+  /** «ТТГ: 3 значения во времени» — what the drawing says to a reader who cannot see it. */
+  readonly runLabel: string;
 }
 
 /** What the record says the value does, from the status and the bounds the source printed. */
@@ -58,6 +74,11 @@ function changeOf(entry: ProfileOverviewAttention): string | null {
   return delta.direction === "unchanged" ? `без изменений с ${day}` : `${delta.value} с ${day}`;
 }
 
+/** The value against the bounds the source printed — the same shape the dossier's own gauge places. */
+function readingOf(entry: ProfileOverviewAttention): ScaleReading {
+  return { value: numberOf(entry.value), ...rangeBounds(entry.range) };
+}
+
 /**
  * The indicators the overview names, each leading to its own history — or, without a catalog
  * code, to the dossier, where the printed name is the only handle there is.
@@ -66,6 +87,8 @@ export function attentionRows(overview: ProfileOverviewResponse): DashboardAtten
   const { handle } = overview.profile;
   return overview.attention.map((entry) => {
     const specialty = analyteSpecialty(entry.canonicalCode, null);
+    const reading = readingOf(entry);
+    const hasBand = reading.low !== null || reading.high !== null;
     return {
       key: indicatorKey(entry.canonicalCode, entry.name, entry.unit),
       name: entry.name,
@@ -77,6 +100,13 @@ export function attentionRows(overview: ProfileOverviewResponse): DashboardAtten
         entry.canonicalCode === null
           ? profileTabPath(handle, "dossier")
           : historyPath(handle, entry.canonicalCode),
+      reading,
+      run: entry.points.map((point, index) => ({
+        id: `${point.at}-${index}`,
+        value: numberOf(point.value),
+      })),
+      band: hasBand ? { low: reading.low, high: reading.high } : null,
+      runLabel: `${entry.name}: ${countCopy(entry.points.length, ["значение", "значения", "значений"])} во времени`,
     };
   });
 }

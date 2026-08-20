@@ -27,14 +27,18 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
 
   await expect(page.getByRole("heading", { name: "Сигналы здоровья" })).toBeVisible();
   await expect(page.getByText("Без общего балла")).toBeVisible();
-  await expect(page.getByText("Ждёт проверки")).toBeVisible();
-  await expect(page.getByText("Вне референса", { exact: true })).toBeVisible();
-  await expect(page.getByText("Документов", { exact: true })).toBeVisible();
-  // A fresh profile has nothing outside, so the tile is a statement, not a way into the dossier.
-  await expect(page.getByText("Все показатели в пределах диапазонов источников")).toBeVisible();
-  await expect(page.locator("a.health-signal--link")).toHaveCount(0);
-  // With nothing outside there is nothing to name, so the block keeps only its note.
-  await expect(page.locator(".health-signals__attention")).toHaveCount(0);
+  // A fresh record has no indicators at all, so one line stands in place of the bar.
+  await expect(
+    page.getByText("Пока нет подтверждённых значений — они появятся после проверки документа"),
+  ).toBeVisible();
+  await expect(page.locator(".signals-strip")).toHaveCount(0);
+  await expect(page.locator("a.signals-strip__word")).toHaveCount(0);
+  // The bookkeeping is two chips, and with nothing waiting neither of them is an action.
+  await expect(page.getByText("Ждёт проверки 0", { exact: true })).toBeVisible();
+  await expect(page.getByText("Документов 0", { exact: true })).toBeVisible();
+  await expect(page.locator(".signal-chip--link")).toHaveCount(0);
+  // With nothing outside there is nothing to name, so the panel keeps only its note.
+  await expect(page.locator(".signal-cards")).toHaveCount(0);
   await expect(
     page.getByText(/Оценка Veylta по печатным диапазонам ваших источников, а не диагноз/),
   ).toBeVisible();
