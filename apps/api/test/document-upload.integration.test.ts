@@ -1,27 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { type DemoRegistrationResponse, MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
+import type { DemoRegistrationResponse } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database, isSqliteConstraintError } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
+import { type Database, isSqliteConstraintError } from "../src/database/pool.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import type { ObjectStorage, ObjectStorageKey } from "../src/storage/object-storage.js";
-
-const webOrigin = "http://127.0.0.1:4300";
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-}
+import { createDocumentApp, withDocumentContext } from "./document-app.js";
+import { cookieFrom, register, webOrigin } from "./family-app.js";
 
 interface MultipartOptions {
   contentType?: string;
@@ -29,15 +17,6 @@ interface MultipartOptions {
   filename?: string;
   secondFile?: boolean;
   uppercaseScope?: boolean;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const headerValue = response.headers["set-cookie"];
-  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof header !== "string") throw new Error("Expected a Set-Cookie header");
-  const pair = header.split(";", 1)[0];
-  if (pair === undefined) throw new Error("Expected a cookie pair");
-  return pair;
 }
 
 function multipartFile(
@@ -90,31 +69,6 @@ function syntheticPdf(label: string, minimumBytes = 0): Buffer {
   return Buffer.from(source.padEnd(minimumBytes, "S"));
 }
 
-function createTestApp(
-  database: Database,
-  storageRoot: string,
-  maxDocumentBytes = MAX_SYNTHETIC_PDF_BYTES,
-  storage: ObjectStorage = createLocalObjectStorage(storageRoot),
-) {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    familyService,
-    createDocumentService(database, storage, { maxDocumentBytes }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes },
-  );
-  return app;
-}
-
 function replaceObjectOnFirstGet(storageRoot: string): ObjectStorage {
   const delegate = createLocalObjectStorage(storageRoot);
   let armed = true;
@@ -148,21 +102,6 @@ function replaceObjectOnFirstGet(storageRoot: string): ObjectStorage {
       return delegate.get(key, expected);
     },
   };
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Synthetic Owner ${suffix}`,
-      familyName: `Synthetic Family ${suffix}`,
-      profileName: `Synthetic Profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  return { body: response.json(), cookie: cookieFrom(response) };
 }
 
 async function upload(
@@ -211,32 +150,9 @@ async function rowCounts(database: Database): Promise<Record<string, number>> {
   return row;
 }
 
-async function withTestContext(
-  operation: (context: {
-    app: FastifyInstance;
-    database: Database;
-    storageRoot: string;
-  }) => Promise<void>,
-  maxDocumentBytes = MAX_SYNTHETIC_PDF_BYTES,
-  storageFactory: (root: string) => ObjectStorage = createLocalObjectStorage,
-): Promise<void> {
-  const testRoot = await mkdtemp(join(tmpdir(), "veylta-upload-"));
-  const storageRoot = join(testRoot, "storage");
-  const database = createDatabase(join(testRoot, "test.sqlite"));
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot, maxDocumentBytes, storageFactory(storageRoot));
-  try {
-    await operation({ app, database, storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(testRoot, { force: true, recursive: true });
-  }
-}
-
 test("upload, replay, same-family deduplication, download, and restart stay consistent", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Upload");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Upload");
     const pdf = syntheticPdf("SYNTHETIC_UPLOAD_A");
     const first = await upload(app, owner, pdf, "upload-first");
     assert.equal(first.statusCode, 202);
@@ -314,7 +230,7 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
     assert.equal(content.headers["cache-control"], "private, no-store");
     assert.equal(content.headers["content-security-policy"], "sandbox");
 
-    const restartedApp = createTestApp(database, storageRoot);
+    const restartedApp = createDocumentApp(database, storageRoot).app;
     try {
       const afterRestart = await restartedApp.inject({
         method: "GET",
@@ -354,9 +270,9 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
 });
 
 test("download rejects a self-consistent object that no longer matches database provenance", async () => {
-  await withTestContext(
+  await withDocumentContext(
     async ({ app, database }) => {
-      const owner = await registerOwner(app, "Read Integrity");
+      const owner = await register(app, "Read Integrity");
       const pdf = syntheticPdf("READ_PROVENANCE_BOUNDARY");
       const uploaded = await upload(app, owner, pdf, "read-integrity");
       assert.equal(uploaded.statusCode, 202);
@@ -378,123 +294,125 @@ test("download rejects a self-consistent object that no longer matches database 
       );
       assert.equal(accessAudit.rows[0]?.count, 0);
     },
-    MAX_SYNTHETIC_PDF_BYTES,
-    replaceObjectOnFirstGet,
+    { storage: replaceObjectOnFirstGet },
   );
 });
 
 test("upload validation rejects bad type, signature, size, and multipart shape without rows", async () => {
-  await withTestContext(async ({ app, database }) => {
-    const owner = await registerOwner(app, "Validation");
-    const uppercaseScope = await upload(
-      app,
-      owner,
-      syntheticPdf("UPPERCASE_SCOPE"),
-      "uppercase-scope",
-      { uppercaseScope: true },
-    );
-    assert.equal(uppercaseScope.statusCode, 400);
-    assert.equal(uppercaseScope.json().error.code, "VALIDATION_ERROR");
+  await withDocumentContext(
+    async ({ app, database }) => {
+      const owner = await register(app, "Validation");
+      const uppercaseScope = await upload(
+        app,
+        owner,
+        syntheticPdf("UPPERCASE_SCOPE"),
+        "uppercase-scope",
+        { uppercaseScope: true },
+      );
+      assert.equal(uppercaseScope.statusCode, 400);
+      assert.equal(uppercaseScope.json().error.code, "VALIDATION_ERROR");
 
-    const urnMultipart = multipartFile(syntheticPdf("URN_SCOPE"));
-    const urnScope = await app.inject({
-      method: "POST",
-      url: `/v1/families/${encodeURIComponent(`urn:uuid:${owner.body.family.id}`)}/profiles/${owner.body.profile.id}/documents`,
-      headers: {
-        "content-type": urnMultipart.contentType,
-        "idempotency-key": "urn-scope-command",
-        cookie: owner.cookie,
-        origin: webOrigin,
-      },
-      payload: urnMultipart.body,
-    });
-    assert.equal(urnScope.statusCode, 400);
-    assert.equal(urnScope.json().error.code, "VALIDATION_ERROR");
-
-    const badType = await upload(app, owner, syntheticPdf("BAD_TYPE"), "bad-type", {
-      contentType: "text/plain",
-    });
-    assert.equal(badType.statusCode, 415);
-    assert.equal(badType.json().error.code, "UNSUPPORTED_DOCUMENT_TYPE");
-
-    const badSignature = await upload(app, owner, Buffer.from("NOT A PDF"), "bad-signature");
-    assert.equal(badSignature.statusCode, 415);
-    assert.equal(badSignature.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
-
-    const pngDeclaredAsJpeg = await upload(
-      app,
-      owner,
-      Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-      "image-signature-mismatch",
-      { contentType: "image/jpeg", filename: "declared-jpeg.jpg" },
-    );
-    assert.equal(pngDeclaredAsJpeg.statusCode, 415);
-    assert.equal(pngDeclaredAsJpeg.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
-
-    const wrongMediaType = await app.inject({
-      method: "POST",
-      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
-      headers: {
-        "content-type": "application/pdf",
-        "idempotency-key": "wrong-request-media-type",
-        cookie: owner.cookie,
-        origin: webOrigin,
-      },
-      payload: syntheticPdf("WRONG_REQUEST_MEDIA_TYPE"),
-    });
-    assert.equal(wrongMediaType.statusCode, 415);
-    assert.equal(wrongMediaType.json().error.code, "UNSUPPORTED_MEDIA_TYPE");
-
-    const malformedMultipart = await app.inject({
-      method: "POST",
-      url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
-      headers: {
-        "content-type": "multipart/form-data; boundary=missing-closing-boundary",
-        "idempotency-key": "malformed-multipart-body",
-        cookie: owner.cookie,
-        origin: webOrigin,
-      },
-      payload: Buffer.from("not a multipart body"),
-    });
-    assert.equal(malformedMultipart.statusCode, 400);
-    assert.equal(malformedMultipart.json().error.code, "INVALID_MULTIPART_UPLOAD");
-
-    const tooLarge = await upload(app, owner, syntheticPdf("TOO_LARGE", 129), "too-large");
-    assert.equal(tooLarge.statusCode, 413);
-    assert.equal(tooLarge.json().error.code, "UPLOAD_TOO_LARGE");
-
-    for (const [name, multipart] of [
-      ["missing", multipartWithoutFile()],
-      ["field", multipartFile(syntheticPdf("EXTRA_FIELD"), { extraField: true })],
-      ["second", multipartFile(syntheticPdf("SECOND_FILE"), { secondFile: true })],
-    ] as const) {
-      const response = await app.inject({
+      const urnMultipart = multipartFile(syntheticPdf("URN_SCOPE"));
+      const urnScope = await app.inject({
         method: "POST",
-        url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
+        url: `/v1/families/${encodeURIComponent(`urn:uuid:${owner.body.family.id}`)}/profiles/${owner.body.profile.id}/documents`,
         headers: {
-          "content-type": multipart.contentType,
-          "idempotency-key": `multipart-${name}-command`,
+          "content-type": urnMultipart.contentType,
+          "idempotency-key": "urn-scope-command",
           cookie: owner.cookie,
           origin: webOrigin,
         },
-        payload: multipart.body,
+        payload: urnMultipart.body,
       });
-      assert.equal(response.statusCode, 400, name);
-      assert.equal(response.json().error.code, "INVALID_MULTIPART_UPLOAD", name);
-    }
+      assert.equal(urnScope.statusCode, 400);
+      assert.equal(urnScope.json().error.code, "VALIDATION_ERROR");
 
-    assert.deepEqual(await rowCounts(database), {
-      blobs: 0,
-      documents: 0,
-      requests: 0,
-      versions: 0,
-    });
-  }, 128);
+      const badType = await upload(app, owner, syntheticPdf("BAD_TYPE"), "bad-type", {
+        contentType: "text/plain",
+      });
+      assert.equal(badType.statusCode, 415);
+      assert.equal(badType.json().error.code, "UNSUPPORTED_DOCUMENT_TYPE");
+
+      const badSignature = await upload(app, owner, Buffer.from("NOT A PDF"), "bad-signature");
+      assert.equal(badSignature.statusCode, 415);
+      assert.equal(badSignature.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
+
+      const pngDeclaredAsJpeg = await upload(
+        app,
+        owner,
+        Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
+        "image-signature-mismatch",
+        { contentType: "image/jpeg", filename: "declared-jpeg.jpg" },
+      );
+      assert.equal(pngDeclaredAsJpeg.statusCode, 415);
+      assert.equal(pngDeclaredAsJpeg.json().error.code, "INVALID_DOCUMENT_SIGNATURE");
+
+      const wrongMediaType = await app.inject({
+        method: "POST",
+        url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
+        headers: {
+          "content-type": "application/pdf",
+          "idempotency-key": "wrong-request-media-type",
+          cookie: owner.cookie,
+          origin: webOrigin,
+        },
+        payload: syntheticPdf("WRONG_REQUEST_MEDIA_TYPE"),
+      });
+      assert.equal(wrongMediaType.statusCode, 415);
+      assert.equal(wrongMediaType.json().error.code, "UNSUPPORTED_MEDIA_TYPE");
+
+      const malformedMultipart = await app.inject({
+        method: "POST",
+        url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
+        headers: {
+          "content-type": "multipart/form-data; boundary=missing-closing-boundary",
+          "idempotency-key": "malformed-multipart-body",
+          cookie: owner.cookie,
+          origin: webOrigin,
+        },
+        payload: Buffer.from("not a multipart body"),
+      });
+      assert.equal(malformedMultipart.statusCode, 400);
+      assert.equal(malformedMultipart.json().error.code, "INVALID_MULTIPART_UPLOAD");
+
+      const tooLarge = await upload(app, owner, syntheticPdf("TOO_LARGE", 129), "too-large");
+      assert.equal(tooLarge.statusCode, 413);
+      assert.equal(tooLarge.json().error.code, "UPLOAD_TOO_LARGE");
+
+      for (const [name, multipart] of [
+        ["missing", multipartWithoutFile()],
+        ["field", multipartFile(syntheticPdf("EXTRA_FIELD"), { extraField: true })],
+        ["second", multipartFile(syntheticPdf("SECOND_FILE"), { secondFile: true })],
+      ] as const) {
+        const response = await app.inject({
+          method: "POST",
+          url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents`,
+          headers: {
+            "content-type": multipart.contentType,
+            "idempotency-key": `multipart-${name}-command`,
+            cookie: owner.cookie,
+            origin: webOrigin,
+          },
+          payload: multipart.body,
+        });
+        assert.equal(response.statusCode, 400, name);
+        assert.equal(response.json().error.code, "INVALID_MULTIPART_UPLOAD", name);
+      }
+
+      assert.deepEqual(await rowCounts(database), {
+        blobs: 0,
+        documents: 0,
+        requests: 0,
+        versions: 0,
+      });
+    },
+    { maxDocumentBytes: 128 },
+  );
 });
 
 test("an idempotency key cannot be reused for different bytes", async () => {
-  await withTestContext(async ({ app, database }) => {
-    const owner = await registerOwner(app, "Idempotency");
+  await withDocumentContext(async ({ app, database }) => {
+    const owner = await register(app, "Idempotency");
     const first = await upload(app, owner, syntheticPdf("REQUEST_ONE"), "same-command");
     assert.equal(first.statusCode, 202);
 
@@ -511,8 +429,8 @@ test("an idempotency key cannot be reused for different bytes", async () => {
 });
 
 test("concurrent replay and same-family deduplication remain single-write", async () => {
-  await withTestContext(async ({ app, database }) => {
-    const owner = await registerOwner(app, "Concurrent");
+  await withDocumentContext(async ({ app, database }) => {
+    const owner = await register(app, "Concurrent");
     const pdf = syntheticPdf("CONCURRENT_UPLOAD");
     const [firstReplay, secondReplay] = await Promise.all([
       upload(app, owner, pdf, "concurrent-replay"),
@@ -540,9 +458,9 @@ test("concurrent replay and same-family deduplication remain single-write", asyn
 });
 
 test("identical bytes in another family do not disclose or share a blob", async () => {
-  await withTestContext(async ({ app, database }) => {
-    const firstOwner = await registerOwner(app, "First Tenant");
-    const secondOwner = await registerOwner(app, "Second Tenant");
+  await withDocumentContext(async ({ app, database }) => {
+    const firstOwner = await register(app, "First Tenant");
+    const secondOwner = await register(app, "Second Tenant");
     const pdf = syntheticPdf("CROSS_FAMILY_SAME_BYTES");
     const first = await upload(app, firstOwner, pdf, "first-family");
     const second = await upload(app, secondOwner, pdf, "second-family");
@@ -649,8 +567,8 @@ test("identical bytes in another family do not disclose or share a blob", async 
 });
 
 test("a finalized orphan is recovered by retry after a database rollback", async () => {
-  await withTestContext(async ({ app, database }) => {
-    const owner = await registerOwner(app, "Recovery");
+  await withDocumentContext(async ({ app, database }) => {
+    const owner = await register(app, "Recovery");
     const pdf = syntheticPdf("RECOVER_FINALIZED_ORPHAN");
     await database.exec(`
       CREATE TRIGGER fail_synthetic_document_insert
@@ -682,8 +600,8 @@ test("a finalized orphan is recovered by retry after a database rollback", async
 });
 
 test("an invited adult receives only a revocable document read grant, never document write", async () => {
-  await withTestContext(async ({ app }) => {
-    const owner = await registerOwner(app, "Adult Access");
+  await withDocumentContext(async ({ app }) => {
+    const owner = await register(app, "Adult Access");
     const uploaded = await upload(
       app,
       owner,

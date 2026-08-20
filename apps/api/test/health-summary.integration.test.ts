@@ -1,52 +1,23 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
-  type DemoRegistrationResponse,
   HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION,
   HEALTH_SUMMARY_CONTRACT_VERSION,
   type HealthSummaryComparisonResponse,
   type HealthSummaryResponse,
-  MAX_SYNTHETIC_DOCUMENT_BYTES,
 } from "@veylta/contracts";
-import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
+import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { type Identity, register, webOrigin } from "./family-app.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-}
 
 interface PreparedDocument {
   documentId: string;
   facts: Array<{ id: string; factVersion: number; factKey: string }>;
-}
-
-interface TestContext {
-  app: FastifyInstance;
-  database: Database;
-  storageRoot: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const value = response.headers["set-cookie"];
-  const header = Array.isArray(value) ? value[0] : value;
-  if (typeof header !== "string") throw new Error("Expected a session cookie");
-  return header.split(";", 1)[0] ?? "";
 }
 
 function profilePath(identity: Identity): string {
@@ -83,60 +54,8 @@ function multipartFile(bytes: Buffer, filename: string) {
   };
 }
 
-function createTestApp(database: Database, storageRoot: string): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const family = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, family, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    family,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES },
-  );
-  return app;
-}
-
-async function withTestContext(operation: (context: TestContext) => Promise<void>): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "veylta-health-summary-"));
-  const database = createDatabase(join(root, "test.sqlite"));
-  const storageRoot = join(root, "storage");
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot);
-  try {
-    await operation({ app, database, storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(root, { force: true, recursive: true });
-  }
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Summary owner ${suffix}`,
-      familyName: `Summary family ${suffix}`,
-      profileName: `Summary profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  return { body: response.json(), cookie: cookieFrom(response) };
-}
-
 async function uploadAndExtract(
-  context: TestContext,
+  context: DocumentTestContext,
   owner: Identity,
   suffix: string,
 ): Promise<PreparedDocument> {
@@ -180,7 +99,7 @@ async function uploadAndExtract(
 }
 
 async function decide(
-  context: TestContext,
+  context: DocumentTestContext,
   owner: Identity,
   documentId: string,
   factId: string,
@@ -201,9 +120,9 @@ async function decide(
 }
 
 test("health summary snapshots only final confirmed evidence and remains profile-authorized", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "owner");
-    const outsider = await registerOwner(context.app, "outsider");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Summary");
+    const outsider = await register(context.app, "Summary outsider");
 
     const before = await context.app.inject({
       method: "GET",
@@ -284,8 +203,8 @@ test("health summary snapshots only final confirmed evidence and remains profile
 });
 
 test("a later completed review creates an immutable successor and identifies new evidence", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "versions");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Summary versions");
     const first = await uploadAndExtract(context, owner, "first-version");
     const firstConfirmed = first.facts.find((fact) => fact.factKey === "synthetic-analyte-a");
     const firstRejected = first.facts.find((fact) => fact.factKey === "synthetic-analyte-b");
@@ -546,7 +465,7 @@ test("a later completed review creates an immutable successor and identifies new
     });
     assert.equal(invalidVersion.statusCode, 400);
 
-    const outsider = await registerOwner(context.app, "summary-history-outsider");
+    const outsider = await register(context.app, "summary-history-outsider");
     const deniedHistory = await context.app.inject({
       method: "GET",
       url: summaryHistoryPath(owner),

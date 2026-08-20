@@ -1,49 +1,17 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
-  type DemoRegistrationResponse,
-  MAX_SYNTHETIC_DOCUMENT_BYTES,
   MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS,
   MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS,
 } from "@veylta/contracts";
-import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
+import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { type Identity, register, webOrigin } from "./family-app.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-  userId: string;
-}
-
-interface TestContext {
-  app: FastifyInstance;
-  database: Database;
-  storageRoot: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const headerValue = response.headers["set-cookie"];
-  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof header !== "string") throw new Error("Expected a session cookie");
-  const pair = header.split(";", 1)[0];
-  if (pair === undefined) throw new Error("Expected a session cookie pair");
-  return pair;
-}
 
 function profilePath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
@@ -75,63 +43,8 @@ function multipartFile(bytes: Buffer, filename: string) {
   };
 }
 
-function createTestApp(database: Database, storageRoot: string): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    familyService,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES },
-  );
-  return app;
-}
-
-async function withTestContext(operation: (context: TestContext) => Promise<void>): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "veylta-evidence-bundle-"));
-  const database = createDatabase(join(root, "test.sqlite"));
-  const storageRoot = join(root, "storage");
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot);
-  try {
-    await operation({ app, database, storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(root, { force: true, recursive: true });
-  }
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Evidence owner ${suffix}`,
-      familyName: `Evidence family ${suffix}`,
-      profileName: `Evidence profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  const cookie = cookieFrom(response);
-  const session = await app.inject({ method: "GET", url: "/v1/session", headers: { cookie } });
-  assert.equal(session.statusCode, 200);
-  return { body: response.json(), cookie, userId: session.json().user.id as string };
-}
-
 async function uploadDocument(
-  context: TestContext,
+  context: DocumentTestContext,
   owner: Identity,
   filename = "evidence-source.pdf",
 ): Promise<string> {
@@ -153,7 +66,7 @@ async function uploadDocument(
   return uploaded.json().document.id as string;
 }
 
-async function uploadAndExtract(context: TestContext, owner: Identity): Promise<string> {
+async function uploadAndExtract(context: DocumentTestContext, owner: Identity): Promise<string> {
   const documentId = await uploadDocument(context, owner);
   const processor = createDocumentExtractionProcessor({
     database: context.database,
@@ -169,7 +82,7 @@ async function uploadAndExtract(context: TestContext, owner: Identity): Promise<
 }
 
 async function confirmOneFact(
-  context: TestContext,
+  context: DocumentTestContext,
   owner: Identity,
   documentId: string,
 ): Promise<void> {
@@ -209,8 +122,8 @@ function tarEntries(bundle: Buffer): Map<string, Buffer> {
 }
 
 test("owner can export a bounded synthetic evidence bundle with source bytes and payload-free audit", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "owner");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Evidence");
     const documentId = await uploadAndExtract(context, owner);
 
     const response = await context.app.inject({
@@ -251,9 +164,9 @@ test("owner can export a bounded synthetic evidence bundle with source bytes and
 });
 
 test("a profile.read grant cannot export either synthetic archive", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "owner grant");
-    const reader = await registerOwner(context.app, "reader grant");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "owner grant");
+    const reader = await register(context.app, "reader grant");
     await uploadAndExtract(context, owner);
     await context.database.transaction(async (client) => {
       await client.query(
@@ -295,8 +208,8 @@ test("a profile.read grant cannot export either synthetic archive", async () => 
 });
 
 test("the local export is a bounded snapshot when a profile has more source documents", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "document bound");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "document bound");
     const olderDocumentId = await uploadAndExtract(context, owner);
     await confirmOneFact(context, owner, olderDocumentId);
     await context.database.query(`UPDATE documents SET uploaded_at = $1 WHERE id = $2`, [
@@ -333,8 +246,8 @@ test("the local export is a bounded snapshot when a profile has more source docu
 });
 
 test("owner can export every synthetic source and confirmed record from one profile", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "portable profile");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "portable profile");
     const firstDocumentId = await uploadAndExtract(context, owner);
     await confirmOneFact(context, owner, firstDocumentId);
     for (let index = 1; index <= MAX_SYNTHETIC_EVIDENCE_BUNDLE_DOCUMENTS; index += 1) {
@@ -387,8 +300,8 @@ test("owner can export every synthetic source and confirmed record from one prof
 });
 
 test("portable profile export fails closed rather than silently omitting sources above its cap", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "portable cap");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "portable cap");
     for (let index = 0; index <= MAX_SYNTHETIC_PROFILE_EXPORT_DOCUMENTS; index += 1) {
       await uploadDocument(context, owner, `portable-cap-${index}.pdf`);
     }
@@ -412,9 +325,9 @@ test("portable profile export fails closed rather than silently omitting sources
 });
 
 test("another family cannot discover a synthetic evidence bundle", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "owner boundary");
-    const outsider = await registerOwner(context.app, "outsider boundary");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "owner boundary");
+    const outsider = await register(context.app, "outsider boundary");
     await uploadAndExtract(context, owner);
 
     const response = await context.app.inject({

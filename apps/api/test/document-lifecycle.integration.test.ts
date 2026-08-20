@@ -4,38 +4,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import {
-  type DemoRegistrationResponse,
-  DOCUMENT_INTELLIGENCE_CONTRACT_VERSION,
-  MAX_SYNTHETIC_PDF_BYTES,
-} from "@veylta/contracts";
+import { DOCUMENT_INTELLIGENCE_CONTRACT_VERSION } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
 import { migrateUp } from "../src/database/migrations.js";
 import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
+import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { type Identity, register, webOrigin } from "./family-app.js";
 import { migrationNames, rollbackTo } from "./migration-chain.js";
-
-const webOrigin = "http://127.0.0.1:4300";
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const value = response.headers["set-cookie"];
-  const header = Array.isArray(value) ? value[0] : value;
-  if (typeof header !== "string") throw new Error("Expected session cookie");
-  const cookie = header.split(";", 1)[0];
-  if (cookie === undefined) throw new Error("Expected cookie pair");
-  return cookie;
-}
 
 function syntheticPdf(label: string): Buffer {
   return Buffer.from(`%PDF-1.7\n% VEYLTA SYNTHETIC ONLY\n${label}\n%%EOF\n`);
@@ -53,43 +30,6 @@ function multipartFile(bytes: Buffer, filename = "synthetic-result.pdf") {
     ]),
     contentType: `multipart/form-data; boundary=${boundary}`,
   };
-}
-
-function createTestApp(database: Database, storageRoot: string): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    familyService,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES },
-  );
-  return app;
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Synthetic Owner ${suffix}`,
-      familyName: `Synthetic Family ${suffix}`,
-      profileName: `Synthetic Profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  return { body: response.json(), cookie: cookieFrom(response) };
 }
 
 async function upload(
@@ -127,25 +67,11 @@ async function familyOwnerUserId(database: Database, familyId: string): Promise<
 }
 
 async function withContext(
-  operation: (context: {
-    app: FastifyInstance;
-    database: Database;
-    owner: Identity;
-    storageRoot: string;
-  }) => Promise<void>,
+  operation: (context: DocumentTestContext & { owner: Identity }) => Promise<void>,
 ): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "veylta-lifecycle-"));
-  const storageRoot = join(root, "storage");
-  const database = createDatabase(join(root, "test.sqlite"));
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot);
-  try {
-    await operation({ app, database, owner: await registerOwner(app, "Lifecycle"), storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(root, { recursive: true, force: true });
-  }
+  await withDocumentContext(async (context) => {
+    await operation({ ...context, owner: await register(context.app, "Lifecycle") });
+  });
 }
 
 test("lifecycle migration adds tombstones and immutable request journals and rolls back empty", async () => {
@@ -550,7 +476,7 @@ test("search normalizes Cyrillic, uses only latest intelligence, and audits no q
       url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents?q=витамин`,
     });
     assert.equal(unauthenticated.statusCode, 401);
-    const outsider = await registerOwner(app, "Search Outsider");
+    const outsider = await register(app, "Search Outsider");
     const forbidden = await app.inject({
       method: "GET",
       url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents?q=витамин`,

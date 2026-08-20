@@ -1,60 +1,26 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import { type DemoRegistrationResponse, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
-import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
 import { createCarePlanService } from "../src/care-plan/care-plan-service.js";
 import { registerCarePlanRoutes } from "../src/care-plan/routes.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { syntheticPreference } from "./codex-preference.js";
+import { createDocumentApp } from "./document-app.js";
+import {
+  createFamilyApp,
+  createTempDatabase,
+  type Identity,
+  register,
+  webOrigin,
+} from "./family-app.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-  userId: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const value = response.headers["set-cookie"];
-  const header = Array.isArray(value) ? value[0] : value;
-  if (typeof header !== "string") throw new Error("Expected session cookie");
-  return header.split(";", 1)[0] ?? "";
-}
 
 function carePlanPath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/care-plan`;
-}
-
-async function register(app: FastifyInstance, label: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `${label} owner`,
-      familyName: `${label} family`,
-      profileName: `${label} profile`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  const cookie = cookieFrom(response);
-  const session = await app.inject({ method: "GET", url: "/v1/session", headers: { cookie } });
-  assert.equal(session.statusCode, 200);
-  return { body: response.json(), cookie, userId: session.json().user.id as string };
 }
 
 function multipartFile(bytes: Buffer) {
@@ -72,20 +38,10 @@ function multipartFile(bytes: Buffer) {
 }
 
 test("a profile care plan is actionable, replay-safe, and profile-authorized", async () => {
-  const root = await mkdtemp(join(tmpdir(), "veylta-care-plan-"));
-  const database = createDatabase(join(root, "test.sqlite"));
-  await migrateUp(database);
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const family = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, family, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerCarePlanRoutes(app, family, createCarePlanService(database), {
+  const temp = await createTempDatabase();
+  const database = temp.database;
+  const { app, familyService } = createFamilyApp(database);
+  registerCarePlanRoutes(app, familyService, createCarePlanService(database), {
     allowedMutationOrigins: [webOrigin],
   });
 
@@ -297,38 +253,19 @@ test("a profile care plan is actionable, replay-safe, and profile-authorized", a
     );
   } finally {
     await app.close();
-    await database.close();
-    await rm(root, { recursive: true, force: true });
+    await temp.close();
   }
 });
 
 test("an explicit Codex run stores bounded drafts once and never exposes source values in audit", async () => {
-  const root = await mkdtemp(join(tmpdir(), "veylta-care-plan-codex-"));
-  const database = createDatabase(join(root, "test.sqlite"));
-  const storageRoot = join(root, "storage");
-  await migrateUp(database);
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const family = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, family, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    family,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES },
-  );
+  const temp = await createTempDatabase();
+  const database = temp.database;
+  const storageRoot = join(temp.root, "storage");
+  const { app, familyService } = createDocumentApp(database, storageRoot);
   let generated = 0;
   registerCarePlanRoutes(
     app,
-    family,
+    familyService,
     createCarePlanService(database, {
       generator: {
         async executionProfile() {
@@ -585,7 +522,6 @@ test("an explicit Codex run stores bounded drafts once and never exposes source 
     assert.doesNotMatch(JSON.stringify(audits.rows), /7\.0|sample_date|dietary|gpt-5/i);
   } finally {
     await app.close();
-    await database.close();
-    await rm(root, { recursive: true, force: true });
+    await temp.close();
   }
 });

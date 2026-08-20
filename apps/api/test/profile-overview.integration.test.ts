@@ -1,48 +1,15 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import {
-  type DemoRegistrationResponse,
-  MAX_SYNTHETIC_DOCUMENT_BYTES,
-  type ProfileOverviewResponse,
-} from "@veylta/contracts";
-import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
+import type { ProfileOverviewResponse } from "@veylta/contracts";
+import type { Database } from "../src/database/pool.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
+import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { type Identity, register, webOrigin } from "./family-app.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-  userId: string;
-}
-
-interface TestContext {
-  app: FastifyInstance;
-  database: Database;
-  storageRoot: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const headerValue = response.headers["set-cookie"];
-  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof header !== "string") throw new Error("Expected a Set-Cookie header");
-  const pair = header.split(";", 1)[0];
-  if (pair === undefined) throw new Error("Expected a cookie pair");
-  return pair;
-}
 
 function profilePath(identity: Identity): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
@@ -72,62 +39,7 @@ function multipartFile(
   };
 }
 
-function createTestApp(database: Database, storageRoot: string): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    familyService,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_DOCUMENT_BYTES },
-  );
-  return app;
-}
-
-async function withTestContext(operation: (context: TestContext) => Promise<void>): Promise<void> {
-  const root = await mkdtemp(join(tmpdir(), "veylta-profile-overview-"));
-  const storageRoot = join(root, "storage");
-  const database = createDatabase(join(root, "test.sqlite"));
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot);
-  try {
-    await operation({ app, database, storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(root, { force: true, recursive: true });
-  }
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Overview Owner ${suffix}`,
-      familyName: `Overview Family ${suffix}`,
-      profileName: `Overview Profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  const cookie = cookieFrom(response);
-  const session = await app.inject({ method: "GET", url: "/v1/session", headers: { cookie } });
-  assert.equal(session.statusCode, 200);
-  return { body: response.json(), cookie, userId: session.json().user.id as string };
-}
-
-async function uploadAndExtract(context: TestContext, owner: Identity): Promise<string> {
+async function uploadAndExtract(context: DocumentTestContext, owner: Identity): Promise<string> {
   const multipart = multipartFile(await readFile(fixtureUrl));
   const uploaded = await context.app.inject({
     method: "POST",
@@ -155,8 +67,8 @@ async function uploadAndExtract(context: TestContext, owner: Identity): Promise<
 }
 
 test("profile overview is source-first, bounded, and payload-free audited", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Owner");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Overview");
     const documentId = await uploadAndExtract(context, owner);
 
     const response = await context.app.inject({
@@ -222,9 +134,9 @@ test("profile overview is source-first, bounded, and payload-free audited", asyn
 });
 
 test("profile overview is non-disclosing outside the authorized profile scope", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Owner boundary");
-    const outsider = await registerOwner(context.app, "Outsider boundary");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Owner boundary");
+    const outsider = await register(context.app, "Outsider boundary");
     await uploadAndExtract(context, owner);
 
     const response = await context.app.inject({
@@ -241,9 +153,9 @@ test("profile overview is non-disclosing outside the authorized profile scope", 
 });
 
 test("profile overview honors a revocable profile.read grant as read-only access", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Owner grant");
-    const reader = await registerOwner(context.app, "Reader grant");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Owner grant");
+    const reader = await register(context.app, "Reader grant");
 
     await context.database.transaction(async (client) => {
       await client.query(
@@ -383,8 +295,8 @@ async function seedWaitingDocument(
  * projection would make "confirm all" silently skip documents the user can see counted.
  */
 test("the review queue returns every waiting source, not a three-document preview", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Queue");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Queue");
     for (const label of ["alfa", "beta", "gamma", "delta"]) {
       await seedWaitingDocument(context.database, owner, `queue-${label}`);
     }

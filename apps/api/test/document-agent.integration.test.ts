@@ -1,42 +1,18 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import {
-  type DemoRegistrationResponse,
-  DOCUMENT_AGENT_CONTRACT_VERSION,
-  MAX_SYNTHETIC_PDF_BYTES,
-} from "@veylta/contracts";
-import type { FastifyInstance, LightMyRequestResponse } from "fastify";
+import { DOCUMENT_AGENT_CONTRACT_VERSION } from "@veylta/contracts";
+import type { FastifyInstance } from "fastify";
 import type { DocumentAgentRuntime } from "../src/agent/codex-document-agent-runtime.js";
 import { createDocumentAgentCapabilityStore } from "../src/agent/document-agent-mcp.js";
 import { createDocumentAgentService } from "../src/agent/document-agent-service.js";
 import { registerDocumentAgentRoutes } from "../src/agent/routes.js";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
+import { createDocumentApp } from "./document-app.js";
+import { createTempDatabase, type Identity, register, webOrigin } from "./family-app.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const value = response.headers["set-cookie"];
-  const header = Array.isArray(value) ? value[0] : value;
-  if (typeof header !== "string") throw new Error("Expected session cookie");
-  return header.split(";", 1)[0] ?? "";
-}
 
 function multipartFile(bytes: Buffer) {
   const boundary = `veylta-agent-${randomUUID()}`;
@@ -50,21 +26,6 @@ function multipartFile(bytes: Buffer) {
       Buffer.from(`\r\n--${boundary}--\r\n`),
     ]),
   };
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Synthetic Owner ${suffix}`,
-      familyName: `Synthetic Family ${suffix}`,
-      profileName: `Synthetic Profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  return { body: response.json(), cookie: cookieFrom(response) };
 }
 
 async function upload(app: FastifyInstance, owner: Identity): Promise<string> {
@@ -85,19 +46,11 @@ async function upload(app: FastifyInstance, owner: Identity): Promise<string> {
 }
 
 test("document owner manages replay-safe Codex threads beside real ephemeral runs", async () => {
-  const root = await mkdtemp(join(tmpdir(), "veylta-agent-integration-"));
-  const database: Database = createDatabase(join(root, "test.sqlite"));
-  await migrateUp(database);
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  const documentService = createDocumentService(
+  const temp = await createTempDatabase();
+  const database = temp.database;
+  const { app, familyService, documentService } = createDocumentApp(
     database,
-    createLocalObjectStorage(join(root, "storage")),
-    { maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES },
+    join(temp.root, "storage"),
   );
   const runtimeCalls: Array<{ threadId: string | null; message: string }> = [];
   const runtime: DocumentAgentRuntime = {
@@ -120,21 +73,13 @@ test("document owner manages replay-safe Codex threads beside real ephemeral run
   };
   const capabilities = createDocumentAgentCapabilityStore({ ttlMs: 60_000 });
   const agentService = createDocumentAgentService(database, documentService, runtime, capabilities);
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(app, familyService, documentService, {
-    allowedMutationOrigins: [webOrigin],
-    maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES,
-  });
   registerDocumentAgentRoutes(app, familyService, agentService, {
     allowedMutationOrigins: [webOrigin],
   });
 
   try {
-    const owner = await registerOwner(app, "Agent");
-    const stranger = await registerOwner(app, "Stranger");
+    const owner = await register(app, "Agent");
+    const stranger = await register(app, "Stranger");
     const documentId = await upload(app, owner);
     const url = `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${documentId}/agent`;
 
@@ -298,7 +243,6 @@ test("document owner manages replay-safe Codex threads beside real ephemeral run
     assert.ok(audits.rows.every((row) => !row.metadata.includes("лаборатор")));
   } finally {
     await app.close();
-    await database.close();
-    await rm(root, { force: true, recursive: true });
+    await temp.close();
   }
 });

@@ -1,33 +1,18 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
-  type DemoRegistrationResponse,
-  MAX_SYNTHETIC_PDF_BYTES,
   OBSERVATION_HISTORY_CONTRACT_VERSION,
   type ObservationHistoryResponse,
 } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
+import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { type Identity, register, webOrigin } from "./family-app.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-}
 
 interface PreparedFact {
   documentId: string;
@@ -37,21 +22,6 @@ interface PreparedFact {
     factVersion: number;
     sourceValue: string;
   }>;
-}
-
-interface TestContext {
-  app: FastifyInstance;
-  database: Database;
-  storageRoot: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const headerValue = response.headers["set-cookie"];
-  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof header !== "string") throw new Error("Expected a Set-Cookie header");
-  const pair = header.split(";", 1)[0];
-  if (pair === undefined) throw new Error("Expected a cookie pair");
-  return pair;
 }
 
 function multipartFile(bytes: Buffer) {
@@ -84,60 +54,8 @@ function indicatorsPath(identity: Identity): string {
   return `${profilePath(identity)}/indicators`;
 }
 
-function createTestApp(database: Database, storageRoot: string): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    familyService,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES },
-  );
-  return app;
-}
-
-async function withTestContext(operation: (context: TestContext) => Promise<void>): Promise<void> {
-  const testRoot = await mkdtemp(join(tmpdir(), "veylta-observation-history-"));
-  const storageRoot = join(testRoot, "storage");
-  const database = createDatabase(join(testRoot, "test.sqlite"));
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot);
-  try {
-    await operation({ app, database, storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(testRoot, { force: true, recursive: true });
-  }
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Synthetic Historian ${suffix}`,
-      familyName: `Synthetic History Family ${suffix}`,
-      profileName: `Synthetic History Profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  return { body: response.json(), cookie: cookieFrom(response) };
-}
-
 async function uploadAndExtract(
-  context: TestContext,
+  context: DocumentTestContext,
   owner: Identity,
   idempotencyKey: string,
 ): Promise<PreparedFact> {
@@ -199,9 +117,9 @@ async function review(
 }
 
 test("observation history is source-first, paginated, re-authorized, and audited without payloads", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Owner");
-    const outsider = await registerOwner(context.app, "Outsider");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Synthetic Historian");
+    const outsider = await register(context.app, "Synthetic Outsider");
     const prepared = await uploadAndExtract(context, owner, "history-upload");
     const correcting = prepared.facts.find((fact) => fact.factKey === "synthetic-analyte-a");
     const confirming = prepared.facts.find((fact) => fact.factKey === "synthetic-analyte-b");
@@ -291,7 +209,7 @@ test("observation history is source-first, paginated, re-authorized, and audited
       correctedItem.sourceDocument.contentPath,
       `${documentPath(owner, prepared.documentId)}/content`,
     );
-    assert.equal(correctedItem.confirmed.by.displayName, "Synthetic Historian Owner");
+    assert.equal(correctedItem.confirmed.by.displayName, "Synthetic Historian owner");
 
     const raw = await context.database.query<{ source_value: string }>(
       "SELECT source_value FROM extracted_facts WHERE family_id = $1 AND id = $2",
@@ -373,9 +291,9 @@ test("observation history is source-first, paginated, re-authorized, and audited
 });
 
 test("compatible confirmed observations form a canonical indicator series without crossing units", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Indicators owner");
-    const outsider = await registerOwner(context.app, "Indicators outsider");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Indicators");
+    const outsider = await register(context.app, "Indicators outsider");
 
     const first = await uploadAndExtract(context, owner, "indicators-first");
     const firstFact = first.facts.find((fact) => fact.factKey === "synthetic-analyte-a");

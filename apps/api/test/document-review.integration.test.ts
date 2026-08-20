@@ -1,32 +1,16 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import {
-  type DemoRegistrationResponse,
-  DOCUMENT_CONTRACT_VERSION,
-  MAX_SYNTHETIC_PDF_BYTES,
-} from "@veylta/contracts";
+import { DOCUMENT_CONTRACT_VERSION } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
+import type { Database } from "../src/database/pool.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
+import { type DocumentTestContext, withDocumentContext } from "./document-app.js";
+import { type Identity, register, webOrigin } from "./family-app.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-}
 
 interface PreparedFact {
   documentId: string;
@@ -40,21 +24,6 @@ interface PreparedFact {
     reviewStatus: string;
     review: unknown;
   }>;
-}
-
-interface TestContext {
-  app: FastifyInstance;
-  database: Database;
-  storageRoot: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const headerValue = response.headers["set-cookie"];
-  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof header !== "string") throw new Error("Expected a Set-Cookie header");
-  const pair = header.split(";", 1)[0];
-  if (pair === undefined) throw new Error("Expected a cookie pair");
-  return pair;
 }
 
 function multipartFile(bytes: Buffer) {
@@ -73,58 +42,6 @@ function multipartFile(bytes: Buffer) {
 
 function documentUrl(identity: Identity, documentId: string): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/documents/${documentId}`;
-}
-
-function createTestApp(database: Database, storageRoot: string): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    familyService,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES },
-  );
-  return app;
-}
-
-async function withTestContext(operation: (context: TestContext) => Promise<void>): Promise<void> {
-  const testRoot = await mkdtemp(join(tmpdir(), "veylta-document-review-"));
-  const storageRoot = join(testRoot, "storage");
-  const database = createDatabase(join(testRoot, "test.sqlite"));
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot);
-  try {
-    await operation({ app, database, storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(testRoot, { force: true, recursive: true });
-  }
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Synthetic Reviewer ${suffix}`,
-      familyName: `Synthetic Review Family ${suffix}`,
-      profileName: `Synthetic Review Profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  return { body: response.json(), cookie: cookieFrom(response) };
 }
 
 async function registeredReviewer(
@@ -146,7 +63,7 @@ async function registeredReviewer(
 }
 
 async function uploadAndExtract(
-  context: TestContext,
+  context: DocumentTestContext,
   owner: Identity,
   idempotencyKey: string,
 ): Promise<PreparedFact> {
@@ -209,8 +126,8 @@ async function review(
 }
 
 test("a fact confirmation atomically records an immutable decision, observation, range, and audit event", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Confirm");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Confirm");
     const reviewer = await registeredReviewer(context.database, owner);
     const prepared = await uploadAndExtract(context, owner, "review-confirm-upload");
     assert.deepEqual(
@@ -396,8 +313,8 @@ test("a fact confirmation atomically records an immutable decision, observation,
 });
 
 test("a correction creates a confirmed observation without changing raw extraction, while rejection creates no observation", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Correct and reject");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Correct and reject");
     const reviewer = await registeredReviewer(context.database, owner);
     const prepared = await uploadAndExtract(context, owner, "review-correct-upload");
     const correcting = prepared.facts.find((item) => item.factKey === "synthetic-analyte-a");
@@ -521,9 +438,9 @@ test("a correction creates a confirmed observation without changing raw extracti
 });
 
 test("review commands reject stale or conflicting decisions, invalid corrections, missing origin, and cross-family access", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Conflicts owner");
-    const outsider = await registerOwner(context.app, "Conflicts outsider");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Conflicts owner");
+    const outsider = await register(context.app, "Conflicts outsider");
     const prepared = await uploadAndExtract(context, owner, "review-conflicts-upload");
     const fact = prepared.facts[0];
     if (fact === undefined) throw new Error("Expected an extracted fact");
@@ -639,8 +556,8 @@ test("review commands reject stale or conflicting decisions, invalid corrections
 });
 
 test("an audit failure rolls back review decision, observation, reference range, and idempotency record together", async () => {
-  await withTestContext(async (context) => {
-    const owner = await registerOwner(context.app, "Atomic rollback");
+  await withDocumentContext(async (context) => {
+    const owner = await register(context.app, "Atomic rollback");
     const prepared = await uploadAndExtract(context, owner, "review-atomic-upload");
     const fact = prepared.facts[0];
     if (fact === undefined) throw new Error("Expected an extracted fact");

@@ -1,88 +1,23 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import type { FastifyInstance } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database, isSqliteConstraintError } from "../src/database/pool.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
+import { isSqliteConstraintError } from "../src/database/pool.js";
 import { errorShape } from "./error-shape.js";
-
-const webOrigin = "http://127.0.0.1:4300";
-
-function cookieFrom(response: {
-  headers: Record<string, number | string | string[] | undefined>;
-}): { header: string; pair: string } {
-  const headerValue = response.headers["set-cookie"];
-  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof header !== "string") throw new Error("Expected a Set-Cookie header");
-  const pair = header.split(";", 1)[0];
-  assert.ok(pair);
-  return { header, pair };
-}
-
-function createTestApp(database: Database, demoRegistrationEnabled = true): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  registerFamilyRoutes(
-    app,
-    createFamilyService(database, {
-      cookieName: "veylta_session",
-      secureCookie: false,
-      sessionTtlSeconds: 3_600,
-    }),
-    { allowedMutationOrigins: [webOrigin], demoRegistrationEnabled },
-  );
-  return app;
-}
-
-async function createTestContext(demoRegistrationEnabled = true): Promise<{
-  app: FastifyInstance;
-  close(): Promise<void>;
-  database: Database;
-}> {
-  const root = await mkdtemp(join(tmpdir(), "veylta-family-test-"));
-  const database = createDatabase(join(root, "test.sqlite"));
-  try {
-    await migrateUp(database);
-    const app = createTestApp(database, demoRegistrationEnabled);
-    return {
-      app,
-      database,
-      async close() {
-        await app.close();
-        await database.close();
-        await rm(root, { force: true, recursive: true });
-      },
-    };
-  } catch (error) {
-    await database.close();
-    await rm(root, { force: true, recursive: true });
-    throw error;
-  }
-}
-
-async function register(
-  app: FastifyInstance,
-  names: { displayName: string; familyName: string; profileName: string },
-) {
-  return app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: names,
-  });
-}
+import {
+  cookieFrom,
+  createFamilyApp,
+  createFamilyTestContext,
+  demoRegistration,
+  setCookieHeader,
+  webOrigin,
+} from "./family-app.js";
 
 test("demo registration is atomic, strict, and stores only a session hash", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const response = await register(app, {
+    const response = await demoRegistration(app, {
       displayName: "Synthetic Owner",
       familyName: "Synthetic Family",
       profileName: "Synthetic Profile",
@@ -93,17 +28,17 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
     assert.equal(body.profile.kind, "adult");
     assert.equal(body.profile.familyId, body.family.id);
 
-    const cookie = cookieFrom(response);
-    assert.match(cookie.header, /; Path=\//);
-    assert.match(cookie.header, /; HttpOnly/);
-    assert.match(cookie.header, /; SameSite=Strict/);
-    assert.match(cookie.header, /; Max-Age=3600/);
-    assert.match(cookie.header, /; Expires=/);
-    assert.doesNotMatch(cookie.header, /; Secure/);
+    const cookieHeader = setCookieHeader(response);
+    assert.match(cookieHeader, /; Path=\//);
+    assert.match(cookieHeader, /; HttpOnly/);
+    assert.match(cookieHeader, /; SameSite=Strict/);
+    assert.match(cookieHeader, /; Max-Age=3600/);
+    assert.match(cookieHeader, /; Expires=/);
+    assert.doesNotMatch(cookieHeader, /; Secure/);
 
     const stored = await database.query<{ token_hash: string }>("SELECT token_hash FROM sessions");
     assert.match(stored.rows[0]?.token_hash ?? "", /^[0-9a-f]{64}$/);
-    assert.equal(cookie.header.includes(stored.rows[0]?.token_hash ?? ""), false);
+    assert.equal(cookieHeader.includes(stored.rows[0]?.token_hash ?? ""), false);
 
     const counts = await database.query<{
       audits: number;
@@ -187,7 +122,7 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
     assert.equal(missingOrigin.statusCode, 403);
     assert.equal(missingOrigin.json().error.code, "ORIGIN_NOT_ALLOWED");
 
-    const disabledApp = createTestApp(database, false);
+    const disabledApp = createFamilyApp(database, { demoRegistrationEnabled: false }).app;
     const disabledDemo = await disabledApp.inject({
       method: "POST",
       url: "/v1/demo/registrations",
@@ -219,16 +154,16 @@ test("demo registration is atomic, strict, and stores only a session hash", asyn
 });
 
 test("an owner reads a paginated payload-free family audit log without a cross-family oracle", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const ownerRegistration = await register(app, {
+    const ownerRegistration = await demoRegistration(app, {
       displayName: "Audit Owner",
       familyName: "Audit Family",
       profileName: "Audit Profile",
     });
-    const outsiderRegistration = await register(app, {
+    const outsiderRegistration = await demoRegistration(app, {
       displayName: "Audit Outsider",
       familyName: "Other Audit Family",
       profileName: "Other Audit Profile",
@@ -236,8 +171,8 @@ test("an owner reads a paginated payload-free family audit log without a cross-f
     assert.equal(ownerRegistration.statusCode, 201);
     assert.equal(outsiderRegistration.statusCode, 201);
     const owner = ownerRegistration.json();
-    const ownerCookie = cookieFrom(ownerRegistration).pair;
-    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+    const ownerCookie = cookieFrom(ownerRegistration);
+    const outsiderCookie = cookieFrom(outsiderRegistration);
     const session = await app.inject({
       method: "GET",
       url: "/v1/session",
@@ -376,7 +311,7 @@ test("an owner reads a paginated payload-free family audit log without a cross-f
 });
 
 test("registration failure rolls back user, tenant, profile, session, and audit", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
   await database.exec(`CREATE TRIGGER reject_test_profile
     BEFORE INSERT ON patient_profiles
@@ -385,7 +320,7 @@ test("registration failure rolls back user, tenant, profile, session, and audit"
     END`);
 
   try {
-    const response = await register(app, {
+    const response = await demoRegistration(app, {
       displayName: "Rollback Owner",
       familyName: "Rollback Family",
       profileName: "Rollback Profile",
@@ -426,16 +361,16 @@ test("registration failure rolls back user, tenant, profile, session, and audit"
 });
 
 test("profile reads and writes are owner-only and cross-family requests do not disclose", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const first = await register(app, {
+    const first = await demoRegistration(app, {
       displayName: "Synthetic Owner One",
       familyName: "Synthetic Family One",
       profileName: "Synthetic Profile One",
     });
-    const second = await register(app, {
+    const second = await demoRegistration(app, {
       displayName: "Synthetic Owner Two",
       familyName: "Synthetic Family Two",
       profileName: "Synthetic Profile Two",
@@ -444,7 +379,7 @@ test("profile reads and writes are owner-only and cross-family requests do not d
     assert.equal(second.statusCode, 201);
     const firstBody = first.json();
     const secondBody = second.json();
-    const firstCookie = cookieFrom(first).pair;
+    const firstCookie = cookieFrom(first);
     const randomFamilyId = randomUUID();
 
     const ownSession = await app.inject({
@@ -595,23 +530,23 @@ test("profile reads and writes are owner-only and cross-family requests do not d
 });
 
 test("logout and session expiry fail closed", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const first = await register(app, {
+    const first = await demoRegistration(app, {
       displayName: "Logout Owner",
       familyName: "Logout Family",
       profileName: "Logout Profile",
     });
-    const firstCookie = cookieFrom(first).pair;
+    const firstCookie = cookieFrom(first);
     const logout = await app.inject({
       method: "DELETE",
       url: "/v1/session",
       headers: { cookie: firstCookie, origin: webOrigin },
     });
     assert.equal(logout.statusCode, 204);
-    assert.match(cookieFrom(logout).header, /Max-Age=0/);
+    assert.match(setCookieHeader(logout), /Max-Age=0/);
     const loggedOut = await app.inject({
       method: "GET",
       url: "/v1/session",
@@ -619,12 +554,12 @@ test("logout and session expiry fail closed", async () => {
     });
     assert.equal(loggedOut.statusCode, 401);
 
-    const second = await register(app, {
+    const second = await demoRegistration(app, {
       displayName: "Expired Owner",
       familyName: "Expired Family",
       profileName: "Expired Profile",
     });
-    const secondCookie = cookieFrom(second).pair;
+    const secondCookie = cookieFrom(second);
     const activeSession = await database.query<{ id: string }>(
       "SELECT id FROM sessions WHERE revoked_at IS NULL ORDER BY created_at DESC, id DESC LIMIT 1",
     );
@@ -641,12 +576,12 @@ test("logout and session expiry fail closed", async () => {
     });
     assert.equal(expired.statusCode, 401);
 
-    const third = await register(app, {
+    const third = await demoRegistration(app, {
       displayName: "Disabled Owner",
       familyName: "Disabled Family",
       profileName: "Disabled Profile",
     });
-    const thirdCookie = cookieFrom(third).pair;
+    const thirdCookie = cookieFrom(third);
     await database.query(
       `UPDATE users
        SET disabled_at = $1
@@ -670,16 +605,16 @@ test("logout and session expiry fail closed", async () => {
 });
 
 test("an owner archives and restores a non-last profile without deleting its record", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const ownerRegistration = await register(app, {
+    const ownerRegistration = await demoRegistration(app, {
       displayName: "Archive Owner",
       familyName: "Archive Family",
       profileName: "Archive Primary",
     });
-    const outsiderRegistration = await register(app, {
+    const outsiderRegistration = await demoRegistration(app, {
       displayName: "Archive Outsider",
       familyName: "Other Archive Family",
       profileName: "Other Archive Profile",
@@ -687,8 +622,8 @@ test("an owner archives and restores a non-last profile without deleting its rec
     assert.equal(ownerRegistration.statusCode, 201);
     assert.equal(outsiderRegistration.statusCode, 201);
     const owner = ownerRegistration.json();
-    const ownerCookie = cookieFrom(ownerRegistration).pair;
-    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+    const ownerCookie = cookieFrom(ownerRegistration);
+    const outsiderCookie = cookieFrom(outsiderRegistration);
 
     const created = await app.inject({
       method: "POST",
@@ -815,7 +750,7 @@ test("an owner archives and restores a non-last profile without deleting its rec
     );
     assert.equal(JSON.stringify(audit.rows).includes("Archive Primary"), false);
 
-    const singleOwner = await register(app, {
+    const singleOwner = await demoRegistration(app, {
       displayName: "Last Profile Owner",
       familyName: "Last Profile Family",
       profileName: "Only Profile",
@@ -825,7 +760,7 @@ test("an owner archives and restores a non-last profile without deleting its rec
     const refused = await app.inject({
       method: "POST",
       url: `/v1/families/${single.family.id}/profiles/${single.profile.id}/archive`,
-      headers: { cookie: cookieFrom(singleOwner).pair, origin: webOrigin },
+      headers: { cookie: cookieFrom(singleOwner), origin: webOrigin },
     });
     assert.equal(refused.statusCode, 409);
     const lastActive = await database.query<{ archived_at: string | null }>(
@@ -858,16 +793,16 @@ test("an owner archives and restores a non-last profile without deleting its rec
 });
 
 test("an owner can issue a one-time local adult invitation without granting another profile", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const ownerRegistration = await register(app, {
+    const ownerRegistration = await demoRegistration(app, {
       displayName: "Invitation Owner",
       familyName: "Invitation Family",
       profileName: "Owner Profile",
     });
-    const unrelatedRegistration = await register(app, {
+    const unrelatedRegistration = await demoRegistration(app, {
       displayName: "Invitation Outsider",
       familyName: "Other Invitation Family",
       profileName: "Other Profile",
@@ -875,8 +810,8 @@ test("an owner can issue a one-time local adult invitation without granting anot
     assert.equal(ownerRegistration.statusCode, 201);
     assert.equal(unrelatedRegistration.statusCode, 201);
     const owner = ownerRegistration.json();
-    const ownerCookie = cookieFrom(ownerRegistration).pair;
-    const outsiderCookie = cookieFrom(unrelatedRegistration).pair;
+    const ownerCookie = cookieFrom(ownerRegistration);
+    const outsiderCookie = cookieFrom(unrelatedRegistration);
     const ownerSession = await app.inject({
       method: "GET",
       url: "/v1/session",
@@ -938,7 +873,7 @@ test("an owner can issue a one-time local adult invitation without granting anot
     assert.equal(joined.profile.familyId, owner.family.id);
     assert.equal(joined.profile.kind, "adult");
     assert.match(joined.profile.handle, /^[a-z0-9][a-z0-9-]{1,28}[a-z0-9]$/);
-    const memberCookie = cookieFrom(accepted).pair;
+    const memberCookie = cookieFrom(accepted);
 
     const memberSession = await app.inject({
       method: "GET",
@@ -1054,16 +989,16 @@ test("an owner can issue a one-time local adult invitation without granting anot
 });
 
 test("an owner grants and revokes explicit profile read access for an invited adult", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const ownerRegistration = await register(app, {
+    const ownerRegistration = await demoRegistration(app, {
       displayName: "Consent Owner",
       familyName: "Consent Family",
       profileName: "Owner Profile",
     });
-    const outsiderRegistration = await register(app, {
+    const outsiderRegistration = await demoRegistration(app, {
       displayName: "Consent Outsider",
       familyName: "Other Consent Family",
       profileName: "Other Profile",
@@ -1071,8 +1006,8 @@ test("an owner grants and revokes explicit profile read access for an invited ad
     assert.equal(ownerRegistration.statusCode, 201);
     assert.equal(outsiderRegistration.statusCode, 201);
     const owner = ownerRegistration.json();
-    const ownerCookie = cookieFrom(ownerRegistration).pair;
-    const outsiderCookie = cookieFrom(outsiderRegistration).pair;
+    const ownerCookie = cookieFrom(ownerRegistration);
+    const outsiderCookie = cookieFrom(outsiderRegistration);
 
     const dependent = await app.inject({
       method: "POST",
@@ -1101,7 +1036,7 @@ test("an owner grants and revokes explicit profile read access for an invited ad
       },
     });
     assert.equal(accepted.statusCode, 201);
-    const memberCookie = cookieFrom(accepted).pair;
+    const memberCookie = cookieFrom(accepted);
     const memberSession = await app.inject({
       method: "GET",
       url: "/v1/session",
@@ -1260,18 +1195,18 @@ test("an owner grants and revokes explicit profile read access for an invited ad
 });
 
 test("a caregiver joins without an implicit profile and reads only an explicitly shared profile", async () => {
-  const context = await createTestContext();
+  const context = await createFamilyTestContext();
   const { app, database } = context;
 
   try {
-    const ownerRegistration = await register(app, {
+    const ownerRegistration = await demoRegistration(app, {
       displayName: "Caregiver Owner",
       familyName: "Caregiver Family",
       profileName: "Owner Profile",
     });
     assert.equal(ownerRegistration.statusCode, 201);
     const owner = ownerRegistration.json();
-    const ownerCookie = cookieFrom(ownerRegistration).pair;
+    const ownerCookie = cookieFrom(ownerRegistration);
 
     const shared = await app.inject({
       method: "POST",
@@ -1310,7 +1245,7 @@ test("a caregiver joins without an implicit profile and reads only an explicitly
     assert.equal(caregiver.family.id, owner.family.id);
     assert.equal(caregiver.family.role, "caregiver");
     assert.equal(caregiver.profile, null);
-    const caregiverCookie = cookieFrom(accepted).pair;
+    const caregiverCookie = cookieFrom(accepted);
 
     const caregiverSessionBeforeGrant = await app.inject({
       method: "GET",

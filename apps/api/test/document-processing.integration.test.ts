@@ -1,53 +1,21 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
-import {
-  type DemoRegistrationResponse,
-  DOCUMENT_CONTRACT_VERSION,
-  LAB_EXTRACTION_SCHEMA_VERSION,
-  MAX_SYNTHETIC_PDF_BYTES,
-} from "@veylta/contracts";
+import { DOCUMENT_CONTRACT_VERSION, LAB_EXTRACTION_SCHEMA_VERSION } from "@veylta/contracts";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
-import { buildApp } from "../src/app.js";
-import { migrateUp } from "../src/database/migrations.js";
-import { createDatabase, type Database } from "../src/database/pool.js";
-import { createDocumentService } from "../src/documents/document-service.js";
-import { registerDocumentRoutes } from "../src/documents/routes.js";
-import { createFamilyService } from "../src/family/family-service.js";
-import { registerFamilyRoutes } from "../src/family/routes.js";
+import type { Database } from "../src/database/pool.js";
 import { CODEX_DOCUMENT_INTELLIGENCE_VERSION } from "../src/processing/codex-document-intelligence-provider.js";
 import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
 import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { createObjectStorageKey } from "../src/storage/object-storage.js";
+import { withDocumentContext } from "./document-app.js";
+import { type Identity, register, webOrigin } from "./family-app.js";
 import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
 import { createSyntheticIntelligence } from "./synthetic-intelligence.js";
 import { createSyntheticLabImage } from "./synthetic-lab-image.js";
 
-const webOrigin = "http://127.0.0.1:4300";
 const fixtureUrl = new URL("../../../fixtures/veylta-synthetic-lab-report.pdf", import.meta.url);
-
-interface Identity {
-  body: DemoRegistrationResponse;
-  cookie: string;
-}
-
-interface TestContext {
-  app: FastifyInstance;
-  database: Database;
-  storageRoot: string;
-}
-
-function cookieFrom(response: LightMyRequestResponse): string {
-  const headerValue = response.headers["set-cookie"];
-  const header = Array.isArray(headerValue) ? headerValue[0] : headerValue;
-  if (typeof header !== "string") throw new Error("Expected a Set-Cookie header");
-  const pair = header.split(";", 1)[0];
-  if (pair === undefined) throw new Error("Expected a cookie pair");
-  return pair;
-}
 
 function multipartFile(
   bytes: Buffer,
@@ -74,58 +42,6 @@ function multipartFile(
 
 function documentUrl(identity: Identity, documentId: string): string {
   return `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}/documents/${documentId}`;
-}
-
-function createTestApp(database: Database, storageRoot: string): FastifyInstance {
-  const app = buildApp({ readiness: { check: async () => undefined }, logger: false });
-  const familyService = createFamilyService(database, {
-    cookieName: "veylta_session",
-    secureCookie: false,
-    sessionTtlSeconds: 3_600,
-  });
-  registerFamilyRoutes(app, familyService, {
-    allowedMutationOrigins: [webOrigin],
-    demoRegistrationEnabled: true,
-  });
-  registerDocumentRoutes(
-    app,
-    familyService,
-    createDocumentService(database, createLocalObjectStorage(storageRoot), {
-      maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES,
-    }),
-    { allowedMutationOrigins: [webOrigin], maxDocumentBytes: MAX_SYNTHETIC_PDF_BYTES },
-  );
-  return app;
-}
-
-async function withTestContext(operation: (context: TestContext) => Promise<void>): Promise<void> {
-  const testRoot = await mkdtemp(join(tmpdir(), "veylta-document-processing-"));
-  const storageRoot = join(testRoot, "storage");
-  const database = createDatabase(join(testRoot, "test.sqlite"));
-  await migrateUp(database);
-  const app = createTestApp(database, storageRoot);
-  try {
-    await operation({ app, database, storageRoot });
-  } finally {
-    await app.close();
-    await database.close();
-    await rm(testRoot, { force: true, recursive: true });
-  }
-}
-
-async function registerOwner(app: FastifyInstance, suffix: string): Promise<Identity> {
-  const response = await app.inject({
-    method: "POST",
-    url: "/v1/demo/registrations",
-    headers: { origin: webOrigin },
-    payload: {
-      displayName: `Synthetic Owner ${suffix}`,
-      familyName: `Synthetic Family ${suffix}`,
-      profileName: `Synthetic Profile ${suffix}`,
-    },
-  });
-  assert.equal(response.statusCode, 201);
-  return { body: response.json(), cookie: cookieFrom(response) };
 }
 
 async function upload(
@@ -170,8 +86,8 @@ async function processOneDocument(
 }
 
 test("real synthetic PDF moves from a queued job to an auditable review queue", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Processing");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Processing");
     const fixture = await readFile(fixtureUrl);
     const uploaded = await upload(app, owner, fixture, "processing-fixture-upload");
     assert.equal(uploaded.statusCode, 202);
@@ -306,8 +222,8 @@ test("real synthetic PDF moves from a queued job to an auditable review queue", 
 });
 
 test("a synthetic image-only PDF is rendered to page images that Codex transcribes", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Scanned processing");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Scanned processing");
     const uploaded = await upload(
       app,
       owner,
@@ -362,8 +278,8 @@ for (const [format, contentType, filename] of [
   ["jpeg", "image/jpeg", "synthetic-lab-report.jpg"],
 ] as const) {
   test(`a direct synthetic ${format} reaches Codex as one page image with immutable provenance`, async () => {
-    await withTestContext(async ({ app, database, storageRoot }) => {
-      const owner = await registerOwner(app, `Direct ${format}`);
+    await withDocumentContext(async ({ app, database, storageRoot }) => {
+      const owner = await register(app, `Direct ${format}`);
       const uploaded = await upload(
         app,
         owner,
@@ -433,8 +349,8 @@ for (const [format, contentType, filename] of [
 }
 
 test("Codex classifies an image-only PDF outside the lab grammar without inventing facts", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Unsupported scanned processing");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Unsupported scanned processing");
     const uploaded = await upload(
       app,
       owner,
@@ -471,8 +387,8 @@ test("Codex classifies an image-only PDF outside the lab grammar without inventi
 });
 
 test("an archived profile hides its sources and pauses queued extraction until an owner restores it", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Archive document boundary");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Archive document boundary");
     const addedProfile = await app.inject({
       method: "POST",
       url: `/v1/families/${owner.body.family.id}/profiles`,
@@ -536,9 +452,9 @@ test("an archived profile hides its sources and pauses queued extraction until a
 });
 
 test("processing status and extracted facts do not disclose another family document", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Owner boundary");
-    const outsider = await registerOwner(app, "Outsider boundary");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Owner boundary");
+    const outsider = await register(app, "Outsider boundary");
     const uploaded = await upload(
       app,
       owner,
@@ -575,8 +491,8 @@ test("processing status and extracted facts do not disclose another family docum
 });
 
 test("terminal processing retry requires a trusted idempotent command and is replay-safe", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Retry");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Retry");
     const fixture = await readFile(fixtureUrl);
     const uploaded = await upload(app, owner, fixture, "terminal-failure-upload");
     assert.equal(uploaded.statusCode, 202);
@@ -732,8 +648,8 @@ test("terminal processing retry requires a trusted idempotent command and is rep
 });
 
 test("an explicit run selector opens that exact run journal and refuses a foreign run", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Run journal");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Run journal");
     const source = await readFile(fixtureUrl);
     const documentId = (await upload(app, owner, source, "run-journal-first")).json().document
       .id as string;
@@ -832,8 +748,8 @@ test("an explicit run selector opens that exact run journal and refuses a foreig
 });
 
 test("a trusted restart creates a fresh immutable analysis run without replacing prior results", async () => {
-  await withTestContext(async ({ app, database, storageRoot }) => {
-    const owner = await registerOwner(app, "Restart analysis");
+  await withDocumentContext(async ({ app, database, storageRoot }) => {
+    const owner = await register(app, "Restart analysis");
     const uploaded = await upload(
       app,
       owner,
