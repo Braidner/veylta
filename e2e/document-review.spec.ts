@@ -210,7 +210,7 @@ test("a retried review command reuses its idempotency key after a transient brow
       status: 201,
       contentType: "application/json",
       body: JSON.stringify({
-        contractVersion: "document/v8",
+        contractVersion: "document/v9",
         review: {
           id: "00000000-0000-4000-8000-000000000001",
           factId: "00000000-0000-4000-8000-000000000002",

@@ -35,7 +35,7 @@ test("every document summary carries its effective date, and the overview counts
     });
     assert.equal(note.statusCode, 200, note.body);
     const noteBody = note.json() as DocumentDetailResponse;
-    assert.equal(noteBody.contractVersion, "document/v8");
+    assert.equal(noteBody.contractVersion, "document/v9");
     assert.deepEqual(noteBody.document.effectiveDate, { value: "2026-08-12", source: "document" });
 
     // The laboratory fixture has no printed date: the upload day stands, as a UTC calendar day.

@@ -162,7 +162,7 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
       documentId: null,
       profileId: null,
     });
-    assert.equal(first.json().contractVersion, "document/v8");
+    assert.equal(first.json().contractVersion, "document/v9");
     assert.deepEqual(first.json().document.effectiveDate, {
       value: first.json().document.uploadedAt.slice(0, 10),
       source: "upload",

@@ -1,10 +1,17 @@
 import { fileURLToPath } from "node:url";
 import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
-import { getDocument, version as pdfjsVersion } from "pdfjs-dist/legacy/build/pdf.mjs";
+import { getDocument, OPS, version as pdfjsVersion } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { ExtractedPageText } from "./synthetic-lab-parser.js";
 
 export const PDF_TEXT_EXTRACTION_METHOD = "pdf_text_layer" as const;
 export const PDF_TEXT_EXTRACTION_VERSION = `pdfjs-dist/${pdfjsVersion}` as const;
+/**
+ * Below this many characters, a page that also painted a raster image carries a letterhead and
+ * maybe a caption while its content was drawn, not printed: the real densitometry page that
+ * started this had 608. A page whose values were printed as text runs past a thousand, so the
+ * cut sits between the two shapes rather than close to either.
+ */
+export const IMAGE_ONLY_PAGE_TEXT_CHARACTERS = 800;
 
 const pdfSignature = Buffer.from("%PDF-", "ascii");
 const standardFontDataUrl = `${fileURLToPath(
@@ -14,11 +21,22 @@ const defaultMaxPages = 50;
 const defaultMaxPageTextCharacters = 250_000;
 const defaultMaxTotalTextCharacters = 1_000_000;
 const defaultMaxTextItemsPerPage = 50_000;
+const defaultMaxOperatorsPerPage = 100_000;
+const rasterPaintOperators: ReadonlySet<number> = new Set([
+  OPS.paintImageXObject,
+  OPS.paintInlineImageXObject,
+  OPS.paintImageMaskXObject,
+]);
 
 export type PdfTextExtractionErrorCode =
   | "INVALID_PDF"
   | "PDF_LIMIT_EXCEEDED"
   | "TEXT_LAYER_MISSING";
+
+/** A page of the text layer plus what the text pass could see about how it was drawn. */
+export interface ExtractedPdfPage extends ExtractedPageText {
+  readonly hasRasterImage: boolean;
+}
 
 export interface PdfTextExtractionOptions {
   maxPdfBytes?: number;
@@ -26,6 +44,7 @@ export interface PdfTextExtractionOptions {
   maxPageTextCharacters?: number;
   maxTotalTextCharacters?: number;
   maxTextItemsPerPage?: number;
+  maxOperatorsPerPage?: number;
 }
 
 export class PdfTextExtractionError extends Error {
@@ -89,10 +108,41 @@ function normalizedPageText(
   return normalized;
 }
 
+/**
+ * Whether the page painted a raster image — how a chart or a scan arrives inside an otherwise
+ * textual PDF. A page pdf.js could not read the drawing operations of counts as carrying one:
+ * an image past `maxImageSize` makes it abandon the page's operator list instead of reporting
+ * the image, so a page that yielded text yet no drawing operation at all is precisely that
+ * case. Either way the text the page already yielded stays good — this never fails a document.
+ */
+async function paintsRasterImage(
+  page: { getOperatorList(): Promise<{ fnArray: readonly number[] }> },
+  maxOperators: number,
+): Promise<boolean> {
+  let operators: readonly number[];
+  try {
+    operators = (await page.getOperatorList()).fnArray;
+  } catch {
+    return true;
+  }
+  if (operators.length > maxOperators) throw new PdfTextExtractionError("PDF_LIMIT_EXCEEDED");
+  return operators.length === 0 || operators.some((operator) => rasterPaintOperators.has(operator));
+}
+
+/**
+ * The pages a text pass could not read: a raster image sits on them and their text layer holds
+ * less than a header and a caption. This is the one rule that decides «picture page».
+ */
+export function imageOnlyPages(pages: readonly ExtractedPdfPage[]): number[] {
+  return pages
+    .filter((page) => page.hasRasterImage && page.text.length < IMAGE_ONLY_PAGE_TEXT_CHARACTERS)
+    .map((page) => page.pageNumber);
+}
+
 export async function extractPdfTextLayer(
   pdfBytes: Uint8Array,
   options: PdfTextExtractionOptions = {},
-): Promise<ExtractedPageText[]> {
+): Promise<ExtractedPdfPage[]> {
   const maxPdfBytes = positiveLimit(options.maxPdfBytes ?? MAX_SYNTHETIC_PDF_BYTES, "maxPdfBytes");
   const maxPages = positiveLimit(options.maxPages ?? defaultMaxPages, "maxPages");
   const maxPageTextCharacters = positiveLimit(
@@ -106,6 +156,10 @@ export async function extractPdfTextLayer(
   const maxTextItemsPerPage = positiveLimit(
     options.maxTextItemsPerPage ?? defaultMaxTextItemsPerPage,
     "maxTextItemsPerPage",
+  );
+  const maxOperatorsPerPage = positiveLimit(
+    options.maxOperatorsPerPage ?? defaultMaxOperatorsPerPage,
+    "maxOperatorsPerPage",
   );
   if (
     pdfBytes.byteLength < pdfSignature.byteLength ||
@@ -142,7 +196,7 @@ export async function extractPdfTextLayer(
     }
     if (document.numPages > maxPages) throw new PdfTextExtractionError("PDF_LIMIT_EXCEEDED");
 
-    const pages: ExtractedPageText[] = [];
+    const pages: ExtractedPdfPage[] = [];
     let totalTextCharacters = 0;
     for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
       const page = await document.getPage(pageNumber);
@@ -160,6 +214,7 @@ export async function extractPdfTextLayer(
         text,
         extractionMethod: PDF_TEXT_EXTRACTION_METHOD,
         extractionVersion: PDF_TEXT_EXTRACTION_VERSION,
+        hasRasterImage: await paintsRasterImage(page, maxOperatorsPerPage),
       });
     }
     await document.cleanup();

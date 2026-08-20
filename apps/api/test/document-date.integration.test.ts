@@ -18,7 +18,7 @@ test("the person corrects a document's date: the rule applies, 422/404 hold, the
       url: base,
       headers: { cookie: owner.cookie },
     });
-    assert.equal(before.json().contractVersion, "document/v8");
+    assert.equal(before.json().contractVersion, "document/v9");
     assert.equal(before.json().document.effectiveDate.source, "upload");
 
     const corrected = await app.inject({
@@ -29,7 +29,7 @@ test("the person corrects a document's date: the rule applies, 422/404 hold, the
     });
     assert.equal(corrected.statusCode, 200, corrected.body);
     assert.deepEqual(corrected.json(), {
-      contractVersion: "document/v8",
+      contractVersion: "document/v9",
       documentId,
       effectiveDate: { value: "2026-05-14", source: "person" },
     });
@@ -110,7 +110,7 @@ test("the person corrects a document's date: the rule applies, 422/404 hold, the
       "set, tomorrow, cleared — the no-op and the refusals are not audited",
     );
     for (const row of audit.rows) {
-      assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "document/v8" });
+      assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "document/v9" });
     }
   } finally {
     await close();

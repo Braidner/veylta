@@ -1,69 +1,32 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
-import { extractPdfTextLayer, PdfTextExtractionError } from "./pdf-text-extractor.js";
+import { fileURLToPath } from "node:url";
+import { createTextPdf } from "./pdf-test-support.js";
+import {
+  type ExtractedPdfPage,
+  extractPdfTextLayer,
+  IMAGE_ONLY_PAGE_TEXT_CHARACTERS,
+  imageOnlyPages,
+  PdfTextExtractionError,
+} from "./pdf-text-extractor.js";
 
-function escapePdfText(value: string): string {
-  return value.replaceAll("\\", "\\\\").replaceAll("(", "\\(").replaceAll(")", "\\)");
+const imagePageFixture = fileURLToPath(
+  new URL("../../../../fixtures/veylta-synthetic-image-page-report.pdf", import.meta.url),
+);
+
+function isLimitExceeded(error: unknown): boolean {
+  return error instanceof PdfTextExtractionError && error.code === "PDF_LIMIT_EXCEEDED";
 }
 
-function textStream(lines: readonly string[], separateTextObjects = false): string {
-  if (separateTextObjects) {
-    return lines
-      .map(
-        (line, index) =>
-          `BT\n/F1 12 Tf\n72 ${720 - index * 18} Td\n(${escapePdfText(line)}) Tj\nET`,
-      )
-      .join("\n");
-  }
-  const commands = lines.flatMap((line, index) => [
-    ...(index === 0 ? [] : ["0 -18 Td"]),
-    `(${escapePdfText(line)}) Tj`,
-  ]);
-  return ["BT", "/F1 12 Tf", "72 720 Td", ...commands, "ET"].join("\n");
-}
-
-function createTextPdf(
-  pageLines: readonly (readonly string[])[],
-  options: { separateTextObjects?: boolean } = {},
-): Uint8Array {
-  const objectBodies = new Map<number, string>();
-  const pageObjectNumbers: number[] = [];
-  let nextObject = 4;
-  for (const lines of pageLines) {
-    const pageObject = nextObject++;
-    const streamObject = nextObject++;
-    pageObjectNumbers.push(pageObject);
-    const stream = textStream(lines, options.separateTextObjects);
-    objectBodies.set(
-      pageObject,
-      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents ${streamObject} 0 R >>`,
-    );
-    objectBodies.set(
-      streamObject,
-      `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream`,
-    );
-  }
-  objectBodies.set(1, "<< /Type /Catalog /Pages 2 0 R >>");
-  objectBodies.set(
-    2,
-    `<< /Type /Pages /Kids [${pageObjectNumbers.map((number) => `${number} 0 R`).join(" ")}] /Count ${pageObjectNumbers.length} >>`,
-  );
-  objectBodies.set(3, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>");
-
-  const chunks = ["%PDF-1.7\n"];
-  const offsets = [0];
-  for (let number = 1; number < nextObject; number += 1) {
-    offsets[number] = Buffer.byteLength(chunks.join(""));
-    chunks.push(`${number} 0 obj\n${objectBodies.get(number)}\nendobj\n`);
-  }
-  const xrefOffset = Buffer.byteLength(chunks.join(""));
-  chunks.push(`xref\n0 ${nextObject}\n`);
-  chunks.push("0000000000 65535 f \n");
-  for (let number = 1; number < nextObject; number += 1) {
-    chunks.push(`${String(offsets[number]).padStart(10, "0")} 00000 n \n`);
-  }
-  chunks.push(`trailer\n<< /Size ${nextObject} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
-  return Buffer.from(chunks.join(""), "latin1");
+function page(pageNumber: number, characters: number, hasRasterImage: boolean): ExtractedPdfPage {
+  return {
+    pageNumber,
+    text: "x".repeat(characters),
+    extractionMethod: "pdf_text_layer",
+    extractionVersion: "test",
+    hasRasterImage,
+  };
 }
 
 test("extracts ordered page text from a bounded in-memory PDF without detaching the input", async () => {
@@ -112,24 +75,18 @@ test("rejects non-PDF, empty text layers, and inputs above the configured byte c
   const smallPdf = createTextPdf([["synthetic"]]);
   await assert.rejects(
     extractPdfTextLayer(smallPdf, { maxPdfBytes: smallPdf.byteLength - 1 }),
-    (error: unknown) =>
-      error instanceof PdfTextExtractionError && error.code === "PDF_LIMIT_EXCEEDED",
+    isLimitExceeded,
   );
 });
 
 test("enforces page and extracted-text caps before returning partial output", async () => {
   const twoPages = createTextPdf([["page one"], ["page two"]]);
-  await assert.rejects(
-    extractPdfTextLayer(twoPages, { maxPages: 1 }),
-    (error: unknown) =>
-      error instanceof PdfTextExtractionError && error.code === "PDF_LIMIT_EXCEEDED",
-  );
+  await assert.rejects(extractPdfTextLayer(twoPages, { maxPages: 1 }), isLimitExceeded);
 
   const textHeavy = createTextPdf([["text exceeds cap"]]);
   await assert.rejects(
     extractPdfTextLayer(textHeavy, { maxPageTextCharacters: 4 }),
-    (error: unknown) =>
-      error instanceof PdfTextExtractionError && error.code === "PDF_LIMIT_EXCEEDED",
+    isLimitExceeded,
   );
 });
 
@@ -141,4 +98,59 @@ test("preserves line boundaries emitted as empty EOL items between positioned te
   const [page] = await extractPdfTextLayer(pdf);
 
   assert.equal(page?.text, "HEADER\nDISCLAIMER\nFACT|synthetic-analyte-a");
+});
+
+test("marks the page that painted a raster image and leaves a text-only page unmarked", async () => {
+  const bytes = createTextPdf([["page one"], ["page two"]], {
+    images: new Map([[2, "inline" as const]]),
+  });
+
+  const pages = await extractPdfTextLayer(bytes);
+
+  assert.deepEqual(
+    pages.map((extracted) => extracted.hasRasterImage),
+    [false, true],
+  );
+});
+
+test("a page whose image pdf.js refuses to read still reports as carrying one", async () => {
+  const bytes = createTextPdf([["figure 1 densitogram"]], {
+    images: new Map([[1, "oversized" as const]]),
+  });
+
+  const [extracted] = await extractPdfTextLayer(bytes);
+
+  assert.equal(extracted?.hasRasterImage, true);
+  assert.equal(extracted?.text, "figure 1 densitogram");
+});
+
+test("refuses a page whose operator list is longer than the scan may examine", async () => {
+  const bytes = createTextPdf([["one", "two", "three"]]);
+
+  await assert.rejects(extractPdfTextLayer(bytes, { maxOperatorsPerPage: 2 }), isLimitExceeded);
+});
+
+test("a picture page needs both a raster image and less text than the threshold", () => {
+  assert.deepEqual(
+    imageOnlyPages([
+      page(1, IMAGE_ONLY_PAGE_TEXT_CHARACTERS - 1, true),
+      page(2, IMAGE_ONLY_PAGE_TEXT_CHARACTERS, true),
+      page(3, 10, false),
+      page(4, 10, true),
+    ]),
+    [1, 4],
+  );
+});
+
+test("the synthetic image-page fixture reads as one text page and one picture page", async () => {
+  const pages = await extractPdfTextLayer(new Uint8Array(readFileSync(imagePageFixture)));
+
+  assert.equal(pages.length, 2);
+  assert.equal(pages[0]?.hasRasterImage, false);
+  assert.equal(pages[1]?.hasRasterImage, true);
+  assert.ok(
+    (pages[1]?.text.length ?? 0) < IMAGE_ONLY_PAGE_TEXT_CHARACTERS,
+    "the picture page carries a header and a caption, not the values themselves",
+  );
+  assert.deepEqual(imageOnlyPages(pages), [2]);
 });

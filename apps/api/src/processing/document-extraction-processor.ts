@@ -15,8 +15,8 @@ import {
 } from "../storage/object-storage.js";
 import { loadAnalyteCatalogForPrompt } from "./analyte-mapping.js";
 import { CodexDocumentIntelligenceError } from "./codex-document-intelligence-provider.js";
+import { checkedDirectImage } from "./direct-image.js";
 import {
-  checkedDirectImage,
   type DirectImageContentType,
   DocumentImageError,
   type DocumentPageImage,

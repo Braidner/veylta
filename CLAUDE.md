@@ -396,7 +396,7 @@ response cannot appear under the wrong run's heading.
 **Documents: queue and timeline.** A document's *effective date* is one rule
 (`documents/document-date.ts`: the person's correction → the document's own date → the upload
 day in UTC, with `source: person | document | upload`), carried as `effectiveDate` by every
-projection with `intelligence` (`document/v8`, `profile-overview/v5`, which also counts
+projection with `intelligence` (`document/v9`, `profile-overview/v5`, which also counts
 `documentCount`, `confirmedCount` and `outsideIndicatorCount` — see the overview below);
 `PUT …/documents/:id/date` (`document-date-service.ts`, migration 0039
 `documents.document_date_override`) corrects it — 422 for a malformed day or one after tomorrow,

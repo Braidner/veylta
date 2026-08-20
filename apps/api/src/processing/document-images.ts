@@ -1,5 +1,5 @@
 import { fileURLToPath } from "node:url";
-import { type Canvas, createCanvas, loadImage, type SKRSContext2D } from "@napi-rs/canvas";
+import { type Canvas, createCanvas, type SKRSContext2D } from "@napi-rs/canvas";
 import {
   getDocument,
   type PageViewport,
@@ -24,10 +24,7 @@ export const MAXIMUM_DOCUMENT_IMAGE_PAGES = 3;
 export const MAX_DOCUMENT_IMAGE_SOURCE_BYTES = 32 * 1024 * 1024;
 
 const maximumTotalPixels = 4_000_000;
-const maximumImageHeaderBytes = 128 * 1024;
 const pdfSignature = Buffer.from("%PDF-", "ascii");
-const pngSignature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
-const jpegSignature = Buffer.from([255, 216, 255]);
 const standardFontDataUrl = `${fileURLToPath(
   new URL("../../standard_fonts/", import.meta.resolve("pdfjs-dist/legacy/build/pdf.mjs")),
 )}/`;
@@ -72,7 +69,11 @@ type RenderParameters = Exclude<Parameters<typeof getDocument>[0], undefined> & 
   disableWorker: false;
 };
 
-function validDimensions(width: number, height: number): { height: number; width: number } {
+/** The one per-image pixel bound, shared with the direct-upload reader beside this file. */
+export function checkedDimensions(
+  width: number,
+  height: number,
+): { height: number; width: number } {
   if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 1 || height < 1) {
     throw new DocumentImageError("INVALID_DOCUMENT");
   }
@@ -83,19 +84,44 @@ function validDimensions(width: number, height: number): { height: number; width
 }
 
 function canvasDimensions(viewport: PageViewport): { height: number; width: number } {
-  return validDimensions(Math.ceil(viewport.width), Math.ceil(viewport.height));
+  return checkedDimensions(Math.ceil(viewport.width), Math.ceil(viewport.height));
 }
 
-function limitedPageCount(value: unknown): number {
-  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 1) {
+/**
+ * The pages to render, in page order. Without a request this is the whole document, which must
+ * therefore fit the page cap. With one — the picture pages of a document read as text — more
+ * candidates than the cap is not an error: the first fit, and the caller reads which page
+ * numbers came back to learn which ones it must report as unread.
+ */
+function requestedPages(pageCount: unknown, requested: readonly number[] | undefined): number[] {
+  if (typeof pageCount !== "number" || !Number.isSafeInteger(pageCount) || pageCount < 1) {
     throw new DocumentImageError("INVALID_DOCUMENT");
   }
-  if (value > MAXIMUM_DOCUMENT_IMAGE_PAGES) throw new DocumentImageError("IMAGE_LIMIT_EXCEEDED");
-  return value;
+  if (requested === undefined) {
+    if (pageCount > MAXIMUM_DOCUMENT_IMAGE_PAGES) {
+      throw new DocumentImageError("IMAGE_LIMIT_EXCEEDED");
+    }
+    return Array.from({ length: pageCount }, (_, index) => index + 1);
+  }
+  const pages = [...new Set(requested)].sort((left, right) => left - right);
+  for (const page of pages) {
+    if (!Number.isSafeInteger(page) || page < 1 || page > pageCount) {
+      throw new DocumentImageError("INVALID_DOCUMENT");
+    }
+  }
+  return pages.slice(0, MAXIMUM_DOCUMENT_IMAGE_PAGES);
 }
 
-/** Renders the first bounded pages of a PDF that carries no usable text layer. */
-export async function renderPdfPagesToImages(pdfBytes: Uint8Array): Promise<DocumentPageImage[]> {
+export interface DocumentImageRenderOptions {
+  /** Render exactly these page numbers instead of the whole document. */
+  readonly pages?: readonly number[];
+}
+
+/** Renders bounded page images of a PDF: the whole document, or the pages the caller names. */
+export async function renderPdfPagesToImages(
+  pdfBytes: Uint8Array,
+  options: DocumentImageRenderOptions = {},
+): Promise<DocumentPageImage[]> {
   if (
     pdfBytes.byteLength < pdfSignature.byteLength ||
     !Buffer.from(pdfBytes.buffer, pdfBytes.byteOffset, pdfSignature.byteLength).equals(pdfSignature)
@@ -127,10 +153,9 @@ export async function renderPdfPagesToImages(pdfBytes: Uint8Array): Promise<Docu
   let document: PdfDocument | undefined;
   try {
     document = (await loadingTask.promise) as unknown as PdfDocument;
-    const pageCount = limitedPageCount(document.numPages);
     const images: DocumentPageImage[] = [];
     let totalPixels = 0;
-    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+    for (const pageNumber of requestedPages(document.numPages, options.pages)) {
       const page = await document.getPage(pageNumber);
       try {
         const viewport = page.getViewport({ scale: 1 });
@@ -152,78 +177,4 @@ export async function renderPdfPagesToImages(pdfBytes: Uint8Array): Promise<Docu
     await document?.cleanup().catch(() => undefined);
     await loadingTask.destroy();
   }
-}
-
-function pngDimensions(bytes: Buffer): { height: number; width: number } {
-  if (bytes.byteLength < 24 || bytes.toString("ascii", 12, 16) !== "IHDR") {
-    throw new DocumentImageError("INVALID_DOCUMENT");
-  }
-  return validDimensions(bytes.readUInt32BE(16), bytes.readUInt32BE(20));
-}
-
-function jpegDimensions(bytes: Buffer): { height: number; width: number } {
-  let offset = 2;
-  const maximumOffset = Math.min(bytes.byteLength, maximumImageHeaderBytes);
-  while (offset < maximumOffset) {
-    while (offset < maximumOffset && bytes[offset] === 0xff) offset += 1;
-    const marker = bytes[offset];
-    if (marker === undefined) break;
-    offset += 1;
-    if (
-      marker === 0xd8 ||
-      marker === 0xd9 ||
-      marker === 0x01 ||
-      (marker >= 0xd0 && marker <= 0xd7)
-    ) {
-      continue;
-    }
-    if (offset + 2 > maximumOffset) break;
-    const length = bytes.readUInt16BE(offset);
-    if (length < 2 || offset + length > maximumOffset) break;
-    if (
-      (marker >= 0xc0 && marker <= 0xc3) ||
-      (marker >= 0xc5 && marker <= 0xc7) ||
-      (marker >= 0xc9 && marker <= 0xcb) ||
-      (marker >= 0xcd && marker <= 0xcf)
-    ) {
-      if (length < 7) break;
-      return validDimensions(bytes.readUInt16BE(offset + 5), bytes.readUInt16BE(offset + 3));
-    }
-    offset += length;
-  }
-  throw new DocumentImageError("INVALID_DOCUMENT");
-}
-
-/**
- * Accepts a direct PNG/JPEG upload as one page image. The header is checked before the
- * decoder runs, and the decoded size must match the header, so a crafted file cannot
- * describe itself as small and decode large.
- */
-export async function checkedDirectImage(
-  imageBytes: Uint8Array,
-  contentType: DirectImageContentType,
-): Promise<DocumentPageImage> {
-  const bytes = Buffer.from(imageBytes.buffer, imageBytes.byteOffset, imageBytes.byteLength);
-  const signature = contentType === "image/png" ? pngSignature : jpegSignature;
-  if (
-    bytes.byteLength < signature.byteLength ||
-    !bytes.subarray(0, signature.byteLength).equals(signature)
-  ) {
-    throw new DocumentImageError("INVALID_DOCUMENT");
-  }
-  if (bytes.byteLength > MAX_DOCUMENT_IMAGE_SOURCE_BYTES) {
-    throw new DocumentImageError("IMAGE_LIMIT_EXCEEDED");
-  }
-  const expected = contentType === "image/png" ? pngDimensions(bytes) : jpegDimensions(bytes);
-  let image: Awaited<ReturnType<typeof loadImage>>;
-  try {
-    image = await loadImage(bytes);
-  } catch (error) {
-    throw new DocumentImageError("INVALID_DOCUMENT", { cause: error });
-  }
-  const decoded = validDimensions(image.naturalWidth, image.naturalHeight);
-  if (decoded.width !== expected.width || decoded.height !== expected.height) {
-    throw new DocumentImageError("INVALID_DOCUMENT");
-  }
-  return { pageNumber: 1, contentType, bytes };
 }

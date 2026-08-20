@@ -497,7 +497,7 @@ Response `202`:
 
 ```json
 {
-  "contractVersion": "document/v8",
+  "contractVersion": "document/v9",
   "disposition": "created",
   "document": {
     "id": "document_placeholder",
@@ -567,7 +567,7 @@ includes fact and needs-review counts; `completed` includes the final fact
 count after every fact has one final decision. A failed state includes a safe
 category and retry eligibility, never a raw parser/database exception.
 
-`document/v8` adds `effectiveDate: { value, source }`: the person's correction if one is set
+`document/v9` carries `effectiveDate: { value, source }`: the person's correction if one is set
 (`PUT …/documents/{documentId}/date`, below), else the document's own printed date, else the UTC
 calendar day of `uploadedAt` — `source` names which as `"person" | "document" | "upload"`.
 
@@ -638,7 +638,7 @@ to the document's own printed date or the upload day; a malformed day, or one fu
 tomorrow (UTC), returns `422`. A document the session may not write, or none, returns the usual
 non-disclosing `404`. Setting the current value again is a no-op and writes no audit row;
 otherwise the change writes a payload-free `document.date.corrected` event that never carries the
-date itself, and the response carries the `document/v8` contract version, `documentId`, and the
+date itself, and the response carries the `document/v9` contract version, `documentId`, and the
 resulting `effectiveDate: { value, source }`.
 
 ### `DELETE /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
@@ -656,7 +656,7 @@ Returns a compact status response and records a payload-free access audit event:
 
 ```json
 {
-  "contractVersion": "document/v8",
+  "contractVersion": "document/v9",
   "documentId": "document_placeholder",
   "processing": {
     "state": "awaiting_review",
@@ -707,7 +707,7 @@ one final review decision; the browser never fabricates either state.
 Requires the exact configured `Origin` and an `Idempotency-Key`. It accepts no
 body and is available only for the authorized document's `dead_letter` job. The
 server records an immutable retry request, resets that existing job to `queued`,
-and returns `202` with the same `document/v8` processing status shape. The next
+and returns `202` with the same `document/v9` processing status shape. The next
 processing read includes the appended requeue event in its journal.
 Replaying the same family/actor/key returns the original accepted retry; a key
 used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
@@ -898,7 +898,7 @@ The first accepted command returns `201`:
 
 ```json
 {
-  "contractVersion": "document/v8",
+  "contractVersion": "document/v9",
   "review": {
     "id": "review_placeholder",
     "factId": "fact_0123456789abcdef0123456789abcdef01234567",
@@ -954,7 +954,7 @@ explicit decision.
 
 `profile-overview/v3` added a top-level `documentCount` — every active document of the profile,
 unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` on each
-`recentDocuments` entry the same way as `document/v8`.
+`recentDocuments` entry the same way as `document/v9`.
 
 `profile-overview/v4` added two more counts over the whole record, so a client never has to
 infer them from the three `recentObservations`: `confirmedCount` is every confirmed observation

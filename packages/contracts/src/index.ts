@@ -23,7 +23,7 @@ export * from "./observation-status.js";
 export * from "./profile-handle.js";
 export * from "./profile-overview.js";
 export * from "./profile-responses.js";
-export const DOCUMENT_CONTRACT_VERSION = "document/v8" as const;
+export const DOCUMENT_CONTRACT_VERSION = "document/v9" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
 export const DOCUMENT_SEARCH_CONTRACT_VERSION = "document-search/v1" as const;
 export const DOCUMENT_LIFECYCLE_CONTRACT_VERSION = "document-lifecycle/v1" as const;
