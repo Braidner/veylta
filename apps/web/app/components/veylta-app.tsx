@@ -89,7 +89,9 @@ import { adminSetupError, validateAdminSetup } from "../account-access";
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { assistantIdentity } from "../assistant";
 import { takesCheckins } from "../care-plan-checkins";
+import { carePlanErrorCopy, carePlanStateCopy } from "../care-plan-copy";
 import { carePlanLanes } from "../care-plan-lanes";
+import { carePlanItemPath } from "../care-plan-mark";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
   documentResultStatusCopy,
@@ -3195,7 +3197,11 @@ function ProfileOverviewPanel({
 
       {state.kind === "ready" ? (
         view === "dashboard" ? (
-          <ProfileDashboard overview={state.overview} onUpload={onUpload} />
+          <ProfileDashboard
+            overview={state.overview}
+            canWriteProfile={canWriteProfile}
+            onUpload={onUpload}
+          />
         ) : (
           <DocumentsWorkspace
             familyId={familyId}
@@ -3215,37 +3221,6 @@ type CarePlanState =
   | { kind: "loading" }
   | { kind: "ready"; response: CarePlanResponse }
   | { kind: "error"; copy: string };
-
-function carePlanErrorCopy(error: unknown): string {
-  if (error instanceof ApiError && [401, 404].includes(error.status)) {
-    return "План этого профиля недоступен. Вернитесь к доступной карточке.";
-  }
-  if (error instanceof ApiError && error.status === 409) {
-    return "План или сводка уже изменились. Обновите страницу и повторите действие.";
-  }
-  if (error instanceof ApiError && error.status === 503) {
-    return "Codex не подготовил черновики. Проверьте в настройках вход через ChatGPT и повторите позже.";
-  }
-  if (error instanceof ApiError && [400, 422].includes(error.status)) {
-    return "Проверьте название, примечание и дату действия.";
-  }
-  return "Не удалось обновить домашний план. Сохранённые пункты не изменены.";
-}
-
-function carePlanStateCopy(item: CarePlanItem): string {
-  switch (item.state) {
-    case "proposed":
-      return "Предложение · ждёт решения";
-    case "accepted":
-      return item.scheduledFor === null
-        ? "Принято без срока"
-        : `Запланировано · ${item.scheduledFor}`;
-    case "completed":
-      return "Выполнено";
-    case "dismissed":
-      return "Отклонено";
-  }
-}
 
 function CarePlanPanel({
   familyId,
@@ -3321,7 +3296,7 @@ function CarePlanPanel({
     setError(null);
     try {
       await apiRequest<CarePlanItemResponse>(
-        `${carePlanApiPath(familyId, profileId)}/items/${encodeURIComponent(itemId)}`,
+        carePlanItemPath(carePlanApiPath(familyId, profileId), itemId),
         { method: "PUT", body: JSON.stringify(input) },
       );
       creationAttempt.current = null;
@@ -3346,7 +3321,7 @@ function CarePlanPanel({
     setError(null);
     try {
       await apiRequest<CarePlanItemResponse>(
-        `${carePlanApiPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}/state`,
+        `${carePlanItemPath(carePlanApiPath(familyId, profileId), item.id)}/state`,
         {
           method: "PUT",
           body: JSON.stringify({
@@ -3638,7 +3613,10 @@ function CarePlanPanel({
                           ) : null}
                           {item.state === "accepted" && takesCheckins(item.category) ? (
                             <CarePlanCheckins
-                              itemPath={`${carePlanApiPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}`}
+                              itemPath={carePlanItemPath(
+                                carePlanApiPath(familyId, profileId),
+                                item.id,
+                              )}
                               checkins={item.checkins}
                               canWrite={canWrite}
                               onRecorded={load}

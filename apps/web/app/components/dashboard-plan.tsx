@@ -3,11 +3,12 @@
 import type { CarePlanResponse } from "@veylta/contracts";
 import { ArrowUpRight, CalendarDays } from "lucide-react";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiRequest } from "../api-client";
 import { localDateOf } from "../care-plan-checkins";
-import { type DashboardPlanRow, dashboardPlanRows } from "../dashboard-plan";
+import { buildDashboardPlan, type DashboardPlanModel } from "../dashboard-plan";
 import { carePlanApiPath } from "../paths";
+import { DashboardToday } from "./dashboard-today";
 
 function currentWeek(): ReadonlyArray<{ label: string; date: number; active: boolean }> {
   const today = new Date();
@@ -23,10 +24,20 @@ function currentWeek(): ReadonlyArray<{ label: string; date: number; active: boo
 
 type PlanState =
   | { kind: "loading" }
-  | { kind: "ready"; rows: readonly DashboardPlanRow[] }
+  | { kind: "ready"; model: DashboardPlanModel; today: string; canWrite: boolean }
   | { kind: "error" };
 
-function PlanBody({ state, href }: { state: PlanState; href: string }) {
+function PlanBody({
+  state,
+  href,
+  carePlanPath,
+  onRecorded,
+}: {
+  state: PlanState;
+  href: string;
+  carePlanPath: string;
+  onRecorded: () => Promise<void>;
+}) {
   if (state.kind === "error") {
     return (
       <p className="dashboard-plan__note" role="status">
@@ -35,62 +46,94 @@ function PlanBody({ state, href }: { state: PlanState; href: string }) {
     );
   }
   if (state.kind === "loading") return <p className="dashboard-plan__note">Загружаем план…</p>;
-  if (state.rows.length === 0)
+
+  const { model } = state;
+  if (model.today.length === 0 && model.scheduled.length === 0 && model.proposals === null)
     return <p className="dashboard-plan__note">В плане пока ничего нет</p>;
 
   return (
-    <ul className="dashboard-plan__items" aria-label="Принятые пункты плана">
-      {state.rows.map((row) => (
-        <li key={row.id}>
-          <Link href={href}>
-            <span className="dashboard-plan__lane">{row.lane}</span>
-            <strong>{row.title}</strong>
-            <small>
-              {row.when}
-              {row.checkin === null ? null : <i>{row.checkin}</i>}
-            </small>
-          </Link>
-        </li>
-      ))}
-    </ul>
+    <div className="dashboard-plan__body">
+      <DashboardToday
+        rows={model.today}
+        more={model.todayMore}
+        carePlanPath={carePlanPath}
+        today={state.today}
+        canWrite={state.canWrite}
+        href={href}
+        onRecorded={onRecorded}
+      />
+      {model.proposals === null ? null : (
+        <p className="dashboard-plan__proposals">
+          <Link href={href}>{model.proposals}</Link>
+        </p>
+      )}
+      {model.scheduled.length === 0 ? null : (
+        <ul className="dashboard-plan__items" aria-label="Принятые пункты плана">
+          {model.scheduled.map((row) => (
+            <li key={row.id}>
+              <Link href={href}>
+                <span className="dashboard-plan__lane">{row.lane}</span>
+                <strong>{row.title}</strong>
+                <small>
+                  {row.when}
+                  {row.checkin === null ? null : <i>{row.checkin}</i>}
+                </small>
+              </Link>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
 /**
- * The plan on the overview: the week, then the accepted actions themselves. Marking a day stays
- * on the plan page — here the diary is read, never written. The care plan is its own request, so
- * a plan that fails to load costs this block its list and nothing else on the dashboard.
+ * The plan on the overview: the week, «Сегодня» — the accepted regimen the person marks right here
+ * —, the drafts still waiting for a decision, then the nearest dated actions. Nothing is ever
+ * accepted from here. The care plan is its own request, so a plan that fails to load costs this
+ * block its list and nothing else on the dashboard.
  */
 export function DashboardPlan({
   familyId,
   profileId,
+  canWriteProfile,
   href,
 }: {
   familyId: string;
   profileId: string;
+  canWriteProfile: boolean;
   href: string;
 }) {
   const [state, setState] = useState<PlanState>({ kind: "loading" });
+  const carePlanPath = carePlanApiPath(familyId, profileId);
+
+  const load = useCallback(
+    async (signal?: AbortSignal): Promise<void> => {
+      try {
+        const response = await apiRequest<CarePlanResponse>(
+          carePlanApiPath(familyId, profileId),
+          signal === undefined ? undefined : { signal },
+        );
+        if (signal?.aborted) return;
+        const today = localDateOf(new Date());
+        setState({
+          kind: "ready",
+          model: buildDashboardPlan(response.items, today),
+          today,
+          canWrite: response.canWrite && canWriteProfile,
+        });
+      } catch {
+        if (!signal?.aborted) setState({ kind: "error" });
+      }
+    },
+    [canWriteProfile, familyId, profileId],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
-    void (async () => {
-      try {
-        const response = await apiRequest<CarePlanResponse>(carePlanApiPath(familyId, profileId), {
-          signal: controller.signal,
-        });
-        if (!controller.signal.aborted) {
-          setState({
-            kind: "ready",
-            rows: dashboardPlanRows(response.items, localDateOf(new Date())),
-          });
-        }
-      } catch {
-        if (!controller.signal.aborted) setState({ kind: "error" });
-      }
-    })();
+    void load(controller.signal);
     return () => controller.abort();
-  }, [familyId, profileId]);
+  }, [load]);
 
   return (
     <section className="dashboard-plan" aria-label="Календарь и быстрый доступ к плану">
@@ -113,7 +156,7 @@ export function DashboardPlan({
         ))}
       </ol>
 
-      <PlanBody state={state} href={href} />
+      <PlanBody state={state} href={href} carePlanPath={carePlanPath} onRecorded={load} />
 
       <p className="dashboard-plan__promise">
         Черновики помощников не становятся назначениями автоматически.

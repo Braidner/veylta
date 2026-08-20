@@ -2046,15 +2046,23 @@ a.signals-strip__word:focus-visible {
   flex-direction: column;
 }
 
-.dashboard-plan__items {
+/* «Сегодня» and the scheduled rows share one scrolling body, so the panel keeps its grid cell. */
+.dashboard-plan__body {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
-  gap: var(--space-2xs);
+  gap: var(--space-sm);
   min-height: 0;
-  margin: var(--space-sm) 0 0;
-  padding: 0;
+  margin-top: var(--space-sm);
   overflow-y: auto;
+}
+
+.dashboard-plan__items {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
   list-style: none;
 }
 
@@ -2122,6 +2130,135 @@ a.signals-strip__word:focus-visible {
   color: var(--color-muted);
   font-size: 0.65rem;
   line-height: 1.4;
+}
+
+/* «Сегодня»: the accepted regimen, marked from the overview; the week reads as the plan's strip. */
+.dashboard-today {
+  display: grid;
+  gap: var(--space-2xs);
+}
+
+.dashboard-today h4 {
+  margin: 0;
+  color: var(--color-muted);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashboard-today__items {
+  display: grid;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-today__item {
+  display: grid;
+  gap: 5px;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-surface);
+  border-radius: 10px;
+}
+
+.dashboard-today__head {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  margin: 0;
+}
+
+.dashboard-today__head strong {
+  overflow: hidden;
+  color: var(--color-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-today__rhythm {
+  display: flex;
+  gap: var(--space-xs);
+  align-items: center;
+  justify-content: space-between;
+}
+
+.dashboard-today__rhythm > span {
+  color: var(--color-muted);
+  font-size: 0.65rem;
+}
+
+.dashboard-today__week {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 3px;
+  width: 98px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.dashboard-today__mark {
+  display: flex;
+  gap: 6px;
+}
+
+.dashboard-today__button {
+  display: inline-flex;
+  flex: 1 1 0;
+  gap: 3px;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 2px 8px;
+  color: var(--color-ink);
+  background: var(--color-canvas);
+  border: 1px solid var(--color-line);
+  border-radius: 999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
+
+.dashboard-today__button:hover:not(:disabled) {
+  border-color: var(--color-primary);
+}
+
+.dashboard-today__button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.dashboard-today__button:disabled {
+  opacity: 0.6;
+}
+
+.dashboard-today__button.is-active {
+  color: oklch(0.99 0.005 255);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.dashboard-today__failed {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.62rem;
+}
+
+.dashboard-today__more,
+.dashboard-plan__proposals {
+  margin: 0;
+  font-size: 0.65rem;
+}
+
+.dashboard-today__more a,
+.dashboard-plan__proposals a {
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
 /* The named indicators, each drawn the way the dossier draws one: placed on its own printed band. */
@@ -2551,14 +2688,17 @@ a.signals-strip__word:focus-visible {
   list-style: none;
 }
 
-/* Nested in the lane's own list, so its item styling is undone here. */
-.care-plan__lane .care-plan-checkins__cell {
+.care-plan-checkins__cell {
   aspect-ratio: 1;
-  min-height: 0;
-  padding: 0;
   background: var(--color-canvas);
   border: 1px solid var(--color-line);
   border-radius: 3px;
+}
+
+/* Nested in the lane's own list, so its item styling is undone here. */
+.care-plan__lane .care-plan-checkins__cell {
+  min-height: 0;
+  padding: 0;
 }
 
 .care-plan-checkins__cell.is-done {
@@ -2582,6 +2722,12 @@ a.signals-strip__word:focus-visible {
 .care-plan-checkins__cell.is-today {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
+}
+
+/* One week is a small strip, so today wears a thin ring instead of a heavy outline. */
+.dashboard-today__week .care-plan-checkins__cell.is-today {
+  outline-width: 1px;
+  outline-offset: 0;
 }
 
 .care-plan-checkins__summary {

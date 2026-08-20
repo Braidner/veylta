@@ -141,9 +141,11 @@ function DashboardDocuments({
 
 export function ProfileDashboard({
   overview,
+  canWriteProfile,
   onUpload,
 }: {
   overview: ProfileOverviewResponse;
+  canWriteProfile: boolean;
   onUpload: () => void;
 }) {
   const model = buildProfileDashboardModel(overview);
@@ -179,6 +181,7 @@ export function ProfileDashboard({
       <DashboardPlan
         familyId={overview.profile.familyId}
         profileId={overview.profile.id}
+        canWriteProfile={canWriteProfile}
         href={profileTabPath(handle, "dossier")}
       />
     </div>

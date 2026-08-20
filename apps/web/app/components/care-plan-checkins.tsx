@@ -1,19 +1,15 @@
 "use client";
 
-import type {
-  CarePlanCheckin,
-  CarePlanCheckinStatus,
-  CarePlanItemResponse,
-} from "@veylta/contracts";
+import type { CarePlanCheckin, CarePlanCheckinStatus } from "@veylta/contracts";
 import { Check, X } from "lucide-react";
 import { useState } from "react";
-import { apiRequest } from "../api-client";
 import {
   checkinCellTitle,
   checkinGrid,
   checkinSummaryCopy,
   localDateOf,
 } from "../care-plan-checkins";
+import { recordCheckin } from "../care-plan-mark";
 
 /**
  * The person's own diary on one regimen item: the last four weeks as a strip of days, and today's
@@ -44,9 +40,9 @@ export function CarePlanCheckins({
     setPending(status);
     setError(null);
     try {
-      await apiRequest<CarePlanItemResponse>(`${itemPath}/checkins/${today}`, {
-        method: "PUT",
-        body: JSON.stringify({ status, note: note.trim() === "" ? null : note.trim() }),
+      await recordCheckin(itemPath, today, {
+        status,
+        note: note.trim() === "" ? null : note.trim(),
       });
       setNote("");
       await onRecorded();
