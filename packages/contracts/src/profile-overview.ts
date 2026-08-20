@@ -35,6 +35,14 @@ export interface ProfileOverviewReviewDocument {
   readonly needsAttentionFactCount: number;
 }
 
+/** One confirmed reading of an indicator: what the source printed, and when it was read. */
+export interface ProfileOverviewPoint {
+  /** The value as the document printed it. */
+  readonly value: string;
+  /** The reading's own moment: sampled, else resulted, else uploaded. */
+  readonly at: string;
+}
+
 /**
  * One indicator the record says is outside, stated the way the source printed it. It is a
  * placement against the document's own bounds, never a grade, a trend, or an interpretation.
@@ -48,8 +56,12 @@ export interface ProfileOverviewAttention {
   readonly status: PointStatus;
   /** The bounds as the source printed them, e.g. «0,4 – 4,0»; null when none were printed. */
   readonly range: string | null;
-  /** The previous confirmed value of the same indicator, for the change; null when it is the first. */
-  readonly previous: { readonly value: string; readonly at: string } | null;
+  /**
+   * The indicator's last confirmed values, oldest first, at most `MAX_PROFILE_OVERVIEW_POINTS` —
+   * enough to draw its run. The last one is this entry's own `value`; the change since the
+   * reading before it is the client's to compute, so the same fact is never shipped twice.
+   */
+  readonly points: readonly ProfileOverviewPoint[];
 }
 
 /** How one assistant room last answered — the tier it carried, or that the turn was refused. */
@@ -64,6 +76,9 @@ export interface ProfileOverviewAssistant {
 
 /** At most three indicators reach `attention` — the overview names a few, it is not the dossier. */
 export const MAX_PROFILE_OVERVIEW_ATTENTION = 3;
+
+/** At most six readings reach one entry's `points` — a short run to draw, not the history. */
+export const MAX_PROFILE_OVERVIEW_POINTS = 6;
 
 export interface ProfileOverviewResponse {
   readonly contractVersion: typeof PROFILE_OVERVIEW_CONTRACT_VERSION;
@@ -80,6 +95,17 @@ export interface ProfileOverviewResponse {
    * the two names differ because the units of counting do.
    */
   readonly outsideIndicatorCount: number;
+  /**
+   * Indicators whose latest confirmed value sits inside its printed range. Within, outside and
+   * unknown partition the record: the three together are the number of distinct indicators it
+   * holds, so a client can draw the whole record without inferring the rest from one count.
+   */
+  readonly withinIndicatorCount: number;
+  /**
+   * Indicators the record cannot place: the latest value has no printed bounds to read it against
+   * and no laboratory mark. «Нечего сравнить» is not «в норме», so these never join `within`.
+   */
+  readonly unknownIndicatorCount: number;
   /**
    * At most three indicators whose latest confirmed value sits outside, newest reading first —
    * `outsideIndicatorCount` states how many there are, this says which they are.

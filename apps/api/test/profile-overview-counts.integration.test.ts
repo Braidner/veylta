@@ -50,10 +50,13 @@ test("the overview counts the whole record: every confirmed value, and the indic
       "overview-counts-first",
     );
     const afterFirst = await readOverview(app, owner);
-    assert.equal(afterFirst.contractVersion, "profile-overview/v5");
+    assert.equal(afterFirst.contractVersion, "profile-overview/v6");
     assert.equal(afterFirst.confirmedCount, 2, "both decided facts became observations");
     assert.equal(afterFirst.confirmedCount, first.observationIds.length);
     assert.equal(afterFirst.outsideIndicatorCount, 1, "ТТГ is outside; analyte b is not");
+    const firstReading = afterFirst.recentObservations.find(
+      (item) => item.source.value === "9.9",
+    )?.timelineAt;
     assert.deepEqual(
       afterFirst.attention,
       [
@@ -64,10 +67,10 @@ test("the overview counts the whole record: every confirmed value, and the indic
           unit: "мМЕ/л",
           status: "above",
           range: "5.0–8.0 synthetic-unit",
-          previous: null,
+          points: [{ value: "9.9", at: firstReading }],
         },
       ],
-      "the outside indicator is named, with the bounds the source printed and no earlier value",
+      "the outside indicator is named, with the printed bounds and its one reading so far",
     );
 
     // Second report: another ТТГ above the same range. Two outside values, still one indicator.
@@ -87,13 +90,10 @@ test("the overview counts the whole record: every confirmed value, and the indic
       1,
       "two outside values of one indicator are one indicator outside, not two",
     );
-    const firstReading = afterFirst.recentObservations.find(
-      (item) => item.source.value === "9.9",
-    )?.timelineAt;
     assert.deepEqual(
-      afterSecond.attention.map((item) => [item.value, item.previous]),
-      [["9.5", { value: "9.9", at: firstReading }]],
-      "the newest value stands, the one before it carries the change",
+      afterSecond.attention.map((item) => [item.value, item.points.map((point) => point.value)]),
+      [["9.5", ["9.9", "9.5"]]],
+      "the newest value stands, and the run behind it is oldest first",
     );
 
     // Third report: ТТГ back inside. The latest value decides, so the indicator stops counting.
@@ -182,10 +182,43 @@ test("the overview names at most three indicators, the newest reading first", as
       "the third place goes to the older report",
     );
     assert.deepEqual(
-      overview.attention.map((item) => item.previous),
-      [null, null, null],
-      "each indicator was confirmed once, so none carries an earlier value",
+      overview.attention.map((item) => item.points.map((point) => point.value)),
+      overview.attention.map((item) => [item.value]),
+      "each indicator was confirmed once, so its run is that one reading",
     );
+  } finally {
+    await close();
+  }
+});
+
+test("an indicator's run carries its last six confirmed values, oldest first", async () => {
+  const { app, database, storageRoot, close } = await startAssistantApp();
+  try {
+    const owner = await register(app, "Overview run owner");
+    // Seven readings of one indicator, every one above the printed 5.0–8.0 so it stays named.
+    const values = ["9.1", "9.2", "9.3", "9.4", "9.5", "9.6", "9.7"];
+    for (const [index, value] of values.entries()) {
+      await confirmSyntheticReport(
+        app,
+        database,
+        storageRoot,
+        owner,
+        reviewReport(value, false),
+        `overview-run-${index}`,
+      );
+    }
+
+    const overview = await readOverview(app, owner);
+    const [run] = overview.attention;
+    assert.equal(overview.confirmedCount, 7, "every reading is still in the record");
+    assert.deepEqual(
+      run?.points.map((point) => point.value),
+      values.slice(1),
+      "the last six, oldest first — the first reading falls out of the run, not out of the record",
+    );
+    assert.equal(run?.value, "9.7", "the entry's own value is the run's last point");
+    const moments = run?.points.map((point) => point.at) ?? [];
+    assert.deepEqual(moments, [...moments].sort(), "the moments rise along the run");
   } finally {
     await close();
   }

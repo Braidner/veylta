@@ -145,7 +145,13 @@ export interface PreparedDocument {
 export async function uploadAndExtract(
   context: DocumentTestContext,
   owner: Identity,
-  options: { idempotencyKey?: string; filename?: string; marker?: string } = {},
+  options: {
+    idempotencyKey?: string;
+    filename?: string;
+    marker?: string;
+    /** Reads the source in place of the deterministic parser — to vary the shape a run produces. */
+    intelligence?: Parameters<typeof createDocumentExtractionProcessor>[0]["intelligence"];
+  } = {},
 ): Promise<PreparedDocument> {
   const fixture = await readFile(labReportFixtureUrl);
   const bytes =
@@ -161,7 +167,10 @@ export async function uploadAndExtract(
   );
   assert.equal(uploaded.statusCode, 202, uploaded.rawPayload.toString());
   const documentId = uploaded.json().document.id as string;
-  await extractNextDocument(context);
+  await extractNextDocument(
+    context,
+    options.intelligence === undefined ? {} : { intelligence: options.intelligence },
+  );
   const facts = await context.app.inject({
     method: "GET",
     url: `/v1/families/${owner.body.family.id}/profiles/${owner.body.profile.id}/documents/${documentId}/facts`,

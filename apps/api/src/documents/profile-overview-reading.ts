@@ -2,6 +2,7 @@ import {
   indicatorKey,
   isOutsideRange,
   MAX_PROFILE_OVERVIEW_ATTENTION,
+  MAX_PROFILE_OVERVIEW_POINTS,
   numberOf,
   type PointStatus,
   type ProfileOverviewAttention,
@@ -22,9 +23,18 @@ interface IndicatorReadingRow {
   laboratory_out_of_range: number | null;
 }
 
+/**
+ * Where the record puts one indicator's latest value. The three buckets partition it: every
+ * indicator lands in exactly one, so the counts add up to the record without a fourth pass.
+ */
+type IndicatorBucket = "within" | "outside" | "unknown";
+
+const bucketOf = (status: PointStatus): IndicatorBucket =>
+  isOutsideRange(status) ? "outside" : status === "unknown" ? "unknown" : "within";
+
 export interface ProfileOverviewReading {
   readonly confirmed: number;
-  readonly outsideIndicators: number;
+  readonly indicators: Readonly<Record<IndicatorBucket, number>>;
   readonly attention: readonly ProfileOverviewAttention[];
 }
 
@@ -33,10 +43,10 @@ const confirmedCountSql = `SELECT COUNT(*) AS confirmed_count
    WHERE family_id = $1 AND patient_profile_id = $2 AND status = 'confirmed'`;
 
 /**
- * The two latest confirmed observations of each indicator group, newest first: the latest is what
- * the record says now, the one before it is the change. The grouping is the SQL half of
- * `indicatorKey`; SQLite's `lower()` folds ASCII only, so a Cyrillic printed name still needs the
- * TypeScript keying below. Ordering mirrors the observation history:
+ * The last confirmed observations of each indicator group, newest first: the latest is what the
+ * record says now, the ones behind it are its run. The grouping is the SQL half of `indicatorKey`;
+ * SQLite's `lower()` folds ASCII only, so a Cyrillic printed name still needs the TypeScript keying
+ * below. Ordering mirrors the observation history:
  * `COALESCE(sampled_at, resulted_at, uploaded_at)` newest first, the id breaking a tie.
  */
 const latestByIndicatorSql = `SELECT canonical_code, source_name, source_unit, source_value,
@@ -64,7 +74,7 @@ const latestByIndicatorSql = `SELECT canonical_code, source_name, source_unit, s
                  AND o.patient_profile_id = $2
                  AND o.status = 'confirmed'
             )
-           WHERE recency <= 2
+           WHERE recency <= ${MAX_PROFILE_OVERVIEW_POINTS}
            ORDER BY timeline_at DESC, source_name, source_unit, recency`;
 
 function statusOf(row: IndicatorReadingRow): PointStatus {
@@ -85,9 +95,10 @@ function printedRange(row: IndicatorReadingRow): string | null {
   return bounds.length === 0 ? null : bounds.join(" – ");
 }
 
+/** `newestFirst` holds the indicator's run as the query returned it; `points` reads oldest first. */
 function attentionOf(
   latest: IndicatorReadingRow,
-  previous: IndicatorReadingRow | undefined,
+  newestFirst: readonly IndicatorReadingRow[],
   status: PointStatus,
 ): ProfileOverviewAttention {
   return {
@@ -97,15 +108,16 @@ function attentionOf(
     unit: latest.source_unit,
     status,
     range: printedRange(latest),
-    previous:
-      previous === undefined ? null : { value: previous.source_value, at: previous.timeline_at },
+    points: [...newestFirst]
+      .reverse()
+      .map((row) => ({ value: row.source_value, at: row.timeline_at })),
   };
 }
 
 /**
- * What the overview states about the whole record: every confirmed observation, how many
- * indicators currently sit outside — one per indicator whose latest confirmed value is outside its
- * printed range or flagged by the laboratory, never one per value — and which of them to name.
+ * What the overview states about the whole record: every confirmed observation, where each
+ * indicator's latest value stands — within, outside, or nowhere the record can place it, counted
+ * per indicator and never per value — and which of the outside ones to name, with its run.
  *
  * No number is parsed in SQL: `CAST('6,8' AS REAL)` is 6 and `CAST('< 0,1' AS REAL)` is 0, and
  * either would invent a value the document never printed. Rows come out of SQL, `pointStatus` —
@@ -126,18 +138,18 @@ export async function profileOverviewReading(
     const key = indicatorKey(row.canonical_code, row.source_name, row.source_unit);
     const held = byIndicator.get(key);
     if (held === undefined) byIndicator.set(key, [row]);
-    else if (held.length < 2) held.push(row);
+    else if (held.length < MAX_PROFILE_OVERVIEW_POINTS) held.push(row);
   }
-  let outsideIndicators = 0;
+  const indicators: Record<IndicatorBucket, number> = { within: 0, outside: 0, unknown: 0 };
   const attention: ProfileOverviewAttention[] = [];
-  for (const [latestRow, previousRow] of byIndicator.values()) {
+  for (const run of byIndicator.values()) {
+    const [latestRow] = run;
     if (latestRow === undefined) continue;
     const status = statusOf(latestRow);
-    if (!isOutsideRange(status)) continue;
-    outsideIndicators += 1;
-    if (attention.length < MAX_PROFILE_OVERVIEW_ATTENTION) {
-      attention.push(attentionOf(latestRow, previousRow, status));
+    indicators[bucketOf(status)] += 1;
+    if (isOutsideRange(status) && attention.length < MAX_PROFILE_OVERVIEW_ATTENTION) {
+      attention.push(attentionOf(latestRow, run, status));
     }
   }
-  return { confirmed: Number(confirmed?.confirmed_count ?? 0), outsideIndicators, attention };
+  return { confirmed: Number(confirmed?.confirmed_count ?? 0), indicators, attention };
 }

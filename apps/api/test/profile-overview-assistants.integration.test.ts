@@ -106,7 +106,7 @@ test("the overview says what each assistant room last answered, and never what i
     );
     assert.equal(audit.rows.length, 3, "every read is audited");
     for (const row of audit.rows) {
-      assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "profile-overview/v5" });
+      assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "profile-overview/v6" });
     }
     const recorded = JSON.stringify(audit.rows);
     assert.equal(recorded.includes("routine"), false, "no urgency reaches the audit row");

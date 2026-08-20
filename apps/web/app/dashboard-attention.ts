@@ -40,17 +40,21 @@ function standingOf(entry: ProfileOverviewAttention): string {
   return "лаборатория отметила значение";
 }
 
-/** The change since the previous confirmed value; two values that are not plain numbers do not compare. */
+/**
+ * The change over the last two points of the run; two values that are not plain numbers do not
+ * compare. The run's last point is the entry's own value, so the one before it is the comparison.
+ */
 function changeOf(entry: ProfileOverviewAttention): string | null {
-  if (entry.previous === null) return null;
+  const previous = entry.points[entry.points.length - 2];
+  if (previous === undefined) return null;
   const latest = numberOf(entry.value);
-  const previous = numberOf(entry.previous.value);
-  if (latest === null || previous === null) return null;
+  const before = numberOf(previous.value);
+  if (latest === null || before === null) return null;
   const delta = printedDelta(
     { printed: entry.value, value: latest },
-    { printed: entry.previous.value, value: previous },
+    { printed: previous.value, value: before },
   );
-  const day = formatSampleDay(entry.previous.at);
+  const day = formatSampleDay(previous.at);
   return delta.direction === "unchanged" ? `без изменений с ${day}` : `${delta.value} с ${day}`;
 }
 

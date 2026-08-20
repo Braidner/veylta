@@ -962,18 +962,30 @@ SQL, and no unit is converted.
 `profile-overview/v5` says *which* indicators those are and *whether an assistant has spoken*.
 `attention` names at most three of the indicators `outsideIndicatorCount` counts, newest reading
 first: the printed `name`, `value` and `unit` exactly as they were confirmed, the `status` the
-dossier's own rule read, the `range` as the source printed it (its own reference sentence when it
-had one, else the bounds it named), and `previous` — the value of the same indicator before this
-one, with the day it was read, or `null` when it is the first. It is a placement against the
-document's own bounds; it is never a grade, a trend, an urgency, or a recommendation.
+dossier's own rule read, and the `range` as the source printed it (its own reference sentence when
+it had one, else the bounds it named). It is a placement against the document's own bounds; it is
+never a grade, a trend, an urgency, or a recommendation.
 `assistants` carries one entry per assistant room that has ever answered about this person,
 newest answer first: the `assistantId`, when it answered, the `urgency` tier that answer carried
 (`null` when the turn was refused) and `refused`. The query behind it never reads the stored
 answer, so no block, sentence, or medical value of an assistant reaches the overview.
 
+`profile-overview/v6` lets a client *draw* the record instead of listing counters. Each `attention`
+entry carries `points` — the indicator's last confirmed values, oldest first, at most six, each a
+`value` as the document printed it and the `at` of that reading (sampled, else resulted, else
+uploaded). The run's last point is the entry's own `value`, and the change since the reading before
+it is the client's to compute; `previous` is gone, because shipping the same fact twice only lets
+the two drift. Beside `outsideIndicatorCount` the record now states `withinIndicatorCount` —
+indicators whose latest confirmed value sits inside its printed range — and
+`unknownIndicatorCount` — indicators the record cannot place, the latest value having no printed
+bounds to read it against and no laboratory mark. The three partition the record: together they
+are the number of distinct indicators it holds, and «нечего сравнить» never joins «в норме». All
+three come from one pass over the same latest value per indicator that `outsideIndicatorCount`
+already read.
+
 ```json
 {
-  "contractVersion": "profile-overview/v5",
+  "contractVersion": "profile-overview/v6",
   "profile": {
     "id": "profile_placeholder",
     "familyId": "family_placeholder",
@@ -986,6 +998,8 @@ answer, so no block, sentence, or medical value of an assistant reaches the over
   "documentCount": 1,
   "confirmedCount": 4,
   "outsideIndicatorCount": 1,
+  "withinIndicatorCount": 2,
+  "unknownIndicatorCount": 1,
   "attention": [
     {
       "canonicalCode": "tsh",
@@ -994,7 +1008,10 @@ answer, so no block, sentence, or medical value of an assistant reaches the over
       "unit": "мМЕ/л",
       "status": "above",
       "range": "0,4 – 4,0 мМЕ/л",
-      "previous": { "value": "9.5", "at": "2026-06-01T00:00:00.000Z" }
+      "points": [
+        { "value": "9.5", "at": "2026-06-01T00:00:00.000Z" },
+        { "value": "9.9", "at": "2026-08-12T00:00:00.000Z" }
+      ]
     }
   ],
   "assistants": [
@@ -1033,7 +1050,7 @@ answer, so no block, sentence, or medical value of an assistant reaches the over
 It is not a diagnosis, medical summary, health score, risk state, trend, or
 recommendation. Each successful read writes a payload-free
 `profile.overview.opened` audit event against the profile with only
-`profile-overview/v5` as metadata; it never records filenames, values, units,
+`profile-overview/v6` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
 ## Household care plan (Task 33a)

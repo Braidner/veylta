@@ -3,6 +3,9 @@ import test from "node:test";
 import type { ProfileOverviewAttention, ProfileOverviewResponse } from "@veylta/contracts";
 import { attentionRemainderCopy, attentionRows } from "./dashboard-attention";
 
+const point = (value: string, at = "2026-05-14T00:00:00.000Z") => ({ value, at });
+
+/** Three readings, so the row must reach for the last two rather than the run's start. */
 function attention(overrides: Partial<ProfileOverviewAttention> = {}): ProfileOverviewAttention {
   return {
     canonicalCode: "tsh",
@@ -11,7 +14,11 @@ function attention(overrides: Partial<ProfileOverviewAttention> = {}): ProfileOv
     unit: "мЕд/л",
     status: "above",
     range: "0,4 – 4,0",
-    previous: { value: "4,4", at: "2026-05-14T00:00:00.000Z" },
+    points: [
+      point("3,1", "2026-03-02T00:00:00.000Z"),
+      point("4,4"),
+      point("6,5", "2026-06-20T00:00:00.000Z"),
+    ],
     ...overrides,
   };
 }
@@ -30,7 +37,7 @@ test("a row names the value, where it stands, how it moved and who reads it", ()
   assert.equal(row?.name, "ТТГ");
   assert.equal(row?.value, "6,5 мЕд/л");
   assert.equal(row?.standing, "выше 0,4 – 4,0");
-  assert.equal(row?.change, "+2,1 с 14 мая");
+  assert.equal(row?.change, "+2,1 с 14 мая", "the last two points, not the start of the run");
   assert.equal(row?.reader, "эндокринолог");
   assert.equal(row?.href, "/ivan/history?code=tsh");
 });
@@ -59,10 +66,10 @@ test("the standing follows the status and the printed bounds, never a judgement"
 test("the change needs two plain numbers, and an unchanged value says so", () => {
   const rows = attentionRows(
     overview([
-      attention({ previous: null }),
-      attention({ value: "< 0,1", previous: { value: "0,3", at: "2026-05-14" } }),
-      attention({ previous: { value: "отр.", at: "2026-05-14" } }),
-      attention({ value: "6,5", previous: { value: "6,5", at: "2026-05-14" } }),
+      attention({ points: [point("6,5")] }),
+      attention({ value: "< 0,1", points: [point("0,3"), point("< 0,1")] }),
+      attention({ points: [point("отр."), point("6,5")] }),
+      attention({ value: "6,5", points: [point("6,5"), point("6,5")] }),
     ]),
   );
 

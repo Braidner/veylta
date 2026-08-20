@@ -18,7 +18,7 @@ const document = (
 });
 
 const overview = {
-  contractVersion: "profile-overview/v5",
+  contractVersion: "profile-overview/v6",
   profile: {
     id: "p",
     familyId: "f",
