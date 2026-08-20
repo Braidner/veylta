@@ -43,6 +43,7 @@ test("series are built per analyte and unit, ordered in time, with the printed r
       ["new", 6.8, "above"],
     ],
   );
+  assert.equal(tsh?.latest.laboratory, "Синтетическая лаборатория");
   assert.equal(tsh?.latest.observationId, "new");
   assert.equal(tsh?.status, "above");
   assert.equal(tsh?.streak, 2);

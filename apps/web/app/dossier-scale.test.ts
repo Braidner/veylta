@@ -16,6 +16,7 @@ function point(overrides: Partial<SeriesPoint>): SeriesPoint {
     lowText: "3,5",
     highText: "5,5",
     documentId: "d",
+    laboratory: "Синтетическая лаборатория",
     ...overrides,
   };
 }

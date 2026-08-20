@@ -27,6 +27,7 @@ export interface SeriesPoint {
   readonly lowText: string | null;
   readonly highText: string | null;
   readonly documentId: string;
+  readonly laboratory: string | null;
 }
 
 export interface DossierSeries {
@@ -60,6 +61,7 @@ function pointOf(item: ObservationHistoryItem): SeriesPoint {
     lowText: item.referenceRange?.sourceLow ?? null,
     highText: item.referenceRange?.sourceHigh ?? null,
     documentId: item.sourceDocument.id,
+    laboratory: item.laboratory,
   };
 }
 
