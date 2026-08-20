@@ -238,9 +238,10 @@ test("document archive searches summaries and deletion requires an explicit conf
   const archive = page.getByRole("region", { name: "Архив документов" });
   const search = archive.getByPlaceholder("Поиск по саммари и результатам");
   await search.fill("лабораторные результаты");
-  // Hits render as timeline nodes under their own heading, summary and all.
+  // Hits render as timeline nodes under their own heading, summary and all; the entry names
+  // its kind and its file on one line.
   await expect(archive.getByRole("heading", { name: "1 документ" })).toBeVisible();
-  await expect(archive.getByText(filename, { exact: true })).toBeVisible();
+  await expect(archive.locator(".document-timeline__meta")).toHaveText(`Анализы · ${filename}`);
   await expect(archive.locator(".document-timeline__summary")).toBeVisible();
 
   await archive.locator(".document-timeline__title").last().click();
@@ -256,7 +257,7 @@ test("document archive searches summaries and deletion requires an explicit conf
     .getByRole("button", { name: "Удалить документ" })
     .click();
   await expect(page).toHaveURL(`${profileUrl}/docs`);
-  await expect(page.getByText(filename, { exact: true })).toHaveCount(0);
+  await expect(page.getByText(filename, { exact: false })).toHaveCount(0);
 });
 
 test("an invalid synthetic upload stays on the profile and explains the safe correction", async ({

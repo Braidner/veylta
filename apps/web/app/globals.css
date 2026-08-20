@@ -10308,16 +10308,38 @@ body:has(.upload-dialog[open]) {
 .document-timeline__node {
   position: relative;
   display: grid;
-  gap: 10px;
-  align-content: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px 40px;
+  align-content: center;
+  align-items: start;
+  max-width: 980px;
   min-height: clamp(200px, 30vh, 340px);
-  padding: 18px 0 26px 28px;
+  padding: 20px 8px 20px 28px;
 }
 
-.document-timeline__node::before {
+.document-timeline__lead {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+}
+
+/* The spine itself says which entry is being read — a timeline's own mark, not a card. */
+.document-timeline__node::after {
   position: absolute;
-  top: 25px;
-  left: -6px;
+  top: 10px;
+  bottom: 10px;
+  left: -1px;
+  width: 2px;
+  background: var(--color-primary);
+  border-radius: 2px;
+  opacity: 0;
+  content: "";
+}
+
+.document-timeline__date::before {
+  position: absolute;
+  top: 0.3em;
+  left: -34px;
   width: 12px;
   height: 12px;
   background: var(--color-canvas);
@@ -10350,7 +10372,12 @@ body:has(.upload-dialog[open]) {
       animation-timeline: view();
     }
 
-    .document-timeline--scroll-focus .document-timeline__node::before {
+    .document-timeline--scroll-focus .document-timeline__node::after {
+      animation: document-timeline-spine linear both;
+      animation-timeline: view();
+    }
+
+    .document-timeline--scroll-focus .document-timeline__date::before {
       animation: document-timeline-dot linear both;
       animation-timeline: view();
     }
@@ -10367,8 +10394,18 @@ body:has(.upload-dialog[open]) {
       animation: none;
     }
 
-    .document-timeline--scroll-focus .document-timeline__node:hover::before,
-    .document-timeline--scroll-focus .document-timeline__node:focus-within::before {
+    .document-timeline--scroll-focus .document-timeline__node:hover::after,
+    .document-timeline--scroll-focus .document-timeline__node:focus-within::after {
+      opacity: 1;
+      animation: none;
+    }
+
+    .document-timeline--scroll-focus
+      .document-timeline__node:hover
+      .document-timeline__date::before,
+    .document-timeline--scroll-focus
+      .document-timeline__node:focus-within
+      .document-timeline__date::before {
       background: var(--color-primary);
       border-color: var(--color-primary);
       animation: none;
@@ -10404,6 +10441,23 @@ body:has(.upload-dialog[open]) {
   }
 }
 
+@keyframes document-timeline-spine {
+  0%,
+  30% {
+    opacity: 0;
+  }
+
+  43%,
+  57% {
+    opacity: 1;
+  }
+
+  70%,
+  100% {
+    opacity: 0;
+  }
+}
+
 @keyframes document-timeline-dot {
   0%,
   30% {
@@ -10428,6 +10482,7 @@ body:has(.upload-dialog[open]) {
 }
 
 .document-timeline__date {
+  position: relative;
   display: flex;
   flex-wrap: wrap;
   gap: 8px 12px;
@@ -10459,21 +10514,15 @@ body:has(.upload-dialog[open]) {
 
 .document-timeline__body {
   display: grid;
-  gap: 6px;
+  gap: 8px;
   justify-items: start;
 }
 
-.document-timeline__kicker {
-  margin: 0;
-  color: var(--color-muted);
-  font-size: 0.6875rem;
-  font-weight: 650;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 .document-timeline__title {
-  max-width: 30ch;
+  display: inline-flex;
+  gap: 12px;
+  align-items: flex-start;
+  max-width: 34ch;
   color: inherit;
   font-size: clamp(1.125rem, 1.6vw, 1.5rem);
   font-weight: 650;
@@ -10481,6 +10530,13 @@ body:has(.upload-dialog[open]) {
   line-height: 1.25;
   text-decoration: none;
   text-wrap: balance;
+}
+
+/* The document is the evidence, and accent is what marks evidence everywhere else. */
+.document-timeline__title svg {
+  flex: none;
+  margin-top: 0.2em;
+  color: var(--color-accent);
 }
 
 .document-timeline__title:hover {
@@ -10496,18 +10552,21 @@ body:has(.upload-dialog[open]) {
   text-wrap: pretty;
 }
 
-.document-timeline__filename {
+/* Kind and file on one quiet line, under the reading matter rather than above it. */
+.document-timeline__meta {
   margin: 0;
   color: var(--color-muted);
-  font-size: 0.75rem;
+  font-size: 0.8125rem;
 }
 
+/* The record's own numbers hold the right of the entry, opposite the date. */
 .document-timeline__counts {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: 6px;
+  align-items: flex-end;
   padding: 0;
-  margin: 4px 0 0;
+  margin: 0;
   list-style: none;
 }
 
@@ -10572,6 +10631,16 @@ body:has(.upload-dialog[open]) {
   .document-timeline__year,
   .document-timeline__month-title {
     position: static;
+  }
+
+  .document-timeline__node {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .document-timeline__counts {
+    flex-flow: row wrap;
+    align-items: center;
   }
 
   .document-date-editor {

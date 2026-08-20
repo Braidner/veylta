@@ -1,7 +1,18 @@
 "use client";
 
-import { latestCorrectableDate } from "@veylta/contracts";
-import { Pencil } from "lucide-react";
+import { type DocumentCategory, latestCorrectableDate } from "@veylta/contracts";
+import {
+  Files,
+  FileText,
+  FlaskConical,
+  type LucideIcon,
+  Pencil,
+  Pill,
+  ScanSearch,
+  ShieldCheck,
+  Stethoscope,
+  Syringe,
+} from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { ApiError } from "../api-client";
@@ -9,6 +20,18 @@ import { documentCategoryLabels, effectiveDateCopy, type TimelineNode } from "..
 import { documentPath } from "../paths";
 import { useProfileHandle } from "../profile-route";
 import { DocumentDateEditor } from "./document-date-editor";
+
+/** The kind of record at a glance — the one visual cue that tells two entries apart while scrolling. */
+const categoryIcon: Record<DocumentCategory, LucideIcon> = {
+  laboratory: FlaskConical,
+  imaging: ScanSearch,
+  prescription: Pill,
+  discharge_summary: FileText,
+  consultation: Stethoscope,
+  vaccination: Syringe,
+  insurance: ShieldCheck,
+  other: Files,
+};
 
 /** One node of the timeline; it owns the date field it opens, so a failure stays on this document. */
 export function DocumentTimelineNode({
@@ -25,6 +48,7 @@ export function DocumentTimelineNode({
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const date = effectiveDateCopy(node.effectiveDate);
+  const Icon = node.category === null ? Files : categoryIcon[node.category];
 
   async function save(value: string | null) {
     setPending(true);
@@ -45,56 +69,59 @@ export function DocumentTimelineNode({
 
   return (
     <li className="document-timeline__node" data-testid={`timeline-node-${node.id}`}>
-      <div className="document-timeline__date">
-        <time dateTime={node.effectiveDate.value}>{date.date}</time>
-        {date.marker === null ? null : (
-          <span className="document-timeline__marker">{date.marker}</span>
-        )}
-        {canWrite && !editing ? (
-          <button
-            className="text-link text-link--button document-timeline__correct"
-            type="button"
-            onClick={() => setEditing(true)}
-          >
-            <Pencil size={13} aria-hidden="true" />
-            Исправить дату
-          </button>
+      <div className="document-timeline__lead">
+        <div className="document-timeline__date">
+          <time dateTime={node.effectiveDate.value}>{date.date}</time>
+          {date.marker === null ? null : (
+            <span className="document-timeline__marker">{date.marker}</span>
+          )}
+          {canWrite && !editing ? (
+            <button
+              className="text-link text-link--button document-timeline__correct"
+              type="button"
+              onClick={() => setEditing(true)}
+            >
+              <Pencil size={13} aria-hidden="true" />
+              Исправить дату
+            </button>
+          ) : null}
+        </div>
+        {editing ? (
+          <DocumentDateEditor
+            value={node.effectiveDate.value}
+            max={latestCorrectableDate(new Date())}
+            canClear={node.effectiveDate.source === "person"}
+            pending={pending}
+            error={error}
+            onSave={(value) => void save(value)}
+            onClear={() => void save(null)}
+            onCancel={() => {
+              setEditing(false);
+              setError(null);
+            }}
+          />
         ) : null}
+        <div className="document-timeline__body">
+          <Link className="document-timeline__title" href={documentPath(handle, node.id)}>
+            <Icon size={19} aria-hidden="true" />
+            <span>{node.title}</span>
+          </Link>
+          {node.shortSummary === null ? null : (
+            <p className="document-timeline__summary">{node.shortSummary}</p>
+          )}
+          <p className="document-timeline__meta">
+            {node.category === null ? "Документ" : documentCategoryLabels[node.category]} ·{" "}
+            {node.filename}
+          </p>
+        </div>
       </div>
-      {editing ? (
-        <DocumentDateEditor
-          value={node.effectiveDate.value}
-          max={latestCorrectableDate(new Date())}
-          canClear={node.effectiveDate.source === "person"}
-          pending={pending}
-          error={error}
-          onSave={(value) => void save(value)}
-          onClear={() => void save(null)}
-          onCancel={() => {
-            setEditing(false);
-            setError(null);
-          }}
-        />
+      {node.counts.length > 0 ? (
+        <ul className="document-timeline__counts">
+          {node.counts.map((count) => (
+            <li key={count}>{count}</li>
+          ))}
+        </ul>
       ) : null}
-      <div className="document-timeline__body">
-        <p className="document-timeline__kicker">
-          {node.category === null ? "Документ" : documentCategoryLabels[node.category]}
-        </p>
-        <Link className="document-timeline__title" href={documentPath(handle, node.id)}>
-          {node.title}
-        </Link>
-        {node.shortSummary === null ? null : (
-          <p className="document-timeline__summary">{node.shortSummary}</p>
-        )}
-        <p className="document-timeline__filename">{node.filename}</p>
-        {node.counts.length > 0 ? (
-          <ul className="document-timeline__counts">
-            {node.counts.map((count) => (
-              <li key={count}>{count}</li>
-            ))}
-          </ul>
-        ) : null}
-      </div>
     </li>
   );
 }
