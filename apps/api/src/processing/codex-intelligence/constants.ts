@@ -1,7 +1,10 @@
-import { MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS } from "@veylta/contracts";
+import {
+  DOCUMENT_PAGE_VISION_METHOD,
+  MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
+} from "@veylta/contracts";
 
 export const CODEX_DOCUMENT_INTELLIGENCE_VERSION = "codex-document-intelligence/v2" as const;
-export const CODEX_VISION_EXTRACTION_METHOD = "codex_vision" as const;
+export const CODEX_VISION_EXTRACTION_METHOD = DOCUMENT_PAGE_VISION_METHOD;
 
 /** Bounds of one run: what may go to Codex, what may come back, what one answer may hold. */
 export const limits = {

@@ -571,6 +571,24 @@ category and retry eligibility, never a raw parser/database exception.
 (`PUT …/documents/{documentId}/date`, below), else the document's own printed date, else the UTC
 calendar day of `uploadedAt` — `source` names which as `"person" | "document" | "upload"`.
 
+The detail response also carries `pages`, one entry per stored page in page order and empty until
+an analysis has stored one:
+
+```json
+"pages": [
+  { "pageNumber": 1, "extractionMethod": "pdf_text_layer", "unreadReason": null },
+  { "pageNumber": 2, "extractionMethod": "codex_vision", "unreadReason": null },
+  { "pageNumber": 3, "extractionMethod": "pdf_text_layer", "unreadReason": "vision_unavailable" }
+]
+```
+
+`extractionMethod` is what read the stored page text: `pdf_text_layer` for the PDF's own layer,
+`codex_vision` for a page the model transcribed from an image. `unreadReason` is null whenever the
+page was read; otherwise it is a server-derived code from `DOCUMENT_PAGE_UNREAD_REASONS` —
+`image_page_limit` when more picture pages existed than one bounded run may carry, or
+`vision_unavailable` when the second, page-scoped run over the picture pages refused or failed. It
+is never a sentence the model produced. The upload response is a summary and carries no `pages`.
+
 Every successful metadata read records a payload-free audit event with actor,
 tenant, document, correlation ID, and time.
 

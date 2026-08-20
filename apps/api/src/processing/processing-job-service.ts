@@ -7,6 +7,7 @@ import {
   DOCUMENT_INTELLIGENCE_STRUCTURED_RESULT_TYPES,
   type DocumentIntelligenceResult,
   type DocumentIntelligenceStructuredResult,
+  type DocumentPageUnreadReason,
   type DocumentProcessingEventCode,
   LAB_EXTRACTION_SCHEMA_VERSION,
   MAX_DOCUMENT_INTELLIGENCE_STRUCTURED_RESULTS,
@@ -19,6 +20,13 @@ import type {
   DocumentIntelligenceExchange,
   DocumentIntelligenceOutput,
 } from "./document-intelligence-provider.js";
+import { insertOrVerifyPage } from "./document-page-rows.js";
+import {
+  InvalidProcessingOutputError,
+  InvalidProcessingStageTransitionError,
+  ProcessingPersistenceConflictError,
+  StaleProcessingLeaseError,
+} from "./processing-errors.js";
 import {
   type ParsedDocumentPage,
   type ParsedLabExtraction,
@@ -26,6 +34,13 @@ import {
   type StrictLabExtractionFact,
   SYNTHETIC_LAB_PARSER_VERSION,
 } from "./synthetic-lab-parser.js";
+
+export {
+  InvalidProcessingOutputError,
+  InvalidProcessingStageTransitionError,
+  ProcessingPersistenceConflictError,
+  StaleProcessingLeaseError,
+} from "./processing-errors.js";
 
 export const DOCUMENT_EXTRACTION_JOB_KIND = "document_extraction" as const;
 export const DOCUMENT_EXTRACTION_PAYLOAD_VERSION = "document-extraction-job/v1" as const;
@@ -171,15 +186,6 @@ interface ExtractionRunRow {
   output_schema_version: string;
 }
 
-interface DocumentPageRow {
-  id: string;
-  page_number: number;
-  extracted_text: string;
-  extraction_method: string;
-  extraction_version: string;
-  text_sha256: string;
-}
-
 interface ExtractedFactRow {
   id: string;
   document_version_id: string;
@@ -258,34 +264,6 @@ const versionPattern = /^[a-z0-9][a-z0-9._/+:-]{0,99}$/;
 const sha256Pattern = /^[a-f0-9]{64}$/;
 const maxRetryDelayMs = 24 * 60 * 60 * 1_000;
 export const MAX_DOCUMENT_INTELLIGENCE_SEARCH_TEXT_LENGTH = 32_000;
-
-export class StaleProcessingLeaseError extends Error {
-  constructor() {
-    super("Processing lease is stale");
-    this.name = "StaleProcessingLeaseError";
-  }
-}
-
-export class InvalidProcessingOutputError extends Error {
-  constructor() {
-    super("Processing output is invalid");
-    this.name = "InvalidProcessingOutputError";
-  }
-}
-
-export class InvalidProcessingStageTransitionError extends Error {
-  constructor() {
-    super("Processing stage transition is invalid");
-    this.name = "InvalidProcessingStageTransitionError";
-  }
-}
-
-export class ProcessingPersistenceConflictError extends Error {
-  constructor() {
-    super("Existing processing output conflicts with this attempt");
-    this.name = "ProcessingPersistenceConflictError";
-  }
-}
 
 function invalidOutput(): never {
   throw new InvalidProcessingOutputError();
@@ -871,6 +849,17 @@ function pageId(job: LeasedProcessingJob, page: ParsedDocumentPage): string {
   return stableId("page", job.familyId, job.documentVersionId, page.pageNumber);
 }
 
+/**
+ * Why this analysis could not read a page, by page number. Only an output merged out of several
+ * passes fills it; one provider run reads every page it was given.
+ */
+function unreadReasons(
+  output: ProcessingExtractionOutput,
+): ReadonlyMap<number, DocumentPageUnreadReason> {
+  const unread = "unreadPages" in output ? (output.unreadPages ?? []) : [];
+  return new Map(unread.map((page) => [page.pageNumber, page.reason]));
+}
+
 function runId(
   job: LeasedProcessingJob,
   extractorVersion: string = SYNTHETIC_LAB_PARSER_VERSION,
@@ -946,52 +935,6 @@ async function auditAutomatedProcessingOutcome(
       createdAt,
     ],
   );
-}
-
-async function insertOrVerifyPage(
-  client: DatabaseClient,
-  job: LeasedProcessingJob,
-  page: ParsedDocumentPage,
-  createdAt: string,
-): Promise<void> {
-  const id = pageId(job, page);
-  await client.query(
-    `INSERT INTO document_pages
-       (id, family_id, document_version_id, page_number, extracted_text,
-        extraction_method, extraction_version, text_sha256, created_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-     ON CONFLICT (family_id, document_version_id, page_number) DO NOTHING`,
-    [
-      id,
-      job.familyId,
-      job.documentVersionId,
-      page.pageNumber,
-      page.text,
-      page.extractionMethod,
-      page.extractionVersion,
-      page.textSha256,
-      createdAt,
-    ],
-  );
-  const row = (
-    await client.query<DocumentPageRow>(
-      `SELECT id, page_number, extracted_text, extraction_method, extraction_version, text_sha256
-         FROM document_pages
-        WHERE family_id = $1 AND document_version_id = $2 AND page_number = $3`,
-      [job.familyId, job.documentVersionId, page.pageNumber],
-    )
-  ).rows[0];
-  if (
-    row === undefined ||
-    row.id !== id ||
-    Number(row.page_number) !== page.pageNumber ||
-    row.extracted_text !== page.text ||
-    row.extraction_method !== page.extractionMethod ||
-    row.extraction_version !== page.extractionVersion ||
-    row.text_sha256 !== page.textSha256
-  ) {
-    throw new ProcessingPersistenceConflictError();
-  }
 }
 
 function storedFactValues(fact: StrictLabExtractionFact): readonly unknown[] {
@@ -1447,7 +1390,16 @@ export function createProcessingJobService(
             now,
           ],
         );
-        for (const page of output.pages) await insertOrVerifyPage(client, claim, page, now);
+        const unread = unreadReasons(output);
+        for (const page of output.pages) {
+          const unreadReason = unread.get(page.pageNumber) ?? null;
+          await insertOrVerifyPage(
+            client,
+            claim,
+            { id: pageId(claim, page), page, unreadReason },
+            now,
+          );
+        }
         for (const fact of output.extraction.items) {
           await insertOrVerifyFact(
             client,

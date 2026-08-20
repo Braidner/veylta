@@ -65,7 +65,7 @@ import {
   type SyntheticProfileExportManifest,
 } from "@veylta/contracts";
 import { assistantOverviewSummaries } from "../assistant/assistant-overview.js";
-import type { Database, DatabaseClient, QueryResult } from "../database/pool.js";
+import type { Database, DatabaseClient, Queryable } from "../database/pool.js";
 import {
   DomainConflictError,
   DomainValidationError,
@@ -89,6 +89,7 @@ import {
   type StagedObjectMetadata,
 } from "../storage/object-storage.js";
 import { effectiveDateSql, effectiveDocumentDate } from "./document-date.js";
+import { pageReadingsForDocument } from "./document-page-readings.js";
 import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
 import { overviewDocumentsSql, reviewQueueCountsSql } from "./overview-documents-query.js";
 import { profileOverviewReading } from "./profile-overview-reading.js";
@@ -291,10 +292,6 @@ interface ProfileArchiveOptions {
   action: "profile.evidence_bundle.exported" | "profile.portable_export.exported";
   maximumDocuments: number;
   failWhenOverLimit: boolean;
-}
-
-interface Queryable {
-  query<T extends object>(queryText: string, values?: unknown[]): Promise<QueryResult<T>>;
 }
 
 interface DocumentRow {
@@ -1367,29 +1364,12 @@ function summary(
   };
 }
 
-async function intelligenceSummaryForDocument(
+/** The newest stored analysis of the document's version; both projections read this one row. */
+async function storedIntelligence(
   client: Queryable,
   row: DocumentRow,
-): Promise<DocumentIntelligenceSummary | null> {
-  const stored = (
-    await client.query<DocumentIntelligenceSummaryRow>(
-      `SELECT provider, model_id, runtime_version, schema_version, category,
-              title, short_summary, document_date, confidence
-         FROM document_intelligence_results
-        WHERE family_id = $1 AND document_version_id = $2
-        ORDER BY created_at DESC, id DESC
-        LIMIT 1`,
-      [row.family_id, row.document_version_id],
-    )
-  ).rows[0];
-  return documentIntelligenceSummary(stored);
-}
-
-async function intelligenceDetailForDocument(
-  client: Queryable,
-  row: DocumentRow,
-): Promise<DocumentIntelligenceResult | null> {
-  const stored = (
+): Promise<DocumentIntelligenceRow | undefined> {
+  return (
     await client.query<DocumentIntelligenceRow>(
       `SELECT provider, model_id, runtime_version, schema_version, category,
               title, short_summary, detailed_summary, structured_results_json,
@@ -1401,7 +1381,20 @@ async function intelligenceDetailForDocument(
       [row.family_id, row.document_version_id],
     )
   ).rows[0];
-  return documentIntelligenceDetail(stored);
+}
+
+async function intelligenceSummaryForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<DocumentIntelligenceSummary | null> {
+  return documentIntelligenceSummary(await storedIntelligence(client, row));
+}
+
+async function intelligenceDetailForDocument(
+  client: Queryable,
+  row: DocumentRow,
+): Promise<DocumentIntelligenceResult | null> {
+  return documentIntelligenceDetail(await storedIntelligence(client, row));
 }
 
 function metadataMatches(
@@ -3269,6 +3262,7 @@ export function createDocumentService(
         return {
           ...summary(row, await processingForDocument(client, row), intelligence),
           intelligence,
+          pages: await pageReadingsForDocument(client, row),
         };
       });
     },

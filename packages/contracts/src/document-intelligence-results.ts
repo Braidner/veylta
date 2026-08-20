@@ -22,6 +22,13 @@ export const DOCUMENT_INTELLIGENCE_RESULT_STATUSES = [
 ] as const;
 
 /**
+ * How a page's stored text was obtained. The document projection prints these, so the browser
+ * reads the same two spellings the worker writes rather than a copy of them.
+ */
+export const DOCUMENT_PAGE_TEXT_LAYER_METHOD = "pdf_text_layer" as const;
+export const DOCUMENT_PAGE_VISION_METHOD = "codex_vision" as const;
+
+/**
  * Why a page of the document was never read. Server-derived like every rejection reason, so
  * the page can say what happened to it without quoting a sentence the model produced.
  */

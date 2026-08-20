@@ -5,6 +5,28 @@ import { randomUUID } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { assistantOutput } from "./fake-codex-assistant.mjs";
 
+/**
+ * What the stub "reads" from one attached page image. Page 1 keeps the spelling every
+ * single-page synthetic picture actually prints; a further page is named for itself, so a
+ * page-scoped second pass over a text PDF is told apart from the facts the text pass already
+ * returned instead of colliding with them.
+ */
+function visionTranscription(pageNumber) {
+  const suffix = pageNumber === 1 ? "" : `-page-${pageNumber}`;
+  return [
+    "VEYLTA SYNTHETIC LAB REPORT v1",
+    "SYNTHETIC TEST DATA — NOT FOR MEDICAL USE",
+    `FACT|synthetic-analyte-a${suffix}`,
+    `NAME|SYNTHETIC ANALYTE A${suffix === "" ? "" : ` PAGE ${pageNumber}`}`,
+    "VALUE|7.0",
+    "UNIT|synthetic-unit",
+    "RANGE|synthetic reference",
+    "CONFIDENCE|0.60",
+    "ISSUES|AMBIGUOUS_UNIT",
+    "END",
+  ].join("\n");
+}
+
 // «5.0–8.0 synthetic-unit» → printed bounds, as the API-side twin reads them; other text stays text.
 const printedBoundsPattern = /^(\d+(?:\.\d+)?)\s*[–-]\s*(\d+(?:\.\d+)?)(?:\s+\S.*)?$/;
 function printedBounds(referenceText) {
@@ -25,25 +47,18 @@ export async function handleExec(args) {
     for await (const chunk of process.stdin) prompt += chunk;
     const payload = JSON.parse(prompt.slice(prompt.lastIndexOf("\n") + 1));
     // Attached page images: the stub cannot read pixels, so it "transcribes" one fixed
-    // synthetic report per attached page, exactly as the API-side test double does.
-    const attached = args.reduce((count, arg) => count + (arg === "--image" ? 1 : 0), 0);
-    const transcription = [
-      "VEYLTA SYNTHETIC LAB REPORT v1",
-      "SYNTHETIC TEST DATA \u2014 NOT FOR MEDICAL USE",
-      "FACT|synthetic-analyte-a",
-      "NAME|SYNTHETIC ANALYTE A",
-      "VALUE|7.0",
-      "UNIT|synthetic-unit",
-      "RANGE|synthetic reference",
-      "CONFIDENCE|0.60",
-      "ISSUES|AMBIGUOUS_UNIT",
-      "END",
-    ].join("\n");
+    // synthetic report per attached page, exactly as the API-side test double does. The page
+    // number is the true one the caller asked for \u2014 codex-run.ts writes each image as
+    // `page-<n>.<ext>` \u2014 so a page-scoped second pass is answered under its own page numbers
+    // instead of being renumbered from 1 and refused as an unknown page.
+    const attached = args.flatMap((arg, index) =>
+      args[index - 1] === "--image" ? [Number(/page-(\d+)\./.exec(arg)?.[1] ?? index)] : [],
+    );
     const pages =
-      attached > 0
-        ? Array.from({ length: attached }, (_, index) => ({
-            pageNumber: index + 1,
-            text: transcription,
+      attached.length > 0
+        ? attached.map((pageNumber) => ({
+            pageNumber,
+            text: visionTranscription(pageNumber),
           }))
         : payload.pages;
     const facts = [];
@@ -135,7 +150,7 @@ export async function handleExec(args) {
     await writeFile(
       args[marker + 1],
       JSON.stringify({
-        ...(attached > 0
+        ...(attached.length > 0
           ? { pages: pages.map(({ pageNumber, text }) => ({ pageNumber, text })) }
           : {}),
         classification: {

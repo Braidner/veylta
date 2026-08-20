@@ -34,6 +34,18 @@ export const SYNTHETIC_VISION_TRANSCRIPTION = [
   "END",
 ].join("\n");
 
+/**
+ * The same rule `scripts/fake-codex-exec.mjs` follows: page 1 keeps the spelling a single-page
+ * synthetic picture prints, and a further page is named for itself, so a page-scoped second
+ * pass is told apart from the facts a text pass already returned.
+ */
+function visionTranscription(pageNumber: number, base: string): string {
+  if (pageNumber === 1) return base;
+  return base
+    .replace("FACT|synthetic-analyte-a", `FACT|synthetic-analyte-a-page-${pageNumber}`)
+    .replace("NAME|SYNTHETIC ANALYTE A", `NAME|SYNTHETIC ANALYTE A PAGE ${pageNumber}`);
+}
+
 type SyntheticItems = ReturnType<typeof parseSyntheticLabPages>["extraction"]["items"];
 
 export function createSyntheticIntelligence(
@@ -43,7 +55,7 @@ export function createSyntheticIntelligence(
     mapItems?: (items: SyntheticItems) => SyntheticItems;
   } = {},
 ): DocumentIntelligenceProvider {
-  const visionTranscription = options.visionTranscription ?? SYNTHETIC_VISION_TRANSCRIPTION;
+  const transcription = options.visionTranscription ?? SYNTHETIC_VISION_TRANSCRIPTION;
   return {
     async analyze(input) {
       // Image sources: stand in for the model's own transcription of each attached page.
@@ -51,7 +63,7 @@ export function createSyntheticIntelligence(
         input.images !== undefined && input.images.length > 0
           ? input.images.map((image) => ({
               pageNumber: image.pageNumber,
-              text: visionTranscription,
+              text: visionTranscription(image.pageNumber, transcription),
               extractionMethod: "codex_vision",
               extractionVersion: "gpt-5.4-mini+codex-cli/test",
             }))

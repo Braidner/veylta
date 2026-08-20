@@ -169,6 +169,29 @@ its exchange), `exchange.ts`, `known-analytes.ts`, `constants.ts`, `errors.ts`. 
 beside them by theme (`provenance.test.ts`, `result-binding.test.ts`, …) over shared
 `test-support.ts` fixtures and exercise the public `analyze()`.
 
+**Picture pages inside a text PDF.** The whole-document choice is unchanged — a PDF with a text
+layer travels as text — but a page may paint a raster image and print almost nothing, and the
+text pass reads nothing from it. `pdf-text-extractor.ts` `imageOnlyPages` is the one rule that
+names such a page (a raster image and fewer than `IMAGE_ONLY_PAGE_TEXT_CHARACTERS` characters);
+after a successful text pass `processing/extraction-merge.ts` (`readImagePages`) subtracts every
+page that already yielded a fact or result, renders the rest with
+`renderPdfPagesToImages(bytes, { pages })` under their true page numbers, and analyses them in a
+second, page-scoped run. The two merge into one `ProcessingExtractionOutput`: the transcribed page
+replaces the text page of its number (`codex_vision`), items concatenate with repeated keys
+settled through the same `KeyRegistry`, and the text pass keeps title, category and summaries.
+Best-effort: a refusal, a provider error or more picture pages than one bounded run may carry
+leaves the text pass whole and records each page it could not read as
+`DocumentIntelligenceOutput.unreadPages` with a closed `DOCUMENT_PAGE_UNREAD_REASONS` code
+(`image_page_limit`, `vision_unavailable`), stored on `document_pages.unread_reason` (migration
+0041) by `processing/document-page-rows.ts`. The document projection carries one
+`DocumentPageReading` per page — number, `extractionMethod`, `unreadReason` —
+(`documents/document-page-readings.ts`), and the document page's rail card «Страницы»
+(`app/document-pages.ts` → `components/document-source-rail.tsx`) says in fixed Russian which
+page's picture was read and why one was not. `scripts/fake-codex-exec.mjs` and
+`apps/api/test/synthetic-intelligence.ts` read the true page number of each attached image
+(`page-<n>.<ext>`) and name a page past the first in its transcription, so the two passes stay
+distinguishable.
+
 **Codex boundary.** All model access goes through `codex/codex-cli-executor.ts`, which
 shells out to the local `codex` CLI, strips `OPENAI_*` from the child environment, bounds
 input/output bytes, and kills on timeout. Veylta never reads, copies, or persists Codex
@@ -176,7 +199,9 @@ credentials. **There is no local OCR.** A PDF text layer travels as text; a scan
 direct PNG/JPEG travels as bounded page images (`processing/document-images.ts`) attached with
 `--image`, and the model must transcribe each page first. Every fragment is bound to that
 transcription exactly as to a text layer; the page is stored with
-`extraction_method = codex_vision`. A run sends text or images, never both. The per-document
+`extraction_method = codex_vision`. A run sends text or images, never both — a text PDF whose
+picture pages need reading is two runs, one of each kind (see «Picture pages» above). The
+per-document
 agent registers a short-lived loopback MCP endpoint whose only tool re-authorizes the
 server-derived scope and returns bounded projections — never storage keys, paths, or file bytes.
 
@@ -528,6 +553,11 @@ YOU MUST NOT relax these to make a feature easier.
 - In a laboratory report the summary's numeric measurements are the facts: an answer whose
   facts miss most of them is refused as `incomplete_facts` so the retry asks again, instead
   of presenting a fraction of the document as the whole.
+- One run sends text or images, never both. A text PDF whose picture pages need reading is two
+  runs, one of each kind, merged into one analysis — never one run carrying both. The second is
+  best-effort and never fails the job: a page it could not read is recorded with a closed
+  `DOCUMENT_PAGE_UNREAD_REASONS` code and the document says so per page, because a picture
+  nothing read must never pass for a page that held nothing.
 - Audit events are payload-free: actor, tenant, action, resource selector, result, time.
   No filenames, medical values, fragments, or cursors. This holds without exception —
   `processing_job_exchanges` is never copied into an audit event.

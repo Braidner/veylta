@@ -5,9 +5,13 @@ import { execute, type QueryResult } from "./statements.js";
 
 export type { QueryResult };
 
-export interface DatabaseClient {
-  exec(sql: string): Promise<void>;
+/** Anything a read may run on: the pool itself, or one client inside a transaction. */
+export interface Queryable {
   query<Row extends object>(sql: string, values?: readonly unknown[]): Promise<QueryResult<Row>>;
+}
+
+export interface DatabaseClient extends Queryable {
+  exec(sql: string): Promise<void>;
 }
 
 export interface ReadinessProbe {
@@ -16,7 +20,7 @@ export interface ReadinessProbe {
 
 type ConstraintKind = "check" | "foreign-key" | "not-null" | "trigger" | "unique";
 
-const requiredSchemaMigration = "0040_document_size_ceiling";
+const requiredSchemaMigration = "0041_document_page_unread";
 
 const constraintCodes: Record<ConstraintKind, ReadonlySet<number>> = {
   check: new Set([275]),

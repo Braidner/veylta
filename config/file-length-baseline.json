@@ -4,7 +4,7 @@
     "apps/api/src/accounts/account-service.ts": 272,
     "apps/api/src/agent/document-agent-service.ts": 661,
     "apps/api/src/care-plan/care-plan-service.ts": 770,
-    "apps/api/src/documents/document-service.ts": 4844,
+    "apps/api/src/documents/document-service.ts": 4838,
     "apps/api/src/documents/evidence-bundle-verifier.test.ts": 268,
     "apps/api/src/documents/evidence-bundle-verifier.ts": 460,
     "apps/api/src/documents/routes.ts": 608,
@@ -12,7 +12,7 @@
     "apps/api/src/family/routes.ts": 377,
     "apps/api/src/processing/document-extraction-processor.ts": 304,
     "apps/api/src/processing/processing-job-service.test.ts": 855,
-    "apps/api/src/processing/processing-job-service.ts": 1621,
+    "apps/api/src/processing/processing-job-service.ts": 1573,
     "apps/api/src/processing/synthetic-lab-parser.ts": 276,
     "apps/api/src/settings/codex-runtime.ts": 349,
     "apps/api/src/settings/home-settings-service.ts": 325,
@@ -33,13 +33,13 @@
     "apps/api/test/observation-history.integration.test.ts": 425,
     "apps/api/test/profile-overview.integration.test.ts": 277,
     "apps/web/app/components/document-agent-workspace.tsx": 648,
-    "apps/web/app/components/veylta-app.tsx": 5975,
+    "apps/web/app/components/veylta-app.tsx": 5896,
     "e2e/document-agent.spec.ts": 300,
     "e2e/document-review.spec.ts": 321,
     "e2e/document-upload.spec.ts": 294,
     "e2e/family-profile.spec.ts": 307,
     "packages/contracts/src/index.test.ts": 678,
-    "packages/contracts/src/index.ts": 1406,
+    "packages/contracts/src/index.ts": 1315,
     "test/veylta-agent/bridge.test.mjs": 298
   }
 }

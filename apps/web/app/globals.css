@@ -5760,6 +5760,33 @@ body:has(.upload-dialog[open]) {
   color: var(--color-muted);
 }
 
+.document-pages-notes {
+  display: grid;
+  gap: 10px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-pages-notes li {
+  padding: 10px 12px;
+  color: var(--color-muted);
+  background: var(--color-surface);
+  border-radius: 10px;
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.document-pages-notes p {
+  margin: 0;
+}
+
+.document-pages-notes__head {
+  margin-bottom: 4px;
+  color: var(--color-ink);
+  font-weight: 650;
+}
+
 .document-rail-card--integrity details {
   margin-top: 14px;
 }

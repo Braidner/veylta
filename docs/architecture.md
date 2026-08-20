@@ -103,6 +103,23 @@ a text layer, and the stored page records `codex_vision` as its method. No local
 OCR engine runs on the household machine. The optional S3 adapter is a storage
 boundary, not document egress; it remains disabled unless explicitly configured.
 
+That whole-document choice is unchanged: one run carries text or images, never
+both. What is new is a second run. A page inside a text PDF may paint a picture
+and print almost nothing — a densitometry curve with a header and a caption —
+and the text pass reads nothing from it. After a successful text pass the worker
+renders exactly those pages (a raster image and fewer than
+`IMAGE_ONLY_PAGE_TEXT_CHARACTERS` characters, minus every page that already
+yielded a fact or result) and analyses them as images in a second, page-scoped
+run under their true page numbers. The two results merge into one analysis: the
+transcribed page replaces the text page of its number, items concatenate with
+repeated keys settled deterministically, and the text pass keeps the document's
+title, category and summaries. The second pass is best-effort — a refusal, a
+provider error or more picture pages than one bounded run may carry leaves the
+text pass's result whole and records each page it could not read with a closed
+reason from `DOCUMENT_PAGE_UNREAD_REASONS` in `document_pages.unread_reason`.
+The document projection prints those per page, so a picture that was never read
+says so instead of the document staying silent about it.
+
 ## System context
 
 ```mermaid

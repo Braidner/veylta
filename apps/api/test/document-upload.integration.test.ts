@@ -211,7 +211,7 @@ test("upload, replay, same-family deduplication, download, and restart stay cons
     assert.equal(metadata.statusCode, 200);
     assert.deepEqual(metadata.json(), {
       contractVersion: first.json().contractVersion,
-      document: first.json().document,
+      document: { ...first.json().document, pages: [] }, // no analysis has stored a page yet
     });
 
     const content = await app.inject({

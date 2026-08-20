@@ -1,9 +1,9 @@
 import { fileURLToPath } from "node:url";
-import { MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
+import { DOCUMENT_PAGE_TEXT_LAYER_METHOD, MAX_SYNTHETIC_PDF_BYTES } from "@veylta/contracts";
 import { getDocument, OPS, version as pdfjsVersion } from "pdfjs-dist/legacy/build/pdf.mjs";
 import type { ExtractedPageText } from "./synthetic-lab-parser.js";
 
-export const PDF_TEXT_EXTRACTION_METHOD = "pdf_text_layer" as const;
+export const PDF_TEXT_EXTRACTION_METHOD = DOCUMENT_PAGE_TEXT_LAYER_METHOD;
 export const PDF_TEXT_EXTRACTION_VERSION = `pdfjs-dist/${pdfjsVersion}` as const;
 /**
  * Below this many characters, a page that also painted a raster image carries a letterhead and
