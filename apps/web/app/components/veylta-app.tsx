@@ -2133,11 +2133,7 @@ function ProfileWorkspace({
       {detail === null && activeTab !== "documents" && activeTab !== "dossier" ? (
         <div className="profile-heading">
           <div>
-            <p className="context-line">
-              <span>{family.displayName}</span>
-              <span aria-hidden="true">/</span>
-              <span>{profile.kind === "dependent" ? "Зависимый профиль" : "Взрослый профиль"}</span>
-            </p>
+            {/* No trail: the header's own switcher already says whose space and whose profile. */}
             <h1 id="profile-title" aria-label={profile.displayName}>
               {greeting}, {profile.displayName.split(" ")[0]}
             </h1>

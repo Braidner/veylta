@@ -62,7 +62,7 @@ test("a synthetic family session survives reload and keeps the active profile in
   const names = await registerDemoFamily(page);
   const ownerProfileUrl = page.url();
 
-  await expect(page.getByText(names.family, { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { level: 1, name: names.profile })).toBeVisible();
   await expect(page.getByLabel("Активный профиль")).toHaveValue(/^[0-9a-f-]{36}$/);
 
   await page.reload();
