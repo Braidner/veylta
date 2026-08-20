@@ -205,6 +205,17 @@ deriving from `DocumentSummary`; both contracts unchanged at v1).
 
 ## Part 4 — history: trends and «what changed»
 
+Status: delivered on 2026-08-20. Four decisions made during execution: the summary's baseline for
+each series is the last point before the period, else the first point inside it — a series
+measured once with nothing earlier is «впервые измерено», not counted as a change (`historySummary`
+in `app/history-summary.ts`); the e2e journey (`observation-history.spec.ts`) asserts bucket counts
+only under the «Всё» period, since the synthetic fixture's dates are pinned and a bounded-period
+count would rot with the calendar; on a narrow screen the rail collapses into a labelled select,
+the spec's own word, rather than the dossier's filter strip; and the workspace renders its cabinet
+in every state, so `#observation-history` and `#indicator-catalog` exist before the values arrive
+— a hash the router cannot match at first paint is dropped, not retried, so the anchors must
+already be there.
+
 ### Data
 
 No new API. `indicator-series/v1` (one code's values by date with printed bounds),

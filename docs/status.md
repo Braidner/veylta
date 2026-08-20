@@ -183,6 +183,9 @@ The full first slice remains deliberately narrow:
     settings; old `/families/…` links redirect.
 29. see documents as a short queue of what is not done and a timeline of
     reviewed documents by their effective date, which the person may correct.
+30. read the history as trends: «что изменилось» over a period, an indicator
+    rail with sparklines, the chart against the printed reference band, every
+    point linked to its source.
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.

@@ -96,6 +96,15 @@ test("capture the консилиум screenshot", async ({ page }) => {
       window.scrollTo(0, passport.getBoundingClientRect().top + window.scrollY - 104);
   });
   await screenshot(page, "dossier.png");
+
+  // The history tab: what changed over the period, the indicator rail, and the chart against the
+  // printed band for the value that needs attention — the same two corrected results as above.
+  await page.goto(`${profileUrl}/history`);
+  await expect(page.getByRole("region", { name: "Что изменилось" })).toBeVisible();
+  await expect(page.getByRole("img", { name: /значения за период/ })).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await screenshot(page, "history.png");
+
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto(`${profileUrl}/assistants/physician`);
   const assistant = page.getByTestId("assistant-workspace");

@@ -396,6 +396,27 @@ in whole-day pages (`?before=&limit=` days, `nextBefore`) with `confirmedCount`,
 `document-timeline-node.tsx` → `document-date-editor.tsx`; the overview's document queries share
 `overview-documents-query.ts`.
 
+**History: trends and «что изменилось».** The history tab reads the record it already has: one
+paged load of all confirmed observations plus the passport's sex (`app/use-history-data.ts`, the
+dossier's bounded pattern), `buildDossierSeries` over it, and pure rules on top —
+`app/history-summary.ts` (periods 3 мес/6 мес/Год/Всё by UTC month arithmetic; four buckets by
+the dossier's status rule: вышли за референс / вернулись / без изменений / впервые измерены;
+`defaultSelectionKey` — the first outside series, else the first) and `app/history-chart.ts`
+(percent geometry: the printed reference band stepped per value and held back to the period's left
+edge for the first visible point, status points, the period's time axis). `app/history-selection.ts`
+(`chooseSelectionKey`) is the one rule for what the page shows: the reader's local choice while it
+still names a series, else the requested `?code=`, else the default. Components:
+`history-workspace.tsx` (the cabinet renders in every state, so `#observation-history` and
+`#indicator-catalog` exist before the values arrive; a click writes the URL back via `historyPath`
+for a coded series) → `history-summary.tsx` (period switch + counts + chips), `history-rail.tsx`
+(areas in `ANALYTE_AREAS` order, sparkline + delta, the filter anchored as `#indicator-catalog`; a
+select on narrow screens), `history-chart.tsx` (SVG; every point links to its source document;
+explicit status labels), and `history-table.tsx` (`components/observation-history-row.tsx`,
+`app/observation-dates.ts`) under the stable anchor `#observation-history`. Units are never
+converted: one code with two printed units is two series, chosen by a chip.
+`DocumentIndicatorHistory` on the document page still reads the same observations endpoint
+filtered by `canonicalCode` (`buildIndicatorHistoryPath`), not a separate indicator-series call.
+
 **Object storage** is behind `ObjectStorage/v1`. `storage-controller.ts` is the only
 runtime port for api and worker. Uploads stream through SHA-256; controlled reads take a
 bounded checksum-verified snapshot before returning bytes. Keys derive from trusted IDs +
