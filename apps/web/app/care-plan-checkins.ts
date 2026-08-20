@@ -48,10 +48,14 @@ export function checkinSummaryCopy(checkins: readonly CarePlanCheckin[]): string
   return `сделано ${done} · пропущено ${skipped} за 4 недели`;
 }
 
+/** The three words one day's mark is printed with, wherever a surface states it. */
+export function checkinStatusWord(status: CarePlanCheckinStatus | null): string {
+  if (status === "done") return "сделано";
+  return status === "skipped" ? "пропущено" : "без отметки";
+}
+
 /** The mark of one day as the strip's tooltip: «17.08.2026 — сделано». */
 export function checkinCellTitle(cell: CheckinCell): string {
   const [year, month, day] = cell.date.split("-");
-  const status =
-    cell.status === "done" ? "сделано" : cell.status === "skipped" ? "пропущено" : "без отметки";
-  return `${day}.${month}.${year} — ${status}`;
+  return `${day}.${month}.${year} — ${checkinStatusWord(cell.status)}`;
 }

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { formatSampleMoment, formatShortMoment } from "./format-moment.js";
+import { formatSampleDay, formatSampleMoment, formatShortMoment } from "./format-moment.js";
 
 test("a source date without a time is shown as a date, never as midnight in some time zone", () => {
   assert.equal(formatSampleMoment("2026-08-10T00:00:00.000Z"), "10 августа 2026 г.");
@@ -19,4 +19,11 @@ test("anything that is not a canonical moment is left verbatim", () => {
 
 test("a list row gets the short form: day, month, clock time", () => {
   assert.match(formatShortMoment("2026-08-17T16:45:00.000Z"), /^17 авг\., \d{2}:\d{2}$/);
+});
+
+test("a tight line gets the day alone, and a date-only value keeps its printed day", () => {
+  assert.equal(formatSampleDay("2026-05-14"), "14 мая");
+  assert.equal(formatSampleDay("2026-05-14T00:00:00.000Z"), "14 мая");
+  assert.match(formatSampleDay("2026-05-14T12:30:00.000Z"), /^1[45] мая$/);
+  assert.equal(formatSampleDay("весна 2026"), "весна 2026");
 });

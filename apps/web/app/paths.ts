@@ -80,6 +80,10 @@ export function profileApiPath(familyId: string, profileId: string): string {
   return `/v1/families/${encodeURIComponent(familyId)}/profiles/${encodeURIComponent(profileId)}`;
 }
 
+export function carePlanApiPath(familyId: string, profileId: string): string {
+  return `${profileApiPath(familyId, profileId)}/care-plan`;
+}
+
 export function documentApiPath(familyId: string, profileId: string, documentId: string): string {
   return `${profileApiPath(familyId, profileId)}/documents/${encodeURIComponent(documentId)}`;
 }

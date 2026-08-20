@@ -89,6 +89,7 @@ import { adminSetupError, validateAdminSetup } from "../account-access";
 import { ApiError, apiPrefix, apiRequest } from "../api-client";
 import { assistantIdentity } from "../assistant";
 import { takesCheckins } from "../care-plan-checkins";
+import { carePlanLanes } from "../care-plan-lanes";
 import { isProcessingActive, isReviewAvailable } from "../document-processing-activity";
 import {
   documentResultStatusCopy,
@@ -101,6 +102,7 @@ import { parseAsk } from "../dossier-ask";
 import { formatBytes } from "../format-bytes";
 import { formatDate, formatSampleMoment } from "../format-moment";
 import {
+  carePlanApiPath,
   documentApiPath,
   documentPath,
   historyPath,
@@ -184,10 +186,6 @@ function profileOverviewPath(familyId: string, profileId: string): string {
 
 function healthSummaryPath(familyId: string, profileId: string): string {
   return `${profileApiPath(familyId, profileId)}/health-summary`;
-}
-
-function carePlanPath(familyId: string, profileId: string): string {
-  return `${profileApiPath(familyId, profileId)}/care-plan`;
 }
 
 function healthSummaryHistoryPath(familyId: string, profileId: string): string {
@@ -3213,38 +3211,6 @@ function ProfileOverviewPanel({
   );
 }
 
-const carePlanLanes: ReadonlyArray<{
-  category: CarePlanCategory;
-  label: string;
-  empty: string;
-}> = [
-  {
-    category: "laboratory",
-    label: "Анализы",
-    empty: "Зафиксируйте анализ, который вы уже решили обсудить или повторить.",
-  },
-  {
-    category: "clinician",
-    label: "Специалисты",
-    empty: "Врач или специальность появляются только как принятый вами пункт.",
-  },
-  {
-    category: "nutrition",
-    label: "Питание",
-    empty: "Не назначаем рацион без ограничений, контекста и подтверждённого источника.",
-  },
-  {
-    category: "activity",
-    label: "Активность",
-    empty: "Спортивная программа требует ваших ограничений и явного принятия.",
-  },
-  {
-    category: "reminder",
-    label: "Напоминания",
-    empty: "Добавьте срок для уже принятого домашнего действия.",
-  },
-];
-
 type CarePlanState =
   | { kind: "loading" }
   | { kind: "ready"; response: CarePlanResponse }
@@ -3304,7 +3270,7 @@ function CarePlanPanel({
       setState({ kind: "loading" });
       try {
         const response = await apiRequest<CarePlanResponse>(
-          carePlanPath(familyId, profileId),
+          carePlanApiPath(familyId, profileId),
           signal === undefined ? undefined : { signal },
         );
         if (!signal?.aborted) setState({ kind: "ready", response });
@@ -3355,7 +3321,7 @@ function CarePlanPanel({
     setError(null);
     try {
       await apiRequest<CarePlanItemResponse>(
-        `${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(itemId)}`,
+        `${carePlanApiPath(familyId, profileId)}/items/${encodeURIComponent(itemId)}`,
         { method: "PUT", body: JSON.stringify(input) },
       );
       creationAttempt.current = null;
@@ -3380,7 +3346,7 @@ function CarePlanPanel({
     setError(null);
     try {
       await apiRequest<CarePlanItemResponse>(
-        `${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}/state`,
+        `${carePlanApiPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}/state`,
         {
           method: "PUT",
           body: JSON.stringify({
@@ -3403,7 +3369,7 @@ function CarePlanPanel({
     setError(null);
     try {
       const response = await apiRequest<CarePlanProposalResponse>(
-        `${carePlanPath(familyId, profileId)}/proposals`,
+        `${carePlanApiPath(familyId, profileId)}/proposals`,
         {
           method: "POST",
           body: JSON.stringify({ acknowledgement: "send_confirmed_summary_to_codex" }),
@@ -3672,7 +3638,7 @@ function CarePlanPanel({
                           ) : null}
                           {item.state === "accepted" && takesCheckins(item.category) ? (
                             <CarePlanCheckins
-                              itemPath={`${carePlanPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}`}
+                              itemPath={`${carePlanApiPath(familyId, profileId)}/items/${encodeURIComponent(item.id)}`}
                               checkins={item.checkins}
                               canWrite={canWrite}
                               onRecorded={load}

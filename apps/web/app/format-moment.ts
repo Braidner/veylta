@@ -19,20 +19,41 @@ export function formatShortMoment(value: string): string {
 }
 
 /**
- * A moment as the source printed it. A laboratory date without a time reaches us as midnight UTC
- * (the extractor's rule for a date-only source) or as a plain calendar date; showing a clock time
- * for it would invent precision — and shift the day in western time zones. Only a real time of day
- * is rendered with hours and minutes.
+ * A laboratory date without a time reaches us as midnight UTC (the extractor's rule for a
+ * date-only source) or as a plain calendar date. Such a value stands on a day, not a moment:
+ * rendering it in the reader's zone would shift the day westwards.
+ */
+function dayOnly(value: string): Date | null {
+  if (calendarDate.test(value)) return new Date(`${value}T00:00:00.000Z`);
+  if (canonicalTimestamp.test(value) && value.endsWith("T00:00:00.000Z")) return new Date(value);
+  return null;
+}
+
+/**
+ * A moment as the source printed it. Showing a clock time for a date-only value would invent
+ * precision, so only a real time of day is rendered with hours and minutes.
  */
 export function formatSampleMoment(value: string): string {
-  if (
-    calendarDate.test(value) ||
-    (canonicalTimestamp.test(value) && value.endsWith("T00:00:00.000Z"))
-  ) {
-    return new Intl.DateTimeFormat("ru-RU", { dateStyle: "long", timeZone: "UTC" }).format(
-      new Date(calendarDate.test(value) ? `${value}T00:00:00.000Z` : value),
-    );
+  const day = dayOnly(value);
+  if (day !== null) {
+    return new Intl.DateTimeFormat("ru-RU", { dateStyle: "long", timeZone: "UTC" }).format(day);
   }
   if (canonicalTimestamp.test(value)) return formatDate(value);
   return value;
+}
+
+/** "14 мая" — the day a value stands on, for a line too tight to carry the year or the time. */
+export function formatSampleDay(value: string): string {
+  const day = dayOnly(value);
+  if (day !== null) {
+    return new Intl.DateTimeFormat("ru-RU", {
+      day: "numeric",
+      month: "long",
+      timeZone: "UTC",
+    }).format(day);
+  }
+  if (!canonicalTimestamp.test(value)) return value;
+  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "long" }).format(
+    new Date(value),
+  );
 }
