@@ -33,13 +33,18 @@ test("desktop dashboard matches the full-width reference composition", async ({ 
   // A fresh profile has nothing outside, so the tile is a statement, not a way into the dossier.
   await expect(page.getByText("Все показатели в пределах диапазонов источников")).toBeVisible();
   await expect(page.locator("a.health-signal--link")).toHaveCount(0);
+  // With nothing outside there is nothing to name, so the block keeps only its note.
+  await expect(page.locator(".health-signals__attention")).toHaveCount(0);
   await expect(
-    page.getByText(/Вне референса — оценка Veylta по печатным диапазонам/),
+    page.getByText(/Оценка Veylta по печатным диапазонам ваших источников, а не диагноз/),
   ).toBeVisible();
   await expect(page.getByText("индекс здоровья", { exact: false })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Последние документы" })).toBeVisible();
+  const planBlock = page.locator(".dashboard-plan");
+  await expect(planBlock.getByRole("heading", { name: "План заботы" })).toBeVisible();
+  await expect(planBlock.getByText("В плане пока ничего нет")).toBeVisible();
   await expect(
-    page.locator(".dashboard-plan").getByRole("heading", { name: "План заботы" }),
+    planBlock.getByText("Черновики помощников не становятся назначениями автоматически."),
   ).toBeVisible();
   await expect(page.getByRole("button", { name: "Добавить источник" })).toBeVisible();
 

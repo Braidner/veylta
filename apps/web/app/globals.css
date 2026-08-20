@@ -2040,66 +2040,182 @@ h3 {
   font-size: 0.75rem;
 }
 
-.dashboard-plan__empty {
+.dashboard-plan {
   display: flex;
-  gap: var(--space-sm);
-  align-items: flex-start;
-  padding: var(--space-md) 0;
+  flex-direction: column;
 }
 
-.dashboard-plan__empty > span {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border: 1px solid var(--color-line);
-  border-radius: 50%;
-}
-
-.dashboard-plan__empty p,
-.dashboard-plan__empty strong,
-.dashboard-plan__empty small {
-  display: block;
-  margin: 0;
-}
-
-.dashboard-plan__empty strong {
-  font-size: 0.75rem;
-}
-
-.dashboard-plan__empty small {
-  margin-top: var(--space-2xs);
-  color: var(--color-muted);
-  font-size: 0.68rem;
-  line-height: 1.4;
-}
-
-.dashboard-plan__source {
+.dashboard-plan__items {
   display: flex;
-  gap: var(--space-sm);
-  align-items: center;
-  justify-content: space-between;
-  min-height: 78px;
-  padding: var(--space-md);
-  color: white;
-  background: oklch(0.22 0.018 255);
-  border-radius: 12px;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  min-height: 0;
+  margin: var(--space-sm) 0 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.dashboard-plan__items a {
+  display: grid;
+  gap: 3px;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-surface);
+  border-radius: 10px;
   text-decoration: none;
 }
 
-.dashboard-plan__source span,
-.dashboard-plan__source strong,
-.dashboard-plan__source small {
-  display: block;
+.dashboard-plan__items a:hover {
+  background: oklch(0.94 0.02 270);
 }
 
-.dashboard-plan__source strong {
+.dashboard-plan__items a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.dashboard-plan__lane {
+  color: var(--color-primary);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashboard-plan__items strong {
+  overflow: hidden;
+  color: var(--color-ink);
   font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.dashboard-plan__source small {
-  margin-top: var(--space-2xs);
-  color: oklch(1 0 0 / 70%);
+.dashboard-plan__items small {
+  display: flex;
+  gap: var(--space-2xs);
+  flex-wrap: wrap;
+  color: var(--color-muted);
   font-size: 0.65rem;
+}
+
+.dashboard-plan__items i {
+  font-style: normal;
+}
+
+.dashboard-plan__items i::before {
+  content: "· ";
+}
+
+.dashboard-plan__note {
+  flex: 1 1 auto;
+  margin: var(--space-md) 0 0;
+  color: var(--color-muted);
+  font-size: 0.72rem;
+}
+
+.dashboard-plan__promise {
+  margin: var(--space-sm) 0 0;
+  color: var(--color-muted);
+  font-size: 0.65rem;
+  line-height: 1.4;
+}
+
+.health-signals__attention {
+  margin-top: var(--space-sm);
+}
+
+.health-signals__attention ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2xs);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.health-signals__attention a {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-sm);
+  align-items: baseline;
+  padding: var(--space-xs) var(--space-sm);
+  background: var(--color-surface);
+  border-radius: 10px;
+  text-decoration: none;
+}
+
+.health-signals__attention a:hover {
+  background: oklch(0.96 0.035 72);
+}
+
+.health-signals__attention a:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.health-signals__attention-name {
+  display: flex;
+  grid-row: 1;
+  grid-column: 1;
+  gap: var(--space-2xs);
+  min-width: 0;
+  align-items: baseline;
+}
+
+.health-signals__attention-name strong {
+  overflow: hidden;
+  color: var(--color-ink);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.health-signals__attention-name b {
+  flex: 0 0 auto;
+  color: var(--color-warning);
+  font-size: 0.75rem;
+  font-weight: 620;
+}
+
+.health-signals__attention-reader {
+  display: flex;
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  gap: 3px;
+  align-items: center;
+  align-self: center;
+  color: var(--color-muted);
+  font-size: 0.65rem;
+}
+
+.health-signals__attention-standing {
+  display: flex;
+  grid-row: 2;
+  grid-column: 1;
+  gap: var(--space-2xs);
+  flex-wrap: wrap;
+  color: var(--color-muted);
+  font-size: 0.65rem;
+  line-height: 1.35;
+}
+
+.health-signals__attention-standing i {
+  font-style: normal;
+}
+
+.health-signals__attention-standing i::before {
+  content: "· ";
+}
+
+.health-signals__attention-more {
+  display: inline-block;
+  margin-top: var(--space-2xs);
+  color: var(--color-muted);
+  font-size: 0.68rem;
 }
 
 .care-plan {

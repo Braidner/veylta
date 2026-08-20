@@ -1,4 +1,5 @@
-import type { ProfileOverviewResponse } from "@veylta/contracts";
+import type { AssistantId, ProfileOverviewResponse } from "@veylta/contracts";
+import { assistantStateLine } from "./dashboard-assistants";
 import { formatSampleMoment } from "./format-moment";
 import { assistantPath, documentPath, profileTabPath } from "./paths";
 import { countCopy } from "./russian-plural";
@@ -53,7 +54,9 @@ export function signalHref(
 
 /**
  * The physician card is the primary one. It reads only confirmed values, so while values still
- * wait for review it points there first; the second opinion opens once there is evidence.
+ * wait for review it points there first; the second opinion opens once there is evidence. The
+ * message here is what the card says before the room has ever answered — once it has, the room's
+ * own state replaces it.
  */
 function physician(overview: ProfileOverviewResponse): DashboardAssistant {
   const label = "ИИ-врач · второе мнение";
@@ -129,43 +132,65 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
   };
 }
 
+/** A card says what its room last said; what the room is for is the line before it ever has. */
+function withRoomState(
+  card: DashboardAssistant,
+  overview: ProfileOverviewResponse,
+  assistantId: AssistantId,
+  now: Date,
+): DashboardAssistant {
+  return {
+    ...card,
+    message: assistantStateLine(overview.assistants, assistantId, card.message, now),
+  };
+}
+
 export function buildProfileDashboardModel(
   overview: ProfileOverviewResponse,
+  now = new Date(),
 ): ProfileDashboardModel {
   const { confirmedCount, documentCount, outsideIndicatorCount } = overview;
   const newestDocument = overview.recentDocuments[0];
+  const room = (card: DashboardAssistant, assistantId: AssistantId) =>
+    withRoomState(card, overview, assistantId, now);
 
   return {
     assistants: [
-      physician(overview),
-      {
-        id: "nutrition",
-        label: "ИИ-нутрициолог",
-        role: "Питание по подтверждённым данным",
-        message:
-          confirmedCount === 0
-            ? "Пока нечего оценивать: план питания строится на подтверждённых значениях и вашем профиле — лекарствах, диагнозах, ограничениях, целях."
-            : "Оценю рацион по подтверждённым значениям и профилю: что усилить, что ограничить, что измерить снова — и что сверить с врачом.",
-        meta: "Добавки — по названию, без доз; каждый пункт подтверждает диетолог или врач",
-        action: {
-          label: "Открыть питание",
-          href: assistantPath(overview.profile.handle, "nutritionist"),
+      room(physician(overview), "physician"),
+      room(
+        {
+          id: "nutrition",
+          label: "ИИ-нутрициолог",
+          role: "Питание по подтверждённым данным",
+          message:
+            confirmedCount === 0
+              ? "Пока нечего оценивать: план питания строится на подтверждённых значениях и вашем профиле — лекарствах, диагнозах, ограничениях, целях."
+              : "Оценю рацион по подтверждённым значениям и профилю: что усилить, что ограничить, что измерить снова — и что сверить с врачом.",
+          meta: "Добавки — по названию, без доз; каждый пункт подтверждает диетолог или врач",
+          action: {
+            label: "Открыть питание",
+            href: assistantPath(overview.profile.handle, "nutritionist"),
+          },
         },
-      },
-      {
-        id: "movement",
-        label: "ИИ-тренер",
-        role: "Нагрузка по подтверждённым данным",
-        message:
-          confirmedCount === 0
-            ? "Пока нечего оценивать: программа строится на подтверждённых значениях, ваших ограничениях, допуске и отметках в плане."
-            : "Оценю нагрузку по подтверждённым значениям, ограничениям и допуску: что делать, сколько, как прибавлять по вашим отметкам — и когда остановиться.",
-        meta: "Не заменяет тренера или врача; каждый пункт подтверждает физиотерапевт или врач",
-        action: {
-          label: "Открыть активность",
-          href: assistantPath(overview.profile.handle, "trainer"),
+        "nutritionist",
+      ),
+      room(
+        {
+          id: "movement",
+          label: "ИИ-тренер",
+          role: "Нагрузка по подтверждённым данным",
+          message:
+            confirmedCount === 0
+              ? "Пока нечего оценивать: программа строится на подтверждённых значениях, ваших ограничениях, допуске и отметках в плане."
+              : "Оценю нагрузку по подтверждённым значениям, ограничениям и допуску: что делать, сколько, как прибавлять по вашим отметкам — и когда остановиться.",
+          meta: "Не заменяет тренера или врача; каждый пункт подтверждает физиотерапевт или врач",
+          action: {
+            label: "Открыть активность",
+            href: assistantPath(overview.profile.handle, "trainer"),
+          },
         },
-      },
+        "trainer",
+      ),
     ],
     signals: {
       pendingReview: {

@@ -5,13 +5,11 @@ import {
   Activity,
   ArrowUpRight,
   BadgeCheck,
-  CalendarDays,
   CircleAlert,
   ClipboardCheck,
   FileText,
   MessagesSquare,
   PersonStanding,
-  ShieldCheck,
   Sparkles,
   Stethoscope,
   Utensils,
@@ -27,6 +25,8 @@ import type {
   DashboardSignalKey,
 } from "../profile-dashboard";
 import { buildProfileDashboardModel, signalHref } from "../profile-dashboard";
+import { DashboardAttention } from "./dashboard-attention";
+import { DashboardPlan } from "./dashboard-plan";
 import { DashboardTools } from "./dashboard-tools";
 
 const assistantIcons: Record<DashboardAssistantId, LucideIcon> = {
@@ -200,59 +200,6 @@ function DashboardDocuments({
   );
 }
 
-function currentWeek(): ReadonlyArray<{ label: string; date: number; active: boolean }> {
-  const today = new Date();
-  const start = new Date(today);
-  start.setDate(today.getDate() - ((today.getDay() + 6) % 7));
-  const labels = ["ПН", "ВТ", "СР", "ЧТ", "ПТ", "СБ", "ВС"];
-  return labels.map((label, index) => {
-    const date = new Date(start);
-    date.setDate(start.getDate() + index);
-    return { label, date: date.getDate(), active: date.toDateString() === today.toDateString() };
-  });
-}
-
-function DashboardPlan({ href }: { href: string }) {
-  return (
-    <section className="dashboard-plan" aria-label="Календарь и быстрый доступ к плану">
-      <div className="dashboard-card-heading">
-        <span aria-hidden="true">
-          <CalendarDays size={20} strokeWidth={1.8} />
-        </span>
-        <h3 id="dashboard-plan-title">План заботы</h3>
-        <Link href={href} aria-label="Открыть план заботы">
-          <ArrowUpRight size={18} aria-hidden="true" />
-        </Link>
-      </div>
-
-      <ol className="dashboard-plan__week" aria-label="Текущая неделя">
-        {currentWeek().map((day) => (
-          <li key={day.label} data-active={day.active ? "true" : undefined}>
-            <small>{day.label}</small>
-            <strong>{day.date}</strong>
-          </li>
-        ))}
-      </ol>
-
-      <div className="dashboard-plan__empty">
-        <span aria-hidden="true" />
-        <p>
-          <strong>Ваши действия — только после подтверждения</strong>
-          <small>Черновики помощников не становятся назначениями автоматически.</small>
-        </p>
-      </div>
-
-      <Link className="dashboard-plan__source" href={href}>
-        <span>
-          <strong>Источник всегда рядом</strong>
-          <small>Каждый пункт связан с подтверждёнными данными</small>
-        </span>
-        <ShieldCheck size={20} aria-hidden="true" />
-      </Link>
-    </section>
-  );
-}
-
 export function ProfileDashboard({
   overview,
   onUpload,
@@ -312,14 +259,19 @@ export function ProfileDashboard({
             />
           ))}
         </div>
+        <DashboardAttention overview={overview} />
         <p className="health-signals__note">
-          Вне референса — оценка Veylta по печатным диапазонам ваших источников, а не диагноз; она
-          ведёт к названному специалисту в досье. Остальное — состояние архива.
+          Оценка Veylta по печатным диапазонам ваших источников, а не диагноз — каждая ведёт к
+          названному специалисту.
         </p>
       </section>
 
       <DashboardDocuments overview={overview} onUpload={onUpload} />
-      <DashboardPlan href={profileTabPath(handle, "dossier")} />
+      <DashboardPlan
+        familyId={overview.profile.familyId}
+        profileId={overview.profile.id}
+        href={profileTabPath(handle, "dossier")}
+      />
     </div>
   );
 }

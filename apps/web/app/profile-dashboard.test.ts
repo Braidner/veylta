@@ -139,6 +139,46 @@ test("only an outside tile above zero leads into the dossier", () => {
   assert.equal(signalHref("pendingReview", wholeRecord), null);
 });
 
+test("a card that has answered says what its room said, not what the room can do", () => {
+  const now = new Date(2026, 7, 20, 11, 0, 0);
+  const model = buildProfileDashboardModel(
+    overview({
+      confirmedCount: 41,
+      assistants: [
+        {
+          assistantId: "physician",
+          answeredAt: new Date(2026, 7, 15, 9, 0, 0).toISOString(),
+          urgency: "soon",
+          refused: false,
+        },
+        {
+          assistantId: "trainer",
+          answeredAt: new Date(2026, 7, 19, 9, 0, 0).toISOString(),
+          urgency: null,
+          refused: true,
+        },
+      ],
+    }),
+    now,
+  );
+
+  assert.equal(
+    model.assistants[0]?.message,
+    "Последний ответ 5 дней назад · Запишитесь к врачу в ближайшие недели",
+  );
+  assert.equal(model.assistants[2]?.message, "Последний ответ не прошёл проверку");
+  // The room that never answered keeps one sentence of what it is for, not the paragraph.
+  assert.equal(
+    model.assistants[1]?.message,
+    "Оценю рацион по подтверждённым значениям и профилю: что усилить, что ограничить, что измерить снова — и что сверить с врачом.",
+  );
+  // A standing constraint is not self-description, so it stays under every card.
+  assert.equal(
+    model.assistants[1]?.meta,
+    "Добавки — по названию, без доз; каждый пункт подтверждает диетолог или врач",
+  );
+});
+
 test("nutrition and movement assistants stay honest when context is absent", () => {
   const model = buildProfileDashboardModel(overview());
 

@@ -165,6 +165,28 @@ test("the dossier reads confirmed values against their references and sends the 
   await expect(signals.locator(".health-signal", { hasText: "Документов" })).toContainText(
     "Последний —",
   );
+  // The block names the finding, not just the count: the value, its placement and who reads it.
+  const finding = signals.locator(".health-signals__attention li");
+  await expect(finding).toHaveCount(1);
+  await expect(finding).toContainText("ТТГ");
+  await expect(finding).toContainText("9.9 мМЕ/л");
+  await expect(finding).toContainText("выше 5.0–8.0 synthetic-unit");
+  await expect(finding).toContainText("эндокринолог");
+  await expect(finding.getByRole("link")).toHaveAttribute(
+    "href",
+    /\/[a-z0-9-]+\/history\?code=tsh$/,
+  );
+  // The plan block shows the accepted visit itself, with its lane and the day it stands on.
+  const overviewPlan = page.locator(".dashboard-plan");
+  const planned = overviewPlan.locator(".dashboard-plan__items li");
+  await expect(planned).toHaveCount(1);
+  await expect(planned).toContainText("Специалисты");
+  await expect(planned).toContainText("Визит: эндокринолог — ТТГ");
+  await expect(planned).toContainText("без даты");
+  // The physician's card says what its room last said, not what the room can do.
+  await expect(page.locator('[data-assistant="physician"] .assistant-card__message')).toContainText(
+    /^Последний ответ сегодня · /,
+  );
   // The row names the document, not the stored filename, and says what it left behind.
   const documentRow = page.locator(".dashboard-documents__list li").first();
   await expect(documentRow).toContainText("Синтетические лабораторные результаты");
