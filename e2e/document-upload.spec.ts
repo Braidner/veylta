@@ -238,8 +238,7 @@ test("document archive searches summaries and deletion requires an explicit conf
   const archive = page.getByRole("region", { name: "Архив документов" });
   const search = archive.getByPlaceholder("Поиск по саммари и результатам");
   await search.fill("лабораторные результаты");
-  // Hits render as timeline nodes under their own heading, summary and all; the entry names
-  // its kind and its file on one line.
+  // Hits render as timeline nodes: their own heading, the summary, kind and file on one line.
   await expect(archive.getByRole("heading", { name: "1 документ" })).toBeVisible();
   await expect(archive.locator(".document-timeline__meta")).toHaveText(`Анализы · ${filename}`);
   await expect(archive.locator(".document-timeline__summary")).toBeVisible();
