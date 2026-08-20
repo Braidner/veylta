@@ -122,7 +122,7 @@ Response `201`:
 
 ```json
 {
-  "contractVersion": "family-profile/v2",
+  "contractVersion": "family-profile/v3",
   "family": {
     "id": "family_placeholder",
     "displayName": "Synthetic demo family",
@@ -135,6 +135,7 @@ Response `201`:
     "displayName": "Synthetic owner profile",
     "kind": "adult",
     "access": "owner",
+    "handle": "synthetic-owner",
     "createdAt": "2026-08-11T00:00:00Z"
   }
 }
@@ -170,11 +171,11 @@ names, filesystem paths, or Codex status.
 
 ### `GET /v1/settings`
 
-Returns the administrator-only `home-settings/v2` projection:
+Returns the administrator-only `home-settings/v5` projection:
 
 ```json
 {
-  "contractVersion": "home-settings/v2",
+  "contractVersion": "home-settings/v5",
   "codex": {
     "installed": true,
     "authenticated": true,
@@ -185,7 +186,8 @@ Returns the administrator-only `home-settings/v2` projection:
     "runtimeVersion": null,
     "preference": {
       "modelId": "gpt-5.6-sol",
-      "reasoningEffort": "medium",
+      "documentReasoningEffort": "medium",
+      "assistantReasoningEffort": "high",
       "serviceTier": "standard"
     },
     "models": [
@@ -490,7 +492,7 @@ Response `202`:
 
 ```json
 {
-  "contractVersion": "document/v5",
+  "contractVersion": "document/v8",
   "disposition": "created",
   "document": {
     "id": "document_placeholder",
@@ -502,6 +504,7 @@ Response `202`:
     "byteSize": 1234,
     "sha256": "sha256_placeholder",
     "uploadedAt": "2026-08-11T00:00:00Z",
+    "effectiveDate": { "value": "2026-08-11", "source": "upload" },
     "duplicate": {
       "possible": false,
       "documentId": null,
@@ -648,7 +651,7 @@ Returns a compact status response and records a payload-free access audit event:
 
 ```json
 {
-  "contractVersion": "document/v5",
+  "contractVersion": "document/v8",
   "documentId": "document_placeholder",
   "processing": {
     "state": "awaiting_review",
@@ -699,7 +702,7 @@ one final review decision; the browser never fabricates either state.
 Requires the exact configured `Origin` and an `Idempotency-Key`. It accepts no
 body and is available only for the authorized document's `dead_letter` job. The
 server records an immutable retry request, resets that existing job to `queued`,
-and returns `202` with the same `document/v5` processing status shape. The next
+and returns `202` with the same `document/v8` processing status shape. The next
 processing read includes the appended requeue event in its journal.
 Replaying the same family/actor/key returns the original accepted retry; a key
 used for another document returns `409 IDEMPOTENCY_CONFLICT`. The caller cannot
@@ -890,7 +893,7 @@ The first accepted command returns `201`:
 
 ```json
 {
-  "contractVersion": "document/v5",
+  "contractVersion": "document/v8",
   "review": {
     "id": "review_placeholder",
     "factId": "fact_0123456789abcdef0123456789abcdef01234567",
@@ -936,9 +939,9 @@ a safe `GET`, requires neither `Origin` nor an idempotency key, and returns
 boundary as documents and history. Inaccessible and cross-family selectors
 produce the same non-disclosing `404`.
 
-The response is deliberately bounded: `recentDocuments`,
-`reviewQueue.documents`, and `recentObservations` contain at most three entries
-each, newest first. `reviewQueue.pendingFactCount` counts raw facts without a
+The response is deliberately bounded: `recentDocuments` and
+`reviewQueue.documents` carry at most fifty entries, `recentObservations` at
+most three, newest first. `reviewQueue.pendingFactCount` counts raw facts without a
 final decision; `needsAttentionFactCount` is the subset marked
 `needs_review`. A review queue item contains no extracted medical value: the
 client follows the authorized document path to inspect evidence and choose an
@@ -950,21 +953,25 @@ unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` 
 
 ```json
 {
-  "contractVersion": "profile-overview/v1",
+  "contractVersion": "profile-overview/v3",
   "profile": {
     "id": "profile_placeholder",
     "familyId": "family_placeholder",
     "displayName": "Synthetic profile",
     "kind": "adult",
     "access": "owner",
+    "handle": "synthetic-profile",
     "createdAt": "2026-08-12T00:00:00.000Z"
   },
+  "documentCount": 1,
   "recentDocuments": [
     {
       "id": "document_placeholder",
       "originalFilename": "synthetic.pdf",
       "contentType": "application/pdf",
       "uploadedAt": "2026-08-12T00:00:00.000Z",
+      "effectiveDate": { "value": "2026-08-12", "source": "upload" },
+      "intelligence": null,
       "processing": { "state": "awaiting_review", "updatedAt": "2026-08-12T00:01:00.000Z", "factCount": 2, "needsReviewCount": 1 }
     }
   ],
@@ -990,14 +997,14 @@ unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` 
 It is not a diagnosis, medical summary, health score, risk state, trend, or
 recommendation. Each successful read writes a payload-free
 `profile.overview.opened` audit event against the profile with only
-`profile-overview/v1` as metadata; it never records filenames, values, units,
+`profile-overview/v3` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
 ## Household care plan (Task 33a)
 
 ### `GET /v1/families/{familyId}/profiles/{profileId}/care-plan`
 
-Returns `home-care-plan/v1` under the normal profile authorization boundary.
+Returns `home-care-plan/v2` under the normal profile authorization boundary.
 Administrators, the family owner, and the self-linked adult receive
 `canWrite: true`; an explicitly granted `profile.read` actor receives the same
 plan with `canWrite: false`. Unknown, archived, cross-family, and ungranted
@@ -1006,7 +1013,7 @@ non-cacheable.
 
 ```json
 {
-  "contractVersion": "home-care-plan/v1",
+  "contractVersion": "home-care-plan/v2",
   "profileId": "profile_placeholder",
   "canWrite": true,
   "evidence": {
@@ -1030,6 +1037,7 @@ non-cacheable.
       "origin": "user",
       "revision": 1,
       "provenance": null,
+      "checkins": [],
       "createdAt": "2026-08-12T00:00:00.000Z",
       "updatedAt": "2026-08-12T00:00:00.000Z"
     }
@@ -1105,7 +1113,7 @@ can select at most one item in each of the five lanes.
 
 First completion returns `201`; the same summary/model/rule returns the stored
 run with `200`, `replayed: true`, and no second Codex invocation. Every item
-remains `proposed`. Audit contains only action and `home-care-plan/v1`, never
+remains `proposed`. Audit contains only action and `home-care-plan/v2`, never
 medical values, prompt, output, model, or context. Runtime/subscription failure
 returns sanitized `503 CODEX_UNAVAILABLE`; malformed output returns `503
 OUTPUT_INVALID`.
@@ -1182,7 +1190,7 @@ use the same non-disclosing `404`.
                 "fragment": "Synthetic source fragment",
                 "contentPath": "/v1/families/family_placeholder/documents/document_placeholder/content"
               }
-            },
+            }
           }
         ]
       }
