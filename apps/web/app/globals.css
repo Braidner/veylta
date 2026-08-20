@@ -10301,19 +10301,25 @@ body:has(.upload-dialog[open]) {
   list-style: none;
 }
 
+/*
+ * A node is a reading block, not a row: the record is read one document at a time, so each
+ * entry claims a large part of the viewport and the next one only peeks in at the edge.
+ */
 .document-timeline__node {
   position: relative;
   display: grid;
-  gap: 6px;
-  padding: 12px 0 16px 24px;
+  gap: 10px;
+  align-content: start;
+  min-height: clamp(200px, 30vh, 340px);
+  padding: 18px 0 26px 28px;
 }
 
 .document-timeline__node::before {
   position: absolute;
-  top: 18px;
-  left: -5px;
-  width: 10px;
-  height: 10px;
+  top: 25px;
+  left: -6px;
+  width: 12px;
+  height: 12px;
   background: var(--color-canvas);
   border: 2px solid var(--color-primary);
   border-radius: 50%;
@@ -10329,6 +10335,15 @@ body:has(.upload-dialog[open]) {
  */
 @media (prefers-reduced-motion: no-preference) {
   @supports (animation-timeline: view()) {
+    /*
+     * Exactly the room the oldest document needs to reach the middle of the viewport — half a
+     * screen less its own block. Without it the last entry ends its scroll recessed and can
+     * never be read; with more, the page just ends in empty space.
+     */
+    .document-timeline--scroll-focus {
+      padding-bottom: max(160px, calc(50vh - 170px));
+    }
+
     .document-timeline--scroll-focus .document-timeline__node {
       transform-origin: left center;
       animation: document-timeline-focus linear both;
@@ -10339,32 +10354,76 @@ body:has(.upload-dialog[open]) {
       animation: document-timeline-dot linear both;
       animation-timeline: view();
     }
+
+    /*
+     * Pointing at a receded document, or tabbing into one, is intent: it comes forward at once
+     * and stays readable, so no control is ever operated through a blur.
+     */
+    .document-timeline--scroll-focus .document-timeline__node:hover,
+    .document-timeline--scroll-focus .document-timeline__node:focus-within {
+      opacity: 1;
+      filter: none;
+      transform: none;
+      animation: none;
+    }
+
+    .document-timeline--scroll-focus .document-timeline__node:hover::before,
+    .document-timeline--scroll-focus .document-timeline__node:focus-within::before {
+      background: var(--color-primary);
+      border-color: var(--color-primary);
+      animation: none;
+    }
   }
 }
 
+/*
+ * A trapezoid, not a ramp: a document is held recessed, comes forward over a short stretch of
+ * scroll, owns the reading band alone, and recedes again. The steep sides are what keep exactly
+ * one entry lit — a linear ramp would leave its neighbours half-lit and the focus unreadable.
+ */
 @keyframes document-timeline-focus {
   0%,
-  100% {
-    opacity: 0.72;
-    transform: scale(0.96);
+  30% {
+    opacity: 0.32;
+    filter: blur(3px);
+    transform: scale(0.9);
   }
 
-  42%,
-  58% {
+  43%,
+  57% {
     opacity: 1;
-    transform: scale(1.03);
+    filter: blur(0);
+    transform: scale(1);
+  }
+
+  70%,
+  100% {
+    opacity: 0.32;
+    filter: blur(3px);
+    transform: scale(0.9);
   }
 }
 
 @keyframes document-timeline-dot {
   0%,
-  100% {
+  30% {
     background: var(--color-canvas);
+    border-color: var(--color-line);
+    box-shadow: 0 0 0 0 transparent;
   }
 
-  42%,
-  58% {
+  43%,
+  57% {
     background: var(--color-primary);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 5px oklch(0.5 0.2 268 / 13%);
+  }
+
+  70%,
+  100% {
+    background: var(--color-canvas);
+    border-color: var(--color-line);
+    box-shadow: 0 0 0 0 transparent;
   }
 }
 
@@ -10373,8 +10432,9 @@ body:has(.upload-dialog[open]) {
   flex-wrap: wrap;
   gap: 8px 12px;
   align-items: baseline;
-  font-size: 0.875rem;
+  font-size: 1rem;
   font-weight: 650;
+  letter-spacing: -0.01em;
 }
 
 .document-timeline__marker {
@@ -10399,7 +10459,7 @@ body:has(.upload-dialog[open]) {
 
 .document-timeline__body {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   justify-items: start;
 }
 
@@ -10413,10 +10473,14 @@ body:has(.upload-dialog[open]) {
 }
 
 .document-timeline__title {
+  max-width: 30ch;
   color: inherit;
-  font-size: 0.9375rem;
+  font-size: clamp(1.125rem, 1.6vw, 1.5rem);
   font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
   text-decoration: none;
+  text-wrap: balance;
 }
 
 .document-timeline__title:hover {
@@ -10424,11 +10488,12 @@ body:has(.upload-dialog[open]) {
 }
 
 .document-timeline__summary {
-  max-width: 68ch;
+  max-width: 62ch;
   margin: 2px 0 0;
   color: var(--color-muted);
-  font-size: 0.8125rem;
-  line-height: 1.5;
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  text-wrap: pretty;
 }
 
 .document-timeline__filename {
@@ -10504,7 +10569,8 @@ body:has(.upload-dialog[open]) {
   }
 
   /* Under the workspace bar's mobile layout a pinned label would cover the node it names. */
-  .document-timeline__year {
+  .document-timeline__year,
+  .document-timeline__month-title {
     position: static;
   }
 
