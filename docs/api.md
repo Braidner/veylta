@@ -559,6 +559,10 @@ includes fact and needs-review counts; `completed` includes the final fact
 count after every fact has one final decision. A failed state includes a safe
 category and retry eligibility, never a raw parser/database exception.
 
+`document/v8` adds `effectiveDate: { value, source }`: the person's correction if one is set
+(`PUT …/documents/{documentId}/date`, below), else the document's own printed date, else the UTC
+calendar day of `uploadedAt` — `source` names which as `"person" | "document" | "upload"`.
+
 Every successful metadata read records a payload-free audit event with actor,
 tenant, document, correlation ID, and time.
 
@@ -570,6 +574,64 @@ Russian-aware lowercasing, whitespace collapse, and an authorized local
 substring match against the latest title, short/detailed summaries, and
 structured result fields. The response is `private, no-store`; audit metadata
 records only the contract version and never the raw query or medical matches.
+
+### `GET /v1/families/{familyId}/profiles/{profileId}/documents/timeline?before={date}&limit={days}`
+
+Returns `document-timeline/v1`: only reviewed documents — one still processing or carrying an
+undecided fact stays in the queue instead (`isInDocumentQueue`) and never appears here. A page is
+whole days: `limit` (`1`–`50`, default `50`) bounds how many of the most recent days strictly
+before `before` (`YYYY-MM-DD`; omitted starts from the newest day) carry at least one entry, and
+every entry of those days is returned, ordered by `effectiveDate` then `uploadedAt`, both
+descending. A malformed `before` or an out-of-range `limit` is `422`.
+
+```json
+{
+  "contractVersion": "document-timeline/v1",
+  "entries": [
+    {
+      "id": "document_placeholder",
+      "originalFilename": "synthetic-result.pdf",
+      "contentType": "application/pdf",
+      "uploadedAt": "2026-08-11T00:00:00.000Z",
+      "effectiveDate": { "value": "2026-08-10", "source": "document" },
+      "category": "laboratory",
+      "title": "Общий анализ крови",
+      "shortSummary": "...",
+      "confirmedCount": 3,
+      "outsideRangeCount": 1,
+      "recordCount": 0
+    }
+  ],
+  "nextBefore": "2026-08-01"
+}
+```
+
+`confirmedCount` and `recordCount` are this document's confirmed observations and confirmed
+clinician records; `outsideRangeCount` is the subset of those observations that the dossier's own
+rule (`pointStatus`, `packages/contracts/src/observation-status.ts`) reads as outside their
+printed range or flagged by the laboratory. `nextBefore` is the oldest returned day, to pass as
+the next page's `before`, or `null` once nothing older remains. Access follows the same
+owner/self-linked-adult/`profile.read`-grant boundary as every other profile resource; an
+inaccessible or cross-family selector is the usual non-disclosing `404`. It is a safe `GET` — no
+`Origin` or idempotency key — and returns `Cache-Control: no-store`. Each read records a
+payload-free `profile.timeline.opened` audit event with only the contract version as metadata.
+
+### `PUT /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}/date`
+
+The person's correction of a document's effective date.
+
+```json
+{ "documentDate": "2026-08-10" }
+```
+
+Requires the owner or the profile's linked adult (`requireProfileWrite`) and the configured
+trusted `Origin`. `documentDate` is a calendar day, or `null` to drop the correction and fall back
+to the document's own printed date or the upload day; a malformed day, or one further ahead than
+tomorrow (UTC), returns `422`. A document the session may not write, or none, returns the usual
+non-disclosing `404`. Setting the current value again is a no-op and writes no audit row;
+otherwise the change writes a payload-free `document.date.corrected` event that never carries the
+date itself, and the response carries the `document/v8` contract version, `documentId`, and the
+resulting `effectiveDate: { value, source }`.
 
 ### `DELETE /v1/families/{familyId}/profiles/{profileId}/documents/{documentId}`
 
@@ -881,6 +943,10 @@ final decision; `needsAttentionFactCount` is the subset marked
 `needs_review`. A review queue item contains no extracted medical value: the
 client follows the authorized document path to inspect evidence and choose an
 explicit decision.
+
+`profile-overview/v3` adds a top-level `documentCount` — every active document of the profile,
+unlike the three-entry-capped `recentDocuments` — and carries `effectiveDate` on each
+`recentDocuments` entry the same way as `document/v8`.
 
 ```json
 {

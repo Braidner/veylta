@@ -142,6 +142,14 @@ across tabs.
 
 ## Part 3 — documents: queue and timeline
 
+Status: delivered on 2026-08-20. Three decisions made during execution: the timeline pages by
+whole days rather than by entry count — `limit` (1–50, default `MAX_DOCUMENT_TIMELINE_DAYS`)
+bounds how many of the most recent days carry an entry, not how many entries come back; the
+overview gains a `documentCount` field so the hero's «всего» is not the three-entry
+`recentDocuments` cap; and `effectiveDate` stays out of the synthetic bundle contracts, the same
+handle-style boundary as part 2 (`SyntheticEvidenceBundleDocument` keeps its own shape rather than
+deriving from `DocumentSummary`; both contracts unchanged at v1).
+
 ### Data
 
 - Migration 0039: `documents.document_date_override TEXT` (YYYY-MM-DD or NULL) with the plan's

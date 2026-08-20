@@ -378,6 +378,24 @@ null returns the panel to the conversation. There is no standalone journal secti
 panel renders a journal only while `activityRunId` matches the pinned run, so a slower
 response cannot appear under the wrong run's heading.
 
+**Documents: queue and timeline.** A document's *effective date* is one rule
+(`documents/document-date.ts`: the person's correction → the document's own date → the upload
+day in UTC, with `source: person | document | upload`), carried as `effectiveDate` by every
+projection with `intelligence` (`document/v8`, `profile-overview/v3`, which also counts
+`documentCount`); `PUT …/documents/:id/date` (`document-date-service.ts`, migration 0039
+`documents.document_date_override`) corrects it — 422 for a malformed day or one after tomorrow,
+audited payload-free as `document.date.corrected`. *Queue membership* is one rule in
+`packages/contracts/src/document-timeline.ts` (`isInDocumentQueue`: processing not completed or a
+fact undecided), shared by the web and by `GET …/documents/timeline`
+(`document-timeline-service.ts`, `document-timeline/v1`), which returns only reviewed documents
+in whole-day pages (`?before=&limit=` days, `nextBefore`) with `confirmedCount`,
+`outsideRangeCount` (the dossier's rule, `packages/contracts/src/observation-status.ts`) and
+`recordCount`. Web: `app/document-queue.ts` (rows, counts, actions), `app/document-timeline.ts`
+(nodes, month groups, date copy), `components/documents-workspace.tsx` →
+`document-exports.tsx` + `document-queue.tsx` + `document-timeline.tsx` →
+`document-timeline-node.tsx` → `document-date-editor.tsx`; the overview's document queries share
+`overview-documents-query.ts`.
+
 **Object storage** is behind `ObjectStorage/v1`. `storage-controller.ts` is the only
 runtime port for api and worker. Uploads stream through SHA-256; controlled reads take a
 bounded checksum-verified snapshot before returning bytes. Keys derive from trusted IDs +

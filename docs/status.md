@@ -181,6 +181,8 @@ The full first slice remains deliberately narrow:
 28. reach a person at `/<handle>` — the login, or the name — with the tabs as
     path segments and sign-in at `/login`; an owner renames the handle in
     settings; old `/families/…` links redirect.
+29. see documents as a short queue of what is not done and a timeline of
+    reviewed documents by their effective date, which the person may correct.
 
 Cloud OCR, clinically validated recommendations, FHIR
 exchange, production backup/restore, and the rest of the full MVP are explicitly deferred.
