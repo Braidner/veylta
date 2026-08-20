@@ -17,7 +17,7 @@ import {
 import Link from "next/link";
 import { documentKindLine, documentStandingCopy } from "../dashboard-documents";
 import { cn } from "../lib/cn";
-import { documentPath, historyPath, profileTabPath } from "../paths";
+import { documentPath, profileTabPath } from "../paths";
 import type {
   DashboardAssistant,
   DashboardAssistantId,
@@ -27,7 +27,6 @@ import type {
 import { buildProfileDashboardModel, signalHref } from "../profile-dashboard";
 import { DashboardAttention } from "./dashboard-attention";
 import { DashboardPlan } from "./dashboard-plan";
-import { DashboardTools } from "./dashboard-tools";
 
 const assistantIcons: Record<DashboardAssistantId, LucideIcon> = {
   physician: Stethoscope,
@@ -111,7 +110,7 @@ function AssistantCard({
       </div>
       <p className="assistant-card__message">{assistant.message}</p>
       <div className="assistant-card__footer">
-        <span>{assistant.meta}</span>
+        {assistant.meta === null ? null : <span>{assistant.meta}</span>}
         <AssistantAction assistant={assistant} primary={primary} onUpload={onUpload} />
       </div>
     </article>
@@ -234,8 +233,6 @@ export function ProfileDashboard({
           <AssistantCard assistant={model.assistants[2]} onUpload={onUpload} />
         </div>
       </section>
-
-      <DashboardTools historyHref={historyPath(handle)} />
 
       <section className="health-signals" aria-labelledby="health-signals-title">
         <div className="dashboard-panel-heading">

@@ -12,7 +12,8 @@ export interface DashboardAssistant {
   readonly label: string;
   readonly role: string;
   readonly message: string;
-  readonly meta: string;
+  /** A standing constraint of the room; null when the block's own header already says it. */
+  readonly meta: string | null;
   readonly action: {
     readonly label: string;
     readonly href: string;
@@ -78,7 +79,8 @@ function physician(overview: ProfileOverviewResponse): DashboardAssistant {
         pending > 0
           ? `${countCopy(pending, ["значение ещё ждёт", "значения ещё ждут", "значений ещё ждут"])} вашей проверки — ИИ-врач читает только подтверждённые. Разберу их с учётом вашего профиля и назову, что подтвердить у врача.`
           : "Разберу подтверждённые значения с учётом вашего профиля, назову вероятные объяснения и то, что стоит подтвердить у врача.",
-      meta: "Рекомендации для разговора с врачом, не диагноз",
+      // The block header already carries «Не заменяют специалиста» — saying it twice is noise.
+      meta: null,
       action: {
         label: "Открыть второе мнение",
         href: assistantPath(handle, "physician"),

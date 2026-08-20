@@ -1535,9 +1535,9 @@ h3 {
 .profile-dashboard {
   display: grid;
   grid-template:
-    "assistants tools signals signals" minmax(224px, auto)
-    "assistants tools documents plan" minmax(286px, 1fr)
-    / minmax(380px, 0.39fr) 56px minmax(320px, 0.34fr) minmax(286px, 0.27fr);
+    "assistants signals signals" minmax(224px, auto)
+    "assistants documents plan" minmax(286px, 1fr)
+    / minmax(380px, 0.39fr) minmax(340px, 0.36fr) minmax(300px, 0.25fr);
   gap: var(--space-md) var(--space-sm);
   height: 100%;
   min-height: 0;
@@ -1571,41 +1571,6 @@ h3 {
 
 .dashboard-plan {
   grid-area: plan;
-}
-
-.dashboard-tools {
-  display: flex;
-  grid-area: tools;
-  flex-direction: column;
-  gap: var(--space-xs);
-  align-self: start;
-  justify-self: center;
-  padding: var(--space-xs);
-  background: var(--color-surface);
-  border-radius: 999px;
-}
-
-.dashboard-tools a,
-.dashboard-tools button {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  color: var(--color-muted);
-  background: transparent;
-  border: 0;
-  border-radius: 50%;
-  place-items: center;
-  transition:
-    color 180ms ease-out,
-    background-color 180ms ease-out;
-}
-
-.dashboard-tools a:hover,
-.dashboard-tools a:focus-visible,
-.dashboard-tools button:hover,
-.dashboard-tools button:focus-visible {
-  color: var(--color-primary);
-  background: var(--color-canvas);
 }
 
 .dashboard-panel-heading {
@@ -1730,6 +1695,11 @@ h3 {
   gap: var(--space-sm);
   align-items: center;
   justify-content: space-between;
+}
+
+/* The action holds the right edge whether or not the card carries a constraint line. */
+.assistant-card__footer > :last-child {
+  margin-inline-start: auto;
 }
 
 .assistant-card__footer > span {
@@ -4636,10 +4606,6 @@ body:has(.upload-dialog[open]) {
       "plan" auto
       / 1fr;
     min-height: auto;
-  }
-
-  .dashboard-tools {
-    display: none;
   }
 
   .health-signals__grid {
