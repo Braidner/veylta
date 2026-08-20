@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MAX_SYNTHETIC_DOCUMENT_UPLOAD_BYTES } from "@veylta/contracts";
+import {
+  MAX_API_REQUEST_DURATION_MS,
+  MAX_SYNTHETIC_DOCUMENT_UPLOAD_BYTES,
+} from "@veylta/contracts";
 import nextConfig from "./next.config.js";
 
 test("the rewrite to the API admits a whole document upload", () => {
@@ -11,6 +14,14 @@ test("the rewrite to the API admits a whole document upload", () => {
     nextConfig.experimental?.proxyClientMaxBodySize,
     MAX_SYNTHETIC_DOCUMENT_UPLOAD_BYTES,
   );
+});
+
+test("the rewrite to the API never gives up before the API itself would", () => {
+  // Next's proxy abandons an upstream request after 30 s by default. An assistant turn spends
+  // two Codex budgets and runs past that, so the API persisted a verified answer while the
+  // browser was told the connection had failed. The proxy must outlast every request the API
+  // is allowed to take, not decide the deadline itself.
+  assert.equal(nextConfig.experimental?.proxyTimeout, MAX_API_REQUEST_DURATION_MS);
 });
 
 test("the API is reachable only through the /health-api rewrite", async () => {

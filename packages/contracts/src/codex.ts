@@ -45,3 +45,38 @@ export interface CodexUsageLimit {
   readonly windowDurationMinutes: number;
   readonly resetsAt: string;
 }
+
+// How long the CLI may run, and so how long one API request may take — the one place every hop
+// in front of the API reads it from. The API alone decides when work has run too long:
+// `apps/api/src/config.ts` bounds each Codex budget and `codex/codex-cli-executor.ts` kills the
+// child on it. A hop in front of the API — today the Next rewrite `/health-api/:path*`, which
+// abandons an upstream request after 30 s unless told otherwise — must never be the first to
+// give up, or the API finishes the work and persists it while the browser is told the
+// connection failed.
+
+/**
+ * The longest a single `codex exec` may run: the ceiling `CODEX_ASSISTANT_TIMEOUT_MS` is bounded
+ * by, and the largest of the API's Codex budgets. Its default is a third of it.
+ */
+export const MAX_CODEX_EXEC_TIMEOUT_MS = 900_000;
+/**
+ * One assistant turn is two of those budgets in sequence: the answer, then the independent run
+ * that refutes it. Everything shorter — a care-plan proposal, a document agent turn — is one.
+ */
+export const CODEX_EXECS_PER_ASSISTANT_TURN = 2;
+/** Veylta's own work around them: loading the evidence, verifying every block, persisting. */
+export const API_REQUEST_OVERHEAD_MS = 60_000;
+/**
+ * The ceiling every hop in front of the API must admit. It covers one assistant turn at the
+ * largest budget an operator may configure, and so every shorter request; a normal turn is far
+ * below it.
+ *
+ * It does **not** cover a консилиум. That runs a persona and a checker for each of up to
+ * `MAX_CONSILIUM_SPECIALISTS` invited specialties and then a synthesis with its own checker —
+ * a dozen execs, four budgets deep, all contending for one local CLI. No socket timeout is the
+ * right bound for that: it needs a turn that becomes a job the room polls, the way document
+ * processing already works with `processing_jobs`. Until then a консилиум can still outlive
+ * this ceiling and reach the browser as a failure it is not.
+ */
+export const MAX_API_REQUEST_DURATION_MS =
+  MAX_CODEX_EXEC_TIMEOUT_MS * CODEX_EXECS_PER_ASSISTANT_TURN + API_REQUEST_OVERHEAD_MS;

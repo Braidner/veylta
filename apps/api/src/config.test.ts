@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
+import { MAX_CODEX_EXEC_TIMEOUT_MS, MAX_SYNTHETIC_DOCUMENT_BYTES } from "@veylta/contracts";
 import { loadConfig } from "./config.js";
 import { withEnvironment } from "./test-support/with-environment.js";
 
@@ -79,6 +79,18 @@ test("the configured document limit cannot exceed the contract and database boun
   });
   withEnvironment({ MAX_DOCUMENT_BYTES: undefined }, () => {
     assert.equal(loadConfig().maxDocumentBytes, MAX_SYNTHETIC_DOCUMENT_BYTES);
+  });
+});
+
+test("the assistant budget cannot exceed the ceiling the hops in front of the API size from", () => {
+  withEnvironment({ CODEX_ASSISTANT_TIMEOUT_MS: String(MAX_CODEX_EXEC_TIMEOUT_MS + 1) }, () => {
+    assert.throws(
+      () => loadConfig(),
+      new RegExp(`CODEX_ASSISTANT_TIMEOUT_MS must not exceed ${MAX_CODEX_EXEC_TIMEOUT_MS}`),
+    );
+  });
+  withEnvironment({ CODEX_ASSISTANT_TIMEOUT_MS: String(MAX_CODEX_EXEC_TIMEOUT_MS) }, () => {
+    assert.equal(loadConfig().codexAssistantTimeoutMs, MAX_CODEX_EXEC_TIMEOUT_MS);
   });
 });
 

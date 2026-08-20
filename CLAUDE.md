@@ -480,6 +480,16 @@ headroom the POST route's `bodyLimit` adds), and `next-config.test.ts` holds the
 The size a document may be is stated in four places that must agree: the contract constant, the
 API route, this proxy cap, and the `byte_size` CHECK in the schema (migration 0040 —
 `document-size.integration.test.ts` reads the live bounds back and fails if they drift).
+The same rewrite also drops an upstream request after 30 s by default, which is under one
+assistant turn — the API finished the turn and persisted a verified answer while the browser
+read a socket hang-up as «проверьте соединение» — so `experimental.proxyTimeout` is pinned to
+`MAX_API_REQUEST_DURATION_MS` (`packages/contracts/src/codex.ts`, beside the execution
+preference: `MAX_CODEX_EXEC_TIMEOUT_MS` × the two execs one turn spends, answer and checker, plus
+`API_REQUEST_OVERHEAD_MS`), `config.ts` bounds `CODEX_ASSISTANT_TIMEOUT_MS` by the same
+`MAX_CODEX_EXEC_TIMEOUT_MS`, and `next-config.test.ts` holds the proxy to it. Only the API
+decides a request has run too long. **A консилиум is not covered**: a persona plus a checker per
+invited specialty and then a synthesis with its own checker is four budgets deep, and the fix
+for it is a turn that becomes a polled job, not a larger timeout.
 Session state is an opaque token in an HttpOnly
 cookie; SQLite stores only its SHA-256 digest. Browser routes address a person by handle
 (`patient_profiles.handle`, server-unique, migration

@@ -124,6 +124,21 @@ resolves the authenticated actor, checks family/profile scope server-side, and
 then proxies authorized document downloads. Resource IDs are selectors, never
 proof of authorization.
 
+The browser reaches the API only through the web application's
+`/health-api/:path*` rewrite, so that hop must admit everything the API is
+allowed to accept and to take: its body cap reads
+`MAX_SYNTHETIC_DOCUMENT_UPLOAD_BYTES` and its upstream deadline reads
+`MAX_API_REQUEST_DURATION_MS`, both from `packages/contracts`, both held there
+by `apps/web/next-config.test.ts`. Next's own defaults — 10 MB and 30 s — are
+below a legal upload and below one assistant turn, and a proxy that gives up
+first reports finished, persisted work to the person as a failed connection.
+Only the API decides a request has run too long. The request deadline is derived
+from one assistant turn, the answer plus its independent refuting run, at the
+largest Codex budget an operator may configure; it does **not** cover a
+консилиум, whose persona-and-checker per invited specialty followed by a
+synthesis and its checker is four budgets deep. That case needs a turn that
+becomes a polled job like document processing, not a longer socket timeout.
+
 ## Repository boundaries
 
 The intended minimal layout is:
