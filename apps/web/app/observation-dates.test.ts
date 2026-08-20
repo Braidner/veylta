@@ -22,9 +22,10 @@ test("the timeline date prefers the sample, then the result, then the upload —
   };
   assert.equal(timelineDate(uploadOnly).label, "Дата загрузки");
 
-  // Known dates are the non-null ones: the default fixture only ever sets sample + upload, so the
-  // "all three known" case is exercised through `resultOnly` (sample dropped, result gained) too.
-  assert.equal(knownObservationDates(item).length, 2);
+  // Known dates are the non-null ones; the upload date is always known, the other two are not.
+  const allThree = { ...item, dates: { ...item.dates, resultedAt: "2026-08-11T08:00:00.000Z" } };
+  assert.equal(knownObservationDates(allThree).length, 3);
+  assert.equal(knownObservationDates(item).length, 2, "the fixture sets sample and upload");
   assert.equal(knownObservationDates(resultOnly).length, 2);
   assert.equal(knownObservationDates(uploadOnly).length, 1);
 });

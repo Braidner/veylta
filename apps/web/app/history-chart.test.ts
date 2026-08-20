@@ -42,6 +42,31 @@ test("points are placed on the period's time axis with their status; the band st
   assert.ok(model.yMaxLabel.includes("9"), "the y extent covers the largest value");
 });
 
+test("two values recorded at one moment give two segments with their own identities", () => {
+  const [series] = buildDossierSeries(
+    [
+      observation({ id: "same-1", value: "2,0", at: "2026-08-10T12:00:00.000Z" }),
+      // Another laboratory, the same moment: geometry repeats, the identity does not.
+      observation({
+        id: "same-2",
+        value: "2,4",
+        low: "1,0",
+        high: "8,0",
+        text: "1,0 - 8,0",
+        at: "2026-08-10T12:00:00.000Z",
+      }),
+    ],
+    null,
+  );
+  assert.ok(series);
+  const model = historyChartModel(series, "3m", now);
+  assert.equal(model.band.length, 2);
+  const [b1, b2] = model.band;
+  assert.ok(b1 && b2);
+  assert.equal(b1.x2, b2.x1, "the segments start and end at the same instant");
+  assert.deepEqual([b1.since, b2.since], ["same-1", "same-2"], "each segment keeps its own value");
+});
+
 test("a bounded period opens with the earliest known bounds, not with an unshaded gap", () => {
   const [series] = buildDossierSeries(
     [

@@ -6,14 +6,14 @@ import type {
   ObservationHistoryResponse,
 } from "@veylta/contracts";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiRequest } from "./api-client";
+import { ApiError, apiRequest } from "./api-client";
 import { medicalProfilePath } from "./components/medical-profile-controls";
 import { passportOf } from "./dossier-passport";
 import { profileApiPath } from "./paths";
 
 export type HistoryDataState =
   | { kind: "loading" }
-  | { kind: "error" }
+  | { kind: "error"; copy: string }
   | {
       kind: "ready";
       items: readonly ObservationHistoryItem[];
@@ -27,6 +27,13 @@ const historyPages = 8;
 
 /** How many confirmed values the page reads at most — what the truncation note tells the reader. */
 export const historyValueCap = historyPageLimit * historyPages;
+
+/** A profile the actor may not read answers 404 — the reader is told where to go, not to retry. */
+function historyErrorCopy(error: unknown): string {
+  return error instanceof ApiError && error.status === 404
+    ? "История этого профиля недоступна. Вернитесь к доступному профилю и попробуйте снова."
+    : "Не удалось загрузить историю. Подтверждённые значения и исходные документы не изменены.";
+}
 
 async function loadHistoryPages(
   base: string,
@@ -75,8 +82,8 @@ export function useHistoryData(input: { familyId: string; profileId: string }): 
       if (signal.aborted) return;
       const passport = passportOf(profile.entries, new Date());
       setState({ kind: "ready", items, sex: passport.sex, truncated });
-    } catch {
-      if (!signal.aborted) setState({ kind: "error" });
+    } catch (error) {
+      if (!signal.aborted) setState({ kind: "error", copy: historyErrorCopy(error) });
     }
   }, [familyId, profileId]);
 

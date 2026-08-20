@@ -17,6 +17,8 @@ export interface ChartPoint {
 
 /** One run of identical printed bounds; the band steps at the first point that prints new ones. */
 export interface BandSegment {
+  /** The value whose bounds opened this run — the segment's identity, unique even at one moment. */
+  readonly since: string;
   readonly x1: number;
   readonly x2: number;
   readonly yTop: number;
@@ -103,7 +105,7 @@ export function historyChartModel(
     if (previous !== undefined && previous.yTop === yTop && previous.yBottom === yBottom) {
       band[band.length - 1] = { ...previous, x2 };
     } else {
-      band.push({ x1, x2, yTop, yBottom });
+      band.push({ since: point.observationId, x1, x2, yTop, yBottom });
     }
   });
 

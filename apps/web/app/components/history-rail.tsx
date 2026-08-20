@@ -1,7 +1,7 @@
 "use client";
 
 import { ANALYTE_AREAS, isOutsideRange } from "@veylta/contracts";
-import { useId, useState } from "react";
+import { type ReactNode, useId, useState } from "react";
 import type { DossierSeries } from "../dossier";
 import { dossierAreaLabel } from "../dossier-areas";
 import { countCopy } from "../russian-plural";
@@ -12,6 +12,8 @@ interface HistoryRailProps {
   readonly series: readonly DossierSeries[];
   readonly selectedKey: string | null;
   readonly onSelect: (series: DossierSeries) => void;
+  /** What stands in place of the list while the page is loading or failed to load. */
+  readonly state?: ReactNode;
 }
 
 interface AreaGroup {
@@ -68,9 +70,10 @@ function RailItem({
  * The record's indicators as a table of contents: a search field that narrows the list, then the
  * areas in the record's fixed order with a sparkline, the latest value and the change since last
  * time. On a narrow screen the same choice is a labelled select above the chart — one `onSelect`
- * behind both, so the two surfaces can never disagree.
+ * behind both, so the two surfaces can never disagree. The `#indicator-catalog` anchor is here in
+ * every state: a link into it must land even while the values are still loading.
  */
-export function HistoryRail({ series, selectedKey, onSelect }: HistoryRailProps) {
+export function HistoryRail({ series, selectedKey, onSelect, state }: HistoryRailProps) {
   const [query, setQuery] = useState("");
   const selectId = useId();
   const needle = query.trim().toLocaleLowerCase("ru-RU");
@@ -120,28 +123,32 @@ export function HistoryRail({ series, selectedKey, onSelect }: HistoryRailProps)
       </div>
 
       <nav className="history-rail" aria-label="Показатели">
-        {groups.map((group) => (
-          <div className="history-rail__group" key={group.area}>
-            <h3 className="history-rail__area">{dossierAreaLabel[group.area]}</h3>
-            <ul>
-              {group.series.map((entry) => (
-                <RailItem
-                  key={entry.key}
-                  series={entry}
-                  selected={entry.key === selectedKey}
-                  onSelect={onSelect}
-                />
-              ))}
-            </ul>
-          </div>
-        ))}
-        {groups.length === 0 ? (
-          <p className="history-rail__empty">
-            {series.length === 0
-              ? "Показателей пока нет."
-              : "По этому запросу показателей нет — измените слово поиска."}
-          </p>
-        ) : null}
+        {state ?? (
+          <>
+            {groups.map((group) => (
+              <div className="history-rail__group" key={group.area}>
+                <h3 className="history-rail__area">{dossierAreaLabel[group.area]}</h3>
+                <ul>
+                  {group.series.map((entry) => (
+                    <RailItem
+                      key={entry.key}
+                      series={entry}
+                      selected={entry.key === selectedKey}
+                      onSelect={onSelect}
+                    />
+                  ))}
+                </ul>
+              </div>
+            ))}
+            {groups.length === 0 ? (
+              <p className="history-rail__empty">
+                {series.length === 0
+                  ? "Показателей пока нет."
+                  : "По этому запросу показателей нет — измените слово поиска."}
+              </p>
+            ) : null}
+          </>
+        )}
       </nav>
     </div>
   );

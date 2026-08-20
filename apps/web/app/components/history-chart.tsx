@@ -59,7 +59,7 @@ export function HistoryChart({ series, period, now }: HistoryChartProps) {
           {model.band.map((segment) => (
             <rect
               className="history-chart__band"
-              key={`${segment.x1}:${segment.yTop}`}
+              key={segment.since}
               x={segment.x1}
               y={Math.min(segment.yTop, segment.yBottom)}
               width={Math.max(segment.x2 - segment.x1, 0.4)}
