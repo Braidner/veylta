@@ -945,7 +945,7 @@ client follows the authorized document path to inspect evidence and choose an
 explicit decision.
 
 `profile-overview/v3` adds a top-level `documentCount` — every active document of the profile,
-unlike the three-entry-capped `recentDocuments` — and carries `effectiveDate` on each
+unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` on each
 `recentDocuments` entry the same way as `document/v8`.
 
 ```json

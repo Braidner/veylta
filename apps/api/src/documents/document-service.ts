@@ -87,7 +87,7 @@ import {
   ObjectStorageSizeLimitError,
   type StagedObjectMetadata,
 } from "../storage/object-storage.js";
-import { effectiveDocumentDate } from "./document-date.js";
+import { effectiveDateSql, effectiveDocumentDate } from "./document-date.js";
 import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
 import { overviewDocumentsSql } from "./overview-documents-query.js";
 import { reviewedAnalyte } from "./reviewed-analyte.js";
@@ -3297,7 +3297,7 @@ export function createDocumentService(
               AND document.patient_profile_id = $2
               AND document.deleted_at IS NULL
               AND instr(intelligence.search_text, $3) > 0
-            ORDER BY COALESCE(intelligence.document_date, document.uploaded_at) DESC,
+            ORDER BY ${effectiveDateSql("document", "intelligence")} DESC,
                      document.uploaded_at DESC, document.id DESC
             LIMIT $4`,
           [scope.familyId, scope.profileId, query, limit],

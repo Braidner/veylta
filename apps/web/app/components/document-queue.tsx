@@ -55,7 +55,7 @@ export function DocumentQueue({
                     {row.document.intelligence?.title ?? row.document.originalFilename}
                   </Link>
                   <span className="document-queue__state">
-                    {queueStateCopy(row.document.processing)}
+                    {queueStateCopy(row.document.processing, row.review?.pendingFactCount)}
                   </span>
                 </div>
                 {next.kind === "review" ? (

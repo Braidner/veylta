@@ -6,6 +6,7 @@ import {
   type ProfileOverviewReviewDocument,
 } from "@veylta/contracts";
 import { archiveRows, archiveValueCountCopy, isRestartable } from "./documents-archive";
+import { pluralForm } from "./russian-plural";
 
 /** One document that still needs the machine or the person. */
 export interface QueueRow {
@@ -46,8 +47,15 @@ export function queueAction(row: QueueRow): QueueAction {
   return { kind: "none" };
 }
 
-/** The state in the person's words — moved from `veylta-app.tsx`'s `profileOverviewProcessingCopy`. */
-export function queueStateCopy(status: DocumentProcessingStatus): string {
+/**
+ * The state in the person's words — moved from `veylta-app.tsx`'s `profileOverviewProcessingCopy`.
+ * A run awaiting review counts what is still undecided, not what it extracted: the row's number
+ * has to be the one its «Проверить N значений» acts on, or the two would contradict each other.
+ */
+export function queueStateCopy(
+  status: DocumentProcessingStatus,
+  pendingFactCount?: number,
+): string {
   switch (status.state) {
     case "not_started":
       return "Обработка ещё не началась";
@@ -63,8 +71,10 @@ export function queueStateCopy(status: DocumentProcessingStatus): string {
       return "Готовим черновые значения";
     case "validation":
       return "Проверяем черновой результат";
-    case "awaiting_review":
-      return `${archiveValueCountCopy(status.factCount)} ждут явной проверки`;
+    case "awaiting_review": {
+      const count = pendingFactCount ?? status.factCount;
+      return `${archiveValueCountCopy(count)} ${pluralForm(count, ["ждёт", "ждут", "ждут"])} явной проверки`;
+    }
     case "completed":
       return `${archiveValueCountCopy(status.factCount)} подтверждены пользователем`;
     case "failed":

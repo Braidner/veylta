@@ -64,6 +64,35 @@ const overview = {
   recentObservations: [],
 } as unknown as ProfileOverviewResponse;
 
+/** One report whose run extracted two values while the person has already decided one of them. */
+const partlyDecided = {
+  ...overview,
+  documentCount: 1,
+  recentDocuments: [
+    document("partly", {
+      state: "awaiting_review",
+      updatedAt: at,
+      factCount: 2,
+      needsReviewCount: 1,
+    }),
+  ],
+  reviewQueue: {
+    documentCount: 1,
+    pendingFactCount: 1,
+    needsAttentionFactCount: 1,
+    documents: [
+      {
+        id: "partly",
+        originalFilename: "partly.pdf",
+        contentType: "application/pdf",
+        uploadedAt: at,
+        pendingFactCount: 1,
+        needsAttentionFactCount: 1,
+      },
+    ],
+  },
+} as unknown as ProfileOverviewResponse;
+
 test("the queue holds what is not done: the one awaiting review first, then the rest in upload order", () => {
   assert.deepEqual(
     queueRows(overview).map((row) => row.document.id),
@@ -80,5 +109,20 @@ test("each row knows its one action and its state in words", () => {
   assert.deepEqual(queueAction(rows[3]!), { kind: "none" });
   assert.equal(queueStateCopy(rows[1]!.document.processing), "Извлекаем текст");
   assert.equal(queueStateCopy(rows[2]!.document.processing), "Обработка не завершилась");
+  assert.equal(
+    queueStateCopy(rows[0]!.document.processing, rows[0]!.review?.pendingFactCount),
+    "2 значения ждут явной проверки",
+  );
+});
+
+test("a row awaiting review counts what is still undecided, not what the run extracted", () => {
+  const rows = queueRows(partlyDecided);
+  assert.deepEqual(queueAction(rows[0]!), { kind: "review", count: 1 });
+  assert.equal(
+    queueStateCopy(rows[0]!.document.processing, rows[0]!.review?.pendingFactCount),
+    "1 значение ждёт явной проверки",
+    "the row's number is the one its «Проверить N значений» acts on",
+  );
+  // Without a pending count there is nothing better than the run's own total.
   assert.equal(queueStateCopy(rows[0]!.document.processing), "2 значения ждут явной проверки");
 });

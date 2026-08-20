@@ -1,61 +1,10 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
 import test from "node:test";
-import type { FastifyInstance } from "fastify";
-import type { Database } from "../src/database/pool.js";
-import { createDocumentExtractionProcessor } from "../src/processing/document-extraction-processor.js";
-import { createLocalObjectStorage } from "../src/storage/local-object-storage.js";
 import { startAssistantApp } from "./assistant-app.js";
-import {
-  confirmSyntheticReport,
-  multipartFile,
-  reviewSyntheticFacts,
-  type SyntheticFact,
-  syntheticFacts,
-} from "./confirmed-observations.js";
-import type { Identity } from "./medical-profile-app.js";
+import { confirmSyntheticReport, reviewSyntheticFacts } from "./confirmed-observations.js";
+import { deadLetterLatestJob, queuedReport } from "./document-timeline-support.js";
 import { register, webOrigin } from "./medical-profile-app.js";
-import { createSyntheticImageOnlyPdf } from "./synthetic-image-only-pdf.js";
-import { createSyntheticIntelligence } from "./synthetic-intelligence.js";
 import { analyseSyntheticNote } from "./synthetic-note.js";
-
-/**
- * A scanned report analysed today and left undecided — the queue's own document. Its bytes differ
- * from the text-layer fixture, so the upload is a document of its own rather than a reuse.
- */
-async function queuedReport(
-  app: FastifyInstance,
-  database: Database,
-  storageRoot: string,
-  identity: Identity,
-): Promise<{ documentId: string; facts: SyntheticFact[] }> {
-  const profilePath = `/v1/families/${identity.body.family.id}/profiles/${identity.body.profile.id}`;
-  const scan = createSyntheticImageOnlyPdf([
-    "VEYLTA SYNTHETIC LAB REPORT v1",
-    "SCANNED COPY - SYNTHETIC TEST DATA",
-  ]);
-  const multipart = multipartFile(scan, "queued-scan.pdf");
-  const upload = await app.inject({
-    method: "POST",
-    url: `${profilePath}/documents`,
-    headers: {
-      cookie: identity.cookie,
-      origin: webOrigin,
-      "content-type": multipart.contentType,
-      "idempotency-key": `upload-${randomUUID()}`,
-    },
-    payload: multipart.body,
-  });
-  assert.equal(upload.statusCode, 202, upload.body);
-  const documentId = upload.json().document.id as string;
-  const processed = await createDocumentExtractionProcessor({
-    database,
-    storage: createLocalObjectStorage(storageRoot),
-    intelligence: createSyntheticIntelligence(),
-  }).processNext({ workerId: `worker-${randomUUID()}`, leaseDurationMs: 60_000, retryDelayMs: 1 });
-  assert.equal(processed.status, "completed");
-  return { documentId, facts: await syntheticFacts(app, identity, documentId) };
-}
 
 test("the timeline shows reviewed documents by effective date in whole-day pages with their counts; the queue stays out", async () => {
   const { app, database, storageRoot, close } = await startAssistantApp();
@@ -226,12 +175,32 @@ test("the timeline shows reviewed documents by effective date in whole-day pages
     });
     assert.equal(stranger.statusCode, 404);
 
+    // The complement of the queue rule: a reviewed document whose newest job ended in
+    // `dead_letter` leaves the timeline and is back in the queue as a failure the person can retry.
+    await deadLetterLatestJob(app, database, storageRoot, owner, report.documentId);
+    const afterFailure = await get();
+    assert.deepEqual(
+      (afterFailure.json().entries as Array<{ id: string }>).map((entry) => entry.id),
+      [note.documentId, queued.documentId],
+      "the restarted document is out of the timeline while its newest job is dead-lettered",
+    );
+    const overview = await app.inject({
+      method: "GET",
+      url: `${base}/overview`,
+      headers: { cookie: owner.cookie },
+    });
+    assert.equal(overview.statusCode, 200, overview.body);
+    const failedRow = (
+      overview.json().recentDocuments as Array<{ id: string; processing: { state: string } }>
+    ).find((entry) => entry.id === report.documentId);
+    assert.equal(failedRow?.processing.state, "failed", "and the queue shows it as a failure");
+
     const audit = await database.query<{ metadata: string; resource_type: string }>(
       `SELECT metadata, resource_type FROM audit_events
         WHERE family_id = $1 AND action = 'profile.timeline.opened'`,
       [owner.body.family.id],
     );
-    assert.equal(audit.rows.length, 8, "one row per answered read, none for the refusals");
+    assert.equal(audit.rows.length, 9, "one row per answered read, none for the refusals");
     for (const row of audit.rows) {
       assert.equal(row.resource_type, "PatientProfile");
       assert.deepEqual(JSON.parse(row.metadata), { contractVersion: "document-timeline/v1" });
