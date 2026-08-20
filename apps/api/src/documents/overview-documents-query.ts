@@ -110,3 +110,34 @@ export function overviewDocumentsSql(options: {
            ORDER BY d.uploaded_at DESC, d.id DESC
            LIMIT ${options.limit}`;
 }
+
+/**
+ * The review queue's own totals over every active document whose latest run awaits review:
+ * how many documents, how many facts nobody decided, and the `needs_review` subset of those.
+ * Same parameters as the query above.
+ */
+export const reviewQueueCountsSql = `SELECT COUNT(DISTINCT d.id) AS document_count,
+                COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
+                  AS pending_fact_count,
+                COALESCE(SUM(CASE
+                  WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
+                  ELSE 0
+                END), 0) AS needs_attention_fact_count
+           FROM documents d
+           JOIN document_versions v
+             ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
+           JOIN extraction_runs r
+             ON r.id = (
+               SELECT latest_run.id
+                 FROM extraction_runs latest_run
+                WHERE latest_run.family_id = v.family_id
+                  AND latest_run.document_version_id = v.id
+                ORDER BY latest_run.created_at DESC, latest_run.id DESC
+                LIMIT 1
+             )
+            AND r.status = 'awaiting_review'
+           LEFT JOIN extracted_facts f
+             ON f.family_id = r.family_id AND f.extraction_run_id = r.id
+           LEFT JOIN review_decisions d_review
+             ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
+          WHERE d.family_id = $1 AND d.patient_profile_id = $2 AND d.deleted_at IS NULL`;

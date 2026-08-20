@@ -1,9 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { readFile } from "node:fs/promises";
 import type { FastifyInstance } from "fastify";
 import type { Database } from "../src/database/pool.js";
-import { extractNextDocument, labReportFixtureUrl, uploadDocument } from "./document-app.js";
+import { uploadAndExtract } from "./document-app.js";
 import { type Identity, webOrigin } from "./medical-profile-app.js";
 
 export type SyntheticReviewDecision =
@@ -70,7 +69,9 @@ export async function reviewSyntheticFacts(
 
 /**
  * Uploads the synthetic laboratory fixture, runs the worker over it and reviews every fact
- * the way the caller decides — the only path that yields real confirmed observations.
+ * the way the caller decides — the only path that yields real confirmed observations. A profile's
+ * second report needs a `marker`: uploads are addressed by checksum, so the same bytes come back
+ * as the first document instead of a new one.
  */
 export async function confirmSyntheticReport(
   app: FastifyInstance,
@@ -78,24 +79,14 @@ export async function confirmSyntheticReport(
   storageRoot: string,
   identity: Identity,
   decide: (factKey: string) => SyntheticReviewDecision = () => "confirm",
+  marker?: string,
 ): Promise<{ documentId: string; observationIds: string[] }> {
-  const upload = await uploadDocument(
-    app,
-    identity,
-    await readFile(labReportFixtureUrl),
-    `upload-${randomUUID()}`,
-    { filename: "synthetic-report.pdf" },
-  );
-  assert.equal(upload.statusCode, 202, upload.body);
-  const documentId = upload.json().document.id as string;
-  await extractNextDocument({ database, storageRoot });
-  await reviewSyntheticFacts(
-    app,
-    identity,
-    documentId,
-    await syntheticFacts(app, identity, documentId),
-    decide,
-  );
+  const prepared = await uploadAndExtract({ app, database, storageRoot }, identity, {
+    filename: "synthetic-report.pdf",
+    ...(marker === undefined ? {} : { marker }),
+  });
+  const documentId = prepared.documentId;
+  await reviewSyntheticFacts(app, identity, documentId, prepared.facts, decide);
   const observations = await database.transaction((client) =>
     client.query<{ id: string }>(
       `SELECT id FROM observations

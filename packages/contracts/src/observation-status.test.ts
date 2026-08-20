@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isOutsideRange, numberOf, pointStatus } from "./observation-status.js";
+import { indicatorKey, isOutsideRange, numberOf, pointStatus } from "./observation-status.js";
 
 test("printed numbers read with a comma or a dot; anything else is no number", () => {
   assert.equal(numberOf("6,8"), 6.8);
@@ -10,6 +10,25 @@ test("printed numbers read with a comma or a dot; anything else is no number", (
   assert.equal(numberOf("отр."), null);
   assert.equal(numberOf(null), null);
   assert.equal(numberOf(undefined), null);
+});
+
+test("one indicator is one code (or its printed name) under one printed unit", () => {
+  assert.equal(indicatorKey("tsh", "ТТГ", "мМЕ/л"), "tsh|мМЕ/л");
+  assert.equal(
+    indicatorKey("tsh", "Тиреотропный гормон", "мМЕ/л"),
+    indicatorKey("tsh", "ТТГ", "мМЕ/л"),
+    "the code decides while it exists, whatever the laboratory printed",
+  );
+  assert.equal(
+    indicatorKey(null, "ТТГ", "мМЕ/л"),
+    indicatorKey(null, "ттг", "мМЕ/л"),
+    "without a code the printed name stands, and its case does not split the indicator",
+  );
+  assert.notEqual(
+    indicatorKey("tsh", "ТТГ", "мМЕ/л"),
+    indicatorKey("tsh", "ТТГ", "мкМЕ/мл"),
+    "two printed units are two indicators: nothing is converted",
+  );
 });
 
 test("status comes from the printed bounds, then from the laboratory's own flag, else unknown", () => {

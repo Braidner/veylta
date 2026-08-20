@@ -3,6 +3,7 @@ import {
   type AssistantSpecialty,
   analyteArea,
   analyteSpecialty,
+  indicatorKey,
   isOutsideRange,
   type ObservationHistoryItem,
   type PointStatus,
@@ -74,9 +75,9 @@ function deltaOf(latest: SeriesPoint, previous: SeriesPoint | null): DossierSeri
   );
 }
 
-/** The series identity: canonical code (or the printed name) plus the exact printed unit. */
+/** The series identity is the shared indicator key, so the API and the dossier cannot drift. */
 export function seriesKeyOf(item: ObservationHistoryItem): string {
-  return `${item.canonicalCode ?? item.source.name.toLocaleLowerCase("ru-RU")}|${item.source.unit}`;
+  return indicatorKey(item.canonicalCode, item.source.name, item.source.unit);
 }
 
 /**

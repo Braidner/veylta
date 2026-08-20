@@ -20,6 +20,7 @@ export * from "./document-timeline.js";
 export * from "./medical-profile.js";
 export * from "./observation-status.js";
 export * from "./profile-handle.js";
+export * from "./profile-overview.js";
 export * from "./profile-responses.js";
 export const DOCUMENT_CONTRACT_VERSION = "document/v8" as const;
 export const DOCUMENT_INTELLIGENCE_CONTRACT_VERSION = "document-intelligence/v2" as const;
@@ -31,7 +32,7 @@ export const INDICATOR_SERIES_CONTRACT_VERSION = "indicator-series/v1" as const;
 export const AUDIT_LOG_CONTRACT_VERSION = "audit-log/v1" as const;
 export const FAMILY_INVITATION_CONTRACT_VERSION = "family-invitation/v2" as const;
 export const PROFILE_CONSENT_CONTRACT_VERSION = "profile-consent/v2" as const;
-export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v3" as const;
+export const PROFILE_OVERVIEW_CONTRACT_VERSION = "profile-overview/v4" as const;
 export const HEALTH_SUMMARY_CONTRACT_VERSION = "health-summary/v1" as const;
 export const HEALTH_SUMMARY_HISTORY_CONTRACT_VERSION = "health-summary-history/v1" as const;
 export const HEALTH_SUMMARY_COMPARISON_CONTRACT_VERSION = "health-summary-comparison/v1" as const;
@@ -842,52 +843,6 @@ export const DOCUMENT_AGENT_MESSAGE_COMMAND_SCHEMA = {
     },
   },
 } as const;
-
-/**
- * A bounded, source-first profile landing view. It deliberately contains no
- * diagnosis, health score, recommendation, or inferred clinical status.
- */
-export interface ProfileOverviewDocument {
-  readonly id: string;
-  readonly originalFilename: string;
-  readonly contentType: SyntheticDocumentContentType;
-  readonly uploadedAt: string;
-  readonly effectiveDate: DocumentEffectiveDate;
-  readonly intelligence: DocumentIntelligenceSummary | null;
-  readonly processing: DocumentProcessingStatus;
-}
-
-/** A document with raw facts that still require an explicit final decision. */
-export interface ProfileOverviewReviewDocument {
-  readonly id: string;
-  readonly originalFilename: string;
-  readonly contentType: SyntheticDocumentContentType;
-  readonly uploadedAt: string;
-  readonly pendingFactCount: number;
-  readonly needsAttentionFactCount: number;
-}
-
-export interface ProfileOverviewResponse {
-  readonly contractVersion: typeof PROFILE_OVERVIEW_CONTRACT_VERSION;
-  readonly profile: PatientProfileSummary;
-  /** Active documents of the profile — the «всего» of the documents page; `recentDocuments` is capped. */
-  readonly documentCount: number;
-  /** Newest first; bounded to fifty immutable source documents. */
-  readonly recentDocuments: readonly ProfileOverviewDocument[];
-  readonly reviewQueue: {
-    readonly documentCount: number;
-    readonly pendingFactCount: number;
-    readonly needsAttentionFactCount: number;
-    /**
-     * Every source still awaiting a decision, newest first, bounded by
-     * MAX_PROFILE_OVERVIEW_REVIEW_DOCUMENTS. The archive acts on this list directly, so a
-     * shorter projection would make a bulk action silently skip documents.
-     */
-    readonly documents: readonly ProfileOverviewReviewDocument[];
-  };
-  /** Newest first; bounded to three explicitly confirmed source values. */
-  readonly recentObservations: readonly ObservationHistoryItem[];
-}
 
 /**
  * A deliberately narrow, immutable snapshot made after a completed source

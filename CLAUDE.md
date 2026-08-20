@@ -381,8 +381,9 @@ response cannot appear under the wrong run's heading.
 **Documents: queue and timeline.** A document's *effective date* is one rule
 (`documents/document-date.ts`: the person's correction → the document's own date → the upload
 day in UTC, with `source: person | document | upload`), carried as `effectiveDate` by every
-projection with `intelligence` (`document/v8`, `profile-overview/v3`, which also counts
-`documentCount`); `PUT …/documents/:id/date` (`document-date-service.ts`, migration 0039
+projection with `intelligence` (`document/v8`, `profile-overview/v4`, which also counts
+`documentCount`, `confirmedCount` and `outsideRangeCount` — see the overview below);
+`PUT …/documents/:id/date` (`document-date-service.ts`, migration 0039
 `documents.document_date_override`) corrects it — 422 for a malformed day or one after tomorrow,
 audited payload-free as `document.date.corrected`. *Queue membership* is one rule in
 `packages/contracts/src/document-timeline.ts` (`isInDocumentQueue`: processing not completed or a
@@ -394,7 +395,12 @@ in whole-day pages (`?before=&limit=` days, `nextBefore`) with `confirmedCount`,
 (nodes, month groups, date copy), `components/documents-workspace.tsx` →
 `document-exports.tsx` + `document-queue.tsx` + `document-timeline.tsx` →
 `document-timeline-node.tsx` → `document-date-editor.tsx`; the overview's document queries share
-`overview-documents-query.ts`.
+`overview-documents-query.ts`. The overview's own two counts come from
+`documents/profile-overview-counts.ts`: `confirmedCount` is a plain `COUNT(*)`, and
+`outsideRangeCount` reads the latest confirmed observation per indicator
+(`indicatorKey` in `observation-status.ts`, shared with the dossier's `seriesKeyOf`) and applies
+`pointStatus` in TypeScript — rows out of SQL, the rule above it, because `CAST('< 0,1' AS REAL)`
+would invent a number the document never printed.
 
 **History: trends and «что изменилось».** The history tab reads the record it already has: one
 paged load of all confirmed observations plus the passport's sex (`app/use-history-data.ts`, the

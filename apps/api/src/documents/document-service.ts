@@ -89,7 +89,8 @@ import {
 } from "../storage/object-storage.js";
 import { effectiveDateSql, effectiveDocumentDate } from "./document-date.js";
 import { createSyntheticEvidenceBundle } from "./evidence-bundle.js";
-import { overviewDocumentsSql } from "./overview-documents-query.js";
+import { overviewDocumentsSql, reviewQueueCountsSql } from "./overview-documents-query.js";
+import { profileOverviewCounts } from "./profile-overview-counts.js";
 import { reviewedAnalyte } from "./reviewed-analyte.js";
 
 export class UnsupportedDocumentTypeError extends Error {}
@@ -3638,40 +3639,18 @@ export function createDocumentService(
           )
         ).rows[0];
 
+        const observationCounts = await profileOverviewCounts(client, scope);
+
         const recentDocuments = await client.query<ProfileOverviewDocumentRow>(
           overviewDocumentsSql({ onlyAwaitingReview: false, limit: 50 }),
           [scope.familyId, scope.profileId],
         );
 
         const reviewQueue = (
-          await client.query<ProfileOverviewQueueRow>(
-            `SELECT COUNT(DISTINCT d.id) AS document_count,
-                    COALESCE(SUM(CASE WHEN d_review.id IS NULL AND f.id IS NOT NULL THEN 1 ELSE 0 END), 0)
-                      AS pending_fact_count,
-                    COALESCE(SUM(CASE
-                      WHEN d_review.id IS NULL AND f.review_status = 'needs_review' THEN 1
-                      ELSE 0
-                    END), 0) AS needs_attention_fact_count
-               FROM documents d
-               JOIN document_versions v
-                 ON v.family_id = d.family_id AND v.document_id = d.id AND v.version_number = 1
-               JOIN extraction_runs r
-                 ON r.id = (
-                   SELECT latest_run.id
-                     FROM extraction_runs latest_run
-                    WHERE latest_run.family_id = v.family_id
-                      AND latest_run.document_version_id = v.id
-                    ORDER BY latest_run.created_at DESC, latest_run.id DESC
-                    LIMIT 1
-                 )
-                AND r.status = 'awaiting_review'
-               LEFT JOIN extracted_facts f
-                 ON f.family_id = r.family_id AND f.extraction_run_id = r.id
-               LEFT JOIN review_decisions d_review
-                 ON d_review.family_id = f.family_id AND d_review.extracted_fact_id = f.id
-              WHERE d.family_id = $1 AND d.patient_profile_id = $2 AND d.deleted_at IS NULL`,
-            [scope.familyId, scope.profileId],
-          )
+          await client.query<ProfileOverviewQueueRow>(reviewQueueCountsSql, [
+            scope.familyId,
+            scope.profileId,
+          ])
         ).rows[0];
         if (reviewQueue === undefined) {
           throw new ObjectStorageIntegrityError("Profile overview review queue is unavailable");
@@ -3727,6 +3706,8 @@ export function createDocumentService(
           contractVersion: PROFILE_OVERVIEW_CONTRACT_VERSION,
           profile: profileOverviewProfile(profile),
           documentCount: asCount(documentCount?.document_count ?? -1, "overview document count"),
+          confirmedCount: asCount(observationCounts.confirmed, "overview confirmed count"),
+          outsideRangeCount: asCount(observationCounts.outsideRange, "overview outside count"),
           recentDocuments: recentDocuments.rows.map(profileOverviewDocument),
           reviewQueue: {
             documentCount: asCount(reviewQueue.document_count, "overview review document count"),

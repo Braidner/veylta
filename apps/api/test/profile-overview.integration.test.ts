@@ -38,7 +38,7 @@ test("profile overview is source-first, bounded, and payload-free audited", asyn
     assert.equal(response.statusCode, 200, response.rawPayload.toString());
     assert.equal(response.headers["cache-control"], "no-store");
     const overview = response.json() as ProfileOverviewResponse;
-    assert.equal(overview.contractVersion, "profile-overview/v3");
+    assert.equal(overview.contractVersion, "profile-overview/v4");
     assert.equal(overview.profile.id, owner.body.profile.id);
     assert.equal(overview.reviewQueue.documentCount, 1);
     assert.equal(overview.reviewQueue.pendingFactCount, 2);
@@ -85,7 +85,7 @@ test("profile overview is source-first, bounded, and payload-free audited", asyn
     );
     assert.equal(audit.rows.length, 1);
     assert.deepEqual(JSON.parse(audit.rows[0]?.metadata ?? "{}"), {
-      contractVersion: "profile-overview/v3",
+      contractVersion: "profile-overview/v4",
     });
     assert.equal(JSON.stringify(audit.rows).includes("overview-synthetic.pdf"), false);
     assert.equal(JSON.stringify(audit.rows).includes("AMBIGUOUS_UNIT"), false);

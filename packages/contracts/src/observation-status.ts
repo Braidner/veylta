@@ -35,3 +35,12 @@ export function pointStatus(value: number | null, range: PrintedRange | null): P
 
 export const isOutsideRange = (status: PointStatus): boolean =>
   status === "above" || status === "below" || status === "flagged";
+
+/** One indicator is one canonical code (or its printed name) under one printed unit. */
+export function indicatorKey(
+  canonicalCode: string | null,
+  sourceName: string,
+  sourceUnit: string,
+): string {
+  return `${canonicalCode ?? sourceName.toLocaleLowerCase("ru-RU")}|${sourceUnit}`;
+}

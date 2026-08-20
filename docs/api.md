@@ -947,13 +947,21 @@ final decision; `needsAttentionFactCount` is the subset marked
 client follows the authorized document path to inspect evidence and choose an
 explicit decision.
 
-`profile-overview/v3` adds a top-level `documentCount` — every active document of the profile,
+`profile-overview/v3` added a top-level `documentCount` — every active document of the profile,
 unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` on each
 `recentDocuments` entry the same way as `document/v8`.
 
+`profile-overview/v4` adds two more counts over the whole record, so a client never has to
+infer them from the three `recentObservations`: `confirmedCount` is every confirmed observation
+of the profile, and `outsideRangeCount` is how many *indicators* currently sit outside — the
+number of distinct indicators (one canonical code, or its printed name, under one printed unit)
+whose **latest** confirmed value is outside its printed range or flagged by the laboratory. Both
+are read with the dossier's own rule over the printed value; nothing is parsed or compared in
+SQL, and no unit is converted.
+
 ```json
 {
-  "contractVersion": "profile-overview/v3",
+  "contractVersion": "profile-overview/v4",
   "profile": {
     "id": "profile_placeholder",
     "familyId": "family_placeholder",
@@ -964,6 +972,8 @@ unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` 
     "createdAt": "2026-08-12T00:00:00.000Z"
   },
   "documentCount": 1,
+  "confirmedCount": 4,
+  "outsideRangeCount": 1,
   "recentDocuments": [
     {
       "id": "document_placeholder",
@@ -997,7 +1007,7 @@ unlike the fifty-entry-capped `recentDocuments` — and carries `effectiveDate` 
 It is not a diagnosis, medical summary, health score, risk state, trend, or
 recommendation. Each successful read writes a payload-free
 `profile.overview.opened` audit event against the profile with only
-`profile-overview/v3` as metadata; it never records filenames, values, units,
+`profile-overview/v4` as metadata; it never records filenames, values, units,
 fragments, source bytes, or cursor data.
 
 ## Household care plan (Task 33a)
